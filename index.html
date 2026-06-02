@@ -764,7 +764,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <div style="display:flex;gap:0;margin-bottom:14px;border-bottom:2px solid var(--brd);">
         <button id="params-btn-profil" class="subtab-btn active" onclick="showParamsTab('profil',this)">👤 Mon profil</button>
         <button id="params-btn-admin" class="subtab-btn" style="display:none;" onclick="showParamsTab('admin',this)">🛡️ Administration</button>
-        <button id="params-btn-onedrive" class="subtab-btn" onclick="showParamsTab('onedrive',this)">☁️ OneDrive</button>
+        <button id="params-btn-onedrive" class="subtab-btn" onclick="showParamsTab('onedrive',this)" style="display:none;">☁️ Sync</button>
       </div>
 
       <!-- Profil -->
@@ -820,53 +820,23 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         </div>
       </div>
 
-      <!-- OneDrive Sync Panel -->
+      <!-- JSONBin Sync Panel (superadmin uniquement) -->
       <div id="params-onedrive" style="display:none;">
         <div class="panel">
-          <div class="panel-title">☁️ Synchronisation dossier OneDrive</div>
-          <div id="od-status-banner" style="padding:10px 14px;border-radius:10px;font-size:13px;margin-bottom:12px;background:#f5f5f7;color:#6c6c70;border:1px solid #e5e5ea;">
-            ● Non connecté — choisissez le dossier OneDrive
+          <div class="panel-title">☁️ Synchronisation JSONBin</div>
+          <div style="font-size:12px;color:var(--t2);margin-bottom:12px;line-height:1.5;">
+            Les données sont automatiquement synchronisées avec JSONBin toutes les 15 secondes.<br>
+            Utilisez les boutons ci-dessous pour forcer une synchronisation ou sauvegarder manuellement.
           </div>
-
-          <!-- Étape 1 : choisir le dossier (navigateur compatible) -->
-          <div id="od-step-choose">
-            <div style="background:#E6F1FB;border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;color:#0C447C;line-height:1.7;">
-              <strong>Mise en place (une seule fois par PC) :</strong><br>
-              1. Déposez ce fichier HTML dans votre dossier OneDrive<br>
-              2. Cliquez sur "Choisir le dossier OneDrive" ci-dessous<br>
-              3. Sélectionnez ce même dossier OneDrive<br>
-              4. Répétez sur chaque PC — les données seront partagées automatiquement
-            </div>
-            <div class="brow">
-              <button class="btn pr" onclick="odChooseFolder()">📁 Choisir le dossier OneDrive</button>
-            </div>
-          </div>
-
-          <!-- Dossier connecté -->
-          <div id="od-step-connected" style="display:none;">
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
-              <button class="btn gn" onclick="odSyncNow()">⬆ Sauvegarder maintenant</button>
-              <button class="btn bl" onclick="odPullNow()">⬇ Récupérer les données</button>
-              <button class="btn" onclick="odRequestPermission()">🔓 Réautoriser</button>
-              <button class="btn danger" onclick="odDisconnect()">↩ Dissocier</button>
-            </div>
-            <div id="od-last-sync" style="font-size:11px;color:var(--t2);"></div>
-          </div>
-
-          <!-- Navigateur incompatible (Firefox, Safari) -->
-          <div id="od-step-nofs" style="display:none;">
-            <div style="font-size:12px;color:var(--t2);line-height:1.6;">
-              Votre navigateur ne supporte pas l'accès aux fichiers locaux.<br>
-              Utilisez <strong>Chrome</strong> ou <strong>Edge</strong> pour la synchronisation automatique, ou utilisez l'export/import manuel ci-dessous.
-            </div>
+          <div class="brow" style="flex-wrap:wrap;gap:8px;">
+            <button class="btn gn" onclick="_jbPush(_buildDataObject()).then(()=>showToast('Sauvegardé sur JSONBin ✓','success'))">⬆ Sauvegarder maintenant</button>
+            <button class="btn bl" onclick="jbSyncNow()">⬇ Récupérer les données</button>
           </div>
         </div>
-
-        <!-- Export/import manuel (secours ou Firefox/Safari) -->
         <div class="panel">
           <div class="panel-title">📦 Sauvegarde manuelle</div>
           <div style="font-size:12px;color:var(--t2);margin-bottom:10px;line-height:1.5;">
-            Exportez vos données dans un fichier JSON, déposez-le dans votre dossier OneDrive, et importez-le sur l'autre PC.
+            Exportez toutes les données en JSON ou importez une sauvegarde existante.
           </div>
           <div class="brow">
             <button class="btn" onclick="odExportManuel()">⬇ Exporter JSON</button>
@@ -1377,6 +1347,8 @@ function applyNavRights(){
   if(pilpTab)pilpTab.style.display=canSeePILP()?'':'none';
   const adminTab=document.getElementById('params-btn-admin');
   if(adminTab)adminTab.style.display=hasRight('Administration')?'':'none';
+  const syncTab=document.getElementById('params-btn-onedrive');
+  if(syncTab)syncTab.style.display=isSuperAdmin()?'':'none';
   document.getElementById('fb-mes-sel').style.display=(isAgres()||isTireurPILP())?'':'none';
   const fbResp=document.getElementById('fb-mes-resp');
   if(fbResp)fbResp.style.display=(isChef()||isAgres()||hasRight('Administration'))?'':'none';
@@ -10408,7 +10380,7 @@ function _applyDataObject(data){
 // STOCKAGE JSONBIN — multi-utilisateurs, tous navigateurs
 // ══════════════════════════════════════════════════════
 const JSONBIN_ID  = '6a1f42baf5f4af5e29af3e04';
-const JSONBIN_KEY = '⚠️ COLLER_VOTRE_CLE_API_ICI'; // Remplacez par votre clé JSONBin
+const JSONBIN_KEY = '6a1f4430da38895dfe7dc08c'; // Remplacez par votre clé JSONBin
 const JSONBIN_URL = 'https://api.jsonbin.io/v3/b/' + JSONBIN_ID;
 const JB_CACHE_KEY = 'agai_jb_cache'; // cache localStorage pour démarrage rapide
 let _jbSaveTimer = null;   // debounce écriture
