@@ -770,7 +770,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <div style="display:flex;gap:0;margin-bottom:14px;border-bottom:2px solid var(--brd);">
         <button id="params-btn-profil" class="subtab-btn active" onclick="showParamsTab('profil',this)">👤 Mon profil</button>
         <button id="params-btn-admin" class="subtab-btn" style="display:none;" onclick="showParamsTab('admin',this)">🛡️ Administration</button>
-        <button id="params-btn-onedrive" class="subtab-btn" onclick="showParamsTab('onedrive',this)">☁️ OneDrive</button>
+        <button id="params-btn-onedrive" class="subtab-btn" onclick="showParamsTab('onedrive',this)" style="display:none;">☁️ Sync</button>
       </div>
 
       <!-- Profil -->
@@ -826,54 +826,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         </div>
       </div>
 
-      <!-- OneDrive Sync Panel -->
+      <!-- JSONBin Sync Panel (superadmin uniquement) -->
       <div id="params-onedrive" style="display:none;">
         <div class="panel">
-          <div class="panel-title">☁️ Synchronisation dossier OneDrive</div>
-          <div id="od-status-banner" style="padding:10px 14px;border-radius:10px;font-size:13px;margin-bottom:12px;background:#f5f5f7;color:#6c6c70;border:1px solid #e5e5ea;">
-            ● Non connecté — choisissez le dossier OneDrive
-          </div>
-
-          <!-- Étape 1 : choisir le dossier (navigateur compatible) -->
-          <div id="od-step-choose">
-            <div style="background:#E6F1FB;border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;color:#0C447C;line-height:1.7;">
-              <strong>Mise en place (une seule fois par PC) :</strong><br>
-              1. Déposez ce fichier HTML dans votre dossier OneDrive<br>
-              2. Cliquez sur "Choisir le dossier OneDrive" ci-dessous<br>
-              3. Sélectionnez ce même dossier OneDrive<br>
-              4. Répétez sur chaque PC — les données seront partagées automatiquement
-            </div>
-            <div class="brow">
-              <button class="btn pr" onclick="odChooseFolder()">📁 Choisir le dossier OneDrive</button>
-            </div>
-          </div>
-
-          <!-- Dossier connecté -->
-          <div id="od-step-connected" style="display:none;">
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
-              <button class="btn gn" onclick="odSyncNow()">⬆ Sauvegarder maintenant</button>
-              <button class="btn bl" onclick="odPullNow()">⬇ Récupérer les données</button>
-              <button class="btn" onclick="odRequestPermission()">🔓 Réautoriser</button>
-              <button class="btn danger" onclick="odDisconnect()">↩ Dissocier</button>
-            </div>
-            <div id="od-last-sync" style="font-size:11px;color:var(--t2);"></div>
-          </div>
-
-          <!-- Navigateur incompatible (Firefox, Safari) -->
-          <div id="od-step-nofs" style="display:none;">
-            <div style="font-size:12px;color:var(--t2);line-height:1.6;">
-              Votre navigateur ne supporte pas l'accès aux fichiers locaux.<br>
-              Utilisez <strong>Chrome</strong> ou <strong>Edge</strong> pour la synchronisation automatique, ou utilisez l'export/import manuel ci-dessous.
-            </div>
+          <div class="panel-title">☁️ Synchronisation JSONBin</div>
+          <div style="font-size:12px;color:var(--t2);margin-bottom:12px;line-height:1.5;">Les données sont synchronisées automatiquement toutes les 10 secondes.</div>
+          <div class="brow">
+            <button class="btn gn" onclick="_jbPush(_buildDataObject()).then(()=>showToast('Sauvegardé ✓','success'))">⬆ Sauvegarder maintenant</button>
+            <button class="btn bl" onclick="jbSyncNow()">⬇ Récupérer les données</button>
           </div>
         </div>
-
-        <!-- Export/import manuel (secours ou Firefox/Safari) -->
         <div class="panel">
           <div class="panel-title">📦 Sauvegarde manuelle</div>
-          <div style="font-size:12px;color:var(--t2);margin-bottom:10px;line-height:1.5;">
-            Exportez vos données dans un fichier JSON, déposez-le dans votre dossier OneDrive, et importez-le sur l'autre PC.
-          </div>
+          <div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Exportez ou importez toutes les données en JSON.</div>
           <div class="brow">
             <button class="btn" onclick="odExportManuel()">⬇ Exporter JSON</button>
             <label class="btn" style="cursor:pointer;">⬆ Importer JSON<input type="file" accept=".json" style="display:none;" onchange="odImportManuel(this)"/></label>
@@ -1383,6 +1348,8 @@ function applyNavRights(){
   if(pilpTab)pilpTab.style.display=canSeePILP()?'':'none';
   const adminTab=document.getElementById('params-btn-admin');
   if(adminTab)adminTab.style.display=hasRight('Administration')?'':'none';
+  const syncTab=document.getElementById('params-btn-onedrive');
+  if(syncTab)syncTab.style.display=isSuperAdmin()?'':'none';
   document.getElementById('fb-mes-sel').style.display=(isAgres()||isTireurPILP())?'':'none';
   const fbResp=document.getElementById('fb-mes-resp');
   if(fbResp)fbResp.style.display=(isChef()||isAgres()||hasRight('Administration'))?'':'none';
@@ -1548,8 +1515,7 @@ function loginImportJSON(input){
   reader.onload=function(e){
     try{
       const data=JSON.parse(e.target.result);
-      _applyDataObject(data);
-      _postLoadInit();
+      _applyDataObject(data);_postLoadInit();
       localStorage.setItem(JB_CACHE_KEY,JSON.stringify(data));
       _jbPush(data).then(function(){
         showToast('Données importées et synchronisées ✓','success');
@@ -6364,10 +6330,7 @@ function addMembre(eqId){
   if(!sel||!sel.value)return;
   const login=sel.value;
   const autreEq=EQUIPES.find(e=>e.id!==eqId&&e.membres.includes(login));
-  if(autreEq){
-    showToast((USERS.find(u=>u.l===login)?.prenom||login)+' est déjà dans '+autreEq.nom+'.','warn');
-    return;
-  }
+  if(autreEq){showToast((USERS.find(u=>u.l===login)?.prenom||login)+' est déjà dans '+autreEq.nom+'.','warn');return;}
   if(!eq.membres.includes(login))eq.membres.push(login);
   saveData();rAstrEquipes();
 }
@@ -10439,23 +10402,16 @@ let _jbSaveTimer  = null;
 let _jbSaving     = false;
 let _jbPollTimer  = null;
 
-// ── Indicateur visuel de sync (auto-créé) ──
 function _jbSetStatus(state){
   let el=document.getElementById('jb-status');
   if(!el){el=document.createElement('div');el.id='jb-status';document.body.appendChild(el);}
-  const cfg={
-    ok:     {txt:'☁️ Sync OK',   bg:'#ECFDF5',color:'#065F46'},
-    saving: {txt:'⏳ Sync...',   bg:'#FFF7ED',color:'#92400E'},
-    error:  {txt:'⚠️ Sync KO',   bg:'#FEF2F2',color:'#991B1B'},
-    loading:{txt:'⏳ Chargement',bg:'#EFF6FF',color:'#1D4ED8'},
-  };
+  const cfg={ok:{txt:'☁️ Sync OK',bg:'#ECFDF5',color:'#065F46'},saving:{txt:'⏳ Sync...',bg:'#FFF7ED',color:'#92400E'},error:{txt:'⚠️ Sync KO',bg:'#FEF2F2',color:'#991B1B'},loading:{txt:'⏳ Chargement',bg:'#EFF6FF',color:'#1D4ED8'}};
   const c=cfg[state]||cfg.ok;
   el.textContent=c.txt;
   el.style.cssText='position:fixed;bottom:8px;right:8px;z-index:9999;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;background:'+c.bg+';color:'+c.color+';box-shadow:0 1px 4px rgba(0,0,0,.15);cursor:pointer;';
   el.onclick=function(){jbSyncNow();};
 }
 
-// ── PUSH : écriture vers JSONBin (debounce 2s) ──
 function saveData(){
   try{
     const data=_buildDataObject();
@@ -10476,7 +10432,6 @@ async function _jbPush(data){
   finally{_jbSaving=false;}
 }
 
-// ── PULL : lecture depuis JSONBin ──
 async function _jbPull(silent){
   try{
     if(!silent)_jbSetStatus('loading');
@@ -10491,18 +10446,14 @@ async function _jbPull(silent){
   }catch(e){console.warn('[AGAI] Pull error:',e);_jbSetStatus('error');return false;}
 }
 
-// ── Polling toutes les 10s ──
 function _jbStartPolling(){
   if(_jbPollTimer)clearInterval(_jbPollTimer);
   _jbPollTimer=window.setInterval(function(){if(!_jbSaving&&!_jbSaveTimer)_jbPull(true);},10000);
 }
 
-// ── loadData ──
 function loadData(){
   const cache=localStorage.getItem(JB_CACHE_KEY);
-  if(cache){
-    try{const data=JSON.parse(cache);_applyDataObject(data);_postLoadInit();}catch(e){}
-  }
+  if(cache){try{const data=JSON.parse(cache);_applyDataObject(data);_postLoadInit();}catch(e){}}
   _jbPull(false).then(function(){_jbStartPolling();});
 }
 
@@ -10529,7 +10480,6 @@ function jbSyncNow(){
 }
 
 function saveAndRefresh(){saveData();}
-
 function _odSyncAfterSave(){if(typeof odScheduleSync==='function')odScheduleSync();}
 
 
