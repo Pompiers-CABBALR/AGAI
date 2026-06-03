@@ -4384,9 +4384,11 @@ function fullNameAff(u){return u?(u.nom+' '+u.prenom).trim():'';}
 function shortName(u){return u?u.nom+' '+u.prenom.charAt(0)+'.':'';}
 function rAdm(){
   const ng=document.getElementById('nu-grade');
-  if(ng)ng.innerHTML=GRADES.map(g=>`<option>${g}</option>`).join('');
+  if(ng&&!ng.value){ng.innerHTML=GRADES.map(g=>`<option>${g}</option>`).join('');}
+  else if(ng&&!ng.querySelector('option')){ng.innerHTML=GRADES.map(g=>`<option>${g}</option>`).join('');}
   const nf=document.getElementById('nu-fonction');
-  if(nf)nf.innerHTML=FONCTIONS.map(f=>`<option>${f}</option>`).join('');
+  if(nf&&!nf.value){nf.innerHTML=FONCTIONS.map(f=>`<option>${f}</option>`).join('');}
+  else if(nf&&!nf.querySelector('option')){nf.innerHTML=FONCTIONS.map(f=>`<option>${f}</option>`).join('');}
   const tbody=document.getElementById('admin-tbody');if(!tbody)return;
   const RIGHTS_SHORT=['Prise d\'appel','Interventions','Historique complet','Chef d\'agrès','Tireur PILP','Administration','Formation'];
   // USERS contient déjà le superadmin via syncCaserneContext
@@ -10447,7 +10449,11 @@ async function _jbPull(silent){
     localStorage.setItem(JB_CACHE_KEY,JSON.stringify(data));
     _applyDataObject(data);_postLoadInit();
     if(CURRENT_CASERNE_ID)syncCaserneContext();
-    try{rI();}catch(e){}try{rAccueil();}catch(e){}try{rHist();}catch(e){}try{rAstrDispo();}catch(e){}try{rAstrEquipes();}catch(e){}try{rAdm();}catch(e){}
+    try{rI();}catch(e){}try{rAccueil();}catch(e){}try{rHist();}catch(e){}try{rAstrDispo();}catch(e){}try{rAstrEquipes();}catch(e){}
+    // Ne pas recharger rAdm si l'utilisateur est en train de saisir un nouvel agent
+    const isTyping=document.getElementById('admin-add')&&document.getElementById('admin-add').style.display!=='none'
+      &&(document.getElementById('nu-prenom')?.value||document.getElementById('nu-nom')?.value||document.getElementById('nu-mdp')?.value);
+    if(!isTyping){try{rAdm();}catch(e){}}
     _jbSetStatus('ok');return true;
   }catch(e){console.warn('[AGAI] Pull error:',e);_jbSetStatus('error');return false;}
 }
