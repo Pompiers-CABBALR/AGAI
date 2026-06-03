@@ -88,18 +88,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .nb{flex:0 1 auto;min-width:44px;padding:10px 14px;font-size:11px;font-weight:500;color:var(--t2);border:none;background:transparent;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;}
 .nb.active{color:var(--red);border-bottom-color:var(--red);}
 .nb.hidden{display:none;}
-/* ── Boutons admin/superadmin topbar — taille réduite ── */
-#nav-global,#nav-role-toggle,#nav-superadmin-toggle{padding:4px 8px!important;font-size:10px!important;}
-/* ── Mobile : icônes seules dans les menus ── */
-@media(max-width:480px){
-  .nb .nb-txt{display:none;}
-  .subtab-btn .sb-txt{display:none;}
-  .nb{padding:8px 10px;font-size:14px;}
-  .subtab-btn{padding:7px 8px;font-size:14px;}
-  .ts2{display:none;}
-  .ttime{font-size:11px;}
-  #nav-global,#nav-role-toggle,#nav-superadmin-toggle{padding:3px 6px!important;font-size:10px!important;}
-}
 .cnt{padding:12px;flex:1;}
 .sec{display:none;}
 .sec.active{display:block;}
@@ -436,14 +424,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   </div>
   <div class="tb2"><span class="tb2u" id="t2u"></span><span class="tb2r" id="t2r"></span></div>
   <div class="nav">
-    <button class="nb active" id="nav-home" onclick="showT('home',this)">🏠 <span class="nb-txt">Accueil</span></button>
-    <button class="nb hidden" id="nav-appel" onclick="showT('appel',this)">📞 <span class="nb-txt">Appel</span></button>
-    <button class="nb hidden" id="nav-interv" onclick="showT('interv',this)">🚒 <span class="nb-txt">Interventions</span><span id="renfort-badge" style="display:none;background:#7C3AED;color:#fff;border-radius:10px;padding:0 6px;font-size:10px;font-weight:700;margin-left:5px;min-width:18px;height:18px;align-items:center;justify-content:center;vertical-align:middle;"></span></button>
-    <button class="nb" id="nav-activite" onclick="showT('activite',this)">📋 <span class="nb-txt">Activités de service</span></button>
-    <button class="nb" id="nav-astreintes" onclick="showT('astreintes',this)">📅 <span class="nb-txt">Astreintes</span></button>
-    <button class="nb" id="nav-formation" onclick="showT('formation',this)">🎓 <span class="nb-txt">Formations</span></button>
-    <button class="nb" id="nav-stats" onclick="showT('stats',this)">📊 <span class="nb-txt">Statistiques</span></button>
-    <button class="nb" id="nav-params" style="display:none;" onclick="showT('params',this)">⚙️ <span class="nb-txt">Paramètres</span></button>
+    <button class="nb active" id="nav-home" onclick="showT('home',this)">🏠 Accueil</button>
+    <button class="nb hidden" id="nav-appel" onclick="showT('appel',this)">📞 Appel</button>
+    <button class="nb hidden" id="nav-interv" onclick="showT('interv',this)">🚒 Interventions<span id="renfort-badge" style="display:none;background:#7C3AED;color:#fff;border-radius:10px;padding:0 6px;font-size:10px;font-weight:700;margin-left:5px;min-width:18px;height:18px;align-items:center;justify-content:center;vertical-align:middle;"></span></button>
+    <button class="nb" id="nav-activite" onclick="showT('activite',this)">📋 Activités de service</button>
+    <button class="nb" id="nav-astreintes" onclick="showT('astreintes',this)">📅 Astreintes</button>
+    <button class="nb" id="nav-formation" onclick="showT('formation',this)">🎓 Formations</button>
+    <button class="nb" id="nav-stats" onclick="showT('stats',this)">📊 Statistiques</button>
+    <button class="nb" id="nav-params" style="display:none;" onclick="showT('params',this)">⚙️ Paramètres</button>
   </div>
   <div class="cnt">
 
@@ -507,9 +495,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div id="tab-interv" class="sec">
       <!-- Sous-onglets Interventions / PILP / Historique -->
       <div id="interv-subtabs" style="display:flex;gap:0;margin-bottom:12px;border-bottom:2px solid var(--brd);">
-        <button id="subtab-btn-std" class="subtab-btn active" onclick="showSubtab('std',this)">🚒 <span class="sb-txt">Interventions</span></button>
-        <button id="subtab-btn-pilp" class="subtab-btn" style="display:none;" onclick="showSubtab('pilp',this)">🎯 <span class="sb-txt">PILP</span></button>
-        <button id="subtab-btn-hist" class="subtab-btn" onclick="showSubtab('hist',this)">📋 <span class="sb-txt">Historique</span></button>
+        <button id="subtab-btn-std" class="subtab-btn active" onclick="showSubtab('std',this)">🚒 Interventions</button>
+        <button id="subtab-btn-pilp" class="subtab-btn" style="display:none;" onclick="showSubtab('pilp',this)">🎯 PILP</button>
+        <button id="subtab-btn-hist" class="subtab-btn" onclick="showSubtab('hist',this)">📋 Historique</button>
       </div>
 
       <!-- SOUS-ONGLET : Interventions normales -->
@@ -579,12 +567,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div id="tab-astreintes" class="sec">
       <!-- Sous-onglets -->
       <div id="astr-subtabs" style="display:flex;gap:0;margin-bottom:12px;border-bottom:2px solid var(--brd);">
-        <button id="astr-btn-planning" class="subtab-btn active" onclick="showAstrTab('planning',this)">📅 <span class="sb-txt">Planning</span></button>
-        <button id="astr-btn-dispo" class="subtab-btn" onclick="showAstrTab('dispo',this)">🗓️ <span class="sb-txt">Disponibilités</span></button>
-        <button id="astr-btn-piquets" class="subtab-btn" style="display:none;" onclick="showAstrTab('piquets',this)">🚒 <span class="sb-txt">Piquets</span></button>
-        <button id="astr-btn-tel" class="subtab-btn" style="display:none;" onclick="showAstrTab('tel',this)">📞 <span class="sb-txt">Astreinte téléphonique</span></button>
-        <button id="astr-btn-equipes" class="subtab-btn" style="display:none;" onclick="showAstrTab('equipes',this)">👥 <span class="sb-txt">Équipes</span></button>
-        <button id="astr-btn-garde" class="subtab-btn" style="display:none;" onclick="showAstrTab('garde',this)">📆 <span class="sb-txt">Planning équipe annuelle</span></button>
+        <button id="astr-btn-planning" class="subtab-btn active" onclick="showAstrTab('planning',this)">📅 Planning</button>
+        <button id="astr-btn-dispo" class="subtab-btn" onclick="showAstrTab('dispo',this)">🗓️ Disponibilités</button>
+        <button id="astr-btn-piquets" class="subtab-btn" style="display:none;" onclick="showAstrTab('piquets',this)">🚒 Piquets</button>
+        <button id="astr-btn-tel" class="subtab-btn" style="display:none;" onclick="showAstrTab('tel',this)">📞 Astreinte téléphonique</button>
+        <button id="astr-btn-equipes" class="subtab-btn" style="display:none;" onclick="showAstrTab('equipes',this)">👥 Équipes</button>
+        <button id="astr-btn-garde" class="subtab-btn" style="display:none;" onclick="showAstrTab('garde',this)">📆 Planning équipe annuelle</button>
       </div>
 
       <!-- Planning semaine -->
@@ -603,9 +591,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <div id="astr-dispo" style="display:none;">
         <!-- Sous-catégories (responsable voit 3 onglets, agent voit 1) -->
         <div id="dispo-subnav" style="display:flex;gap:0;margin-bottom:10px;border-bottom:2px solid var(--brd);">
-          <button id="dispo-btn-mes" class="subtab-btn active" onclick="showDispoSub('mes',this)">🗓️ <span class="sb-txt">Mes disponibilités</span></button>
-          <button id="dispo-btn-equipe" class="subtab-btn" style="display:none;" onclick="showDispoSub('equipe',this)">👥 <span class="sb-txt">Mon équipe</span></button>
-          <button id="dispo-btn-autres" class="subtab-btn" style="display:none;" onclick="showDispoSub('autres',this)">🏢 <span class="sb-txt">Autres équipes</span></button>
+          <button id="dispo-btn-mes" class="subtab-btn active" onclick="showDispoSub('mes',this)">🗓️ Mes disponibilités</button>
+          <button id="dispo-btn-equipe" class="subtab-btn" style="display:none;" onclick="showDispoSub('equipe',this)">👥 Mon équipe</button>
+          <button id="dispo-btn-autres" class="subtab-btn" style="display:none;" onclick="showDispoSub('autres',this)">🏢 Autres équipes</button>
         </div>
         <div class="panel" style="margin-bottom:10px;">
           <div style="font-size:12px;color:var(--t2);margin-bottom:10px;" id="astr-dispo-info">Indiquez vos créneaux pour la semaine d'astreinte à venir.</div>
@@ -708,7 +696,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         <div class="panel" style="margin-top:10px;">
           <div class="panel-title">⚙️ Configuration astreintes</div>
           <div class="fg"><div class="fgl">Granularité par défaut</div>
-            <select class="fi" id="astr-granularity-global" onchange="ASTR_CONFIG.granularity=parseInt(this.value);saveData();rAstrDispo();">
+            <select class="fi" id="astr-granularity-global" onchange="ASTR_CONFIG.granularity=parseInt(this.value);rAstrDispo();">
               <option value="60">1 heure</option>
               <option value="30">30 minutes</option>
               <option value="15">15 minutes</option>
@@ -780,9 +768,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div id="tab-params" class="sec">
       <!-- Sous-onglets -->
       <div style="display:flex;gap:0;margin-bottom:14px;border-bottom:2px solid var(--brd);">
-        <button id="params-btn-profil" class="subtab-btn active" onclick="showParamsTab('profil',this)">👤 <span class="sb-txt">Mon profil</span></button>
-        <button id="params-btn-admin" class="subtab-btn" style="display:none;" onclick="showParamsTab('admin',this)">🛡️ <span class="sb-txt">Administration</span></button>
-        <button id="params-btn-onedrive" class="subtab-btn" onclick="showParamsTab('onedrive',this)" style="display:none;">☁️ <span class="sb-txt">Sync</span></button>
+        <button id="params-btn-profil" class="subtab-btn active" onclick="showParamsTab('profil',this)">👤 Mon profil</button>
+        <button id="params-btn-admin" class="subtab-btn" style="display:none;" onclick="showParamsTab('admin',this)">🛡️ Administration</button>
+        <button id="params-btn-onedrive" class="subtab-btn" onclick="showParamsTab('onedrive',this)">☁️ OneDrive</button>
       </div>
 
       <!-- Profil -->
@@ -838,23 +826,53 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         </div>
       </div>
 
-      <!-- JSONBin Sync Panel (superadmin uniquement) -->
+      <!-- OneDrive Sync Panel -->
       <div id="params-onedrive" style="display:none;">
         <div class="panel">
-          <div class="panel-title">☁️ Synchronisation JSONBin</div>
-          <div style="font-size:12px;color:var(--t2);margin-bottom:12px;line-height:1.5;">
-            Les données sont automatiquement synchronisées avec JSONBin toutes les 15 secondes.<br>
-            Utilisez les boutons ci-dessous pour forcer une synchronisation ou sauvegarder manuellement.
+          <div class="panel-title">☁️ Synchronisation dossier OneDrive</div>
+          <div id="od-status-banner" style="padding:10px 14px;border-radius:10px;font-size:13px;margin-bottom:12px;background:#f5f5f7;color:#6c6c70;border:1px solid #e5e5ea;">
+            ● Non connecté — choisissez le dossier OneDrive
           </div>
-          <div class="brow" style="flex-wrap:wrap;gap:8px;">
-            <button class="btn gn" onclick="_jbPush(_buildDataObject()).then(()=>showToast('Sauvegardé sur JSONBin ✓','success'))">⬆ Sauvegarder maintenant</button>
-            <button class="btn bl" onclick="jbSyncNow()">⬇ Récupérer les données</button>
+
+          <!-- Étape 1 : choisir le dossier (navigateur compatible) -->
+          <div id="od-step-choose">
+            <div style="background:#E6F1FB;border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;color:#0C447C;line-height:1.7;">
+              <strong>Mise en place (une seule fois par PC) :</strong><br>
+              1. Déposez ce fichier HTML dans votre dossier OneDrive<br>
+              2. Cliquez sur "Choisir le dossier OneDrive" ci-dessous<br>
+              3. Sélectionnez ce même dossier OneDrive<br>
+              4. Répétez sur chaque PC — les données seront partagées automatiquement
+            </div>
+            <div class="brow">
+              <button class="btn pr" onclick="odChooseFolder()">📁 Choisir le dossier OneDrive</button>
+            </div>
+          </div>
+
+          <!-- Dossier connecté -->
+          <div id="od-step-connected" style="display:none;">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+              <button class="btn gn" onclick="odSyncNow()">⬆ Sauvegarder maintenant</button>
+              <button class="btn bl" onclick="odPullNow()">⬇ Récupérer les données</button>
+              <button class="btn" onclick="odRequestPermission()">🔓 Réautoriser</button>
+              <button class="btn danger" onclick="odDisconnect()">↩ Dissocier</button>
+            </div>
+            <div id="od-last-sync" style="font-size:11px;color:var(--t2);"></div>
+          </div>
+
+          <!-- Navigateur incompatible (Firefox, Safari) -->
+          <div id="od-step-nofs" style="display:none;">
+            <div style="font-size:12px;color:var(--t2);line-height:1.6;">
+              Votre navigateur ne supporte pas l'accès aux fichiers locaux.<br>
+              Utilisez <strong>Chrome</strong> ou <strong>Edge</strong> pour la synchronisation automatique, ou utilisez l'export/import manuel ci-dessous.
+            </div>
           </div>
         </div>
+
+        <!-- Export/import manuel (secours ou Firefox/Safari) -->
         <div class="panel">
           <div class="panel-title">📦 Sauvegarde manuelle</div>
           <div style="font-size:12px;color:var(--t2);margin-bottom:10px;line-height:1.5;">
-            Exportez toutes les données en JSON ou importez une sauvegarde existante.
+            Exportez vos données dans un fichier JSON, déposez-le dans votre dossier OneDrive, et importez-le sur l'autre PC.
           </div>
           <div class="brow">
             <button class="btn" onclick="odExportManuel()">⬇ Exporter JSON</button>
@@ -1365,8 +1383,6 @@ function applyNavRights(){
   if(pilpTab)pilpTab.style.display=canSeePILP()?'':'none';
   const adminTab=document.getElementById('params-btn-admin');
   if(adminTab)adminTab.style.display=hasRight('Administration')?'':'none';
-  const syncTab=document.getElementById('params-btn-onedrive');
-  if(syncTab)syncTab.style.display=isSuperAdmin()?'':'none';
   document.getElementById('fb-mes-sel').style.display=(isAgres()||isTireurPILP())?'':'none';
   const fbResp=document.getElementById('fb-mes-resp');
   if(fbResp)fbResp.style.display=(isChef()||isAgres()||hasRight('Administration'))?'':'none';
@@ -1526,7 +1542,7 @@ let _loginAttempts=0,_loginLocked=false,_loginLockTimer=null;
 // Délais de blocage exponentiels (en ms) : 0 × 4, puis 30s, 1min, 2min, 5min
 const _LOCKOUT_DELAYS=[0,0,0,0,0,30000,60000,120000,300000];
 function _lockoutDuration(n){return _LOCKOUT_DELAYS[Math.min(n,_LOCKOUT_DELAYS.length-1)];}
-async function loginImportJSON(input){
+function loginImportJSON(input){
   const file=input.files[0];if(!file)return;
   const reader=new FileReader();
   reader.onload=function(e){
@@ -1539,13 +1555,8 @@ async function loginImportJSON(input){
         showToast('Données importées et synchronisées ✓','success');
         _jbStartPolling();
       });
-      // Masquer le message d'erreur login si visible
-      const lerr=document.getElementById('lerr');
-      if(lerr)lerr.style.display='none';
       alert('Données importées ! Connectez-vous maintenant.');
-    }catch(err){
-      alert('Fichier JSON invalide : '+err.message);
-    }
+    }catch(err){alert('Fichier JSON invalide : '+err.message);}
   };
   reader.readAsText(file);
 }
@@ -6312,7 +6323,7 @@ function addEquipe(){
   EQUIPES.push({id,nom,color:selEqColorVal,granularity,resp,membres:resp?[resp]:[]});
   document.getElementById('eq-nom').value='';
   document.getElementById('astr-equipe-add').style.display='none';
-  saveData();rAstrEquipes();applyNavRights();
+  rAstrEquipes();applyNavRights();
 }
 function delEquipe(id){
   confirmModal('Supprimer cette équipe ?',function(){EQUIPES=EQUIPES.filter(e=>e.id!==id);saveData();rAstrEquipes();applyNavRights();});
@@ -6345,7 +6356,7 @@ function saveEditEquipe(id){
   eq.nom=document.getElementById('edit-eq-nom').value.trim()||eq.nom;
   eq.granularity=parseInt(document.getElementById('edit-eq-gran').value);
   eq.resp=document.getElementById('edit-eq-resp').value;
-  cM();saveData();rAstrEquipes();applyNavRights();
+  cM();rAstrEquipes();applyNavRights();
 }
 function addMembre(eqId){
   const eq=getEquipeById(eqId);if(!eq)return;
@@ -6359,12 +6370,12 @@ function addMembre(eqId){
     return;
   }
   if(!eq.membres.includes(login))eq.membres.push(login);
-  saveData();rAstrEquipes();
+  rAstrEquipes();
 }
 function removeMembre(eqId,login){
   const eq=getEquipeById(eqId);if(!eq)return;
   eq.membres=eq.membres.filter(l=>l!==login);
-  saveData();rAstrEquipes();
+  rAstrEquipes();
 }
 function addEngin(){
   const inp=document.getElementById('new-engin');
@@ -10429,14 +10440,10 @@ let _jbSaveTimer  = null;
 let _jbSaving     = false;
 let _jbPollTimer  = null;
 
-// ── Indicateur visuel de sync ──
+// ── Indicateur visuel de sync (auto-créé) ──
 function _jbSetStatus(state){
   let el=document.getElementById('jb-status');
-  if(!el){
-    el=document.createElement('div');
-    el.id='jb-status';
-    document.body.appendChild(el);
-  }
+  if(!el){el=document.createElement('div');el.id='jb-status';document.body.appendChild(el);}
   const cfg={
     ok:     {txt:'☁️ Sync OK',   bg:'#ECFDF5',color:'#065F46'},
     saving: {txt:'⏳ Sync...',   bg:'#FFF7ED',color:'#92400E'},
@@ -10453,115 +10460,50 @@ function _jbSetStatus(state){
 function saveData(){
   try{
     const data=_buildDataObject();
-    localStorage.setItem(JB_CACHE_KEY, JSON.stringify(data));
+    localStorage.setItem(JB_CACHE_KEY,JSON.stringify(data));
     if(_jbSaveTimer)clearTimeout(_jbSaveTimer);
-    _jbSaveTimer=window.setTimeout(function(){
-      _jbSaveTimer=null;
-      _jbPush(data);
-    }, 2000);
+    _jbSaveTimer=window.setTimeout(function(){_jbSaveTimer=null;_jbPush(data);},2000);
   }catch(e){console.warn('[AGAI] saveData error:',e);}
 }
 
 async function _jbPush(data){
-  if(_jbSaving){
-    // Réessayer dans 1s si déjà en cours
-    window.setTimeout(function(){_jbPush(data);},1000);
-    return;
-  }
-  _jbSaving=true;
-  _jbSetStatus('saving');
+  if(_jbSaving){window.setTimeout(function(){_jbPush(data);},1000);return;}
+  _jbSaving=true;_jbSetStatus('saving');
   try{
-    const resp=await fetch(JSONBIN_URL,{
-      method:'PUT',
-      headers:{
-        'Content-Type':'application/json',
-        'X-Master-Key':JSONBIN_KEY,
-        'X-Access-Key':JSONBIN_KEY,
-        'X-Bin-Versioning':'false'
-      },
-      body:JSON.stringify(data)
-    });
+    const resp=await fetch(JSONBIN_URL,{method:'PUT',headers:{'Content-Type':'application/json','X-Master-Key':JSONBIN_KEY,'X-Access-Key':JSONBIN_KEY,'X-Bin-Versioning':'false'},body:JSON.stringify(data)});
     if(!resp.ok)throw new Error('HTTP '+resp.status);
     _jbSetStatus('ok');
-    console.log('[AGAI] Push OK');
-  }catch(e){
-    console.warn('[AGAI] Push error:',e);
-    _jbSetStatus('error');
-  }finally{
-    _jbSaving=false;
-  }
+  }catch(e){console.warn('[AGAI] Push error:',e);_jbSetStatus('error');}
+  finally{_jbSaving=false;}
 }
 
 // ── PULL : lecture depuis JSONBin ──
 async function _jbPull(silent){
   try{
     if(!silent)_jbSetStatus('loading');
-    const resp=await fetch(JSONBIN_URL+'?meta=false',{
-      headers:{
-        'X-Master-Key':JSONBIN_KEY,
-        'X-Access-Key':JSONBIN_KEY
-      }
-    });
+    const resp=await fetch(JSONBIN_URL+'?meta=false',{headers:{'X-Master-Key':JSONBIN_KEY,'X-Access-Key':JSONBIN_KEY}});
     if(!resp.ok)throw new Error('HTTP '+resp.status);
     const data=await resp.json();
     if(!data||typeof data!=='object')throw new Error('Données invalides');
-    localStorage.setItem(JB_CACHE_KEY, JSON.stringify(data));
-    _applyDataObject(data);
-    _postLoadInit();
-    try{rI();}catch(e){}
-    try{rAccueil();}catch(e){}
-    try{rHist();}catch(e){}
-    try{rAstrDispo();}catch(e){}
-    _jbSetStatus('ok');
-    return true;
-  }catch(e){
-    console.warn('[AGAI] Pull error:',e);
-    _jbSetStatus('error');
-    return false;
-  }
+    localStorage.setItem(JB_CACHE_KEY,JSON.stringify(data));
+    _applyDataObject(data);_postLoadInit();
+    try{rI();}catch(e){}try{rAccueil();}catch(e){}try{rHist();}catch(e){}try{rAstrDispo();}catch(e){}
+    _jbSetStatus('ok');return true;
+  }catch(e){console.warn('[AGAI] Pull error:',e);_jbSetStatus('error');return false;}
 }
 
 // ── Polling toutes les 10s ──
 function _jbStartPolling(){
   if(_jbPollTimer)clearInterval(_jbPollTimer);
-  _jbPollTimer=window.setInterval(function(){
-    if(_jbSaving||_jbSaveTimer)return; // ne pas écraser si sauvegarde en cours
-    _jbPull(true);
-  }, 10000);
-  console.log('[AGAI] Polling démarré (10s)');
+  _jbPollTimer=window.setInterval(function(){if(!_jbSaving&&!_jbSaveTimer)_jbPull(true);},10000);
 }
 
-// ── loadData : cache local immédiat + JSONBin ──
+// ── loadData ──
 function loadData(){
-  // 1. Cache local pour démarrage instantané
   const cache=localStorage.getItem(JB_CACHE_KEY);
   if(cache){
-    try{
-      const data=JSON.parse(cache);
-      _applyDataObject(data);
-      _postLoadInit();
-    }catch(e){}
-  } else {
-    // Tentative migration ancien stockage chiffré
-    const enc=localStorage.getItem(_ENC_STORAGE_KEY);
-    if(enc&&window.crypto&&window.crypto.subtle){
-      _decryptData(enc).then(function(json){
-        try{
-          const data=JSON.parse(json);
-          _applyDataObject(data);
-          _postLoadInit();
-          saveData();
-          showToast('Données migrées vers le stockage partagé ✓','success');
-        }catch(e){}
-      }).catch(function(){_loadClear();});
-      // Démarrer le polling même si la migration est en cours
-      _jbPull(false).then(function(){_jbStartPolling();});
-      return;
-    }
-    _loadClear();
-    return;
+    try{const data=JSON.parse(cache);_applyDataObject(data);_postLoadInit();}catch(e){}
   }
-  // 2. Sync JSONBin + démarrage polling
   _jbPull(false).then(function(){_jbStartPolling();});
 }
 
@@ -10569,13 +10511,7 @@ function _loadClear(){
   try{
     let raw=localStorage.getItem(STORAGE_KEY);
     if(!raw){const oldKeys=['agai_v14','agai_v13'];for(const k of oldKeys){const r=localStorage.getItem(k);if(r){raw=r;break;}}}
-    if(raw){
-      const data=JSON.parse(raw);
-      _applyDataObject(data);
-      _postLoadInit();
-      saveData();
-      showToast('Données migrées vers le stockage partagé ✓','success');
-    }
+    if(raw){const data=JSON.parse(raw);_applyDataObject(data);_postLoadInit();saveData();showToast('Données migrées ✓','success');}
   }catch(e){console.warn('[AGAI] Chargement impossible:',e);}
   _jbPull(false).then(function(){_jbStartPolling();});
 }
@@ -10586,7 +10522,6 @@ function _postLoadInit(){
   }
 }
 
-// Sync manuelle (bouton ou clic sur l'indicateur)
 function jbSyncNow(){
   _jbPull(false).then(function(ok){
     if(ok)showToast('Données synchronisées ✓','success');
@@ -10594,14 +10529,9 @@ function jbSyncNow(){
   });
 }
 
-function saveAndRefresh(){
-  saveData();
-}
+function saveAndRefresh(){saveData();}
 
-// Déclencher une sync OneDrive après chaque sauvegarde locale (debounce 800ms)
-function _odSyncAfterSave(){
-  if(typeof odScheduleSync === 'function') odScheduleSync();
-}
+function _odSyncAfterSave(){if(typeof odScheduleSync==='function')odScheduleSync();}
 
 
 // === MODULE: planning_annuel.js ===
@@ -11139,6 +11069,13 @@ function odRenderStatus(){
 
 // ── Init au démarrage ──
 setTimeout(()=>{ odRestoreHandle(); }, 500);
+// Créer l'indicateur de sync JSONBin
+(function(){
+  const el=document.createElement('div');
+  el.id='jb-status';
+  document.body.appendChild(el);
+  _jbSetStatus('loading');
+})();
 
 
 
