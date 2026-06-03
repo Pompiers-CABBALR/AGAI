@@ -398,6 +398,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div class="lf"><label>Mot de passe</label><input type="password" id="lp" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"/></div>
     <div class="lerr" id="lerr">Identifiant ou mot de passe incorrect.</div>
     <button class="lbtn" id="lbtn" onclick="doLogin()">Se connecter</button>
+    <div style="margin-top:12px;text-align:center;">
+      <label style="font-size:11px;color:var(--t2);cursor:pointer;text-decoration:underline;">
+        📦 Importer une sauvegarde JSON
+        <input type="file" accept=".json" style="display:none;" onchange="loginImportJSON(this)"/>
+      </label>
+    </div>
 
   </div>
 </div>
@@ -1520,7 +1526,31 @@ let _loginAttempts=0,_loginLocked=false,_loginLockTimer=null;
 // Délais de blocage exponentiels (en ms) : 0 × 4, puis 30s, 1min, 2min, 5min
 const _LOCKOUT_DELAYS=[0,0,0,0,0,30000,60000,120000,300000];
 function _lockoutDuration(n){return _LOCKOUT_DELAYS[Math.min(n,_LOCKOUT_DELAYS.length-1)];}
-async function doLogin(){
+async function loginImportJSON(input){
+  const file=input.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      const data=JSON.parse(e.target.result);
+      _applyDataObject(data);
+      _postLoadInit();
+      localStorage.setItem(JB_CACHE_KEY,JSON.stringify(data));
+      _jbPush(data).then(function(){
+        showToast('Données importées et synchronisées ✓','success');
+        _jbStartPolling();
+      });
+      // Masquer le message d'erreur login si visible
+      const lerr=document.getElementById('lerr');
+      if(lerr)lerr.style.display='none';
+      alert('Données importées ! Connectez-vous maintenant.');
+    }catch(err){
+      alert('Fichier JSON invalide : '+err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function doLogin(){
   const lerr=document.getElementById('lerr');
   const btn=document.querySelector('.lbtn');
 
