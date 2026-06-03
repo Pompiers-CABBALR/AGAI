@@ -88,6 +88,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .nb{flex:0 1 auto;min-width:44px;padding:10px 14px;font-size:11px;font-weight:500;color:var(--t2);border:none;background:transparent;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;}
 .nb.active{color:var(--red);border-bottom-color:var(--red);}
 .nb.hidden{display:none;}
+/* ── Boutons admin/superadmin topbar — taille réduite ── */
+#nav-global,#nav-role-toggle,#nav-superadmin-toggle{padding:4px 8px!important;font-size:10px!important;}
+/* ── Mobile : icônes seules dans les menus ── */
+@media(max-width:480px){
+  .nb .nb-txt{display:none;}
+  .subtab-btn .sb-txt{display:none;}
+  .nb{padding:8px 10px;font-size:14px;}
+  .subtab-btn{padding:7px 8px;font-size:14px;}
+  .ts2{display:none;}
+  .ttime{font-size:11px;}
+  #nav-global,#nav-role-toggle,#nav-superadmin-toggle{padding:3px 6px!important;font-size:10px!important;}
+}
 .cnt{padding:12px;flex:1;}
 .sec{display:none;}
 .sec.active{display:block;}
@@ -418,14 +430,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   </div>
   <div class="tb2"><span class="tb2u" id="t2u"></span><span class="tb2r" id="t2r"></span></div>
   <div class="nav">
-    <button class="nb active" id="nav-home" onclick="showT('home',this)">🏠 Accueil</button>
-    <button class="nb hidden" id="nav-appel" onclick="showT('appel',this)">📞 Appel</button>
-    <button class="nb hidden" id="nav-interv" onclick="showT('interv',this)">🚒 Interventions<span id="renfort-badge" style="display:none;background:#7C3AED;color:#fff;border-radius:10px;padding:0 6px;font-size:10px;font-weight:700;margin-left:5px;min-width:18px;height:18px;align-items:center;justify-content:center;vertical-align:middle;"></span></button>
-    <button class="nb" id="nav-activite" onclick="showT('activite',this)">📋 Activités de service</button>
-    <button class="nb" id="nav-astreintes" onclick="showT('astreintes',this)">📅 Astreintes</button>
-    <button class="nb" id="nav-formation" onclick="showT('formation',this)">🎓 Formations</button>
-    <button class="nb" id="nav-stats" onclick="showT('stats',this)">📊 Statistiques</button>
-    <button class="nb" id="nav-params" style="display:none;" onclick="showT('params',this)">⚙️ Paramètres</button>
+    <button class="nb active" id="nav-home" onclick="showT('home',this)">🏠 <span class="nb-txt">Accueil</span></button>
+    <button class="nb hidden" id="nav-appel" onclick="showT('appel',this)">📞 <span class="nb-txt">Appel</span></button>
+    <button class="nb hidden" id="nav-interv" onclick="showT('interv',this)">🚒 <span class="nb-txt">Interventions</span><span id="renfort-badge" style="display:none;background:#7C3AED;color:#fff;border-radius:10px;padding:0 6px;font-size:10px;font-weight:700;margin-left:5px;min-width:18px;height:18px;align-items:center;justify-content:center;vertical-align:middle;"></span></button>
+    <button class="nb" id="nav-activite" onclick="showT('activite',this)">📋 <span class="nb-txt">Activités de service</span></button>
+    <button class="nb" id="nav-astreintes" onclick="showT('astreintes',this)">📅 <span class="nb-txt">Astreintes</span></button>
+    <button class="nb" id="nav-formation" onclick="showT('formation',this)">🎓 <span class="nb-txt">Formations</span></button>
+    <button class="nb" id="nav-stats" onclick="showT('stats',this)">📊 <span class="nb-txt">Statistiques</span></button>
+    <button class="nb" id="nav-params" style="display:none;" onclick="showT('params',this)">⚙️ <span class="nb-txt">Paramètres</span></button>
   </div>
   <div class="cnt">
 
@@ -489,9 +501,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div id="tab-interv" class="sec">
       <!-- Sous-onglets Interventions / PILP / Historique -->
       <div id="interv-subtabs" style="display:flex;gap:0;margin-bottom:12px;border-bottom:2px solid var(--brd);">
-        <button id="subtab-btn-std" class="subtab-btn active" onclick="showSubtab('std',this)">🚒 Interventions</button>
-        <button id="subtab-btn-pilp" class="subtab-btn" style="display:none;" onclick="showSubtab('pilp',this)">🎯 PILP</button>
-        <button id="subtab-btn-hist" class="subtab-btn" onclick="showSubtab('hist',this)">📋 Historique</button>
+        <button id="subtab-btn-std" class="subtab-btn active" onclick="showSubtab('std',this)">🚒 <span class="sb-txt">Interventions</span></button>
+        <button id="subtab-btn-pilp" class="subtab-btn" style="display:none;" onclick="showSubtab('pilp',this)">🎯 <span class="sb-txt">PILP</span></button>
+        <button id="subtab-btn-hist" class="subtab-btn" onclick="showSubtab('hist',this)">📋 <span class="sb-txt">Historique</span></button>
       </div>
 
       <!-- SOUS-ONGLET : Interventions normales -->
@@ -561,12 +573,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div id="tab-astreintes" class="sec">
       <!-- Sous-onglets -->
       <div id="astr-subtabs" style="display:flex;gap:0;margin-bottom:12px;border-bottom:2px solid var(--brd);">
-        <button id="astr-btn-planning" class="subtab-btn active" onclick="showAstrTab('planning',this)">📅 Planning</button>
-        <button id="astr-btn-dispo" class="subtab-btn" onclick="showAstrTab('dispo',this)">🗓️ Disponibilités</button>
-        <button id="astr-btn-piquets" class="subtab-btn" style="display:none;" onclick="showAstrTab('piquets',this)">🚒 Piquets</button>
-        <button id="astr-btn-tel" class="subtab-btn" style="display:none;" onclick="showAstrTab('tel',this)">📞 Astreinte téléphonique</button>
-        <button id="astr-btn-equipes" class="subtab-btn" style="display:none;" onclick="showAstrTab('equipes',this)">👥 Équipes</button>
-        <button id="astr-btn-garde" class="subtab-btn" style="display:none;" onclick="showAstrTab('garde',this)">📆 Planning équipe annuelle</button>
+        <button id="astr-btn-planning" class="subtab-btn active" onclick="showAstrTab('planning',this)">📅 <span class="sb-txt">Planning</span></button>
+        <button id="astr-btn-dispo" class="subtab-btn" onclick="showAstrTab('dispo',this)">🗓️ <span class="sb-txt">Disponibilités</span></button>
+        <button id="astr-btn-piquets" class="subtab-btn" style="display:none;" onclick="showAstrTab('piquets',this)">🚒 <span class="sb-txt">Piquets</span></button>
+        <button id="astr-btn-tel" class="subtab-btn" style="display:none;" onclick="showAstrTab('tel',this)">📞 <span class="sb-txt">Astreinte téléphonique</span></button>
+        <button id="astr-btn-equipes" class="subtab-btn" style="display:none;" onclick="showAstrTab('equipes',this)">👥 <span class="sb-txt">Équipes</span></button>
+        <button id="astr-btn-garde" class="subtab-btn" style="display:none;" onclick="showAstrTab('garde',this)">📆 <span class="sb-txt">Planning équipe annuelle</span></button>
       </div>
 
       <!-- Planning semaine -->
@@ -585,9 +597,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <div id="astr-dispo" style="display:none;">
         <!-- Sous-catégories (responsable voit 3 onglets, agent voit 1) -->
         <div id="dispo-subnav" style="display:flex;gap:0;margin-bottom:10px;border-bottom:2px solid var(--brd);">
-          <button id="dispo-btn-mes" class="subtab-btn active" onclick="showDispoSub('mes',this)">🗓️ Mes disponibilités</button>
-          <button id="dispo-btn-equipe" class="subtab-btn" style="display:none;" onclick="showDispoSub('equipe',this)">👥 Mon équipe</button>
-          <button id="dispo-btn-autres" class="subtab-btn" style="display:none;" onclick="showDispoSub('autres',this)">🏢 Autres équipes</button>
+          <button id="dispo-btn-mes" class="subtab-btn active" onclick="showDispoSub('mes',this)">🗓️ <span class="sb-txt">Mes disponibilités</span></button>
+          <button id="dispo-btn-equipe" class="subtab-btn" style="display:none;" onclick="showDispoSub('equipe',this)">👥 <span class="sb-txt">Mon équipe</span></button>
+          <button id="dispo-btn-autres" class="subtab-btn" style="display:none;" onclick="showDispoSub('autres',this)">🏢 <span class="sb-txt">Autres équipes</span></button>
         </div>
         <div class="panel" style="margin-bottom:10px;">
           <div style="font-size:12px;color:var(--t2);margin-bottom:10px;" id="astr-dispo-info">Indiquez vos créneaux pour la semaine d'astreinte à venir.</div>
@@ -762,9 +774,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div id="tab-params" class="sec">
       <!-- Sous-onglets -->
       <div style="display:flex;gap:0;margin-bottom:14px;border-bottom:2px solid var(--brd);">
-        <button id="params-btn-profil" class="subtab-btn active" onclick="showParamsTab('profil',this)">👤 Mon profil</button>
-        <button id="params-btn-admin" class="subtab-btn" style="display:none;" onclick="showParamsTab('admin',this)">🛡️ Administration</button>
-        <button id="params-btn-onedrive" class="subtab-btn" onclick="showParamsTab('onedrive',this)" style="display:none;">☁️ Sync</button>
+        <button id="params-btn-profil" class="subtab-btn active" onclick="showParamsTab('profil',this)">👤 <span class="sb-txt">Mon profil</span></button>
+        <button id="params-btn-admin" class="subtab-btn" style="display:none;" onclick="showParamsTab('admin',this)">🛡️ <span class="sb-txt">Administration</span></button>
+        <button id="params-btn-onedrive" class="subtab-btn" onclick="showParamsTab('onedrive',this)" style="display:none;">☁️ <span class="sb-txt">Sync</span></button>
       </div>
 
       <!-- Profil -->
@@ -10388,10 +10400,25 @@ let _jbSaving = false;     // verrou anti-doublon
 let _jbPollTimer = null;   // timer polling
 let _jbLastVersion = null; // dernière version connue
 
+// ══════════════════════════════════════════════════════
+// STOCKAGE JSONBIN — multi-utilisateurs, tous navigateurs
+// ══════════════════════════════════════════════════════
+const JSONBIN_ID  = '6a1f4e47f5f4af5e29af6c80';
+const JSONBIN_KEY = '$2a$10$h3nXL3xy8G35rFhCf1rVB.5xvkMU5D4hJd8WLlf.Ur.zqB2uG77OS';
+const JSONBIN_URL = 'https://api.jsonbin.io/v3/b/' + JSONBIN_ID;
+const JB_CACHE_KEY = 'agai_jb_cache';
+let _jbSaveTimer  = null;
+let _jbSaving     = false;
+let _jbPollTimer  = null;
+
 // ── Indicateur visuel de sync ──
-function _jbSetStatus(state){ // 'ok' | 'saving' | 'error' | 'loading'
-  const el=document.getElementById('jb-status');
-  if(!el)return;
+function _jbSetStatus(state){
+  let el=document.getElementById('jb-status');
+  if(!el){
+    el=document.createElement('div');
+    el.id='jb-status';
+    document.body.appendChild(el);
+  }
   const cfg={
     ok:     {txt:'☁️ Sync OK',   bg:'#ECFDF5',color:'#065F46'},
     saving: {txt:'⏳ Sync...',   bg:'#FFF7ED',color:'#92400E'},
@@ -10400,16 +10427,15 @@ function _jbSetStatus(state){ // 'ok' | 'saving' | 'error' | 'loading'
   };
   const c=cfg[state]||cfg.ok;
   el.textContent=c.txt;
-  el.style.cssText='position:fixed;bottom:8px;right:8px;z-index:9999;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;background:'+c.bg+';color:'+c.color+';box-shadow:0 1px 4px rgba(0,0,0,.15);';
+  el.style.cssText='position:fixed;bottom:8px;right:8px;z-index:9999;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;background:'+c.bg+';color:'+c.color+';box-shadow:0 1px 4px rgba(0,0,0,.15);cursor:pointer;';
+  el.onclick=function(){jbSyncNow();};
 }
 
-// ── PUSH : écriture vers JSONBin (debounce 1,5s) ──
+// ── PUSH : écriture vers JSONBin (debounce 2s) ──
 function saveData(){
   try{
     const data=_buildDataObject();
-    const json=JSON.stringify(data);
-    localStorage.setItem(JB_CACHE_KEY, json);
-    // Debounce : n'envoie qu'une seule fois après 2s d'inactivité
+    localStorage.setItem(JB_CACHE_KEY, JSON.stringify(data));
     if(_jbSaveTimer)clearTimeout(_jbSaveTimer);
     _jbSaveTimer=window.setTimeout(function(){
       _jbSaveTimer=null;
@@ -10419,7 +10445,11 @@ function saveData(){
 }
 
 async function _jbPush(data){
-  if(_jbSaving)return;
+  if(_jbSaving){
+    // Réessayer dans 1s si déjà en cours
+    window.setTimeout(function(){_jbPush(data);},1000);
+    return;
+  }
   _jbSaving=true;
   _jbSetStatus('saving');
   try{
@@ -10435,8 +10465,9 @@ async function _jbPush(data){
     });
     if(!resp.ok)throw new Error('HTTP '+resp.status);
     _jbSetStatus('ok');
+    console.log('[AGAI] Push OK');
   }catch(e){
-    console.warn('[AGAI] JSONBin push error:',e);
+    console.warn('[AGAI] Push error:',e);
     _jbSetStatus('error');
   }finally{
     _jbSaving=false;
@@ -10456,34 +10487,35 @@ async function _jbPull(silent){
     if(!resp.ok)throw new Error('HTTP '+resp.status);
     const data=await resp.json();
     if(!data||typeof data!=='object')throw new Error('Données invalides');
-    // Mettre à jour le cache local
     localStorage.setItem(JB_CACHE_KEY, JSON.stringify(data));
     _applyDataObject(data);
     _postLoadInit();
     try{rI();}catch(e){}
     try{rAccueil();}catch(e){}
     try{rHist();}catch(e){}
-    if(!silent)_jbSetStatus('ok');
+    try{rAstrDispo();}catch(e){}
+    _jbSetStatus('ok');
     return true;
   }catch(e){
-    console.warn('[AGAI] JSONBin pull error:',e);
-    if(!silent)_jbSetStatus('error');
+    console.warn('[AGAI] Pull error:',e);
+    _jbSetStatus('error');
     return false;
   }
 }
 
-// ── Polling : vérifie les mises à jour toutes les 15s ──
+// ── Polling toutes les 10s ──
 function _jbStartPolling(){
   if(_jbPollTimer)clearInterval(_jbPollTimer);
-  _jbPollTimer=setInterval(async()=>{
-    if(_jbSaving)return; // ne pas écraser si on est en train de sauvegarder
-    await _jbPull(true);
-  }, 15000);
+  _jbPollTimer=window.setInterval(function(){
+    if(_jbSaving||_jbSaveTimer)return; // ne pas écraser si sauvegarde en cours
+    _jbPull(true);
+  }, 10000);
+  console.log('[AGAI] Polling démarré (10s)');
 }
 
-// ── loadData : charge cache local immédiatement, puis JSONBin ──
+// ── loadData : cache local immédiat + JSONBin ──
 function loadData(){
-  // 1. Chargement immédiat depuis le cache local (UI réactive tout de suite)
+  // 1. Cache local pour démarrage instantané
   const cache=localStorage.getItem(JB_CACHE_KEY);
   if(cache){
     try{
@@ -10492,27 +10524,27 @@ function loadData(){
       _postLoadInit();
     }catch(e){}
   } else {
-    // Migration depuis l'ancien stockage chiffré
+    // Tentative migration ancien stockage chiffré
     const enc=localStorage.getItem(_ENC_STORAGE_KEY);
     if(enc&&window.crypto&&window.crypto.subtle){
-      _decryptData(enc).then(json=>{
+      _decryptData(enc).then(function(json){
         try{
           const data=JSON.parse(json);
           _applyDataObject(data);
           _postLoadInit();
-          // Pousser les données migrées vers JSONBin
           saveData();
           showToast('Données migrées vers le stockage partagé ✓','success');
         }catch(e){}
-      }).catch(()=>{ _loadClear(); });
+      }).catch(function(){_loadClear();});
+      // Démarrer le polling même si la migration est en cours
+      _jbPull(false).then(function(){_jbStartPolling();});
       return;
     }
     _loadClear();
+    return;
   }
-  // 2. Synchronisation depuis JSONBin (données les plus récentes)
-  _jbPull(false).then(()=>{
-    _jbStartPolling();
-  });
+  // 2. Sync JSONBin + démarrage polling
+  _jbPull(false).then(function(){_jbStartPolling();});
 }
 
 function _loadClear(){
@@ -10523,12 +10555,11 @@ function _loadClear(){
       const data=JSON.parse(raw);
       _applyDataObject(data);
       _postLoadInit();
-      // Migrer vers JSONBin
       saveData();
       showToast('Données migrées vers le stockage partagé ✓','success');
     }
   }catch(e){console.warn('[AGAI] Chargement impossible:',e);}
-  _jbPull(false).then(()=>{ _jbStartPolling(); });
+  _jbPull(false).then(function(){_jbStartPolling();});
 }
 
 function _postLoadInit(){
@@ -10537,9 +10568,9 @@ function _postLoadInit(){
   }
 }
 
-// Bouton sync manuelle
+// Sync manuelle (bouton ou clic sur l'indicateur)
 function jbSyncNow(){
-  _jbPull(false).then(ok=>{
+  _jbPull(false).then(function(ok){
     if(ok)showToast('Données synchronisées ✓','success');
     else showToast('Erreur de synchronisation','error');
   });
@@ -11090,13 +11121,6 @@ function odRenderStatus(){
 
 // ── Init au démarrage ──
 setTimeout(()=>{ odRestoreHandle(); }, 500);
-// Créer l'indicateur de sync JSONBin
-(function(){
-  const el=document.createElement('div');
-  el.id='jb-status';
-  document.body.appendChild(el);
-  _jbSetStatus('loading');
-})();
 
 
 
