@@ -10441,7 +10441,7 @@ async function _jbPull(silent){
     if(!data||typeof data!=='object')throw new Error('Données invalides');
     localStorage.setItem(JB_CACHE_KEY,JSON.stringify(data));
     _applyDataObject(data);_postLoadInit();
-    try{rI();}catch(e){}try{rAccueil();}catch(e){}try{rHist();}catch(e){}try{rAstrDispo();}catch(e){}
+    try{rI();}catch(e){}try{rAccueil();}catch(e){}try{rHist();}catch(e){}try{rAstrDispo();}catch(e){}try{rAstrEquipes();}catch(e){}try{rAdm();}catch(e){}
     _jbSetStatus('ok');return true;
   }catch(e){console.warn('[AGAI] Pull error:',e);_jbSetStatus('error');return false;}
 }
