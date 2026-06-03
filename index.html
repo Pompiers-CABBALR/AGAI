@@ -88,10 +88,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .nb{flex:0 1 auto;min-width:44px;padding:10px 14px;font-size:11px;font-weight:500;color:var(--t2);border:none;background:transparent;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;}
 .nb.active{color:var(--red);border-bottom-color:var(--red);}
 .nb.hidden{display:none;}
-/* Boutons admin/superadmin topbar — taille réduite */
-#nav-global{padding:3px 7px!important;font-size:10px!important;}
-#nav-role-toggle{padding:3px 7px!important;font-size:10px!important;}
-#nav-superadmin-toggle{padding:3px 7px!important;font-size:10px!important;}
+/* Boutons admin/superadmin topbar — cercles colorés */
+#nav-global{padding:3px 7px!important;font-size:11px!important;}
+#nav-role-toggle,#nav-superadmin-toggle{padding:0!important;}
 /* Mobile ≤480px : icônes seules */
 @media(max-width:480px){
   .nb .nb-txt,.subtab-btn .sb-txt{display:none;}
@@ -99,7 +98,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   .subtab-btn{padding:7px 8px;font-size:15px;}
   .ts2{display:none;}
   .ttime{font-size:10px;}
-  #nav-global,#nav-role-toggle,#nav-superadmin-toggle{padding:3px 5px!important;font-size:11px!important;}
+  #nav-global{padding:3px 5px!important;font-size:11px!important;}
 }
 .cnt{padding:12px;flex:1;}
 .sec{display:none;}
@@ -429,9 +428,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div class="tl">🚒</div>
     <div class="tts"><div class="tt">AGAI</div><div class="ts2">Application de Gestion des Astreintes et des Interventions</div></div>
     <div class="ttime" id="clk">--:--:--</div>
-    <button class="nb hidden" id="nav-global" onclick="showGlobalView('superadmin')" style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;padding:5px 12px;font-size:11px;font-weight:600;cursor:pointer;">🌐 Global</button>
-    <button class="nb hidden" id="nav-role-toggle" onclick="toggleAdminRole()" style="border-radius:8px;padding:5px 12px;font-size:11px;font-weight:600;cursor:pointer;"></button>
-    <button class="nb hidden" id="nav-superadmin-toggle" onclick="toggleSuperAdminRole()" style="border-radius:8px;padding:5px 12px;font-size:11px;font-weight:600;cursor:pointer;"></button>
+    <button class="nb hidden" id="nav-global" onclick="showGlobalView('superadmin')" style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;padding:4px 8px;font-size:11px;font-weight:600;cursor:pointer;">🌐</button>
+    <button class="nb hidden" id="nav-role-toggle" onclick="toggleAdminRole()" title="Mode Admin" style="border-radius:50%;width:28px;height:28px;padding:0;font-size:13px;font-weight:700;cursor:pointer;border:2px solid rgba(255,255,255,.4);background:rgba(192,57,43,.8);color:#fff;flex-shrink:0;">A</button>
+    <button class="nb hidden" id="nav-superadmin-toggle" onclick="toggleSuperAdminRole()" title="Mode Super-Admin" style="border-radius:50%;width:28px;height:28px;padding:0;font-size:11px;font-weight:700;cursor:pointer;border:2px solid rgba(255,255,255,.4);background:rgba(192,57,43,.8);color:#fff;flex-shrink:0;">SA</button>
     <button onclick="showT('params',document.getElementById('nav-params'))" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:8px;padding:5px 12px;font-size:11px;cursor:pointer;">⚙️</button>
     <button class="tout" onclick="doLogout()">↩</button>
   </div>
@@ -1384,10 +1383,9 @@ function applyNavRights(){
     roleToggle.classList.toggle('hidden',!hasAdm);
     if(hasAdm){
       const active=!window._adminRoleDisabled;
-      roleToggle.textContent=active?'\uD83D\uDFE2 Admin actif':'\uD83D\uDD34 Mode normal';
-      roleToggle.style.background=active?'rgba(39,174,96,.8)':'rgba(192,57,43,.8)';
-      roleToggle.style.border=active?'1px solid rgba(80,200,120,.5)':'1px solid rgba(255,100,80,.5)';
+      roleToggle.style.background=active?'rgba(39,174,96,.9)':'rgba(192,57,43,.8)';
       roleToggle.style.color='#fff';
+      roleToggle.title=active?'Admin actif':'Admin désactivé';
     }
   }
   const saToggle=document.getElementById('nav-superadmin-toggle');
@@ -1396,10 +1394,9 @@ function applyNavRights(){
     saToggle.classList.toggle('hidden',!hasSA);
     if(hasSA){
       const saActive=!window._superAdminDisabled;
-      saToggle.textContent=saActive?'\uD83D\uDFE2 Super-admin actif':'\uD83D\uDD34 Mode normal';
-      saToggle.style.background=saActive?'rgba(39,174,96,.8)':'rgba(192,57,43,.8)';
-      saToggle.style.border=saActive?'1px solid rgba(80,200,120,.5)':'1px solid rgba(255,100,80,.5)';
+      saToggle.style.background=saActive?'rgba(39,174,96,.9)':'rgba(192,57,43,.8)';
       saToggle.style.color='#fff';
+      saToggle.title=saActive?'Super-Admin actif':'Super-Admin désactivé';
     }
   }
 }
@@ -9662,9 +9659,8 @@ function toggleSuperAdminRole(){
   const isNow=!window._superAdminDisabled;
   const btn=document.getElementById('nav-superadmin-toggle');
   if(btn){
-    btn.textContent=isNow?'\uD83D\uDFE2 Super-admin actif':'\uD83D\uDD34 Mode normal';
-    btn.style.background=isNow?'rgba(39,174,96,.8)':'rgba(192,57,43,.8)';
-    btn.style.border=isNow?'1px solid rgba(80,200,120,.5)':'1px solid rgba(255,100,80,.5)';
+    btn.style.background=isNow?'rgba(39,174,96,.9)':'rgba(192,57,43,.8)';
+    btn.title=isNow?'Super-Admin actif':'Super-Admin désactivé';
   }
   showToast(isNow?'Super-admin activ\u00e9':'Mode normal activ\u00e9',isNow?'success':'info');
   syncCaserneContext();
@@ -9676,9 +9672,8 @@ function toggleAdminRole(){
   const isNow=!window._adminRoleDisabled;
   const btn=document.getElementById('nav-role-toggle');
   if(btn){
-    btn.textContent=isNow?'\uD83D\uDFE2 Admin actif':'\uD83D\uDD34 Mode normal';
-    btn.style.background=isNow?'rgba(39,174,96,.8)':'rgba(192,57,43,.8)';
-    btn.style.border=isNow?'1px solid rgba(80,200,120,.5)':'1px solid rgba(255,100,80,.5)';
+    btn.style.background=isNow?'rgba(39,174,96,.9)':'rgba(192,57,43,.8)';
+    btn.title=isNow?'Admin actif':'Admin désactivé';
   }
   showToast(isNow?'R\u00f4le admin activ\u00e9':'Mode normal activ\u00e9',isNow?'success':'info');
   syncCaserneContext();
