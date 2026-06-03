@@ -10404,6 +10404,7 @@ const JB_CACHE_KEY = 'agai_jb_cache';
 let _jbSaveTimer  = null;
 let _jbSaving     = false;
 let _jbPollTimer  = null;
+let _jbLastPush   = 0; // timestamp du dernier push réussi
 
 function _jbSetStatus(state){
   let el=document.getElementById('jb-status');
@@ -10430,6 +10431,7 @@ async function _jbPush(data){
   try{
     const resp=await fetch(JSONBIN_URL,{method:'PUT',headers:{'Content-Type':'application/json','X-Master-Key':JSONBIN_KEY,'X-Access-Key':JSONBIN_KEY,'X-Bin-Versioning':'false'},body:JSON.stringify(data)});
     if(!resp.ok)throw new Error('HTTP '+resp.status);
+    _jbLastPush=Date.now();
     _jbSetStatus('ok');
   }catch(e){console.warn('[AGAI] Push error:',e);_jbSetStatus('error');}
   finally{_jbSaving=false;}
@@ -10452,7 +10454,12 @@ async function _jbPull(silent){
 
 function _jbStartPolling(){
   if(_jbPollTimer)clearInterval(_jbPollTimer);
-  _jbPollTimer=window.setInterval(function(){if(!_jbSaving&&!_jbSaveTimer)_jbPull(true);},10000);
+  _jbPollTimer=window.setInterval(function(){
+    // Ne pas puller si sauvegarde en cours ou récente (< 5s)
+    if(_jbSaving||_jbSaveTimer)return;
+    if(Date.now()-_jbLastPush < 5000)return;
+    _jbPull(true);
+  },10000);
 }
 
 function loadData(){
