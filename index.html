@@ -10408,11 +10408,13 @@ function saveData(){
   try{
     const data=_buildDataObject();
     const json=JSON.stringify(data);
-    // Cache local immédiat (pour rechargement rapide)
     localStorage.setItem(JB_CACHE_KEY, json);
-    // Debounce : n'envoie qu'une seule fois après 1,5s d'inactivité
-    clearTimeout(_jbSaveTimer);
-    _jbSaveTimer=setTimeout(()=>_jbPush(data), 1500);
+    // Debounce : n'envoie qu'une seule fois après 2s d'inactivité
+    if(_jbSaveTimer)clearTimeout(_jbSaveTimer);
+    _jbSaveTimer=window.setTimeout(function(){
+      _jbSaveTimer=null;
+      _jbPush(data);
+    }, 2000);
   }catch(e){console.warn('[AGAI] saveData error:',e);}
 }
 
