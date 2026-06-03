@@ -1178,6 +1178,7 @@ function CC(){return CASERNES.find(c=>c.id===CURRENT_CASERNE_ID)||null;}
 function CD(){if(!CURRENT_CASERNE_ID)return null;initCaserneData(CURRENT_CASERNE_ID);return CASERNE_DATA[CURRENT_CASERNE_ID];}
 // Proxies
 let USERS=[];let IVS=[];let PILP_IVS=[];let EQUIPES=[];let DISPOS={};let PIQUETS={};let DISPOS_VALIDATED={};let PIQUETS_VALIDATED={};let PLANNING_ROTATIONS={};let DISPOS_UNLOCKED={};let DISPO_REQUESTS={};let ASTR_CONFIG={granularity:60,engins:[],deadline:{dayOfWeek:5,hour:23,minute:59},deadlinePiquet:{dayOfWeek:0,hour:18,minute:0},weekStartDay:1,weekStartHour:0};
+let LOGIN_HISTORY=[];
 function syncCaserneContext(){
   const d=CD();
   if(!d){USERS=[];IVS=[];PILP_IVS=[];EQUIPES=[];DISPOS={};PIQUETS={};return;}
@@ -1458,6 +1459,23 @@ let _sessionWarnTimer=null;
 function _createSession(){
   SESSION_TOKEN=crypto.randomUUID();
   SESSION_EXPIRY=Date.now()+SESSION_DURATION_MS;
+  // Enregistrer la connexion
+  if(CU){
+    const entry={
+      id:SESSION_TOKEN,
+      login:CU.l,
+      prenom:CU.prenom,
+      nom:CU.nom,
+      caserneId:CURRENT_CASERNE_ID||'',
+      caserne:CC()?.nom||'Global',
+      hConnexion:new Date().toISOString(),
+      hDeconnexion:null,
+      actif:true
+    };
+    LOGIN_HISTORY.unshift(entry);
+    if(LOGIN_HISTORY.length>500)LOGIN_HISTORY=LOGIN_HISTORY.slice(0,500);
+    saveData();
+  }
   if(_sessionTimer)clearTimeout(_sessionTimer);
   if(_sessionWarnTimer)clearTimeout(_sessionWarnTimer);
   // Avertissement 10 min avant expiration
@@ -1883,6 +1901,45 @@ function renderSuperAdmin(){
         <input class="fi" type="email" id="sa-fourriere-email" placeholder="fourriere@exemple.fr" style="flex:1;" value="${(CASERNE_DATA._global&&CASERNE_DATA._global._emailFourriere)||''}"/>
         <button class="btn sm" onclick="saSaveFourriereEmail()">&#x1F4BE; Sauvegarder</button>
       </div>
+    </div>
+    <div style="margin-top:20px;background:#fff;border-radius:14px;padding:16px;border:1px solid #eee;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+        <h3 style="font-size:15px;font-weight:700;margin:0;">🔐 Historique des connexions</h3>
+        <button class="btn sm danger" onclick="confirmModal('Effacer tout l\\'historique ?',function(){LOGIN_HISTORY=[];saveData();renderSuperAdmin();})">🗑️ Effacer</button>
+      </div>
+      ${LOGIN_HISTORY.length===0?'<div style="font-size:12px;color:#999;text-align:center;padding:20px;">Aucune connexion enregistrée</div>':
+      `<div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead>
+            <tr style="background:#f5f5f7;text-align:left;">
+              <th style="padding:8px 10px;font-weight:600;">Agent</th>
+              <th style="padding:8px 10px;font-weight:600;">Caserne</th>
+              <th style="padding:8px 10px;font-weight:600;">Connexion</th>
+              <th style="padding:8px 10px;font-weight:600;">Déconnexion</th>
+              <th style="padding:8px 10px;font-weight:600;">Statut</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${LOGIN_HISTORY.slice(0,100).map(e=>{
+              const dConn=new Date(e.hConnexion);
+              const dDeconn=e.hDeconnexion?new Date(e.hDeconnexion):null;
+              const fmt=d=>`${d.toLocaleDateString('fr-FR')} ${d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}`;
+              const cas=CASERNES.find(c=>c.id===e.caserneId);
+              const couleur=cas?.couleur||'#666';
+              return `<tr style="border-bottom:1px solid #f0f0f0;">
+                <td style="padding:7px 10px;font-weight:500;">${e.prenom||''} ${e.nom||''}<br><span style="color:#999;font-size:10px;font-family:monospace;">${e.login}</span></td>
+                <td style="padding:7px 10px;"><span style="background:${couleur}22;color:${couleur};padding:2px 7px;border-radius:10px;font-size:11px;font-weight:600;">${e.caserne||'—'}</span></td>
+                <td style="padding:7px 10px;color:#444;">${fmt(dConn)}</td>
+                <td style="padding:7px 10px;color:#444;">${dDeconn?fmt(dDeconn):'—'}</td>
+                <td style="padding:7px 10px;">
+                  ${e.actif?'<span style="background:#ECFDF5;color:#065F46;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">🟢 Connecté</span>':'<span style="background:#F3F4F6;color:#6B7280;padding:2px 8px;border-radius:10px;font-size:11px;">Déconnecté</span>'}
+                </td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+        ${LOGIN_HISTORY.length>100?`<div style="font-size:11px;color:#999;text-align:center;margin-top:8px;">Affichage des 100 dernières connexions sur ${LOGIN_HISTORY.length}</div>`:''}
+      </div>`}
     </div>
     <div style="margin-top:20px;background:#FEF2F2;border-radius:14px;padding:16px;border:1px solid #FECACA;">
       <h3 style="font-size:15px;font-weight:700;margin-bottom:4px;color:#C0392B;">⚠️ Zone dangereuse — Gestion des interventions</h3>
@@ -2736,6 +2793,12 @@ function doLoginSuccess(){
   document.getElementById('params-admin').style.display='none';
 }
 function doLogout(){
+  // Marquer la déconnexion dans l'historique
+  if(SESSION_TOKEN){
+    const entry=LOGIN_HISTORY.find(e=>e.id===SESSION_TOKEN);
+    if(entry){entry.hDeconnexion=new Date().toISOString();entry.actif=false;}
+    saveData();
+  }
   saveData();
   _clearSession(); // P2 : invalider la session
   CU=null;GLOBAL_ROLE=null;CURRENT_CASERNE_ID=null;syncCaserneContext();
@@ -10342,6 +10405,7 @@ function _buildDataObject(){
     PILP_COUNTER:{...PILP_COUNTER},
     DISPOS_UNLOCKED:{...DISPOS_UNLOCKED},
     DISPO_REQUESTS:{...DISPO_REQUESTS},
+    LOGIN_HISTORY:[...LOGIN_HISTORY],
   };
   Object.keys(CASERNE_DATA).forEach(cid=>{
     const d=CASERNE_DATA[cid];
@@ -10395,6 +10459,7 @@ function _applyDataObject(data){
   if(data.PILP_COUNTER)Object.assign(PILP_COUNTER,data.PILP_COUNTER);
   if(data.DISPOS_UNLOCKED)Object.assign(DISPOS_UNLOCKED,data.DISPOS_UNLOCKED);
   if(data.DISPO_REQUESTS)Object.assign(DISPO_REQUESTS,data.DISPO_REQUESTS);
+  if(data.LOGIN_HISTORY)LOGIN_HISTORY=data.LOGIN_HISTORY;
   // Migration fonctions formateur
   const MFF={'EAP 1 (Op\u00e9rateur des Activit\u00e9s Physiques)':'EAP 1','EAP 2 (\u00c9ducateur des Activit\u00e9s Physiques)':'EAP 2','EAP 3 (Conseiller des Activit\u00e9s Physiques)':'EAP 3','ACCPRO (Accompagnateur de Proximit\u00e9)':'ACCPRO','FOR ACC (Formateur Accompagnateur)':'FOR ACC','FPS (Formateur Premier Secours)':'FPS','FFPS (Formateur de formateur de premiers secours)':'FFPS'};
   function migrateUser(u){if(u.fonctionsFormateur&&u.fonctionsFormateur.length){const m=u.fonctionsFormateur.map(f=>MFF[f]||f);u.fonctionsFormateur=[...new Set(m)];}}
