@@ -91,14 +91,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 /* Boutons admin/superadmin topbar — cercles colorés */
 #nav-global{padding:3px 7px!important;font-size:11px!important;}
 #nav-role-toggle,#nav-superadmin-toggle{padding:0!important;}
-/* Mobile ≤480px : icônes seules */
+/* Mobile ≤480px : icônes seules plus grandes */
 @media(max-width:480px){
   .nb .nb-txt,.subtab-btn .sb-txt{display:none;}
-  .nb{padding:8px 10px;font-size:15px;}
-  .subtab-btn{padding:7px 8px;font-size:15px;}
+  .nb{padding:8px 10px;font-size:20px;}
+  .subtab-btn{padding:7px 8px;font-size:20px;}
   .ts2{display:none;}
   .ttime{font-size:10px;}
-  #nav-global{padding:3px 5px!important;font-size:11px!important;}
+  #nav-global{padding:3px 5px!important;font-size:14px!important;}
 }
 .cnt{padding:12px;flex:1;}
 .sec{display:none;}
@@ -398,12 +398,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div class="lf"><label>Mot de passe</label><input type="password" id="lp" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"/></div>
     <div class="lerr" id="lerr">Identifiant ou mot de passe incorrect.</div>
     <button class="lbtn" id="lbtn" onclick="doLogin()">Se connecter</button>
-    <div style="margin-top:12px;text-align:center;">
-      <label style="font-size:11px;color:var(--t2);cursor:pointer;text-decoration:underline;">
-        📦 Importer une sauvegarde JSON
-        <input type="file" accept=".json" style="display:none;" onchange="loginImportJSON(this)"/>
-      </label>
-    </div>
 
   </div>
 </div>
