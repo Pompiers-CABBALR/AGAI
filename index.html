@@ -6287,6 +6287,7 @@ function addEquipe(){
   const granularity=parseInt(document.getElementById('eq-granularity').value);
   const resp=document.getElementById('eq-resp').value;
   EQUIPES.push({id,nom,color:selEqColorVal,granularity,resp,membres:resp?[resp]:[]});
+  if(CD())CD().equipes=EQUIPES;
   document.getElementById('eq-nom').value='';
   document.getElementById('astr-equipe-add').style.display='none';
   saveData();rAstrEquipes();applyNavRights();
@@ -10454,7 +10455,13 @@ function _jbStartPolling(){
 
 function loadData(){
   const cache=localStorage.getItem(JB_CACHE_KEY);
-  if(cache){try{const data=JSON.parse(cache);_applyDataObject(data);_postLoadInit();}catch(e){}}
+  if(cache){
+    try{
+      const data=JSON.parse(cache);
+      _applyDataObject(data);_postLoadInit();
+      if(CURRENT_CASERNE_ID)syncCaserneContext();
+    }catch(e){}
+  }
   _jbPull(false).then(function(){_jbStartPolling();});
 }
 
