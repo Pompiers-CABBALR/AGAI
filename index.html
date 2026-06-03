@@ -6323,7 +6323,7 @@ function addEquipe(){
   EQUIPES.push({id,nom,color:selEqColorVal,granularity,resp,membres:resp?[resp]:[]});
   document.getElementById('eq-nom').value='';
   document.getElementById('astr-equipe-add').style.display='none';
-  rAstrEquipes();applyNavRights();
+  saveData();rAstrEquipes();applyNavRights();
 }
 function delEquipe(id){
   confirmModal('Supprimer cette équipe ?',function(){EQUIPES=EQUIPES.filter(e=>e.id!==id);saveData();rAstrEquipes();applyNavRights();});
@@ -6356,26 +6356,25 @@ function saveEditEquipe(id){
   eq.nom=document.getElementById('edit-eq-nom').value.trim()||eq.nom;
   eq.granularity=parseInt(document.getElementById('edit-eq-gran').value);
   eq.resp=document.getElementById('edit-eq-resp').value;
-  cM();rAstrEquipes();applyNavRights();
+  cM();saveData();rAstrEquipes();applyNavRights();
 }
 function addMembre(eqId){
   const eq=getEquipeById(eqId);if(!eq)return;
   const sel=document.getElementById('add-membre-sel-'+eqId);
   if(!sel||!sel.value)return;
   const login=sel.value;
-  // Vérifier qu'il n'est pas déjà dans une autre équipe
   const autreEq=EQUIPES.find(e=>e.id!==eqId&&e.membres.includes(login));
   if(autreEq){
     showToast((USERS.find(u=>u.l===login)?.prenom||login)+' est déjà dans '+autreEq.nom+'.','warn');
     return;
   }
   if(!eq.membres.includes(login))eq.membres.push(login);
-  rAstrEquipes();
+  saveData();rAstrEquipes();
 }
 function removeMembre(eqId,login){
   const eq=getEquipeById(eqId);if(!eq)return;
   eq.membres=eq.membres.filter(l=>l!==login);
-  rAstrEquipes();
+  saveData();rAstrEquipes();
 }
 function addEngin(){
   const inp=document.getElementById('new-engin');
