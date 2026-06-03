@@ -1581,7 +1581,7 @@ async function doLogin(){
       const cas=CC();
       document.getElementById('t2u').textContent=CU.l+(cas?' — '+cas.nom:'');
       document.getElementById('t2r').textContent=CU.rl;
-      GRADES.forEach(g=>{['prof-grade-sel','nu-grade'].forEach(id=>{const el=document.getElementById(id);if(el){const o=document.createElement('option');o.textContent=g;el.appendChild(o);}});});
+      GRADES.forEach(g=>{['prof-grade-sel','nu-grade'].forEach(id=>{const el=document.getElementById(id);if(el&&!el.querySelector(`option[value="${g}"]`)&&![...el.options].find(o=>o.textContent===g)){const o=document.createElement('option');o.textContent=g;el.appendChild(o);}});});
       _createSession(); // P2
       if(ga.role==='chef_corps'){showGlobalView('chef_corps');return;}
       const hopEl=document.getElementById('hop');if(hopEl)hopEl.textContent='Opérateur : '+CU.l;
@@ -1633,7 +1633,7 @@ async function doLogin(){
     document.getElementById('t2u').textContent=CU.l+(cas?' — '+cas.nom:'');
     document.getElementById('t2r').textContent=CU.rl||'';
     const hopEl2=document.getElementById('hop');if(hopEl2)hopEl2.textContent='Opérateur : '+CU.l;
-    GRADES.forEach(g=>{['prof-grade-sel','nu-grade'].forEach(id=>{const el=document.getElementById(id);if(el){const o=document.createElement('option');o.textContent=g;el.appendChild(o);}});});
+    GRADES.forEach(g=>{['prof-grade-sel','nu-grade'].forEach(id=>{const el=document.getElementById(id);if(el&&![...el.options].find(o=>o.textContent===g)){const o=document.createElement('option');o.textContent=g;el.appendChild(o);}});});
     _createSession(); // P2
     doLoginSuccess();
 
@@ -2305,7 +2305,7 @@ function saAccederCaserne(cid){
   // Revenir à l'app et rafraîchir
   document.getElementById('global-view').style.display='none';
   const ap=document.getElementById('app');ap.style.display='flex';
-  GRADES.forEach(g=>{['prof-grade-sel','nu-grade'].forEach(id=>{const el=document.getElementById(id);if(el&&!el.querySelector(`option[value="${g}"]`)){const o=document.createElement('option');o.textContent=g;el.appendChild(o);}});});
+  GRADES.forEach(g=>{['prof-grade-sel','nu-grade'].forEach(id=>{const el=document.getElementById(id);if(el&&![...el.options].find(o=>o.textContent===g)){const o=document.createElement('option');o.textContent=g;el.appendChild(o);}});});
   // Rafraîchir toutes les vues pour refléter la nouvelle caserne
   applyNavRights();
   rAccueil();rI();
@@ -4383,12 +4383,18 @@ function fullName(u){return u?u.nom+' '+u.prenom:'';}
 function fullNameAff(u){return u?(u.nom+' '+u.prenom).trim():'';}
 function shortName(u){return u?u.nom+' '+u.prenom.charAt(0)+'.':'';}
 function rAdm(){
+  // Reconstruire les selects grade/fonction seulement si le formulaire est fermé
+  const addFormOpen = document.getElementById('admin-add')&&document.getElementById('admin-add').style.display!=='none';
   const ng=document.getElementById('nu-grade');
-  if(ng&&!ng.value){ng.innerHTML=GRADES.map(g=>`<option>${g}</option>`).join('');}
-  else if(ng&&!ng.querySelector('option')){ng.innerHTML=GRADES.map(g=>`<option>${g}</option>`).join('');}
   const nf=document.getElementById('nu-fonction');
-  if(nf&&!nf.value){nf.innerHTML=FONCTIONS.map(f=>`<option>${f}</option>`).join('');}
-  else if(nf&&!nf.querySelector('option')){nf.innerHTML=FONCTIONS.map(f=>`<option>${f}</option>`).join('');}
+  if(!addFormOpen){
+    if(ng)ng.innerHTML=GRADES.map(g=>`<option>${g}</option>`).join('');
+    if(nf)nf.innerHTML=FONCTIONS.map(f=>`<option>${f}</option>`).join('');
+  } else {
+    // Formulaire ouvert : reconstruire seulement si vide
+    if(ng&&ng.options.length===0)ng.innerHTML=GRADES.map(g=>`<option>${g}</option>`).join('');
+    if(nf&&nf.options.length===0)nf.innerHTML=FONCTIONS.map(f=>`<option>${f}</option>`).join('');
+  }
   const tbody=document.getElementById('admin-tbody');if(!tbody)return;
   const RIGHTS_SHORT=['Prise d\'appel','Interventions','Historique complet','Chef d\'agrès','Tireur PILP','Administration','Formation'];
   // USERS contient déjà le superadmin via syncCaserneContext
