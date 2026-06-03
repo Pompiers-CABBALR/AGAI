@@ -88,6 +88,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .nb{flex:0 1 auto;min-width:44px;padding:10px 14px;font-size:11px;font-weight:500;color:var(--t2);border:none;background:transparent;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;}
 .nb.active{color:var(--red);border-bottom-color:var(--red);}
 .nb.hidden{display:none;}
+/* Boutons admin/superadmin topbar — taille réduite */
+#nav-global{padding:3px 7px!important;font-size:10px!important;}
+#nav-role-toggle{padding:3px 7px!important;font-size:10px!important;}
+#nav-superadmin-toggle{padding:3px 7px!important;font-size:10px!important;}
+/* Mobile ≤480px : icônes seules */
+@media(max-width:480px){
+  .nb .nb-txt,.subtab-btn .sb-txt{display:none;}
+  .nb{padding:8px 10px;font-size:15px;}
+  .subtab-btn{padding:7px 8px;font-size:15px;}
+  .ts2{display:none;}
+  .ttime{font-size:10px;}
+  #nav-global,#nav-role-toggle,#nav-superadmin-toggle{padding:3px 5px!important;font-size:11px!important;}
+}
 .cnt{padding:12px;flex:1;}
 .sec{display:none;}
 .sec.active{display:block;}
@@ -424,14 +437,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   </div>
   <div class="tb2"><span class="tb2u" id="t2u"></span><span class="tb2r" id="t2r"></span></div>
   <div class="nav">
-    <button class="nb active" id="nav-home" onclick="showT('home',this)">🏠 Accueil</button>
-    <button class="nb hidden" id="nav-appel" onclick="showT('appel',this)">📞 Appel</button>
-    <button class="nb hidden" id="nav-interv" onclick="showT('interv',this)">🚒 Interventions<span id="renfort-badge" style="display:none;background:#7C3AED;color:#fff;border-radius:10px;padding:0 6px;font-size:10px;font-weight:700;margin-left:5px;min-width:18px;height:18px;align-items:center;justify-content:center;vertical-align:middle;"></span></button>
-    <button class="nb" id="nav-activite" onclick="showT('activite',this)">📋 Activités de service</button>
-    <button class="nb" id="nav-astreintes" onclick="showT('astreintes',this)">📅 Astreintes</button>
-    <button class="nb" id="nav-formation" onclick="showT('formation',this)">🎓 Formations</button>
-    <button class="nb" id="nav-stats" onclick="showT('stats',this)">📊 Statistiques</button>
-    <button class="nb" id="nav-params" style="display:none;" onclick="showT('params',this)">⚙️ Paramètres</button>
+    <button class="nb active" id="nav-home" onclick="showT('home',this)">🏠 <span class="nb-txt">Accueil</span></button>
+    <button class="nb hidden" id="nav-appel" onclick="showT('appel',this)">📞 <span class="nb-txt">Appel</span></button>
+    <button class="nb hidden" id="nav-interv" onclick="showT('interv',this)">🚒 <span class="nb-txt">Interventions</span><span id="renfort-badge" style="display:none;background:#7C3AED;color:#fff;border-radius:10px;padding:0 6px;font-size:10px;font-weight:700;margin-left:5px;min-width:18px;height:18px;align-items:center;justify-content:center;vertical-align:middle;"></span></button>
+    <button class="nb" id="nav-activite" onclick="showT('activite',this)">📋 <span class="nb-txt">Activités de service</span></button>
+    <button class="nb" id="nav-astreintes" onclick="showT('astreintes',this)">📅 <span class="nb-txt">Astreintes</span></button>
+    <button class="nb" id="nav-formation" onclick="showT('formation',this)">🎓 <span class="nb-txt">Formations</span></button>
+    <button class="nb" id="nav-stats" onclick="showT('stats',this)">📊 <span class="nb-txt">Statistiques</span></button>
+    <button class="nb" id="nav-params" style="display:none;" onclick="showT('params',this)">⚙️ <span class="nb-txt">Paramètres</span></button>
   </div>
   <div class="cnt">
 
@@ -495,9 +508,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div id="tab-interv" class="sec">
       <!-- Sous-onglets Interventions / PILP / Historique -->
       <div id="interv-subtabs" style="display:flex;gap:0;margin-bottom:12px;border-bottom:2px solid var(--brd);">
-        <button id="subtab-btn-std" class="subtab-btn active" onclick="showSubtab('std',this)">🚒 Interventions</button>
-        <button id="subtab-btn-pilp" class="subtab-btn" style="display:none;" onclick="showSubtab('pilp',this)">🎯 PILP</button>
-        <button id="subtab-btn-hist" class="subtab-btn" onclick="showSubtab('hist',this)">📋 Historique</button>
+        <button id="subtab-btn-std" class="subtab-btn active" onclick="showSubtab('std',this)">🚒 <span class="sb-txt">Interventions</span></button>
+        <button id="subtab-btn-pilp" class="subtab-btn" style="display:none;" onclick="showSubtab('pilp',this)">🎯 <span class="sb-txt">PILP</span></button>
+        <button id="subtab-btn-hist" class="subtab-btn" onclick="showSubtab('hist',this)">📋 <span class="sb-txt">Historique</span></button>
       </div>
 
       <!-- SOUS-ONGLET : Interventions normales -->
@@ -567,12 +580,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div id="tab-astreintes" class="sec">
       <!-- Sous-onglets -->
       <div id="astr-subtabs" style="display:flex;gap:0;margin-bottom:12px;border-bottom:2px solid var(--brd);">
-        <button id="astr-btn-planning" class="subtab-btn active" onclick="showAstrTab('planning',this)">📅 Planning</button>
-        <button id="astr-btn-dispo" class="subtab-btn" onclick="showAstrTab('dispo',this)">🗓️ Disponibilités</button>
-        <button id="astr-btn-piquets" class="subtab-btn" style="display:none;" onclick="showAstrTab('piquets',this)">🚒 Piquets</button>
-        <button id="astr-btn-tel" class="subtab-btn" style="display:none;" onclick="showAstrTab('tel',this)">📞 Astreinte téléphonique</button>
-        <button id="astr-btn-equipes" class="subtab-btn" style="display:none;" onclick="showAstrTab('equipes',this)">👥 Équipes</button>
-        <button id="astr-btn-garde" class="subtab-btn" style="display:none;" onclick="showAstrTab('garde',this)">📆 Planning équipe annuelle</button>
+        <button id="astr-btn-planning" class="subtab-btn active" onclick="showAstrTab('planning',this)">📅 <span class="sb-txt">Planning</span></button>
+        <button id="astr-btn-dispo" class="subtab-btn" onclick="showAstrTab('dispo',this)">🗓️ <span class="sb-txt">Disponibilités</span></button>
+        <button id="astr-btn-piquets" class="subtab-btn" style="display:none;" onclick="showAstrTab('piquets',this)">🚒 <span class="sb-txt">Piquets</span></button>
+        <button id="astr-btn-tel" class="subtab-btn" style="display:none;" onclick="showAstrTab('tel',this)">📞 <span class="sb-txt">Astreinte téléphonique</span></button>
+        <button id="astr-btn-equipes" class="subtab-btn" style="display:none;" onclick="showAstrTab('equipes',this)">👥 <span class="sb-txt">Équipes</span></button>
+        <button id="astr-btn-garde" class="subtab-btn" style="display:none;" onclick="showAstrTab('garde',this)">📆 <span class="sb-txt">Planning équipe annuelle</span></button>
       </div>
 
       <!-- Planning semaine -->
@@ -591,9 +604,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <div id="astr-dispo" style="display:none;">
         <!-- Sous-catégories (responsable voit 3 onglets, agent voit 1) -->
         <div id="dispo-subnav" style="display:flex;gap:0;margin-bottom:10px;border-bottom:2px solid var(--brd);">
-          <button id="dispo-btn-mes" class="subtab-btn active" onclick="showDispoSub('mes',this)">🗓️ Mes disponibilités</button>
-          <button id="dispo-btn-equipe" class="subtab-btn" style="display:none;" onclick="showDispoSub('equipe',this)">👥 Mon équipe</button>
-          <button id="dispo-btn-autres" class="subtab-btn" style="display:none;" onclick="showDispoSub('autres',this)">🏢 Autres équipes</button>
+          <button id="dispo-btn-mes" class="subtab-btn active" onclick="showDispoSub('mes',this)">🗓️ <span class="sb-txt">Mes disponibilités</span></button>
+          <button id="dispo-btn-equipe" class="subtab-btn" style="display:none;" onclick="showDispoSub('equipe',this)">👥 <span class="sb-txt">Mon équipe</span></button>
+          <button id="dispo-btn-autres" class="subtab-btn" style="display:none;" onclick="showDispoSub('autres',this)">🏢 <span class="sb-txt">Autres équipes</span></button>
         </div>
         <div class="panel" style="margin-bottom:10px;">
           <div style="font-size:12px;color:var(--t2);margin-bottom:10px;" id="astr-dispo-info">Indiquez vos créneaux pour la semaine d'astreinte à venir.</div>
@@ -768,9 +781,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div id="tab-params" class="sec">
       <!-- Sous-onglets -->
       <div style="display:flex;gap:0;margin-bottom:14px;border-bottom:2px solid var(--brd);">
-        <button id="params-btn-profil" class="subtab-btn active" onclick="showParamsTab('profil',this)">👤 Mon profil</button>
-        <button id="params-btn-admin" class="subtab-btn" style="display:none;" onclick="showParamsTab('admin',this)">🛡️ Administration</button>
-        <button id="params-btn-onedrive" class="subtab-btn" onclick="showParamsTab('onedrive',this)" style="display:none;">☁️ Sync</button>
+        <button id="params-btn-profil" class="subtab-btn active" onclick="showParamsTab('profil',this)">👤 <span class="sb-txt">Mon profil</span></button>
+        <button id="params-btn-admin" class="subtab-btn" style="display:none;" onclick="showParamsTab('admin',this)">🛡️ <span class="sb-txt">Administration</span></button>
+        <button id="params-btn-onedrive" class="subtab-btn" onclick="showParamsTab('onedrive',this)" style="display:none;">☁️ <span class="sb-txt">Sync</span></button>
       </div>
 
       <!-- Profil -->
