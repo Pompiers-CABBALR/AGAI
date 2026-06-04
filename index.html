@@ -1182,11 +1182,11 @@ let LOGIN_HISTORY=[];
 function syncCaserneContext(){
   const d=CD();
   if(!d){USERS=[];IVS=[];PILP_IVS=[];EQUIPES=[];DISPOS={};PIQUETS={};return;}
-  // Si EQUIPES a été modifié indépendamment de d.equipes, synchroniser d'abord
-  if(EQUIPES!==d.equipes&&EQUIPES.length>0&&d.equipes.length===0){
-    d.equipes=EQUIPES;
-  }
-  USERS=d.users;IVS=d.ivs;PILP_IVS=d.pilpIvs;EQUIPES=d.equipes;DISPOS=d.dispos;PIQUETS=d.piquets;ASTR_CONFIG=d.astrConfig;DISPOS_VALIDATED=d.disposValidated||{};PIQUETS_VALIDATED=d.piquetsValidated||{};
+  // Si les variables globales ont été modifiées indépendamment de d.*, synchroniser d'abord
+  if(EQUIPES!==d.equipes&&EQUIPES.length>0&&d.equipes.length===0){d.equipes=EQUIPES;}
+  if(IVS!==d.ivs&&IVS.length>0&&d.ivs.length===0){d.ivs=IVS;}
+  if(PILP_IVS!==d.pilpIvs&&PILP_IVS.length>0&&(d.pilpIvs||[]).length===0){d.pilpIvs=PILP_IVS;}
+  USERS=d.users;IVS=d.ivs;PILP_IVS=d.pilpIvs||[];EQUIPES=d.equipes;DISPOS=d.dispos;PIQUETS=d.piquets;ASTR_CONFIG=d.astrConfig;DISPOS_VALIDATED=d.disposValidated||{};PIQUETS_VALIDATED=d.piquetsValidated||{};
   // Recharger PLANNING_ROTATIONS depuis les données caserne
   PLANNING_ROTATIONS=d.planningRotations||{};
   // Injecter le superadmin dans USERS s'il est rattaché à cette caserne
@@ -3381,6 +3381,7 @@ function enr(){
       obs:'',agr:CU.l,rappels:exPilp.length,avisIds:[],_lienPilp:true,
       tl:[mkTL('en-attente',h,CU.l),mkTL('terminee',h,CU.l+' → PILP')]};
     IVS.unshift(ivBase);
+    if(CD())CD().ivs=IVS;
     PILP_IVS.unshift({
       id:nextPilpId(annee),ivRef:numsInt.idCas,_numApl:numApl,
       // Pas de _numCaserne/_numGlobal : attribués à la clôture PILP
@@ -3390,6 +3391,7 @@ function enr(){
       s:'en-attente',agr:CU.l,tireur:null,rappels:exPilp.length,
       avisIds:exPilp.map(iv=>iv.id),tl:[mkTL('en-attente',h,CU.l)]
     });
+    if(CD())CD().pilpIvs=PILP_IVS;
     const cm=document.getElementById('cm');cm.style.display='block';
     cm.innerHTML='&#x1F3AF; PILP créée — <strong>'+numsInt.numCas+'</strong><br><span style="font-family:monospace;font-size:11px;">'+numApl+'</span>';
     saveData();
@@ -3404,6 +3406,7 @@ function enr(){
     obs:'',agr:null,rappels:exIv.length,avisIds:exIv.map(iv=>iv.id),
     tl:[mkTL('en-attente',h,CU.l)]};
   IVS.unshift(newIv);
+  if(CD())CD().ivs=IVS;
   saveData();
   const cm=document.getElementById('cm');cm.style.display='block';
   cm.innerHTML=`✅ Appel enregistré — <strong>${numApl}</strong>
@@ -4079,6 +4082,7 @@ function creerPILP(ivId){
     obs:document.getElementById('pf-obs').value.trim(),
     s:'en-attente',agr:CU.l,tireur:null,rappels:0,avisIds:[],tl:[mkTL('en-attente',h,CU.l)]
   });
+  if(CD())CD().pilpIvs=PILP_IVS;
   // Clôturer l'intervention parente
   iv.s='terminee';iv._lienPilp=true;
   iv.tl.push({s:'terminee',h,who:CU.l,note:'→ PILP '+pilpId});
@@ -11736,6 +11740,7 @@ function rActiviteList(){
           ${!canSee?'<span style="font-size:10px;color:var(--t3);">🔒</span>':''}
           ${canSee?`<button class="btn sm" style="background:var(--rd);color:#fff;font-size:10px;padding:1px 5px;margin-left:4px;" onclick="event.stopPropagation();actImprimerRapport('${a.id}')">🖨</button>`:''}
           ${isAdmin?`<button class="btn sm" style="font-size:10px;padding:1px 5px;" onclick="event.stopPropagation();actEditer('${a.id}')">✏️</button>`:''}
+          ${isSuperAdmin()?`<button class="btn sm danger" style="font-size:10px;padding:1px 5px;" onclick="event.stopPropagation();deleteActivite('${a.id}')">🗑</button>`:''}
         </div>`;
       }).join('')}</div>`;
     }).join('')}</div></div>`;
@@ -11969,10 +11974,21 @@ function genRapportActiviteHTML(a){
 }
 
 function deleteActivite(id){
-  if(!isAdminModeActive()){showToast('Accès réservé aux administrateurs','warn');return;}
-  const data=actGetData();
-  const idx=data.findIndex(x=>x.id===id);
-  if(idx>=0){data.splice(idx,1);saveData();rActiviteList();}
+  if(!isSuperAdmin()){showToast('Accès réservé au super-administrateur','warn');return;}
+  confirmModal('Supprimer cette activité de service ?',function(){
+    const data=actGetData();
+    const idx=data.findIndex(x=>x.id===id);
+    if(idx>=0){data.splice(idx,1);saveData();rActiviteList();showToast('Activité supprimée','success');}
+  });
+}
+
+function deleteFmpa(id){
+  if(!isSuperAdmin()){showToast('Accès réservé au super-administrateur','warn');return;}
+  confirmModal('Supprimer cette FMPA ?',function(){
+    const data=fmpaGetData();
+    const idx=data.findIndex(x=>x.id===id);
+    if(idx>=0){data.splice(idx,1);saveData();rFmpaList();showToast('FMPA supprimée','success');}
+  });
 }
 
 
@@ -12154,7 +12170,7 @@ function rFormStagList(){
           <span style="font-family:monospace;font-size:10px;color:var(--t3);">${f.ddebut.slice(8,10)}/${m}/${y}${f.dfin!==f.ddebut?' → '+f.dfin.slice(8,10)+'/'+f.dfin.slice(5,7):''}</span>
           <span style="flex:1;font-size:12px;color:var(--t);">👨‍🎓 ${f.titre}${f.ref?' <small style="color:var(--t2);">['+f.ref+']</small>':''}</span>
           <span style="font-size:11px;color:var(--t2);">${formMinsToStr(mins)} · ${nbP}p${f.lieu?' · '+f.lieu:''}</span>
-          ${isAdmin?`<button class="btn sm danger" style="font-size:10px;padding:1px 5px;margin-left:4px;" onclick="event.stopPropagation();deleteFormEntry('stag','${f.id}')">✕</button>`:''}
+          ${isSuperAdmin()?`<button class="btn sm danger" style="font-size:10px;padding:1px 5px;margin-left:4px;" onclick="event.stopPropagation();deleteFormEntry('stag','${f.id}')">🗑</button>`:''}
         </div>`;
       }).join('')}</div>`;
     }).join('')}</div></div>`;
@@ -12191,7 +12207,7 @@ function rFormFormList(){
           <span style="font-family:monospace;font-size:10px;color:var(--t3);">${f.ddebut.slice(8,10)}/${m}/${y}${f.dfin!==f.ddebut?' → '+f.dfin.slice(8,10)+'/'+f.dfin.slice(5,7):''}</span>
           <span style="flex:1;font-size:12px;color:var(--t);">👨‍🏫 ${f.titre}${f.ref?' <small style="color:var(--t2);">['+f.ref+']</small>':''}</span>
           <span style="font-size:11px;color:var(--t2);">${formMinsToStr(mins)} · ${nbP}f${f.lieu?' · '+f.lieu:''}</span>
-          ${isAdmin?`<button class="btn sm danger" style="font-size:10px;padding:1px 5px;margin-left:4px;" onclick="event.stopPropagation();deleteFormEntry('form','${f.id}')">✕</button>`:''}
+          ${isSuperAdmin()?`<button class="btn sm danger" style="font-size:10px;padding:1px 5px;margin-left:4px;" onclick="event.stopPropagation();deleteFormEntry('form','${f.id}')">🗑</button>`:''}
         </div>`;
       }).join('')}</div>`;
     }).join('')}</div></div>`;
@@ -12323,6 +12339,7 @@ function formVoirDetail(type,id){
 
 // ── Suppression ──
 function deleteFormEntry(type,id){
+  if(!isSuperAdmin()){showToast('Accès réservé au super-administrateur','warn');return;}
   const data=type==='stag'?formStagGetData():formFormGetData();
   const idx=data.findIndex(x=>x.id===id);
   if(idx>=0){
@@ -12330,6 +12347,7 @@ function deleteFormEntry(type,id){
       data.splice(idx,1);saveData();
       if(type==='stag'){rFormStagList();rFormStagRecap();}
       else{rFormFormList();rFormFormRecap();}
+      showToast('Formation supprimée','success');
     });
   }
 }
@@ -12485,6 +12503,7 @@ function rFmpaList(){
           <span style="font-size:11px;color:var(--t2);">${f.hDebut||''}${f.hFin?' → '+f.hFin:''} ${f.duree?'· '+f.duree:''} · ${nbP}s/${nbF}f</span>
 
           ${isAdmin?`<button class="btn sm" style="font-size:10px;padding:1px 5px;" onclick="event.stopPropagation();fmpaEditer('${f.id}')">✏️</button>`:''}
+          ${isSuperAdmin()?`<button class="btn sm danger" style="font-size:10px;padding:1px 5px;" onclick="event.stopPropagation();deleteFmpa('${f.id}')">🗑</button>`:''}
         </div>`;
       }).join('')}</div>`;
     }).join('')}</div></div>`;
