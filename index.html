@@ -10448,11 +10448,42 @@ function _applyDataObject(data){
   if(data.GLOBAL_ACCOUNTS&&data.GLOBAL_ACCOUNTS.length){GLOBAL_ACCOUNTS.length=0;data.GLOBAL_ACCOUNTS.forEach(a=>GLOBAL_ACCOUNTS.push(a));}
   if(data.CASERNE_DATA){
     Object.keys(data.CASERNE_DATA).forEach(cid=>{
-      CASERNE_DATA[cid]=data.CASERNE_DATA[cid];
       // Clés globales — ne pas traiter comme des casernes
-      if(cid==='_cabbalrActif'||cid==='_initCabbalr'||cid==='_global')return;
-      if(CASERNE_DATA[cid].ivs){CASERNE_DATA[cid].ivs=CASERNE_DATA[cid].ivs.filter(iv=>iv&&iv.id);}
-      if(!CASERNE_DATA[cid].renforts)CASERNE_DATA[cid].renforts=[];
+      if(cid==='_cabbalrActif'||cid==='_initCabbalr'||cid==='_global'){
+        CASERNE_DATA[cid]=data.CASERNE_DATA[cid];
+        return;
+      }
+      const src=data.CASERNE_DATA[cid];
+      if(!src||typeof src!=='object'){CASERNE_DATA[cid]=src;return;}
+      // Mettre à jour en place si l'objet existe déjà (préserve les références)
+      if(!CASERNE_DATA[cid]||typeof CASERNE_DATA[cid]!=='object'){
+        CASERNE_DATA[cid]=src;
+      } else {
+        // Mettre à jour chaque propriété en place pour préserver les références
+        const dst=CASERNE_DATA[cid];
+        // Tableaux : vider et repeupler pour préserver la référence
+        if(src.users){dst.users=dst.users||[];dst.users.length=0;src.users.forEach(u=>dst.users.push(u));}
+        if(src.ivs){dst.ivs=dst.ivs||[];dst.ivs.length=0;src.ivs.filter(iv=>iv&&iv.id).forEach(iv=>dst.ivs.push(iv));}
+        if(src.pilpIvs){dst.pilpIvs=dst.pilpIvs||[];dst.pilpIvs.length=0;src.pilpIvs.forEach(iv=>dst.pilpIvs.push(iv));}
+        if(src.equipes){dst.equipes=dst.equipes||[];dst.equipes.length=0;src.equipes.forEach(e=>dst.equipes.push(e));}
+        if(src.renforts){dst.renforts=dst.renforts||[];dst.renforts.length=0;src.renforts.forEach(r=>dst.renforts.push(r));}
+        if(src.activites){dst.activites=dst.activites||[];dst.activites.length=0;src.activites.forEach(a=>dst.activites.push(a));}
+        if(src.fmpas){dst.fmpas=dst.fmpas||[];dst.fmpas.length=0;src.fmpas.forEach(f=>dst.fmpas.push(f));}
+        if(src.formStag){dst.formStag=dst.formStag||[];dst.formStag.length=0;src.formStag.forEach(f=>dst.formStag.push(f));}
+        if(src.formForm){dst.formForm=dst.formForm||[];dst.formForm.length=0;src.formForm.forEach(f=>dst.formForm.push(f));}
+        if(src.formations){dst.formations=dst.formations||[];dst.formations.length=0;src.formations.forEach(f=>dst.formations.push(f));}
+        // Objets : assigner directement
+        if(src.dispos)dst.dispos=src.dispos;
+        if(src.piquets)dst.piquets=src.piquets;
+        if(src.planningRotations)dst.planningRotations=src.planningRotations;
+        if(src.astrConfig)dst.astrConfig=src.astrConfig;
+        if(src.disposValidated)dst.disposValidated=src.disposValidated;
+        if(src.piquetsValidated)dst.piquetsValidated=src.piquetsValidated;
+        if(src.astrTelData)dst.astrTelData=src.astrTelData;
+        if(src.astrTelParams)dst.astrTelParams=src.astrTelParams;
+        if(src.statsTaux)dst.statsTaux=src.statsTaux;
+        if(src._initCompteurs!==undefined)dst._initCompteurs=src._initCompteurs;
+      }
     });
   }
   if(data.NAT&&data.NAT.length){NAT.length=0;data.NAT.forEach(n=>NAT.push(n));}
@@ -10468,7 +10499,9 @@ function _applyDataObject(data){
   const MFF={'EAP 1 (Op\u00e9rateur des Activit\u00e9s Physiques)':'EAP 1','EAP 2 (\u00c9ducateur des Activit\u00e9s Physiques)':'EAP 2','EAP 3 (Conseiller des Activit\u00e9s Physiques)':'EAP 3','ACCPRO (Accompagnateur de Proximit\u00e9)':'ACCPRO','FOR ACC (Formateur Accompagnateur)':'FOR ACC','FPS (Formateur Premier Secours)':'FPS','FFPS (Formateur de formateur de premiers secours)':'FFPS'};
   function migrateUser(u){if(u.fonctionsFormateur&&u.fonctionsFormateur.length){const m=u.fonctionsFormateur.map(f=>MFF[f]||f);u.fonctionsFormateur=[...new Set(m)];}}
   CASERNES.forEach(cas=>(cas.users||[]).forEach(migrateUser));
-  Object.values(CASERNE_DATA).forEach(cd=>(cd.users||[]).forEach(migrateUser));
+  Object.values(CASERNE_DATA).forEach(cd=>{if(cd&&typeof cd==='object'&&cd.users)(cd.users||[]).forEach(migrateUser);});
+  // Resynchroniser les variables globales si une caserne est active
+  if(CURRENT_CASERNE_ID&&typeof syncCaserneContext==='function')syncCaserneContext();
 }
 
 // ══════════════════════════════════════════════════════
