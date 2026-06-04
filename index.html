@@ -2090,12 +2090,13 @@ function saSaveFourriereEmail(){
 }
 
 function saResetIvs(cid){
-  confirmModal('⚠️ Supprimer TOUTES les interventions de cette caserne ? Cette action est irréversible.',function(){
-    const d=CASERNE_DATA[cid];if(!d)return;
-    d.ivs=[];d.pilpIvs=[];
-    saveData();
-    saPostDeleteRefresh(cid);
-  });
+  if(!window.confirm('⚠️ Supprimer TOUTES les interventions de cette caserne ? Cette action est irréversible.')){return;}
+  const d=CASERNE_DATA[cid];if(!d)return;
+  d.ivs=[];d.pilpIvs=[];
+  if(cid===CURRENT_CASERNE_ID){IVS=[];PILP_IVS=[];}
+  saveData();cM();
+  saPostDeleteRefresh(cid);
+  showToast('Toutes les interventions ont été supprimées','success');
 }
 
 function saPostDeleteRefresh(cid){
@@ -2146,13 +2147,12 @@ function saConfirmDeleteIvs(cid){
   const checked=Array.from(document.querySelectorAll('.sa-iv-chk:checked')).map(function(c){return c.value;});
   if(!checked.length){showToast('Aucune intervention sélectionnée.','warn');return;}
   const d=CASERNE_DATA[cid];if(!d)return;
-  confirmModal('Supprimer '+checked.length+' intervention(s) ? Cette action est irréversible.',function(){
-    d.ivs=(d.ivs||[]).filter(function(iv){return !checked.includes(iv.id);});
-    d.pilpIvs=(d.pilpIvs||[]).filter(function(iv){return !checked.includes(iv.id);});
-    // Resynchroniser les variables globales si c'est la caserne active
-    if(cid===CURRENT_CASERNE_ID){IVS=d.ivs;PILP_IVS=d.pilpIvs;}
-    saveData();cM();saPostDeleteRefresh(cid);
-  });
+  if(!window.confirm('Supprimer '+checked.length+' intervention(s) ? Cette action est irréversible.')){return;}
+  d.ivs=(d.ivs||[]).filter(function(iv){return !checked.includes(iv.id);});
+  d.pilpIvs=(d.pilpIvs||[]).filter(function(iv){return !checked.includes(iv.id);});
+  if(cid===CURRENT_CASERNE_ID){IVS=d.ivs;PILP_IVS=d.pilpIvs;}
+  saveData();cM();saPostDeleteRefresh(cid);
+  showToast(checked.length+' intervention(s) supprimée(s)','success');
 }
 
 function renderGlobalStats(){
