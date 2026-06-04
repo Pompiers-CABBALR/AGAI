@@ -4054,7 +4054,7 @@ function showPilpForm(ivId){
       </div>
       <div class="fg"><div class="fgl">Observations</div><textarea class="fta" id="pf-obs" placeholder="Informations pour le tireur..."></textarea></div>
       <div id="pf-err" style="font-size:12px;color:#E24B4A;display:none;margin-bottom:8px;"></div>
-      <button class="btn pilp-btn" style="width:100%;" onclick="creerPILP('${ivId}')">&#x1F3AF; Créer et clôturer l'intervention</button>
+      <button class="btn pilp-btn" style="width:100%;" onclick="creerPILP('${ivId}')">&#x1F3AF; Créer la PILP</button>
     </div>`;
 }
 
@@ -4087,12 +4087,13 @@ function creerPILP(ivId){
     s:'en-attente',agr:CU.l,tireur:null,rappels:0,avisIds:[],tl:[mkTL('en-attente',h,CU.l)]
   });
   if(CD())CD().pilpIvs=PILP_IVS;
-  // Clôturer l'intervention parente
-  iv.s='terminee';iv._lienPilp=true;
-  iv.tl.push({s:'terminee',h,who:CU.l,note:'→ PILP '+pilpId});
+  // Marquer le lien PILP sans clôturer — le chef d'agrès clôture ensuite normalement
+  iv._lienPilp=true;iv._pilpId=pilpId;
+  iv.tl.push({s:'en-cours',h,who:CU.l,note:'→ PILP créée: '+pilpId});
   if(CD())CD().ivs=IVS;
   saveData();
   cM();rI();rAccueil();
+  showToast('PILP créée ✓ — Clôturez maintenant votre intervention Frelons','success');
 }
 
 // ────────────────── PILP LIST ──────────────────
