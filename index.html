@@ -1182,6 +1182,10 @@ let LOGIN_HISTORY=[];
 function syncCaserneContext(){
   const d=CD();
   if(!d){USERS=[];IVS=[];PILP_IVS=[];EQUIPES=[];DISPOS={};PIQUETS={};return;}
+  // Si EQUIPES a été modifié indépendamment de d.equipes, synchroniser d'abord
+  if(EQUIPES!==d.equipes&&EQUIPES.length>0&&d.equipes.length===0){
+    d.equipes=EQUIPES;
+  }
   USERS=d.users;IVS=d.ivs;PILP_IVS=d.pilpIvs;EQUIPES=d.equipes;DISPOS=d.dispos;PIQUETS=d.piquets;ASTR_CONFIG=d.astrConfig;DISPOS_VALIDATED=d.disposValidated||{};PIQUETS_VALIDATED=d.piquetsValidated||{};
   // Recharger PLANNING_ROTATIONS depuis les données caserne
   PLANNING_ROTATIONS=d.planningRotations||{};
@@ -10491,6 +10495,8 @@ function _jbSetStatus(state){
 
 function saveData(){
   try{
+    // Forcer la resynchronisation des variables globales avant sauvegarde
+    if(CURRENT_CASERNE_ID&&typeof syncCaserneContext==='function')syncCaserneContext();
     const data=_buildDataObject();
     localStorage.setItem(JB_CACHE_KEY,JSON.stringify(data));
     if(_jbSaveTimer)clearTimeout(_jbSaveTimer);
