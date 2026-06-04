@@ -10578,6 +10578,8 @@ async function _jbPush(data){
 }
 
 async function _jbPull(silent){
+  // Ne pas puller si une sauvegarde est en attente ou en cours
+  if(_jbSaving||_jbSaveTimer)return true;
   try{
     if(!silent)_jbSetStatus('loading');
     const resp=await fetch(JSONBIN_URL+'?meta=false',{headers:{'X-Master-Key':JSONBIN_KEY,'X-Access-Key':JSONBIN_KEY}});
@@ -10586,9 +10588,9 @@ async function _jbPull(silent){
     if(!data||typeof data!=='object')throw new Error('Données invalides');
     localStorage.setItem(JB_CACHE_KEY,JSON.stringify(data));
     _applyDataObject(data);_postLoadInit();
-    if(CURRENT_CASERNE_ID)syncCaserneContext();
+    // Ne resynchroniser le contexte que si aucune sauvegarde n'est en cours
+    if(CURRENT_CASERNE_ID&&!_jbSaving&&!_jbSaveTimer)syncCaserneContext();
     try{rI();}catch(e){}try{rAccueil();}catch(e){}try{rHist();}catch(e){}try{rAstrDispo();}catch(e){}try{rAstrEquipes();}catch(e){}
-    // Ne pas recharger rAdm si l'utilisateur est en train de saisir un nouvel agent
     const isTyping=document.getElementById('admin-add')&&document.getElementById('admin-add').style.display!=='none'
       &&(document.getElementById('nu-prenom')?.value||document.getElementById('nu-nom')?.value||document.getElementById('nu-mdp')?.value);
     if(!isTyping){try{rAdm();}catch(e){}}
@@ -10601,7 +10603,7 @@ function _jbStartPolling(){
   _jbPollTimer=window.setInterval(function(){
     // Ne pas puller si sauvegarde en cours ou récente (< 5s)
     if(_jbSaving||_jbSaveTimer)return;
-    if(Date.now()-_jbLastPush < 5000)return;
+    if(Date.now()-_jbLastPush < 10000)return;
     _jbPull(true);
   },10000);
 }
