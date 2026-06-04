@@ -3972,6 +3972,8 @@ function cS(id,s){
 
 function clot(id){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
+  // Ne pas re-clôturer une intervention déjà liée à une PILP
+  if(iv._lienPilp&&iv.s==='terminee'){showToast('Cette intervention est déjà clôturée (liée à une PILP).','warn');cM();return;}
   const avis=document.getElementById('chk-av')&&document.getElementById('chk-av').checked;
   const h=getH(N());
   const agr2Lbl=iv._agr2?(()=>{const u=USERS.find(u=>u.l===iv._agr2);return u?' + '+fullName(u)+' (2\u00e8me)':' + '+iv._agr2;})():'';
@@ -4088,6 +4090,8 @@ function creerPILP(ivId){
   // Clôturer l'intervention parente
   iv.s='terminee';iv._lienPilp=true;
   iv.tl.push({s:'terminee',h,who:CU.l,note:'→ PILP '+pilpId});
+  if(CD())CD().ivs=IVS;
+  saveData();
   cM();rI();rAccueil();
 }
 
