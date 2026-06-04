@@ -3761,7 +3761,7 @@ function oM(id){
         ${iv._isRenfort?'':`${animalBtn}${autorisationBtn}
         <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Clôturer l'intervention</div>
         <label class="avislbl"><input type="checkbox" id="chk-av" style="accent-color:var(--pur);"/>&#x1F7E3; Requérant absent — Avis de passage</label>
-        <button class="btn gn" style="width:100%;margin-bottom:10px;" onclick="clot('${iv.id}')">✅ Confirmer la clôture</button>
+        ${(iv.agr===CU.l||iv._agr2===CU.l||chef||isAdminModeActive())?`<button class="btn gn" style="width:100%;margin-bottom:10px;" onclick="clot('${iv.id}')">✅ Confirmer la clôture</button>`:`<div style="font-size:12px;color:#991B1B;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:8px;margin-bottom:10px;">🔒 Clôture réservée au chef d'agrès assigné ou à un administrateur.</div>`}
         <div style="border-top:1px solid var(--brd);padding-top:10px;margin-bottom:6px;">
           <div style="font-size:10px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Gestion de l'équipage</div>
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:5px;">
@@ -9325,7 +9325,7 @@ function showCompteRenduModal(ivId) {
   const isOwn       = iv.agr===CU.l||iv._agr2===CU.l;
   const isSuperAdmin= isAdminModeActive();
   const isValidated = !!iv._crValide;
-  const canWrite    = (!isValidated && isOwn) || isSuperAdmin;
+  const canWrite    = (!isValidated && (isOwn||hasRight('Administration'))) || isSuperAdmin;
   const enCours     = iv.s==='en-cours';
 
   let infoBanner = '';
