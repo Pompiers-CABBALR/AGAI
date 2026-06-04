@@ -3392,6 +3392,7 @@ function enr(){
     });
     const cm=document.getElementById('cm');cm.style.display='block';
     cm.innerHTML='&#x1F3AF; PILP créée — <strong>'+numsInt.numCas+'</strong><br><span style="font-family:monospace;font-size:11px;">'+numApl+'</span>';
+    saveData();
     rF();rI();rAccueil();gS(1);
     setTimeout(()=>{cm.style.display='none';},5000);
     return;
@@ -3505,7 +3506,7 @@ function renderInterventionRow(iv, ag, tireur) {
     ${chkShow ? `<div class="ivr-chk"><input type="checkbox" ${checked ? 'checked' : ''} onchange="${onchg}"/></div>` : ''}
     <div class="ivrl" onclick="${onclick}">
       <div class="ivrh">&#x1F4C5; ${(iv.h || '').slice(0, 8)}${isRenfortUT ? ' <span style="background:#7C3AED;color:#fff;border-radius:4px;padding:0 5px;font-size:9px;font-weight:700;margin-left:4px;">RENFORT UT</span>' : ''}</div>
-      <div class="ivrn">${isPilp ? '&#x1F3AF; ' : ''}${escHtml(iv.n)}${isRenfortUT ? ` <span style="font-size:10px;color:#7C3AED;font-weight:400;">— ${escHtml(iv._caserneSourceNom || '')}</span>` : ''}</div>
+      <div class="ivrn">${isPilp ? '&#x1F3AF; ' : ''}${escHtml(iv.n)}${isRenfortUT ? ` <span style="font-size:10px;color:#7C3AED;font-weight:400;">— ${escHtml(iv._caserneSourceNom || '')}</span>` : ''}${iv._avisPassage ? ' <span style="background:#9B59B6;color:#fff;border-radius:4px;padding:0 5px;font-size:9px;font-weight:700;margin-left:4px;">🟣 Avis passage</span>' : ''}</div>
       <div class="ivrc">&#x1F4CD; ${escHtml(iv.com)}${iv.eng ? ' · ' + escHtml(iv.eng) : ''}${isRenfortUT && iv._hDebut ? ' · depuis ' + escHtml(iv._hDebut) : ''}${numBadges}</div>
     </div>
     <div class="ivrr" onclick="${onclick}">
@@ -3777,6 +3778,13 @@ function oM(id){
   if((chef||isAgres())&&iv.s==='avis-passage'){
     const canCloseAvis=isChefCentre()||hasRight('Administration');
     const ds=getDS(N()),hh=pad(N().getHours()),mm2=pad(N().getMinutes());
+    // Bouton reprendre — visible pour le chef d'agrès qui avait l'intervention
+    if(iv.agr===CU.l||isAgres()||chef){
+      actions+=`<div class="clotbox" style="margin-top:10px;background:#EFF6FF;border:1px solid #BFDBFE;">
+        <div style="font-size:12px;font-weight:600;color:#1D4ED8;margin-bottom:8px;">🔄 Reprendre cette intervention</div>
+        <button class="btn bl" style="width:100%;" onclick="cS('${iv.id}','en-cours')">▶ Remettre en cours</button>
+      </div>`;
+    }
     if(canCloseAvis){
       actions+=`<div class="clotbox" style="margin-top:10px;">
         <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Clôturer l'avis de passage</div>
@@ -3784,13 +3792,14 @@ function oM(id){
       </div>`;
     } else {
       actions+=`<div class="clotbox" style="margin-top:10px;background:var(--rl);border:1px solid var(--rd);">
-        <div style="font-size:12px;color:var(--rd);">&#x1F512; La clôture des avis de passage est réservée au chef de centre.</div>
+        <div style="font-size:12px;color:var(--rd);">&#x1F512; La clôture définitive des avis de passage est réservée au chef de centre.</div>
       </div>`;
     }
   }
   document.getElementById('mb').innerHTML=`
     <div style="margin-bottom:8px;"><span class="bdg ${bc}">${bt}</span>${iv.rappels?` <span class="bdg bp">${iv.rappels} rappel(s)</span>`:''}</div>
     ${iv._sdis?'<div style="background:#DBEAFE;border:1px solid #93C5FD;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;color:#1D4ED8;margin-bottom:10px;text-align:center;">&#x1F691; INTERVENTION SDIS</div>':''}
+    ${iv._avisPassage?'<div style="background:#F3EAF8;border:2px solid #9B59B6;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;color:#6C3483;margin-bottom:10px;text-align:center;">🟣 Un avis de passage a été laissé pour cette intervention</div>':''}
     ${iv._echelleToiture?'<div style="background:#FEF3C7;border:2px solid #F59E0B;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:700;color:#92400E;margin-bottom:10px;text-align:center;">&#x26A0;&#xFE0F; INTERVENTION À FAIRE AVEC ÉCHELLE DE TOIT</div>':''}
     ${iv._epa?'<div style="background:#F3EAF8;border:2px solid #8E44AD;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:700;color:#6C3483;margin-bottom:10px;text-align:center;">&#x1F9F0; INTERVENTION À FAIRE AVEC EPA</div>':''}
     <div class="mr"><div class="ml">Adresse</div><div class="mv2" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">&#x1F4CD; ${escHtml(iv.addr)}, ${escHtml(iv.com)}${iv.addrComp?' · '+escHtml(iv.addrComp):''}${(isAgres()||isChef()||hasRight('Administration'))&&iv.s!=='terminee'?`<button class="btn sm" style="font-size:10px;padding:2px 7px;" onclick="editAdresse('${iv.id}')">✏️ Corriger</button>`:''}</div></div>
@@ -3960,39 +3969,42 @@ function clot(id){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
   const avis=document.getElementById('chk-av')&&document.getElementById('chk-av').checked;
   const h=getH(N());
+  const agr2Lbl=iv._agr2?(()=>{const u=USERS.find(u=>u.l===iv._agr2);return u?' + '+fullName(u)+' (2\u00e8me)':' + '+iv._agr2;})():'';
   if(avis){
-    iv.s='avis-passage';iv.rappels=(iv.rappels||0)+1;
-    if(!iv.avisIds)iv.avisIds=[];if(!iv.avisIds.includes(iv.id))iv.avisIds.push(iv.id);
+    // Marquer l'avis de passage SANS changer le statut principal
+    iv._avisPassage=true;
+    iv.rappels=(iv.rappels||0)+1;
+    if(!iv.avisIds)iv.avisIds=[];
+    if(!iv.avisIds.includes(iv.id))iv.avisIds.push(iv.id);
     iv.tl.push({s:'avis-passage',h,who:CU.l});
-  } else {
-    const agr2Lbl=iv._agr2?(()=>{const u=USERS.find(u=>u.l===iv._agr2);return u?' + '+fullName(u)+' (2\u00e8me)':' + '+iv._agr2;})():'';
-    iv.s='terminee';iv._hFin=getHHMM(N());iv.tl.push({s:'terminee',h,who:CU.l+agr2Lbl});
-    (iv.avisIds||[]).forEach(aid=>{const av=IVS.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';av.tl.push({s:'terminee',h,who:CU.l+' (fusion)'});}});
-    // Attribution des numéros si pas encore attribués
-    if(!iv._numGlobal||!iv._numCaserne||!iv._numMois){
-      const annee=parseInt((iv.h||getH(N())).slice(0,4));
-      if(iv._isRenfort){
-        // Renfort : partager le numGlobal (CABBALR) de l'inter source, pas de UT/Mois
-        if(!iv._numGlobal){
-          const ivSrc=IVS.find(function(x){return x.id===iv._ivSourceId;})||
-            Object.values(CASERNE_DATA).flatMap(function(cd){return cd.ivs||[];}).find(function(x){return x.id===iv._ivSourceId;});
-          iv._numGlobal=ivSrc&&ivSrc._numGlobal?ivSrc._numGlobal:nextIntNum(annee).numGlobal;
-        }
-        if(!iv._numRenfort) iv._numRenfort=nextRenfortNum(annee);
-        // Pas de _numCaserne ni _numMois pour les renforts
-        iv._numCaserne=null; iv._numMois=null;
-      } else {
-        const nums=nextIntNum(annee);
-        if(!iv._numGlobal&&cabbalrActif())  iv._numGlobal=nums.numGlobal;
-        if(!iv._numCaserne) iv._numCaserne=nums.numCas;
-        if(!iv._numMois)    iv._numMois=nums.numMois;
+    // L'intervention continue — on ferme juste la modal
+    saveData();cM();rI();rAccueil();rStatsHeader();
+    return;
+  }
+  // Clôture normale
+  iv.s='terminee';iv._hFin=getHHMM(N());iv.tl.push({s:'terminee',h,who:CU.l+agr2Lbl});
+  (iv.avisIds||[]).forEach(aid=>{const av=IVS.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';av.tl.push({s:'terminee',h,who:CU.l+' (fusion)'});}});
+  // Attribution des numéros si pas encore attribués
+  if(!iv._numGlobal||!iv._numCaserne||!iv._numMois){
+    const annee=parseInt((iv.h||getH(N())).slice(0,4));
+    if(iv._isRenfort){
+      if(!iv._numGlobal){
+        const ivSrc=IVS.find(function(x){return x.id===iv._ivSourceId;})||
+          Object.values(CASERNE_DATA).flatMap(function(cd){return cd.ivs||[];}).find(function(x){return x.id===iv._ivSourceId;});
+        iv._numGlobal=ivSrc&&ivSrc._numGlobal?ivSrc._numGlobal:nextIntNum(annee).numGlobal;
       }
+      if(!iv._numRenfort) iv._numRenfort=nextRenfortNum(annee);
+      iv._numCaserne=null; iv._numMois=null;
+    } else {
+      const nums=nextIntNum(annee);
+      if(!iv._numGlobal&&cabbalrActif())  iv._numGlobal=nums.numGlobal;
+      if(!iv._numCaserne) iv._numCaserne=nums.numCas;
+      if(!iv._numMois)    iv._numMois=nums.numMois;
     }
-    // Sauvegarde automatique des PDF si autorisation remplie
-    if(iv._autorisationData&&iv._autorisationData.nom){
-      iv._pdfAutorisation=_buildAutorisationHTML(id,'autorisation');
-      iv._pdfAttestation=_buildAutorisationHTML(id,'attestation');
-    }
+  }
+  if(iv._autorisationData&&iv._autorisationData.nom){
+    iv._pdfAutorisation=_buildAutorisationHTML(id,'autorisation');
+    iv._pdfAttestation=_buildAutorisationHTML(id,'attestation');
   }
   if(!iv.eng&&selEng)iv.eng=selEng;
   saveData();cM();rI();rAccueil();rStatsHeader();
@@ -4076,7 +4088,7 @@ function creerPILP(ivId){
 // ────────────────── PILP LIST ──────────────────
 function sfPilp(f,btn){
   fltPilp=f;
-  document.querySelectorAll('#tab-pilp .fb').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('#subtab-pilp .fb').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
   rPilp();
 }
