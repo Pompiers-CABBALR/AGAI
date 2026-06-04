@@ -2147,9 +2147,11 @@ function saConfirmDeleteIvs(cid){
   if(!checked.length){showToast('Aucune intervention sélectionnée.','warn');return;}
   const d=CASERNE_DATA[cid];if(!d)return;
   confirmModal('Supprimer '+checked.length+' intervention(s) ? Cette action est irréversible.',function(){
-  d.ivs=(d.ivs||[]).filter(function(iv){return !checked.includes(iv.id);});
-  d.pilpIvs=(d.pilpIvs||[]).filter(function(iv){return !checked.includes(iv.id);});
-  saveData();cM();saPostDeleteRefresh(cid);
+    d.ivs=(d.ivs||[]).filter(function(iv){return !checked.includes(iv.id);});
+    d.pilpIvs=(d.pilpIvs||[]).filter(function(iv){return !checked.includes(iv.id);});
+    // Resynchroniser les variables globales si c'est la caserne active
+    if(cid===CURRENT_CASERNE_ID){IVS=d.ivs;PILP_IVS=d.pilpIvs;}
+    saveData();cM();saPostDeleteRefresh(cid);
   });
 }
 
