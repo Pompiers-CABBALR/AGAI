@@ -1911,39 +1911,51 @@ function renderSuperAdmin(){
         <h3 style="font-size:15px;font-weight:700;margin:0;">🔐 Historique des connexions</h3>
         <button class="btn sm danger" onclick="confirmModal('Effacer tout l\\'historique ?',function(){LOGIN_HISTORY=[];saveData();renderSuperAdmin();})">🗑️ Effacer</button>
       </div>
-      ${LOGIN_HISTORY.length===0?'<div style="font-size:12px;color:#999;text-align:center;padding:20px;">Aucune connexion enregistrée</div>':
-      `<div style="overflow-x:auto;">
-        <table style="width:100%;border-collapse:collapse;font-size:12px;">
-          <thead>
-            <tr style="background:#f5f5f7;text-align:left;">
-              <th style="padding:8px 10px;font-weight:600;">Agent</th>
-              <th style="padding:8px 10px;font-weight:600;">Caserne</th>
-              <th style="padding:8px 10px;font-weight:600;">Connexion</th>
-              <th style="padding:8px 10px;font-weight:600;">Déconnexion</th>
-              <th style="padding:8px 10px;font-weight:600;">Statut</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${LOGIN_HISTORY.slice(0,100).map(e=>{
-              const dConn=new Date(e.hConnexion);
-              const dDeconn=e.hDeconnexion?new Date(e.hDeconnexion):null;
-              const fmt=d=>`${d.toLocaleDateString('fr-FR')} ${d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}`;
-              const cas=CASERNES.find(c=>c.id===e.caserneId);
-              const couleur=cas?.couleur||'#666';
-              return `<tr style="border-bottom:1px solid #f0f0f0;">
-                <td style="padding:7px 10px;font-weight:500;">${e.prenom||''} ${e.nom||''}<br><span style="color:#999;font-size:10px;font-family:monospace;">${e.login}</span></td>
-                <td style="padding:7px 10px;"><span style="background:${couleur}22;color:${couleur};padding:2px 7px;border-radius:10px;font-size:11px;font-weight:600;">${e.caserne||'—'}</span></td>
-                <td style="padding:7px 10px;color:#444;">${fmt(dConn)}</td>
-                <td style="padding:7px 10px;color:#444;">${dDeconn?fmt(dDeconn):'—'}</td>
-                <td style="padding:7px 10px;">
-                  ${e.actif?'<span style="background:#ECFDF5;color:#065F46;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">🟢 Connecté</span>':'<span style="background:#F3F4F6;color:#6B7280;padding:2px 8px;border-radius:10px;font-size:11px;">Déconnecté</span>'}
-                </td>
-              </tr>`;
-            }).join('')}
-          </tbody>
-        </table>
-        ${LOGIN_HISTORY.length>100?`<div style="font-size:11px;color:#999;text-align:center;margin-top:8px;">Affichage des 100 dernières connexions sur ${LOGIN_HISTORY.length}</div>`:''}
-      </div>`}
+      ${(()=>{
+        if(LOGIN_HISTORY.length===0)return '<div style="font-size:12px;color:#999;text-align:center;padding:20px;">Aucune connexion enregistrée</div>';
+        // Grouper par login
+        const groups={};
+        LOGIN_HISTORY.forEach(e=>{
+          if(!groups[e.login])groups[e.login]={login:e.login,prenom:e.prenom,nom:e.nom,caserneId:e.caserneId,caserne:e.caserne,entries:[]};
+          groups[e.login].entries.push(e);
+        });
+        const fmt=d=>{const dt=new Date(d);return dt.toLocaleDateString('fr-FR')+' '+dt.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});};
+        return Object.values(groups).map(g=>{
+          const cas=CASERNES.find(c=>c.id===g.caserneId);
+          const couleur=cas?.couleur||'#666';
+          const actif=g.entries.some(e=>e.actif);
+          const lastConn=g.entries[0];
+          return `<div style="border:1px solid #eee;border-radius:10px;margin-bottom:10px;overflow:hidden;">
+            <div style="background:#f8f8f8;padding:10px 14px;display:flex;align-items:center;gap:10px;cursor:pointer;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">
+              <div style="flex:1;">
+                <span style="font-weight:600;font-size:13px;">${g.prenom} ${g.nom}</span>
+                <span style="font-family:monospace;font-size:11px;color:#999;margin-left:8px;">${g.login}</span>
+              </div>
+              <span style="background:${couleur}22;color:${couleur};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">${g.caserne||'—'}</span>
+              ${actif?'<span style="background:#ECFDF5;color:#065F46;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">🟢 Connecté</span>':'<span style="background:#F3F4F6;color:#6B7280;padding:2px 8px;border-radius:10px;font-size:11px;">Déconnecté</span>'}
+              <span style="font-size:11px;color:#999;">${g.entries.length} connexion(s)</span>
+              <span style="color:#aaa;">▼</span>
+            </div>
+            <div style="display:none;overflow-x:auto;">
+              <table style="width:100%;border-collapse:collapse;font-size:11px;">
+                <thead><tr style="background:#f5f5f7;">
+                  <th style="padding:6px 12px;font-weight:600;text-align:left;">Connexion</th>
+                  <th style="padding:6px 12px;font-weight:600;text-align:left;">Déconnexion</th>
+                  <th style="padding:6px 12px;font-weight:600;text-align:left;">Statut</th>
+                </tr></thead>
+                <tbody>
+                  ${g.entries.slice(0,50).map(e=>`<tr style="border-top:1px solid #f0f0f0;">
+                    <td style="padding:6px 12px;color:#444;">${fmt(e.hConnexion)}</td>
+                    <td style="padding:6px 12px;color:#444;">${e.hDeconnexion?fmt(e.hDeconnexion):'—'}</td>
+                    <td style="padding:6px 12px;">${e.actif?'<span style="color:#065F46;font-weight:600;">🟢 En ligne</span>':'<span style="color:#9CA3AF;">Déconnecté</span>'}</td>
+                  </tr>`).join('')}
+                </tbody>
+              </table>
+              ${g.entries.length>50?`<div style="font-size:11px;color:#999;text-align:center;padding:6px;">50 dernières sur ${g.entries.length}</div>`:''}
+            </div>
+          </div>`;
+        }).join('');
+      })()}
     </div>
     <div style="margin-top:20px;background:#FEF2F2;border-radius:14px;padding:16px;border:1px solid #FECACA;">
       <h3 style="font-size:15px;font-weight:700;margin-bottom:4px;color:#C0392B;">⚠️ Zone dangereuse — Gestion des interventions</h3>
@@ -11164,6 +11176,32 @@ setTimeout(()=>{ odRestoreHandle(); }, 500);
 loadData();
 // P1 : migration des MDP en clair → hachés PBKDF2 (async, transparent)
 _migratePasswords();
+
+// ── Déconnexion automatique à la fermeture de la page ──
+window.addEventListener('pagehide', function(){
+  if(SESSION_TOKEN){
+    const entry=LOGIN_HISTORY.find(e=>e.id===SESSION_TOKEN);
+    if(entry){entry.hDeconnexion=new Date().toISOString();entry.actif=false;}
+    // Sauvegarder de façon synchrone (navigator.sendBeacon ou localStorage)
+    try{
+      const data=_buildDataObject();
+      localStorage.setItem(JB_CACHE_KEY,JSON.stringify(data));
+      // sendBeacon pour pousser vers JSONBin même si la page se ferme
+      const blob=new Blob([JSON.stringify(data)],{type:'application/json'});
+      navigator.sendBeacon(JSONBIN_URL+'?meta=false',blob);
+    }catch(e){}
+  }
+});
+window.addEventListener('beforeunload', function(){
+  if(SESSION_TOKEN){
+    const entry=LOGIN_HISTORY.find(e=>e.id===SESSION_TOKEN);
+    if(entry){entry.hDeconnexion=new Date().toISOString();entry.actif=false;}
+    try{
+      const data=_buildDataObject();
+      localStorage.setItem(JB_CACHE_KEY,JSON.stringify(data));
+    }catch(e){}
+  }
+});
 
 function tick(){
   document.getElementById('clk').textContent=N().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
