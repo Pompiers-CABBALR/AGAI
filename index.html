@@ -2115,7 +2115,7 @@ function saPostDeleteRefresh(cid){
 function saDeleteIvModal(cid){
   const d=CASERNE_DATA[cid];if(!d)return;
   const cas=CASERNES.find(c=>c.id===cid);
-  const ivs=(d.ivs||[]).sort(function(a,b){return (b.h||'').localeCompare(a.h||'');});
+  const ivs=[...(d.ivs||[]),...(d.pilpIvs||[])].sort(function(a,b){return (b.h||'').localeCompare(a.h||'');});
   if(!ivs.length){showToast('Aucune intervention pour cette caserne.','warn');return;}
   document.getElementById('mt').textContent='Supprimer des interventions — '+(cas?cas.nom:cid);
   document.getElementById('mi').textContent='';
@@ -2124,7 +2124,7 @@ function saDeleteIvModal(cid){
     const heure=iv.h&&iv.h.length>9?iv.h.slice(9,11)+':'+iv.h.slice(11,13):'';
     return '<label style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-bottom:1px solid #f5f5f5;cursor:pointer;">'
       +'<input type="checkbox" class="sa-iv-chk" value="'+iv.id+'" style="accent-color:#E24B4A;"/>'
-      +'<span style="font-size:11px;flex:1;"><strong>'+date+(heure?' '+heure:'')+'</strong> '+(iv.n||'')+(iv.com?' — '+iv.com:'')+'</span>'
+      +'<span style="font-size:11px;flex:1;"><strong>'+date+(heure?' '+heure:'')+'</strong> '+(iv.id.startsWith('PILP')?'🎯 ':'')+(iv.n||'')+(iv.com?' — '+iv.com:'')+'</span>'
       +'<span style="font-size:10px;color:#999;">'+iv.s+'</span>'
       +'</label>';
   }).join('');
