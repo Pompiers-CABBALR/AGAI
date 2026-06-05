@@ -5617,13 +5617,14 @@ function rAstrDispo(){
     });
     if(!html)html='<div style="padding:20px;text-align:center;font-size:13px;color:var(--t2);">Aucun agent \u00e0 afficher.</div>';
     document.getElementById('astr-dispo-grid').innerHTML=html;
-    // Boutons actions
+    // Boutons actions — toujours afficher Enregistrer en mode autres
     const btnDiv=document.getElementById('dispo-action-btns');
     if(btnDiv){
-      const canEdit=isAdmin||isResp||isSuperAdmin();
-      btnDiv.style.display=canEdit?'flex':'none';
+      btnDiv.style.display='flex';
       const btnSave=btnDiv.querySelector('button[onclick="saveDispo()"]');
       if(btnSave)btnSave.disabled=false;
+      // Masquer les boutons "Tout dispo/indispo/Effacer" qui n'ont pas de sens en mode autres
+      btnDiv.querySelectorAll('button[onclick^="setAllDispo"],button[onclick="clearDispo()"]').forEach(b=>b.style.display='none');
     }
     const validBannerEl=document.getElementById('dispo-valid-banner');
     if(validBannerEl)validBannerEl.style.display='none';
@@ -5670,7 +5671,8 @@ function rAstrDispo(){
     const btnsAll=btnDiv.querySelectorAll('button[onclick^="setAllDispo"],button[onclick="clearDispo()"]');
     const locked=pastDeadline&&!isAdmin&&!isResp;
     if(btnSave)btnSave.disabled=locked;
-    btnsAll.forEach(b=>b.disabled=locked);
+    // Réafficher les boutons tout dispo/indispo/effacer en mode mes/equipe
+    btnsAll.forEach(b=>{b.style.display='';b.disabled=locked;});
   }
 }
 
