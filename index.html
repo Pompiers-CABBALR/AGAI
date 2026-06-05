@@ -3699,8 +3699,14 @@ function oM(id){
   let actions='';
   if(ag||chef){
     if(iv.s==='en-attente'){
+      const dejaPris=iv.agr&&iv.agr!==CU.l;
+      const autreAgr=dejaPris?USERS.find(u=>u.l===iv.agr):null;
+      const nomAutre=autreAgr?fullName(autreAgr):(iv.agr||'');
       actions=`<div class="brow">
-        <button class="btn sel-btn sm" onclick="cS('${iv.id}','selectionne')">☑ Sélectionner</button>
+        ${dejaPris
+          ?`<button class="btn sel-btn sm" disabled style="opacity:0.5;cursor:not-allowed;">⏳ Sélectionné par ${nomAutre}</button>`
+          :`<button class="btn sel-btn sm" onclick="cS('${iv.id}','selectionne')">☑ Sélectionner</button>`
+        }
         ${(ag||chef)?`<button class="btn sm" style="background:#7C3AED;color:#fff;border-color:#7C3AED;" onclick="showRenfortModal('${iv.id}')">&#x1F4E2; Renfort UT</button>`:''}
         ${chef?`<button class="btn sm" style="color:#E67E22;border-color:#E67E22;" onclick="transfererIV('${iv.id}')">&#x1F500; Transférer</button>`:''}
         ${chef&&iv.n&&(iv.n.toLowerCase().includes('animal')||iv.n.toLowerCase().includes('animaux'))?`<button class="btn sm" style="color:#27AE60;border-color:#27AE60;" onclick="refugeAnimalier('${iv.id}')">&#x1F43E; Refuge animalier</button>`:''}
@@ -3961,13 +3967,31 @@ function cS(id,s){
     showPersonnelModal(id);
     return;
   }
+  // Bloquer si déjà sélectionné par quelqu'un d'autre
+  if(s==='selectionne'&&iv.s==='en-attente'){
+    if(iv.agr&&iv.agr!==CU.l){
+      const autreAgr=USERS.find(u=>u.l===iv.agr);
+      const nom=autreAgr?fullName(autreAgr):iv.agr;
+      showToast('⚠️ Déjà sélectionné par '+nom,'warn');
+      return;
+    }
+  }
   if(!iv.tl)iv.tl=[];
   iv.s=s;
   if(s==='selectionne'||s==='en-cours'){ if(isAgres()||isChef()||isAdminModeActive()) iv.agr=CU.l; }
   if(s==='en-attente')iv.agr=null;
   const agr2Label=iv._agr2?(()=>{const u=USERS.find(u=>u.l===iv._agr2);return u?' + '+fullName(u)+' (2\u00e8me)':' + '+iv._agr2;})():'';
   pushTL(iv,s,CU.l+agr2Label);
-  saveData();cM();rI();
+  if(CD())CD().ivs=IVS;
+  // Push immédiat pour les sélections (sans debounce)
+  if(s==='selectionne'||s==='en-attente'){
+    const data=_buildDataObject();
+    localStorage.setItem(JB_CACHE_KEY,JSON.stringify(data));
+    _jbPush(data); // push immédiat
+  } else {
+    saveData();
+  }
+  cM();rI();
   if(s==='terminee')rAccueil();
   rStatsHeader();
 }
@@ -10591,31 +10615,132 @@ function saveData(){
   }catch(e){console.warn('[AGAI] saveData error:',e);}
 }
 
+// ── PUSH : écrit uniquement la caserne active ──
 async function _jbPush(data){
   if(_jbSaving){window.setTimeout(function(){_jbPush(data);},1000);return;}
   _jbSaving=true;_jbSetStatus('saving');
   try{
-    const resp=await fetch(JSONBIN_URL,{method:'PUT',headers:{'Content-Type':'application/json','X-Master-Key':JSONBIN_KEY,'X-Access-Key':JSONBIN_KEY,'X-Bin-Versioning':'false'},body:JSON.stringify(data)});
-    if(!resp.ok)throw new Error('HTTP '+resp.status);
+    // Lire d'abord les données actuelles du Bin
+    const getResp=await fetch(JSONBIN_URL+'?meta=false',{headers:{'X-Master-Key':JSONBIN_KEY,'X-Access-Key':JSONBIN_KEY}});
+    if(!getResp.ok)throw new Error('GET HTTP '+getResp.status);
+    const current=await getResp.json();
+    // Fusionner : garder les données des autres casernes, merger intelligemment la nôtre
+    const merged=Object.assign({},current,data);
+    merged.CASERNE_DATA=Object.assign({},current.CASERNE_DATA||{});
+    Object.keys(data.CASERNE_DATA||{}).forEach(cid=>{
+      const remCas=current.CASERNE_DATA&&current.CASERNE_DATA[cid];
+      const myCas=data.CASERNE_DATA[cid];
+      if(!remCas||typeof remCas!=='object'){
+        merged.CASERNE_DATA[cid]=myCas;
+        return;
+      }
+      // Fusion au niveau des enregistrements pour la même caserne
+      const mergeById=(loc,rem)=>{
+        const map={};
+        (rem||[]).forEach(x=>{if(x&&x.id)map[x.id]=x;});
+        (loc||[]).forEach(x=>{if(x&&x.id)map[x.id]=x;});
+        return Object.values(map).sort((a,b)=>(b.h||'').localeCompare(a.h||''));
+      };
+      merged.CASERNE_DATA[cid]=Object.assign({},remCas,myCas);
+      merged.CASERNE_DATA[cid].ivs=mergeById(myCas.ivs,remCas.ivs);
+      merged.CASERNE_DATA[cid].pilpIvs=mergeById(myCas.pilpIvs,remCas.pilpIvs);
+      merged.CASERNE_DATA[cid].equipes=mergeById(myCas.equipes,remCas.equipes);
+      merged.CASERNE_DATA[cid].activites=mergeById(myCas.activites,remCas.activites);
+      merged.CASERNE_DATA[cid].fmpas=mergeById(myCas.fmpas,remCas.fmpas);
+      merged.CASERNE_DATA[cid].formStag=mergeById(myCas.formStag,remCas.formStag);
+      merged.CASERNE_DATA[cid].formForm=mergeById(myCas.formForm,remCas.formForm);
+      // Dispos : fusionner par semaine et par login
+      const remDispos=remCas.dispos||{};
+      const myDispos=myCas.dispos||{};
+      const mergedDispos=Object.assign({},remDispos);
+      Object.keys(myDispos).forEach(wk=>{
+        mergedDispos[wk]=Object.assign({},remDispos[wk]||{},myDispos[wk]);
+      });
+      merged.CASERNE_DATA[cid].dispos=mergedDispos;
+      // Users : la version locale prime (seul l'admin modifie les users)
+      merged.CASERNE_DATA[cid].users=myCas.users||remCas.users;
+    });
+    // Fusionner les données globales
+    merged.GLOBAL_ACCOUNTS=data.GLOBAL_ACCOUNTS;
+    merged.NAT=data.NAT;
+    merged.COM=data.COM;
+    merged.APL_COUNTER=Object.assign({},current.APL_COUNTER||{},data.APL_COUNTER||{});
+    merged.INT_GLOBAL_COUNTER=Object.assign({},current.INT_GLOBAL_COUNTER||{},data.INT_GLOBAL_COUNTER||{});
+    merged.INT_CAS_COUNTER=Object.assign({},current.INT_CAS_COUNTER||{},data.INT_CAS_COUNTER||{});
+    merged.PILP_COUNTER=Object.assign({},current.PILP_COUNTER||{},data.PILP_COUNTER||{});
+    merged.DISPO_REQUESTS=Object.assign({},current.DISPO_REQUESTS||{},data.DISPO_REQUESTS||{});
+    merged.DISPOS_UNLOCKED=Object.assign({},current.DISPOS_UNLOCKED||{},data.DISPOS_UNLOCKED||{});
+    merged.LOGIN_HISTORY=data.LOGIN_HISTORY||current.LOGIN_HISTORY||[];
+    merged.v=data.v;
+    // Sauvegarder le merge
+    const putResp=await fetch(JSONBIN_URL,{method:'PUT',headers:{'Content-Type':'application/json','X-Master-Key':JSONBIN_KEY,'X-Access-Key':JSONBIN_KEY,'X-Bin-Versioning':'false'},body:JSON.stringify(merged)});
+    if(!putResp.ok)throw new Error('PUT HTTP '+putResp.status);
+    // Mettre à jour le cache local avec la version mergée
+    localStorage.setItem(JB_CACHE_KEY,JSON.stringify(merged));
     _jbLastPush=Date.now();
     _jbSetStatus('ok');
   }catch(e){console.warn('[AGAI] Push error:',e);_jbSetStatus('error');}
   finally{_jbSaving=false;}
 }
 
+// ── PULL : met à jour uniquement les casernes des autres utilisateurs ──
 async function _jbPull(silent){
-  // Ne pas puller si une sauvegarde est en attente ou en cours
   if(_jbSaving||_jbSaveTimer)return true;
   try{
     if(!silent)_jbSetStatus('loading');
     const resp=await fetch(JSONBIN_URL+'?meta=false',{headers:{'X-Master-Key':JSONBIN_KEY,'X-Access-Key':JSONBIN_KEY}});
     if(!resp.ok)throw new Error('HTTP '+resp.status);
-    const data=await resp.json();
-    if(!data||typeof data!=='object')throw new Error('Données invalides');
-    localStorage.setItem(JB_CACHE_KEY,JSON.stringify(data));
-    _applyDataObject(data);_postLoadInit();
-    // Ne resynchroniser le contexte que si aucune sauvegarde n'est en cours
-    if(CURRENT_CASERNE_ID&&!_jbSaving&&!_jbSaveTimer)syncCaserneContext();
+    const remote=await resp.json();
+    if(!remote||typeof remote!=='object')throw new Error('Données invalides');
+    // Fusionner intelligemment : ne pas écraser la caserne active
+    const activeCid=CURRENT_CASERNE_ID;
+    if(remote.CASERNE_DATA&&activeCid){
+      // Sauvegarder les données locales de la caserne active
+      const myData=JSON.parse(JSON.stringify(CASERNE_DATA[activeCid]||{}));
+      // Appliquer toutes les données distantes
+      _applyDataObject(remote);
+      const remoteData=CASERNE_DATA[activeCid]||{};
+      // Fusion au niveau des enregistrements individuels
+      // IVS : garder toutes les interventions des deux, la version locale prime
+      const mergeById=(local,remote)=>{
+        const map={};
+        (remote||[]).forEach(x=>{if(x&&x.id)map[x.id]=x;});
+        (local||[]).forEach(x=>{if(x&&x.id)map[x.id]=x;}); // local écrase remote
+        return Object.values(map).sort((a,b)=>(b.h||'').localeCompare(a.h||''));
+      };
+      CASERNE_DATA[activeCid].ivs=mergeById(myData.ivs,remoteData.ivs);
+      CASERNE_DATA[activeCid].pilpIvs=mergeById(myData.pilpIvs,remoteData.pilpIvs);
+      CASERNE_DATA[activeCid].equipes=mergeById(myData.equipes,remoteData.equipes);
+      CASERNE_DATA[activeCid].activites=mergeById(myData.activites,remoteData.activites);
+      CASERNE_DATA[activeCid].fmpas=mergeById(myData.fmpas,remoteData.fmpas);
+      CASERNE_DATA[activeCid].formStag=mergeById(myData.formStag,remoteData.formStag);
+      CASERNE_DATA[activeCid].formForm=mergeById(myData.formForm,remoteData.formForm);
+      // Dispos : fusionner par semaine et par login
+      const myDispos=myData.dispos||{};
+      const remDispos=remoteData.dispos||{};
+      const mergedDispos=Object.assign({},remDispos);
+      Object.keys(myDispos).forEach(wk=>{
+        mergedDispos[wk]=Object.assign({},remDispos[wk]||{},myDispos[wk]);
+      });
+      // Si édition en cours, garder les dispos locales
+      if(Date.now()-_jbEditLock < 15000){
+        CASERNE_DATA[activeCid].dispos=myDispos;
+      } else {
+        CASERNE_DATA[activeCid].dispos=mergedDispos;
+      }
+      // Users : garder la version locale (seul l'admin modifie les users)
+      if(myData.users&&myData.users.length>0){
+        CASERNE_DATA[activeCid].users=myData.users;
+      }
+    } else {
+      _applyDataObject(remote);
+    }
+    _postLoadInit();
+    if(activeCid)syncCaserneContext();
+    // Mettre à jour le cache avec la version fusionnée
+    const merged=JSON.parse(JSON.stringify(remote));
+    if(activeCid&&CASERNE_DATA[activeCid])merged.CASERNE_DATA[activeCid]=CASERNE_DATA[activeCid];
+    localStorage.setItem(JB_CACHE_KEY,JSON.stringify(merged));
     try{rI();}catch(e){}try{rAccueil();}catch(e){}try{rHist();}catch(e){}try{rAstrDispo();}catch(e){}try{rAstrEquipes();}catch(e){}
     const isTyping=document.getElementById('admin-add')&&document.getElementById('admin-add').style.display!=='none'
       &&(document.getElementById('nu-prenom')?.value||document.getElementById('nu-nom')?.value||document.getElementById('nu-mdp')?.value);
@@ -10624,6 +10749,7 @@ async function _jbPull(silent){
   }catch(e){console.warn('[AGAI] Pull error:',e);_jbSetStatus('error');return false;}
 }
 
+// ── Polling toutes les 15s ──
 function _jbStartPolling(){
   if(_jbPollTimer)clearInterval(_jbPollTimer);
   _jbPollTimer=window.setInterval(function(){
@@ -10631,7 +10757,7 @@ function _jbStartPolling(){
     if(Date.now()-_jbLastPush < 10000)return;
     if(Date.now()-_jbEditLock < 15000)return;
     _jbPull(true);
-  },10000);
+  },15000);
 }
 
 function loadData(){
