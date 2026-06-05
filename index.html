@@ -5669,20 +5669,20 @@ function rAstrDispo(){
 }
 
 function toggleDispoCell(wk,login,d,s,el,eqColor){
+  _jbEditLock=Date.now();
   if(!DISPOS[wk])DISPOS[wk]={};
   if(!DISPOS[wk][login])DISPOS[wk][login]={};
   const key=`${d}_${s}`;
   const cur=DISPOS[wk][login][key];
-  // Cycle : vide → dispo(vert) → indispo(rouge) → vide(gris)
   if(cur===true){DISPOS[wk][login][key]=false;el.style.background='#EF4444';}
   else if(cur===false){delete DISPOS[wk][login][key];el.style.background='#E5E7EB';}
   else{DISPOS[wk][login][key]=true;el.style.background='#22C55E';}
-  // Synchroniser avec CD()
   if(CD())CD().dispos=DISPOS;
 }
 // ── Drag pour saisie dispo ──
 let _dragActive=false,_dragTargetVal=true;
 function startDispoDrag(el){
+  _jbEditLock=Date.now();
   _dragActive=true;
   // Cycler la valeur de départ
   const cur=el.dataset.val==='true'?true:el.dataset.val==='false'?false:null;
@@ -5708,6 +5708,7 @@ function applyDispoDrag(el){
 }
 document.addEventListener('mouseup',()=>{_dragActive=false;});
 function setAllDispoFor(wk,login,val,eqColor){
+  _jbEditLock=Date.now();
   // Vérifier les droits avant toute modification
   const isResp=isRespEquipe();
   const isAdmin=hasRight('Administration');
@@ -5745,9 +5746,9 @@ function clearDispo(){
   setAllDispoFor(wk,CU.l,null,eq?eq.color:'#888');
 }
 function saveDispo(){
-  // Synchroniser DISPOS avec CD() avant sauvegarde
   if(CD())CD().dispos=DISPOS;
   saveData();
+  _jbEditLock=0; // débloquer le pull après sauvegarde
   const msg=document.getElementById('astr-dispo-msg');
   if(msg){msg.style.display='block';msg.style.color='var(--grn)';msg.textContent='✅ Disponibilités enregistrées !';setTimeout(()=>msg.style.display='none',3000);}
 }
@@ -10559,7 +10560,8 @@ const JB_CACHE_KEY = 'agai_jb_cache';
 let _jbSaveTimer  = null;
 let _jbSaving     = false;
 let _jbPollTimer  = null;
-let _jbLastPush   = 0; // timestamp du dernier push réussi
+let _jbLastPush   = 0;
+let _jbEditLock   = 0; // timestamp de la dernière modification — bloque le pull pendant 15s
 
 function _jbSetStatus(state){
   let el=document.getElementById('jb-status');
@@ -10618,9 +10620,9 @@ async function _jbPull(silent){
 function _jbStartPolling(){
   if(_jbPollTimer)clearInterval(_jbPollTimer);
   _jbPollTimer=window.setInterval(function(){
-    // Ne pas puller si sauvegarde en cours ou récente (< 5s)
     if(_jbSaving||_jbSaveTimer)return;
     if(Date.now()-_jbLastPush < 10000)return;
+    if(Date.now()-_jbEditLock < 15000)return;
     _jbPull(true);
   },10000);
 }
