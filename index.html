@@ -6035,13 +6035,15 @@ function rAstrPiquets(){
         ].filter(Boolean);
         return membres.some(function(m){return m.login===u.l;});
       }).length;
+      const sol=getSollicitation(u.l); // sollicitations année entière
       html+='<div class="eq-member-row">'
         +'<div style="flex:1;font-weight:500;font-size:12px;">'+fullName(u)+'</div>'
         +'<div style="display:flex;align-items:center;gap:6px;">'
         +'<div style="width:70px;background:#f0f0f0;border-radius:5px;height:8px;overflow:hidden;">'
         +'<div style="width:'+pct+'%;background:'+pctColor+';height:100%;border-radius:5px;"></div></div>'
         +'<span style="font-size:11px;color:var(--t2);width:28px;text-align:right;">'+pct+'%</span>'
-        +(nbPiquet?'<span style="font-size:10px;background:#EAF3DE;color:#3B6D11;border-radius:4px;padding:1px 6px;font-weight:600;">'+nbPiquet+'&#x1F4CC;</span>':'<span style="font-size:10px;color:#e5e7eb;">—</span>')
+        +(nbPiquet?'<span title="Piquets cette semaine" style="font-size:10px;background:#EAF3DE;color:#3B6D11;border-radius:4px;padding:1px 6px;font-weight:600;">'+nbPiquet+'&#x1F4CC;</span>':'<span style="font-size:10px;color:#e5e7eb;">—</span>')
+        +'<span title="Sollicitations cette année" style="font-size:10px;background:'+(sol>0?'#EFF6FF':'#F3F4F6')+';color:'+(sol>0?'#1D4ED8':'#9CA3AF')+';border-radius:4px;padding:1px 6px;font-weight:600;min-width:28px;text-align:center;">\uD83D\uDD04'+sol+'</span>'
         +'</div></div>';
     });
     html+='</div>';
@@ -11701,40 +11703,30 @@ function autoFillPiquet(wk){
   }
 
   const taken=[];
-  // Chef d'agrès : agents avec droit Chef d'agrès
-  const chefsDispos=getDisposEnPriorite(taken).filter(u=>isChefAgresByGrade(u)||u.rights?.includes("Chef d'agrès"));
-  if(chefsDispos.length){
-    const chef=chefsDispos[0];
-    const sel=document.getElementById('pq-ca');
-    if(sel){sel.value=chef.l;taken.push(chef.l);}
+  // Vérifier qu'il y a au moins 1 chef d'agrès ET 1 conducteur disponibles
+  const tousDispos=getDisposEnPriorite([]);
+  const chefsDisposTous=tousDispos.filter(u=>isChefAgresByGrade(u)||u.rights?.includes("Chef d'agrès"));
+  if(!chefsDisposTous.length){
+    showToast('⚠️ Aucun chef d\'agrès disponible sur ce créneau','warn');return;
+  }
+  const conduiteursDisposTous=tousDispos.filter(u=>!chefsDisposTous.slice(0,1).find(x=>x.l===u.l));
+  if(!conduiteursDisposTous.length){
+    showToast('⚠️ Aucun conducteur disponible sur ce créneau','warn');return;
   }
 
-  // Conducteur : tout le monde (le moins sollicité dispo)
-  const conduiteursDispos=getDisposEnPriorite(taken);
-  if(conduiteursDispos.length){
-    const cond=conduiteursDispos[0];
-    // Chercher le 1er select conducteur
-    const selCond=document.querySelector('[id^="pq-agent-"]:not([id="pq-ca"])');
-    if(selCond){
-      // Trouver le select conducteur dans la liste
-      const allSels=document.querySelectorAll('.pq-sel');
-      allSels.forEach(function(s){
-        if(s.id!=='pq-ca'&&!taken.includes(s.value||'_')){
-          if(!taken.includes(cond.l)){
-            s.value=cond.l;taken.push(cond.l);
-          }
-        }
-      });
-    }
-  }
+  // Chef d'agrès
+  const chef=chefsDisposTous[0];
+  const selCA=document.getElementById('pq-ca');
+  if(selCA){selCA.value=chef.l;taken.push(chef.l);}
 
-  // Équipiers restants (stagiaires en priorité)
-  const equipiersDispos=getDisposEnPriorite(taken);
-  const sels=document.querySelectorAll('.pq-sel');
-  sels.forEach(function(s){
-    if(!s.value&&equipiersDispos.length){
-      const eq=equipiersDispos.shift();
-      s.value=eq.l;taken.push(eq.l);
+  // Remplir les autres rôles
+  const allSels=document.querySelectorAll('.pq-sel');
+  allSels.forEach(function(s){
+    if(s.id==='pq-ca')return; // déjà rempli
+    const disposPour=getDisposEnPriorite(taken);
+    if(disposPour.length){
+      s.value=disposPour[0].l;
+      taken.push(disposPour[0].l);
     }
   });
 
