@@ -5659,7 +5659,8 @@ function rAstrDispo(){
     }
   }
   if(btnDiv){
-    btnDiv.style.display=dispoSubMode==='mes'?'flex':'none';
+    const canEdit=dispoSubMode==='mes'||(isAdmin||isResp||isSuperAdmin());
+    btnDiv.style.display=canEdit?'flex':'none';
     const btnSave=btnDiv.querySelector('button[onclick="saveDispo()"]');
     const btnsAll=btnDiv.querySelectorAll('button[onclick^="setAllDispo"],button[onclick="clearDispo()"]');
     const locked=pastDeadline&&!isAdmin&&!isResp;
@@ -10512,14 +10513,13 @@ function _applyDataObject(data){
         if(src.formStag){dst.formStag=dst.formStag||[];dst.formStag.length=0;src.formStag.forEach(f=>dst.formStag.push(f));}
         if(src.formForm){dst.formForm=dst.formForm||[];dst.formForm.length=0;src.formForm.forEach(f=>dst.formForm.push(f));}
         if(src.formations){dst.formations=dst.formations||[];dst.formations.length=0;src.formations.forEach(f=>dst.formations.push(f));}
-        // Objets : merger pour préserver les modifications en cours
-        if(src.dispos){
-          if(!dst.dispos||DISPOS!==dst.dispos){dst.dispos=src.dispos;}
-          else{Object.assign(dst.dispos,src.dispos);}
+        // Objets : ne pas écraser les dispos/piquets si une édition est en cours
+        const dispoLocked = Date.now()-_jbEditLock < 15000;
+        if(src.dispos && !dispoLocked){
+          dst.dispos=src.dispos;
         }
-        if(src.piquets){
-          if(!dst.piquets||PIQUETS!==dst.piquets){dst.piquets=src.piquets;}
-          else{Object.assign(dst.piquets,src.piquets);}
+        if(src.piquets && !dispoLocked){
+          dst.piquets=src.piquets;
         }
         if(src.planningRotations)dst.planningRotations=src.planningRotations;
         if(src.astrConfig)dst.astrConfig=src.astrConfig;
