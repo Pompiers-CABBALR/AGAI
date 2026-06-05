@@ -1186,6 +1186,8 @@ function syncCaserneContext(){
   if(EQUIPES!==d.equipes&&EQUIPES.length>0&&d.equipes.length===0){d.equipes=EQUIPES;}
   if(IVS!==d.ivs&&IVS.length>0&&d.ivs.length===0){d.ivs=IVS;}
   if(PILP_IVS!==d.pilpIvs&&PILP_IVS.length>0&&(d.pilpIvs||[]).length===0){d.pilpIvs=PILP_IVS;}
+  if(DISPOS!==d.dispos&&Object.keys(DISPOS).length>0&&Object.keys(d.dispos||{}).length===0){d.dispos=DISPOS;}
+  if(PIQUETS!==d.piquets&&Object.keys(PIQUETS).length>0&&Object.keys(d.piquets||{}).length===0){d.piquets=PIQUETS;}
   USERS=d.users;IVS=d.ivs;PILP_IVS=d.pilpIvs||[];EQUIPES=d.equipes;DISPOS=d.dispos;PIQUETS=d.piquets;ASTR_CONFIG=d.astrConfig;DISPOS_VALIDATED=d.disposValidated||{};PIQUETS_VALIDATED=d.piquetsValidated||{};
   // Recharger PLANNING_ROTATIONS depuis les données caserne
   PLANNING_ROTATIONS=d.planningRotations||{};
@@ -5675,6 +5677,8 @@ function toggleDispoCell(wk,login,d,s,el,eqColor){
   if(cur===true){DISPOS[wk][login][key]=false;el.style.background='#EF4444';}
   else if(cur===false){delete DISPOS[wk][login][key];el.style.background='#E5E7EB';}
   else{DISPOS[wk][login][key]=true;el.style.background='#22C55E';}
+  // Synchroniser avec CD()
+  if(CD())CD().dispos=DISPOS;
 }
 // ── Drag pour saisie dispo ──
 let _dragActive=false,_dragTargetVal=true;
@@ -5741,11 +5745,11 @@ function clearDispo(){
   setAllDispoFor(wk,CU.l,null,eq?eq.color:'#888');
 }
 function saveDispo(){
+  // Synchroniser DISPOS avec CD() avant sauvegarde
+  if(CD())CD().dispos=DISPOS;
+  saveData();
   const msg=document.getElementById('astr-dispo-msg');
-  msg.style.display='block';
-  msg.style.color='var(--grn)';
-  msg.textContent='✅ Disponibilités enregistrées !';
-  setTimeout(()=>msg.style.display='none',3000);
+  if(msg){msg.style.display='block';msg.style.color='var(--grn)';msg.textContent='✅ Disponibilités enregistrées !';setTimeout(()=>msg.style.display='none',3000);}
 }
 function setAllDispo(val){
   const mon=getMondayOfWeek(astrDispoWeek);
@@ -7962,7 +7966,7 @@ const ST_MOIS=['Janvier','F\u00e9vrier','Mars','Avril','Mai','Juin','Juillet','A
 function getStIvs(){
   const annStr=String(stAnnee);
   const prefix=stMois>0?annStr+String(stMois).padStart(2,'0'):annStr;
-  return IVS.filter(function(iv){return !iv._isPilip&&iv.s!=='annulee'&&(iv.h||'').startsWith(prefix);});
+  return IVS.filter(function(iv){return !iv._isPilip&&iv.s==='terminee'&&(iv.h||'').startsWith(prefix);});
 }
 
 function rStats(){
@@ -8021,7 +8025,7 @@ function rStatsContent(){
     let rows='';
     ST_MOIS.forEach(function(nom,mi){
       const mStr=String(stAnnee)+String(mi+1).padStart(2,'0');
-      const nb=IVS.filter(function(iv){return !iv._isPilip&&iv.s!=='annulee'&&(iv.h||'').startsWith(mStr);}).length;
+      const nb=IVS.filter(function(iv){return !iv._isPilip&&iv.s==='terminee'&&(iv.h||'').startsWith(mStr);}).length;
       const pct=total>0?Math.round(nb/total*100):0;
       rows+='<tr style="border-bottom:1px solid #f5f5f5;cursor:pointer;" onclick="stMois='+(mi+1)+';stVue=\'nat-mois\';rStats()">'
         +'<td style="padding:6px 10px;font-size:12px;font-weight:500;">'+nom+'</td>'
@@ -10507,9 +10511,15 @@ function _applyDataObject(data){
         if(src.formStag){dst.formStag=dst.formStag||[];dst.formStag.length=0;src.formStag.forEach(f=>dst.formStag.push(f));}
         if(src.formForm){dst.formForm=dst.formForm||[];dst.formForm.length=0;src.formForm.forEach(f=>dst.formForm.push(f));}
         if(src.formations){dst.formations=dst.formations||[];dst.formations.length=0;src.formations.forEach(f=>dst.formations.push(f));}
-        // Objets : assigner directement
-        if(src.dispos)dst.dispos=src.dispos;
-        if(src.piquets)dst.piquets=src.piquets;
+        // Objets : merger pour préserver les modifications en cours
+        if(src.dispos){
+          if(!dst.dispos||DISPOS!==dst.dispos){dst.dispos=src.dispos;}
+          else{Object.assign(dst.dispos,src.dispos);}
+        }
+        if(src.piquets){
+          if(!dst.piquets||PIQUETS!==dst.piquets){dst.piquets=src.piquets;}
+          else{Object.assign(dst.piquets,src.piquets);}
+        }
         if(src.planningRotations)dst.planningRotations=src.planningRotations;
         if(src.astrConfig)dst.astrConfig=src.astrConfig;
         if(src.disposValidated)dst.disposValidated=src.disposValidated;
