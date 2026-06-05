@@ -5980,7 +5980,9 @@ function rAstrPiquets(){
               const u=USERS.find(function(x){return x.l===m.login;});
               const heures=(m.hDebut&&m.hFin&&(m.hDebut!==p.debut||m.hFin!==p.fin))
                 ?'<span style="font-size:9px;opacity:.7;margin-left:3px;">'+m.hDebut+'&ndash;'+m.hFin+'</span>':'';
-              crew+='<div style="font-weight:500;font-size:11px;">'+(u?fullName(u):m.login)+heures+'</div>';
+              const sol=getSollicitation(m.login);
+              const solBadge=sol>0?'<span style="background:#E5E7EB;color:#374151;border-radius:4px;padding:0 4px;font-size:9px;margin-left:3px;font-weight:600;">\uD83D\uDD04'+sol+'</span>':'';
+              crew+='<div style="font-weight:500;font-size:11px;">'+(u?fullName(u):m.login)+heures+solBadge+'</div>';
             });
           });
           const del=canAdd?'<button class="btn sm" style="font-size:10px;padding:1px 5px;color:#E24B4A;margin-top:2px;" onclick="delPiquet(\''+wk+'\','+globalIdx+')">&times;</button>':'';
@@ -11393,6 +11395,19 @@ function agentsAvecDispos(wk){
 // Grades chef d’agrès
 const GRADES_CHEF_AGRES=['Caporal-chef','Sergent','Sergent-chef','Adjudant','Adjudant-chef','Lieutenant','Capitaine','Commandant','Lieutenant-colonel','Colonel'];
 function isChefAgresByGrade(u){return GRADES_CHEF_AGRES.includes(u.grade)||u.rights?.includes("Chef d'agrès");}
+function getSollicitation(login){
+  // Compte le nombre de créneaux piquet pour cet agent cette année
+  const annee=String(new Date().getFullYear());
+  let count=0;
+  Object.entries(PIQUETS).forEach(function([wk,piquets]){
+    if(!wk.startsWith(annee))return;
+    (piquets||[]).forEach(function(p){
+      if((p.membres||[]).some(function(m){return m.login===login;}))count++;
+    });
+  });
+  return count;
+}
+
 function piquetAgentOpts(agents,exclude,includeNone){
   const wk=weekKey(getMondayOfWeek(astrPiquetWeek));
   const gran=ASTR_CONFIG.granularity||60;
@@ -11427,7 +11442,9 @@ function piquetAgentOpts(agents,exclude,includeNone){
   const label=function(u){
     const eq=getEquipeOfUser(u.l);
     const dispo=isDispoSurCreneau(u.l)?'\u2705 ':'';
-    return dispo+fullName(u)+' ('+gradeAbbr(u.grade)+(eq?', '+eq.nom:'')+')';
+    const sol=getSollicitation(u.l);
+    const solBadge=sol>0?' \uD83D\uDD04'+sol:'';
+    return dispo+fullName(u)+' ('+gradeAbbr(u.grade)+(eq?', '+eq.nom:'')+solBadge+')';
   };
 
   const filtered=agents.filter(function(u){return u.l!==exclude;});
@@ -11631,13 +11648,100 @@ function addPiquet(wk,engin,jourDefaut){
   document.getElementById('mt').textContent='Nouveau cr\u00e9neau \u2014 '+engin;
   document.getElementById('mi').textContent='';
   document.getElementById('mb').innerHTML=pqBuildForm(wk,engin,jourDefaut||JOURS_FULL[0],null)
-    +'<div class="brow"><button class="btn pr sm" onclick="confirmAddPiquet(\''+wk+'\',\''+engin+'\')">Valider</button><button class="btn sm" onclick="cM()">Annuler</button></div>';
+    +'<div class="brow" style="flex-wrap:wrap;gap:6px;">'
+    +'<button class="btn pr sm" onclick="confirmAddPiquet(\''+wk+'\',\''+engin+'\')">Valider</button>'
+    +'<button class="btn sm" style="background:#059669;color:#fff;border-color:#059669;" onclick="autoFillPiquet(\''+wk+'\')">🤖 Remplissage auto</button>'
+    +'<button class="btn sm" onclick="cM()">Annuler</button>'
+    +'</div>';
   document.getElementById('mo').style.display='flex';
   setTimeout(function(){
     const d=document.getElementById('pq-debut');const f=document.getElementById('pq-fin');
     if(d)d.dataset.prev=d.value;if(f)f.dataset.prev=f.value;
   },0);
 }
+function autoFillPiquet(wk){
+  // Récupérer le planning de rotation pour la semaine
+  const _pv=PLANNING_ROTATIONS[wk];
+  const planSlots=!_pv?[]:(typeof _pv==='string'?[_pv]:(Array.isArray(_pv)?_pv:[]));
+  const eq1=planSlots[0]?getEquipeById(planSlots[0]):null; // Astr. forte
+  const eq2=planSlots[1]?getEquipeById(planSlots[1]):null; // 2ème astreinte
+
+  // Construire la liste des agents disponibles sur le créneau, par priorité
+  function getDisposEnPriorite(excludeLogins){
+    const taken=excludeLogins||[];
+    function isDispoPiquet(login){
+      const jour=document.getElementById('pq-jour')?.value;
+      const debut=document.getElementById('pq-debut')?.value;
+      const fin=document.getElementById('pq-fin')?.value;
+      if(!jour||!debut||!fin)return false;
+      const gran=ASTR_CONFIG.granularity||60;
+      const startHour=ASTR_CONFIG.weekStartHour||0;
+      const jourIdx=JOURS_FULL.indexOf(jour);
+      if(jourIdx<0)return false;
+      const d=DISPOS[wk]?.[login];if(!d)return false;
+      const dMin=timeToMin(debut),fMin=timeToMin(fin);
+      const overnight=fMin<=dMin;
+      let cur=dMin;const endMin=overnight?fMin+1440:fMin;
+      while(cur<endMin){
+        const minOfDay=cur%1440,dayOff=Math.floor(cur/1440);
+        const actualDayIdx=(jourIdx+dayOff)%7;
+        const slotMin=((minOfDay-startHour*60)+1440)%1440;
+        const slotIdx=Math.floor(slotMin/gran);
+        if(!d[actualDayIdx+'_'+slotIdx])return false;
+        cur+=gran;
+      }
+      return true;
+    }
+    // Trier par nombre de sollicitations croissant (moins sollicité en premier)
+    function sortBySol(list){return list.sort((a,b)=>getSollicitation(a.l)-getSollicitation(b.l));}
+    const eq1Members=eq1?sortBySol(USERS.filter(u=>!taken.includes(u.l)&&eq1.membres.includes(u.l)&&isDispoPiquet(u.l))):[];
+    const eq2Members=eq2?sortBySol(USERS.filter(u=>!taken.includes(u.l)&&eq2.membres.includes(u.l)&&!eq1Members.find(x=>x.l===u.l)&&isDispoPiquet(u.l))):[];
+    const autresDispo=sortBySol(USERS.filter(u=>!taken.includes(u.l)&&!eq1Members.find(x=>x.l===u.l)&&!eq2Members.find(x=>x.l===u.l)&&isDispoPiquet(u.l)));
+    return [...eq1Members,...eq2Members,...autresDispo];
+  }
+
+  const taken=[];
+  // Chef d'agrès : agents avec droit Chef d'agrès
+  const chefsDispos=getDisposEnPriorite(taken).filter(u=>isChefAgresByGrade(u)||u.rights?.includes("Chef d'agrès"));
+  if(chefsDispos.length){
+    const chef=chefsDispos[0];
+    const sel=document.getElementById('pq-ca');
+    if(sel){sel.value=chef.l;taken.push(chef.l);}
+  }
+
+  // Conducteur : tout le monde (le moins sollicité dispo)
+  const conduiteursDispos=getDisposEnPriorite(taken);
+  if(conduiteursDispos.length){
+    const cond=conduiteursDispos[0];
+    // Chercher le 1er select conducteur
+    const selCond=document.querySelector('[id^="pq-agent-"]:not([id="pq-ca"])');
+    if(selCond){
+      // Trouver le select conducteur dans la liste
+      const allSels=document.querySelectorAll('.pq-sel');
+      allSels.forEach(function(s){
+        if(s.id!=='pq-ca'&&!taken.includes(s.value||'_')){
+          if(!taken.includes(cond.l)){
+            s.value=cond.l;taken.push(cond.l);
+          }
+        }
+      });
+    }
+  }
+
+  // Équipiers restants (stagiaires en priorité)
+  const equipiersDispos=getDisposEnPriorite(taken);
+  const sels=document.querySelectorAll('.pq-sel');
+  sels.forEach(function(s){
+    if(!s.value&&equipiersDispos.length){
+      const eq=equipiersDispos.shift();
+      s.value=eq.l;taken.push(eq.l);
+    }
+  });
+
+  showToast('Piquets remplis automatiquement ✓','success');
+  refreshPiquetSelects();
+}
+
 function pqFinHint(el){var h=document.getElementById("pq-fin-hint");if(h)h.style.display=(el.value&&document.getElementById("pq-debut").value&&el.value<=document.getElementById("pq-debut").value)?"inline":"none";}
 
 // Synchronise les heures des agents qui avaient l'ancienne valeur globale
