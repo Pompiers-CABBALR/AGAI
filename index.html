@@ -6043,7 +6043,7 @@ function rAstrPiquets(){
         +'<div style="width:'+pct+'%;background:'+pctColor+';height:100%;border-radius:5px;"></div></div>'
         +'<span style="font-size:11px;color:var(--t2);width:28px;text-align:right;">'+pct+'%</span>'
         +(nbPiquet?'<span title="Piquets cette semaine" style="font-size:10px;background:#EAF3DE;color:#3B6D11;border-radius:4px;padding:1px 6px;font-weight:600;">'+nbPiquet+'&#x1F4CC;</span>':'<span style="font-size:10px;color:#e5e7eb;">—</span>')
-        +'<span title="Sollicitations cette année" style="font-size:10px;background:'+(sol>0?'#EFF6FF':'#F3F4F6')+';color:'+(sol>0?'#1D4ED8':'#9CA3AF')+';border-radius:4px;padding:1px 6px;font-weight:600;min-width:28px;text-align:center;">\uD83D\uDD04'+sol+'</span>'
+        +'<span title="Sollicitation cette semaine" style="font-size:10px;background:'+(sol>0?'#EFF6FF':'#F3F4F6')+';color:'+(sol>0?'#1D4ED8':'#9CA3AF')+';border-radius:4px;padding:1px 6px;font-weight:600;min-width:32px;text-align:center;">'+sol+'%\uD83D\uDD04</span>'
         +'</div></div>';
     });
     html+='</div>';
@@ -11398,16 +11398,14 @@ function agentsAvecDispos(wk){
 const GRADES_CHEF_AGRES=['Caporal-chef','Sergent','Sergent-chef','Adjudant','Adjudant-chef','Lieutenant','Capitaine','Commandant','Lieutenant-colonel','Colonel'];
 function isChefAgresByGrade(u){return GRADES_CHEF_AGRES.includes(u.grade)||u.rights?.includes("Chef d'agrès");}
 function getSollicitation(login){
-  // Compte le nombre de créneaux piquet pour cet agent cette année
-  const annee=String(new Date().getFullYear());
-  let count=0;
-  Object.entries(PIQUETS).forEach(function([wk,piquets]){
-    if(!wk.startsWith(annee))return;
-    (piquets||[]).forEach(function(p){
-      if((p.membres||[]).some(function(m){return m.login===login;}))count++;
-    });
-  });
-  return count;
+  // Pourcentage de sollicitation = créneaux affectés / total créneaux de la semaine
+  const wk=weekKey(getMondayOfWeek(astrPiquetWeek));
+  const piquetsSem=PIQUETS[wk]||[];
+  if(!piquetsSem.length)return 0;
+  const affectes=piquetsSem.filter(function(p){
+    return (p.membres||[]).some(function(m){return m.login===login;});
+  }).length;
+  return Math.round(affectes/piquetsSem.length*100);
 }
 
 function piquetAgentOpts(agents,exclude,includeNone){
