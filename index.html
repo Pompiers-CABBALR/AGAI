@@ -2852,7 +2852,7 @@ function rAccueil(){
   const ivStats=IVS.filter(iv=>!iv._isPilip&&iv.s==='terminee');
   const nbAnnee=ivStats.filter(iv=>(iv.h||'').startsWith(annee)).length+PILP_IVS.filter(iv=>(iv.h||'').startsWith(annee)&&iv.s==='terminee').length;
   const nbMois=ivStats.filter(iv=>(iv.h||'').startsWith(moisStr)).length;
-  const nbAttente=IVS.filter(iv=>!iv._isPilip&&isTdy(iv)&&iv.s==='en-attente').length;
+  const nbAttente=IVS.filter(iv=>!iv._isPilip&&iv.s==='en-attente').length;
   const nbPilpAtt=PILP_IVS.filter(iv=>iv.s==='en-attente').length;
   const nbAppelsCaserne=getCallCount(CURRENT_CASERNE_ID);
   let statsHtml=`
@@ -11648,9 +11648,10 @@ function addPiquet(wk,engin,jourDefaut){
   document.getElementById('mt').textContent='Nouveau cr\u00e9neau \u2014 '+engin;
   document.getElementById('mi').textContent='';
   document.getElementById('mb').innerHTML=pqBuildForm(wk,engin,jourDefaut||JOURS_FULL[0],null)
+    +'<div id="pq-suggestions" style="margin-bottom:8px;"></div>'
     +'<div class="brow" style="flex-wrap:wrap;gap:6px;">'
     +'<button class="btn pr sm" onclick="confirmAddPiquet(\''+wk+'\',\''+engin+'\')">Valider</button>'
-    +'<button class="btn sm" style="background:#059669;color:#fff;border-color:#059669;" onclick="autoFillPiquet(\''+wk+'\')">🤖 Remplissage auto</button>'
+    +'<button class="btn sm" style="background:#059669;color:#fff;border-color:#059669;" onclick="suggestCreneaux(\''+wk+'\')">💡 Suggérer des créneaux</button>'
     +'<button class="btn sm" onclick="cM()">Annuler</button>'
     +'</div>';
   document.getElementById('mo').style.display='flex';
@@ -11659,6 +11660,108 @@ function addPiquet(wk,engin,jourDefaut){
     if(d)d.dataset.prev=d.value;if(f)f.dataset.prev=f.value;
   },0);
 }
+function suggestCreneaux(wk){
+  const gran=ASTR_CONFIG.granularity||60;
+  const startHour=ASTR_CONFIG.weekStartHour||0;
+  const slotsPerDay=getSlotsPerDay(gran);
+  const _pv=PLANNING_ROTATIONS[wk];
+  const planSlots=!_pv?[]:(typeof _pv==='string'?[_pv]:(Array.isArray(_pv)?_pv:[]));
+  const eq1=planSlots[0]?getEquipeById(planSlots[0]):null;
+  const eq2=planSlots[1]?getEquipeById(planSlots[1]):null;
+
+  // Priorité agents : eq1 → eq2 → reste
+  function getPriorite(login){
+    if(eq1&&eq1.membres.includes(login))return 1;
+    if(eq2&&eq2.membres.includes(login))return 2;
+    return 3;
+  }
+
+  // Vérifier si un agent est dispo sur un slot précis
+  function isAgentDispo(login,dayIdx,slotIdx){
+    return DISPOS[wk]?.[login]?.[dayIdx+'_'+slotIdx]===true;
+  }
+
+  // Trouver les créneaux continus pour chaque jour
+  const suggestions=[];
+  JOURS_FULL.forEach(function(jour,dayIdx){
+    // Pour chaque slot de départ possible
+    let slotIdx=0;
+    while(slotIdx<slotsPerDay){
+      // Chercher les agents chefs d'agrès et conducteurs dispos sur ce slot
+      const chefsDispos=USERS.filter(function(u){
+        return (isChefAgresByGrade(u)||u.rights?.includes("Chef d'agrès"))&&isAgentDispo(u.l,dayIdx,slotIdx);
+      });
+      const conducteursDispos=USERS.filter(function(u){
+        return isAgentDispo(u.l,dayIdx,slotIdx)&&!chefsDispos.find(function(c){return c.l===u.l;});
+      });
+
+      if(!chefsDispos.length||!conducteursDispos.length){slotIdx++;continue;}
+
+      // Prolonger le créneau tant que chef+conducteur sont dispos
+      const chefLogin=chefsDispos.sort((a,b)=>getPriorite(a.l)-getPriorite(b.l)||getSollicitation(a.l)-getSollicitation(b.l))[0].l;
+      const condLogin=conducteursDispos.sort((a,b)=>getPriorite(a.l)-getPriorite(b.l)||getSollicitation(a.l)-getSollicitation(b.l))[0].l;
+      let endSlot=slotIdx;
+      while(endSlot<slotsPerDay&&isAgentDispo(chefLogin,dayIdx,endSlot)&&isAgentDispo(condLogin,dayIdx,endSlot)){
+        endSlot++;
+      }
+      const duree=(endSlot-slotIdx)*gran;
+      if(duree>=gran){ // au moins 1 créneau
+        const debutMin=((startHour*60+slotIdx*gran)%1440+1440)%1440;
+        const finMin=((startHour*60+endSlot*gran)%1440+1440)%1440;
+        const fmt=function(m){return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');};
+        // Compter tous les agents dispos sur ce créneau
+        const agentsDispo=USERS.filter(function(u){
+          for(let s=slotIdx;s<endSlot;s++){if(!isAgentDispo(u.l,dayIdx,s))return false;}
+          return true;
+        });
+        const chefsChef=agentsDispo.filter(u=>isChefAgresByGrade(u)||u.rights?.includes("Chef d'agrès"));
+        suggestions.push({jour,dayIdx,slotIdx,endSlot,debut:fmt(debutMin),fin:fmt(finMin),duree,chefsCount:chefsChef.length,agentsCount:agentsDispo.length,chefLogin,condLogin});
+      }
+      slotIdx=endSlot>slotIdx?endSlot:slotIdx+1;
+    }
+  });
+
+  if(!suggestions.length){
+    document.getElementById('pq-suggestions').innerHTML='<div style="background:#FEF2F2;border-radius:8px;padding:10px;font-size:12px;color:#991B1B;margin-bottom:8px;">⚠️ Aucun créneau trouvé avec un chef d\'agrès et un conducteur disponibles simultanément.</div>';
+    return;
+  }
+
+  // Afficher les suggestions
+  let html='<div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:8px;padding:10px;margin-bottom:8px;">';
+  html+='<div style="font-size:12px;font-weight:600;color:#166534;margin-bottom:8px;">💡 Créneaux suggérés (chef d\'agrès + conducteur disponibles)</div>';
+  html+='<div style="display:flex;flex-wrap:wrap;gap:6px;">';
+  suggestions.slice(0,8).forEach(function(s){
+    const chefU=USERS.find(u=>u.l===s.chefLogin);
+    const condU=USERS.find(u=>u.l===s.condLogin);
+    const dureeH=Math.floor(s.duree/60)+'h'+(s.duree%60?String(s.duree%60).padStart(2,'0'):'');
+    html+='<button onclick="applySuggestion(\''+s.jour+'\',\''+s.debut+'\',\''+s.fin+'\')" style="background:#fff;border:1px solid #86EFAC;border-radius:8px;padding:6px 10px;cursor:pointer;text-align:left;font-size:11px;">'
+      +'<div style="font-weight:600;color:#166534;">'+s.jour+' '+s.debut+'→'+s.fin+' ('+dureeH+')</div>'
+      +'<div style="color:#444;">👮 '+(chefU?fullName(chefU):s.chefLogin)+'</div>'
+      +'<div style="color:#444;">🚗 '+(condU?fullName(condU):s.condLogin)+'</div>'
+      +'<div style="color:#888;font-size:10px;">'+s.agentsCount+' agents dispos</div>'
+      +'</button>';
+  });
+  html+='</div></div>';
+  document.getElementById('pq-suggestions').innerHTML=html;
+}
+
+function applySuggestion(jour,debut,fin){
+  const jourSel=document.getElementById('pq-jour');
+  const debutSel=document.getElementById('pq-debut');
+  const finSel=document.getElementById('pq-fin');
+  if(jourSel)jourSel.value=jour;
+  if(debutSel){debutSel.value=debut;debutSel.dataset.prev=debut;}
+  if(finSel){finSel.value=fin;finSel.dataset.prev=fin;}
+  // Mettre à jour les hints
+  pqFinHint(finSel);
+  pqSyncTimes('debut',debut);
+  pqSyncTimes('fin',fin);
+  // Lancer le remplissage avec le créneau sélectionné
+  const wk=weekKey(getMondayOfWeek(astrPiquetWeek));
+  autoFillPiquet(wk);
+  document.getElementById('pq-suggestions').innerHTML='';
+}
+
 function autoFillPiquet(wk){
   // Récupérer le planning de rotation pour la semaine
   const _pv=PLANNING_ROTATIONS[wk];
