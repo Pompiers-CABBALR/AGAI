@@ -5619,7 +5619,12 @@ function rAstrDispo(){
     document.getElementById('astr-dispo-grid').innerHTML=html;
     // Boutons actions
     const btnDiv=document.getElementById('dispo-action-btns');
-    if(btnDiv)btnDiv.style.display='none';
+    if(btnDiv){
+      const canEdit=isAdmin||isResp||isSuperAdmin();
+      btnDiv.style.display=canEdit?'flex':'none';
+      const btnSave=btnDiv.querySelector('button[onclick="saveDispo()"]');
+      if(btnSave)btnSave.disabled=false;
+    }
     const validBannerEl=document.getElementById('dispo-valid-banner');
     if(validBannerEl)validBannerEl.style.display='none';
     return;
