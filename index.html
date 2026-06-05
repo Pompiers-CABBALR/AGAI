@@ -2174,9 +2174,9 @@ function renderGlobalStats(){
       <td style="padding:8px;text-align:center;font-weight:700;">${nbAnn}</td>
     </tr>`;
   }).join('');
-  const totD=CASERNES.reduce((s,c)=>{const d=CASERNE_DATA[c.id]||{ivs:[]};return s+(d.ivs||[]).filter(iv=>!iv._isPilip&&iv.s!=='annulee'&&(iv.h||'').startsWith(String(annee)+String(mois).padStart(2,'0')+String(new Date().getDate()).padStart(2,'0'))).length;},0);
-  const totM=CASERNES.reduce((s,c)=>{const d=CASERNE_DATA[c.id]||{ivs:[]};return s+(d.ivs||[]).filter(iv=>!iv._isPilip&&iv.s!=='annulee'&&(iv.h||'').startsWith(moisStr.replace('-',''))).length;},0);
-  const totA=CASERNES.reduce((s,c)=>{const d=CASERNE_DATA[c.id]||{ivs:[]};return s+(d.ivs||[]).filter(iv=>!iv._isPilip&&iv.s!=='annulee'&&(iv.h||'').startsWith(String(annee))).length;},0);
+  const totD=CASERNES.reduce((s,c)=>{const d=CASERNE_DATA[c.id]||{ivs:[]};return s+(d.ivs||[]).filter(iv=>!iv._isPilip&&iv.s==='terminee'&&(iv.h||'').startsWith(String(annee)+String(mois).padStart(2,'0')+String(new Date().getDate()).padStart(2,'0'))).length;},0);
+  const totM=CASERNES.reduce((s,c)=>{const d=CASERNE_DATA[c.id]||{ivs:[]};return s+(d.ivs||[]).filter(iv=>!iv._isPilip&&iv.s==='terminee'&&(iv.h||'').startsWith(moisStr.replace('-',''))).length;},0);
+  const totA=CASERNES.reduce((s,c)=>{const d=CASERNE_DATA[c.id]||{ivs:[]};return s+(d.ivs||[]).filter(iv=>!iv._isPilip&&iv.s==='terminee'&&(iv.h||'').startsWith(String(annee))).length;},0);
   return `<table style="width:100%;border-collapse:collapse;font-size:12px;">
     <thead><tr style="background:#f5f5f5;">
       <th style="padding:8px;text-align:left;">Caserne</th>
@@ -2848,9 +2848,9 @@ function rAccueil(){
   document.getElementById('acc-date').textContent=`${jours[d.getDay()]} ${d.getDate()} ${mois[d.getMonth()]} ${d.getFullYear()}`;
   const annee=String(d.getFullYear());
   const moisStr=annee+'-'+String(d.getMonth()+1).padStart(2,'0');
-  // Exclure les interventions annulées et PILIP des stats
-  const ivStats=IVS.filter(iv=>!iv._isPilip&&iv.s!=='annulee');
-  const nbAnnee=ivStats.filter(iv=>(iv.h||'').startsWith(annee)).length+PILP_IVS.filter(iv=>(iv.h||'').startsWith(annee)&&iv.s!=='annulee').length;
+  // Exclure les interventions annulées, PILIP et non-terminées des stats
+  const ivStats=IVS.filter(iv=>!iv._isPilip&&iv.s==='terminee');
+  const nbAnnee=ivStats.filter(iv=>(iv.h||'').startsWith(annee)).length+PILP_IVS.filter(iv=>(iv.h||'').startsWith(annee)&&iv.s==='terminee').length;
   const nbMois=ivStats.filter(iv=>(iv.h||'').startsWith(moisStr)).length;
   const nbAttente=ivStats.filter(iv=>isTdy(iv)&&iv.s==='en-attente').length;
   const nbPilpAtt=PILP_IVS.filter(iv=>iv.s==='en-attente').length;
