@@ -2852,7 +2852,7 @@ function rAccueil(){
   const ivStats=IVS.filter(iv=>!iv._isPilip&&iv.s==='terminee');
   const nbAnnee=ivStats.filter(iv=>(iv.h||'').startsWith(annee)).length+PILP_IVS.filter(iv=>(iv.h||'').startsWith(annee)&&iv.s==='terminee').length;
   const nbMois=ivStats.filter(iv=>(iv.h||'').startsWith(moisStr)).length;
-  const nbAttente=ivStats.filter(iv=>isTdy(iv)&&iv.s==='en-attente').length;
+  const nbAttente=IVS.filter(iv=>!iv._isPilip&&isTdy(iv)&&iv.s==='en-attente').length;
   const nbPilpAtt=PILP_IVS.filter(iv=>iv.s==='en-attente').length;
   const nbAppelsCaserne=getCallCount(CURRENT_CASERNE_ID);
   let statsHtml=`
