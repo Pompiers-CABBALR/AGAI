@@ -4960,7 +4960,7 @@ function rAstrPlanning(){
 
   // Créneaux horaires : de 08h à 08h (24 colonnes de 1h) ou selon gran
   const startHour=8; // colonnes du planning commencent à 08h
-  const dispoStartHour=ASTR_CONFIG.weekStartHour||0; // base stockage dispos
+  const dispoStartHour=ASTR_CONFIG.weekStartHour??0; // base stockage dispos
   const nbSlots=Math.floor(1440/gran);
 
   // Créneaux piquets de la semaine
@@ -5037,15 +5037,10 @@ function rAstrPlanning(){
         const slotDayOff=Math.floor(slotRawMin/1440); // 1 si slot passe minuit
         // Trouver le slot de dispo correspondant pour cet agent
         const uSlotsDay=getSlotsPerDay(uGran);
-        const uStartMin=dispoStartHour*60; // base stockage dispos (weekStartHour)
-        // Calculer le jour et l'index dans la grille de dispos
-        // slotAbsMin = heure réelle dans la journée (ex: 00h=0, 08h=480)
-        // La grille de dispos stocke en base uStartMin (weekStartHour)
-        // slot 0 dans la grille = uStartMin, slot 1 = uStartMin+gran, etc.
+        const uStartMin=dispoStartHour*60;
         const dispoDay=(di+slotDayOff)%7;
-        // Index dans la grille de dispos : (slotAbsMin - uStartMin + 1440) % 1440 / uGran
-        const dispoIdxRaw=((slotAbsMin-uStartMin)+1440)%1440;
-        const dispoIdx=Math.floor(dispoIdxRaw/uGran);
+        const diffMin=slotAbsMin-uStartMin;
+        const dispoIdx=Math.floor(((diffMin%1440)+1440)%1440/uGran);
         const dispoKey=dispoDay+'_'+dispoIdx;
         const isDispo=DISPOS[wk]?.[login]?.[dispoKey]===true;
 
