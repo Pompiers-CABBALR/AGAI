@@ -2847,7 +2847,7 @@ function rAccueil(){
   const d=N();
   document.getElementById('acc-date').textContent=`${jours[d.getDay()]} ${d.getDate()} ${mois[d.getMonth()]} ${d.getFullYear()}`;
   const annee=String(d.getFullYear());
-  const moisStr=annee+'-'+String(d.getMonth()+1).padStart(2,'0');
+  const moisStr=annee+String(d.getMonth()+1).padStart(2,'0');
   // Exclure les interventions annulées, PILIP et non-terminées des stats
   const ivStats=IVS.filter(iv=>!iv._isPilip&&iv.s==='terminee');
   const nbAnnee=ivStats.filter(iv=>(iv.h||'').startsWith(annee)).length+PILP_IVS.filter(iv=>(iv.h||'').startsWith(annee)&&iv.s==='terminee').length;
@@ -2858,7 +2858,7 @@ function rAccueil(){
   let statsHtml=`
     <div class="acc-stat"><div class="acc-stat-val">${nbAttente}</div><div class="acc-stat-lbl">En attente aujourd’hui</div></div>
     <div class="acc-stat"><div class="acc-stat-val">${nbMois}</div><div class="acc-stat-lbl">Ce mois de ${['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'][d.getMonth()]}</div></div>
-    <div class="acc-stat"><div class="acc-stat-val">${nbAnnee}</div><div class="acc-stat-lbl">Depuis le 1er janvier ${annee}</div></div>
+    <div class="acc-stat"><div class="acc-stat-val">${nbAnnee}</div><div class="acc-stat-lbl">Depuis le début de l'année ${annee}</div></div>
     <div class="acc-stat"><div class="acc-stat-val" style="color:var(--blu);">${nbAppelsCaserne}</div><div class="acc-stat-lbl">Appels enregistrés (session)</div></div>`;
   if(canSeePILP()){
     statsHtml+=`<div class="acc-stat pilp" style="grid-column:1/-1;"><div class="acc-stat-val">${nbPilpAtt}</div><div class="acc-stat-lbl">Interventions PILP en attente</div></div>`;
@@ -11398,14 +11398,18 @@ function agentsAvecDispos(wk){
 const GRADES_CHEF_AGRES=['Caporal-chef','Sergent','Sergent-chef','Adjudant','Adjudant-chef','Lieutenant','Capitaine','Commandant','Lieutenant-colonel','Colonel'];
 function isChefAgresByGrade(u){return GRADES_CHEF_AGRES.includes(u.grade)||u.rights?.includes("Chef d'agrès");}
 function getSollicitation(login){
-  // Pourcentage de sollicitation = créneaux affectés / total créneaux de la semaine
+  // Pourcentage de sollicitation = jours où l'agent est affecté / 7 jours
   const wk=weekKey(getMondayOfWeek(astrPiquetWeek));
   const piquetsSem=PIQUETS[wk]||[];
   if(!piquetsSem.length)return 0;
-  const affectes=piquetsSem.filter(function(p){
-    return (p.membres||[]).some(function(m){return m.login===login;});
-  }).length;
-  return Math.round(affectes/piquetsSem.length*100);
+  // Collecter les jours uniques où l'agent est affecté
+  const jours=new Set();
+  piquetsSem.forEach(function(p){
+    if((p.membres||[]).some(function(m){return m.login===login;})){
+      jours.add(p.jour||'');
+    }
+  });
+  return Math.round(jours.size/7*100);
 }
 
 function piquetAgentOpts(agents,exclude,includeNone){
@@ -11544,7 +11548,7 @@ function pqBuildForm(wk,engin,jourDefaut,existingP){
   const jourOpts=JOURS_FULL.map(function(j){return '<option value="'+j+'"'+(j===jourDefaut?' selected':'')+'>'+j+'</option>';}).join('');
   let html='<div>';
   html+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px;">'
-    +'<div class="fg"><div class="fgl">Jour</div><select class="fi" id="pq-jour">'+jourOpts+'</select></div>'
+    +'<div class="fg"><div class="fgl">Jour</div><select class="fi" id="pq-jour" onchange="pqRefreshDispos()">'+jourOpts+'</select></div>'
     +'<div class="fg"><div class="fgl">D\u00e9but cr\u00e9neau</div><input class="fi" type="time" id="pq-debut" value="'+debutDef+'" oninput="pqFinHint(this);pqSyncTimes(\'debut\',this.value)"/></div>'
     +'<div class="fg"><div class="fgl">Fin cr\u00e9neau <span id="pq-fin-hint" style="font-size:10px;color:var(--amb);display:none;">+1j</span></div>'
     +'<input class="fi" type="time" id="pq-fin" value="'+finDef+'" oninput="pqFinHint(this);pqSyncTimes(\'fin\',this.value)"/></div>'
@@ -11839,17 +11843,32 @@ function pqFinHint(el){var h=document.getElementById("pq-fin-hint");if(h)h.style
 
 // Synchronise les heures des agents qui avaient l'ancienne valeur globale
 function pqSyncTimes(type,newVal){
-  // Récupérer l'ancienne valeur avant modif (stockée en data attribute)
   const inputId=type==='debut'?'pq-debut':'pq-fin';
   const el=document.getElementById(inputId);
   if(!el)return;
   const oldVal=el.dataset.prev||'';
   el.dataset.prev=newVal;
-  if(!oldVal)return; // première saisie, pas de sync à faire
-  // Mettre à jour toutes les lignes agents ayant l'ancienne valeur
+  if(!oldVal)return;
   const agentInputs=document.querySelectorAll(type==='debut'?'[id^="pq-hdebut-"]':'[id^="pq-hfin-"]');
   agentInputs.forEach(function(inp){
     if(inp.value===oldVal)inp.value=newVal;
+  });
+  // Rafraîchir les dispos dès que l'heure change
+  pqRefreshDispos();
+}
+
+function pqRefreshDispos(){
+  // Reconstruire toutes les listes déroulantes agents avec les dispos du créneau
+  const sels=Array.from(document.querySelectorAll('.pq-agent-sel,.pq-sel'));
+  const vals={};sels.forEach(function(s){vals[s.id]=s.value;});
+  sels.forEach(function(sel){
+    const cur=vals[sel.id]||'';
+    const isChef=sel.dataset.role==='Chef_d_agr_s'||sel.id==='pq-ca';
+    const taken=sels.filter(function(o){return o.id!==sel.id&&vals[o.id];}).map(function(o){return vals[o.id];});
+    const base=isChef?USERS.filter(isChefAgresByGrade):USERS;
+    const poolFiltered=base.filter(function(u){return u.l===cur||!taken.includes(u.l);});
+    sel.innerHTML=piquetAgentOpts(poolFiltered,'',true);
+    if(cur)sel.value=cur;
   });
 }
 function refreshPiquetSelects(){
