@@ -6036,7 +6036,6 @@ function rAstrPiquets(){
         ].filter(Boolean);
         return membres.some(function(m){return m.login===u.l;});
       }).length;
-      const sol=getSollicitation(u.l); // sollicitations année entière
       const sol=getSollicitation(u.l);
       html+='<div class="eq-member-row">'
         +'<div style="flex:1;font-weight:500;font-size:12px;">'+fullName(u)+'</div>'
