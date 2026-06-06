@@ -11416,7 +11416,7 @@ function piquetAgentOpts(agents,exclude,includeNone){
     const jour=document.getElementById('pq-jour')?.value;
     const debut=document.getElementById('pq-debut')?.value;
     const fin=document.getElementById('pq-fin')?.value;
-    if(!jour||!debut||!fin)return agentsAvecDispos(wk).some(function(u){return u.l===login;});
+    if(!jour||!debut||!fin)return false;
     const jourIdx=JOURS_FULL.indexOf(jour);
     if(jourIdx<0)return false;
     const startHour=ASTR_CONFIG.weekStartHour||0;
