@@ -5036,16 +5036,8 @@ function rAstrPlanning(){
         const slotAbsMin=slotRawMin%1440; // heure réelle dans la journée
         const slotDayOff=Math.floor(slotRawMin/1440); // 1 si slot passe minuit
         // Trouver le slot de dispo correspondant pour cet agent
-        const uSlotsDay=getSlotsPerDay(uGran);
-        // Le stockage des dispos utilise weekStartHour comme base (slot 0 = 08h si weekStartHour=8)
-        const uStartMin=(ASTR_CONFIG.weekStartHour??0)*60;
         const dispoDay=(di+slotDayOff)%7;
-        // slotAbsMin = heure réelle (0=00h, 480=08h...)
-        // Dans la grille de dispos, slot 0 = weekStartHour
-        // Donc dispoIdx = (slotAbsMin - weekStartHour*60 + 1440) % 1440 / uGran
-        const dispoIdxMin=((slotAbsMin-uStartMin)+1440)%1440;
-        const dispoIdx=Math.floor(dispoIdxMin/uGran);
-        const dispoKey=dispoDay+'_'+dispoIdx;
+        const dispoKey=dispoDay+'_'+s;
         const isDispo=DISPOS[wk]?.[login]?.[dispoKey]===true;
 
         // Piquet sur ce créneau ? — minutes absolues depuis lundi 00h00
@@ -5712,7 +5704,6 @@ function toggleDispoCell(wk,login,d,s,el,eqColor){
   if(cur===true){DISPOS[wk][login][key]=false;el.style.background='#EF4444';}
   else if(cur===false){delete DISPOS[wk][login][key];el.style.background='#E5E7EB';}
   else{DISPOS[wk][login][key]=true;el.style.background='#22C55E';}
-  if(CD())CD().dispos=DISPOS;
 }
 // ── Drag pour saisie dispo ──
 let _dragActive=false,_dragTargetVal=true;
@@ -5781,9 +5772,8 @@ function clearDispo(){
   setAllDispoFor(wk,CU.l,null,eq?eq.color:'#888');
 }
 function saveDispo(){
-  if(CD())CD().dispos=DISPOS;
   saveData();
-  _jbEditLock=0; // débloquer le pull après sauvegarde
+  _jbEditLock=0;
   const msg=document.getElementById('astr-dispo-msg');
   if(msg){msg.style.display='block';msg.style.color='var(--grn)';msg.textContent='✅ Disponibilités enregistrées !';setTimeout(()=>msg.style.display='none',3000);}
 }
