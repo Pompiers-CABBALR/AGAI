@@ -5037,10 +5037,14 @@ function rAstrPlanning(){
         const slotDayOff=Math.floor(slotRawMin/1440); // 1 si slot passe minuit
         // Trouver le slot de dispo correspondant pour cet agent
         const uSlotsDay=getSlotsPerDay(uGran);
-        const uStartMin=dispoStartHour*60;
+        // Le stockage des dispos utilise weekStartHour comme base (slot 0 = 08h si weekStartHour=8)
+        const uStartMin=(ASTR_CONFIG.weekStartHour??0)*60;
         const dispoDay=(di+slotDayOff)%7;
-        const diffMin=slotAbsMin-uStartMin;
-        const dispoIdx=Math.floor(((diffMin%1440)+1440)%1440/uGran);
+        // slotAbsMin = heure réelle (0=00h, 480=08h...)
+        // Dans la grille de dispos, slot 0 = weekStartHour
+        // Donc dispoIdx = (slotAbsMin - weekStartHour*60 + 1440) % 1440 / uGran
+        const dispoIdxMin=((slotAbsMin-uStartMin)+1440)%1440;
+        const dispoIdx=Math.floor(dispoIdxMin/uGran);
         const dispoKey=dispoDay+'_'+dispoIdx;
         const isDispo=DISPOS[wk]?.[login]?.[dispoKey]===true;
 
