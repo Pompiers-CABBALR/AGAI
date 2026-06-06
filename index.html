@@ -5036,9 +5036,6 @@ function rAstrPlanning(){
         const slotAbsMin=slotRawMin%1440; // heure réelle dans la journée
         const slotDayOff=Math.floor(slotRawMin/1440); // 1 si slot passe minuit
         // Trouver le slot de dispo correspondant pour cet agent
-        const slotAbsMin=slotRawMin%1440; // heure réelle dans la journée
-        const slotDayOff=Math.floor(slotRawMin/1440); // 1 si slot passe minuit
-        // Trouver le slot de dispo correspondant pour cet agent
         const uSlotsDay=getSlotsPerDay(uGran);
         const uStartMin=dispoStartHour*60; // même base que le stockage des dispos
         // Calculer index dispo (tenir compte du décalage de jour si slot après minuit)
