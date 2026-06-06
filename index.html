@@ -94,8 +94,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 /* Mobile ≤480px : icônes seules plus grandes */
 @media(max-width:480px){
   .nb .nb-txt,.subtab-btn .sb-txt{display:none;}
-  .nb{padding:10px 12px;font-size:24px;}
-  .subtab-btn{padding:8px 10px;font-size:22px;}
+  .nb{padding:10px 14px;font-size:28px;}
+  .subtab-btn{padding:9px 12px;font-size:26px;}
   .ts2{display:none;}
   .ttime{font-size:10px;}
   #nav-global{padding:3px 5px!important;font-size:14px!important;}
@@ -3897,11 +3897,12 @@ function oM(id){
     ${iv._isRenfort?`<div class="mr"><div class="ml" style="color:#7C3AED;">&#x1F692; Mode Renfort UT</div><div class="mv2" style="font-size:12px;background:#F5F3FF;border-radius:8px;padding:8px 12px;border:1px solid #DDD6FE;"><span style="font-weight:600;color:#7C3AED;">Renfort pour ${iv._caserneSourceNom||iv._caserneSource||''}</span><br><span style="font-size:11px;color:var(--t2);">Votre caserne est intervenue en renfort sur cette intervention.</span></div></div>`:''}
     ${iv.det?`<div class="mr"><div class="ml">Détails</div><div class="mv2">${escHtml(iv.det)}</div></div>`:''}
     ${iv.s==='terminee'&&(iv._crTexte||iv._compteRendu)&&(iv.agr===CU.l||iv._agr2===CU.l||(iv._equipage1||[]).some(function(e){return e.login===CU.l;})||(iv._equipage2||[]).some(function(e){return e.login===CU.l;})||isAdminModeActive())?`<div class="mr"><div class="ml" style="color:#0F766E;">&#x1F4CB; Compte rendu${iv._crValide?' &#x1F512;':''}</div><div class="mv2" style="white-space:pre-wrap;font-size:12px;background:#F0FDFA;border-radius:8px;padding:8px 10px;border:1px solid #99F6E4;">${iv._crTexte||iv._compteRendu}</div></div>`:''}
-    ${iv.s==='terminee'&&(iv.agr===CU.l||iv._agr2===CU.l||isChef()||isAgres()||isAdminModeActive())?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 2px 0;">
+    ${iv.s==='terminee'&&(iv.agr===CU.l||iv._agr2===CU.l||hasRight('Administration')||isAdminModeActive())?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 2px 0;">
       <button class="btn sm" style="background:#0F766E;color:#fff;border-color:#0F766E;" onclick="showCompteRenduModal('${iv.id}')">${iv._crValide?'&#x1F512; Voir':iv._crTexte||iv._compteRendu?'&#x270F;&#xFE0F; Modifier':'&#x1F4CB; Rédiger le compte rendu'}</button>
       <button class="btn sm" style="background:#C0392B;color:#fff;" onclick="voirRapportIntervention('${iv.id}')">&#x1F5A8; Rapport PDF</button>
-    </div>`:''}
-    <div class="msep"></div>
+    </div>`:`<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 2px 0;">
+      <button class="btn sm" style="background:#C0392B;color:#fff;" onclick="voirRapportIntervention('${iv.id}')">&#x1F5A8; Rapport PDF</button>
+    </div>`}    <div class="msep"></div>
     ${(iv._pdfAutorisation||iv._pdfAttestation||iv._autorisationData)&&_showAutoBtn&&(iv.agr===CU.l||iv._agr2===CU.l||isChef()||isAdminModeActive())?`<div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:10px;padding:10px 12px;margin-bottom:10px;">
       <div style="font-size:11px;font-weight:700;color:#6B3AA0;margin-bottom:8px;">&#x1F4DD; Documents autorisation / attestation</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
