@@ -6135,6 +6135,7 @@ function editPiquet(wk,globalIdx){
     pqFinHint(document.getElementById('pq-fin'));
     const d=document.getElementById('pq-debut'),f=document.getElementById('pq-fin');
     if(d)d.dataset.prev=d.value;if(f)f.dataset.prev=f.value;
+    pqRefreshDispos();
   },50);
 }
 
@@ -11662,7 +11663,9 @@ function addPiquet(wk,engin,jourDefaut){
   setTimeout(function(){
     const d=document.getElementById('pq-debut');const f=document.getElementById('pq-fin');
     if(d)d.dataset.prev=d.value;if(f)f.dataset.prev=f.value;
-  },0);
+    // Rafraîchir les dispos avec les valeurs par défaut
+    pqRefreshDispos();
+  },50);
 }
 function suggestCreneaux(wk){
   const gran=ASTR_CONFIG.granularity||60;
