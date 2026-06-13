@@ -9353,6 +9353,7 @@ function _frelonFormHTML(iv,ro){
         +(fd.photo?'<button onclick="frelonPhotoSuppr()" style="margin-left:6px;background:none;border:none;color:#C0392B;font-size:11px;cursor:pointer;">✕ Supprimer</button>':'')
         +'</div>':'')
     +'</div>';
+}
 function frelonPhotoChange(input){
   const file=input.files[0];if(!file)return;
   const reader=new FileReader();
