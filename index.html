@@ -10636,7 +10636,14 @@ function saveData(){
     const data=_buildDataObject();
     localStorage.setItem(JB_CACHE_KEY,JSON.stringify(data));
     if(_jbSaveTimer)clearTimeout(_jbSaveTimer);
-    _jbSaveTimer=window.setTimeout(function(){_jbSaveTimer=null;_jbPush(data);},2000);
+    _jbSaveTimer=window.setTimeout(function(){
+      _jbSaveTimer=null;
+      // Reconstruire les données fraîches au moment du push (évite d'écraser avec une version périmée si d'autres actions ont eu lieu depuis)
+      if(CURRENT_CASERNE_ID&&typeof syncCaserneContext==='function')syncCaserneContext();
+      const freshData=_buildDataObject();
+      localStorage.setItem(JB_CACHE_KEY,JSON.stringify(freshData));
+      _jbPush(freshData);
+    },2000);
   }catch(e){console.warn('[AGAI] saveData error:',e);}
 }
 
