@@ -2858,7 +2858,7 @@ function rAccueil(){
   const nbPilpAtt=PILP_IVS.filter(iv=>iv.s==='en-attente').length;
   const nbAppelsCaserne=getCallCount(CURRENT_CASERNE_ID);
   let statsHtml=`
-    <div class="acc-stat"><div class="acc-stat-val">${nbAttente}</div><div class="acc-stat-lbl">En attente aujourd’hui</div></div>
+    <div class="acc-stat"><div class="acc-stat-val">${nbAttente}</div><div class="acc-stat-lbl">En attente</div></div>
     <div class="acc-stat"><div class="acc-stat-val">${nbMois}</div><div class="acc-stat-lbl">Ce mois de ${['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'][d.getMonth()]}</div></div>
     <div class="acc-stat"><div class="acc-stat-val">${nbAnnee}</div><div class="acc-stat-lbl">Depuis le début de l'année ${annee}</div></div>
     <div class="acc-stat"><div class="acc-stat-val" style="color:var(--blu);">${nbAppelsCaserne}</div><div class="acc-stat-lbl">Appels enregistrés (session)</div></div>`;
@@ -3900,18 +3900,15 @@ function oM(id){
     ${iv.s==='terminee'&&(iv.agr===CU.l||iv._agr2===CU.l||hasRight('Administration')||isAdminModeActive())?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 2px 0;">
       <button class="btn sm" style="background:#0F766E;color:#fff;border-color:#0F766E;" onclick="showCompteRenduModal('${iv.id}')">${iv._crValide?'&#x1F512; Voir':iv._crTexte||iv._compteRendu?'&#x270F;&#xFE0F; Modifier':'&#x1F4CB; Rédiger le compte rendu'}</button>
       <button class="btn sm" style="background:#C0392B;color:#fff;" onclick="voirRapportIntervention('${iv.id}')">&#x1F5A8; Rapport PDF</button>
-    </div>`:`<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 2px 0;">
-      <button class="btn sm" style="background:#C0392B;color:#fff;" onclick="voirRapportIntervention('${iv.id}')">&#x1F5A8; Rapport PDF</button>
-    </div>`}    <div class="msep"></div>
-    ${(iv._pdfAutorisation||iv._pdfAttestation||iv._autorisationData)&&_showAutoBtn&&(iv.agr===CU.l||iv._agr2===CU.l||isChef()||isAdminModeActive())?`<div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:10px;padding:10px 12px;margin-bottom:10px;">
+    </div>`:``}    <div class="msep"></div>
+    ${(iv._pdfAutorisation||iv._pdfAttestation||iv._autorisationData)&&_showAutoBtn&&(iv.agr===CU.l||iv._agr2===CU.l||isAdminModeActive())?`<div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:10px;padding:10px 12px;margin-bottom:10px;">
       <div style="font-size:11px;font-weight:700;color:#6B3AA0;margin-bottom:8px;">&#x1F4DD; Documents autorisation / attestation</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         ${(iv._pdfAutorisation||iv._autorisationData)?`<button class="btn sm" style="background:#185FA5;color:#fff;" onclick="viewPdfDocument('${iv.id}','autorisation')">&#x1F4CB; Autorisation</button>`:''}
         ${(iv._pdfAttestation||iv._autorisationData)?`<button class="btn sm" style="background:#3B6D11;color:#fff;" onclick="viewPdfDocument('${iv.id}','attestation')">&#x1F4CB; Attestation</button>`:''}
         ${!iv._pdfAutorisation&&iv._autorisationData?`<span style="font-size:10px;color:var(--t2);align-self:center;">&#x26A0;&#xFE0F; Générés à la volée</span>`:'<span style="font-size:10px;color:var(--grn);align-self:center;">&#x2705; Sauvegardés</span>'}
       </div>
-    </div>`:''}
-    <details style="background:var(--bg);border-radius:10px;margin-bottom:8px;" id="tl-details-${iv.id}">
+    </div>`:''}    <details style="background:var(--bg);border-radius:10px;margin-bottom:8px;" id="tl-details-${iv.id}">
       <summary style="font-size:11px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;padding:10px 12px;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;">
         Historique des statuts <span style="font-size:10px;background:var(--brd);border-radius:10px;padding:1px 7px;color:var(--t2);font-weight:400;">${(iv.tl||[]).length}</span>
       </summary>
@@ -9344,10 +9341,40 @@ function _frelonFormHTML(iv,ro){
     +'<div class="fg" style="grid-column:1/-1;margin:0;" id="frel-pilp-wrap" style="display:'+(( fd.moyen==='Au PILP')?'':'none')+'">'
     +'<div class="fgl" style="font-size:11px;">Estimation nombre de billes PILP</div>'+num('frel-billes',fd.billes,'ex: 4')+'</div>'
     +'</div>'
+    // Photo du nid
+    +(ro&&fd.photo?'<div style="margin-top:10px;"><div class="fgl" style="font-size:11px;margin-bottom:4px;">📷 Photo du nid</div><img src="'+fd.photo+'" style="max-width:100%;max-height:200px;border-radius:8px;border:1px solid #EF9F27;"></div>'
+      :!ro?'<div style="margin-top:10px;"><div class="fgl" style="font-size:11px;margin-bottom:4px;">📷 Photo du nid</div>'
+        +(fd.photo?'<img id="frel-photo-preview" src="'+fd.photo+'" style="max-width:100%;max-height:150px;border-radius:8px;border:1px solid #EF9F27;display:block;margin-bottom:6px;">'
+          :'<img id="frel-photo-preview" style="display:none;max-width:100%;max-height:150px;border-radius:8px;border:1px solid #EF9F27;margin-bottom:6px;">')
+        +'<label style="display:inline-block;cursor:pointer;background:#FEF3C7;border:1px solid #EF9F27;border-radius:8px;padding:5px 12px;font-size:11px;font-weight:600;color:#854F0B;">'
+        +'📷 '+(fd.photo?'Changer la photo':'Ajouter une photo')
+        +'<input type="file" accept="image/*" style="display:none;" onchange="frelonPhotoChange(this)">'
+        +'</label>'
+        +(fd.photo?'<button onclick="frelonPhotoSuppr()" style="margin-left:6px;background:none;border:none;color:#C0392B;font-size:11px;cursor:pointer;">✕ Supprimer</button>':'')
+        +'</div>':'')
     +'</div>';
+function frelonPhotoChange(input){
+  const file=input.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=function(e){
+    window._frelonPhotoB64=e.target.result;
+    const preview=document.getElementById('frel-photo-preview');
+    if(preview){preview.src=e.target.result;preview.style.display='block';}
+  };
+  reader.readAsDataURL(file);
 }
+function frelonPhotoSuppr(){
+  window._frelonPhotoB64='__suppr__';
+  const preview=document.getElementById('frel-photo-preview');
+  if(preview){preview.src='';preview.style.display='none';}
+}
+
 function _frelonSaveFields(iv){
   function v(id){return (document.getElementById(id)||{}).value||'';}
+  const oldPhoto=iv._frelonData&&iv._frelonData.photo||'';
+  const newPhoto=window._frelonPhotoB64;
+  const photo=newPhoto==='__suppr__'?'':newPhoto||oldPhoto;
+  window._frelonPhotoB64=null;
   iv._frelonData={
     type:   v('frel-type'),
     haies:  v('frel-haies'),
@@ -9360,7 +9387,8 @@ function _frelonSaveFields(iv){
     dimH:   v('frel-dim-h'),
     dimD:   v('frel-dim-d'),
     moyen:  v('frel-moyen'),
-    billes: v('frel-billes')
+    billes: v('frel-billes'),
+    photo:  photo
   };
 }
 function _frelonSummaryLine(iv){
@@ -9646,6 +9674,9 @@ function genRapportInterventionHTML(ivId) {
   if(_isFrelonIv(iv)&&iv._frelonData){
     const frelLine=_frelonSummaryLine(iv);
     if(frelLine)rows_data.push(['','<span style="font-size:11pt;">'+frelLine+'</span>']);
+    if(iv._frelonData&&iv._frelonData.photo){
+      rows_data.push(['','<div style="margin-top:6px;"><div style="font-size:10pt;font-weight:bold;margin-bottom:4px;">📷 Photo du nid :</div><img src="'+iv._frelonData.photo+'" style="max-width:300px;max-height:200px;border:1px solid #ccc;border-radius:4px;"></div>']);
+    }
   }
   rows_data.push(['','<span style="white-space:pre-wrap;">'+(cr||'\u00a0')+'</span>']);
   rows_data.push(['','\u00a0']);
