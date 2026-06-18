@@ -3985,13 +3985,7 @@ function cS(id,s){
   pushTL(iv,s,CU.l+agr2Label);
   if(CD())CD().ivs=IVS;
   // Push immédiat pour les sélections (sans debounce)
-  if(s==='selectionne'||s==='en-attente'){
-    const data=_buildDataObject();
-    localStorage.setItem(JB_CACHE_KEY,JSON.stringify(data));
-    _jbPush(data); // push immédiat
-  } else {
-    saveData();
-  }
+  saveData(true); // push immédiat pour tout changement de statut
   cM();rI();
   if(s==='terminee')rAccueil();
   rStatsHeader();
@@ -4012,7 +4006,7 @@ function clot(id){
     if(!iv.avisIds.includes(iv.id))iv.avisIds.push(iv.id);
     iv.tl.push({s:'avis-passage',h,who:CU.l});
     // L'intervention continue — on ferme juste la modal
-    saveData();cM();rI();rAccueil();rStatsHeader();
+    saveData(true);cM();rI();rAccueil();rStatsHeader();
     return;
   }
   // Clôture normale
@@ -4041,7 +4035,7 @@ function clot(id){
     iv._pdfAttestation=_buildAutorisationHTML(id,'attestation');
   }
   if(!iv.eng&&selEng)iv.eng=selEng;
-  saveData();cM();rI();rAccueil();rStatsHeader();
+  saveData(true);cM();rI();rAccueil();rStatsHeader();
 }
 function clotAvis(id){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
@@ -5778,7 +5772,7 @@ function clearDispo(){
   setAllDispoFor(wk,CU.l,null,eq?eq.color:'#888');
 }
 function saveDispo(){
-  saveData();
+  saveData(true);
   _jbEditLock=0;
   const msg=document.getElementById('astr-dispo-msg');
   if(msg){msg.style.display='block';msg.style.color='var(--grn)';msg.textContent='✅ Disponibilités enregistrées !';setTimeout(()=>msg.style.display='none',3000);}
@@ -10657,21 +10651,25 @@ function _jbSetStatus(state){
   el.onclick=function(){jbSyncNow();};
 }
 
-function saveData(){
+function saveData(immediate){
   try{
-    // Forcer la resynchronisation des variables globales avant sauvegarde
     if(CURRENT_CASERNE_ID&&typeof syncCaserneContext==='function')syncCaserneContext();
-    const data=_buildDataObject();
-    localStorage.setItem(JB_CACHE_KEY,JSON.stringify(data));
-    if(_jbSaveTimer)clearTimeout(_jbSaveTimer);
-    _jbSaveTimer=window.setTimeout(function(){
-      _jbSaveTimer=null;
-      // Reconstruire les données fraîches au moment du push (évite d'écraser avec une version périmée si d'autres actions ont eu lieu depuis)
-      if(CURRENT_CASERNE_ID&&typeof syncCaserneContext==='function')syncCaserneContext();
-      const freshData=_buildDataObject();
-      localStorage.setItem(JB_CACHE_KEY,JSON.stringify(freshData));
+    const freshData=_buildDataObject();
+    localStorage.setItem(JB_CACHE_KEY,JSON.stringify(freshData));
+    if(immediate){
+      // Push immédiat — pas de debounce
+      if(_jbSaveTimer){clearTimeout(_jbSaveTimer);_jbSaveTimer=null;}
       _jbPush(freshData);
-    },2000);
+    } else {
+      if(_jbSaveTimer)clearTimeout(_jbSaveTimer);
+      _jbSaveTimer=window.setTimeout(function(){
+        _jbSaveTimer=null;
+        if(CURRENT_CASERNE_ID&&typeof syncCaserneContext==='function')syncCaserneContext();
+        const data2=_buildDataObject();
+        localStorage.setItem(JB_CACHE_KEY,JSON.stringify(data2));
+        _jbPush(data2);
+      },2000);
+    }
   }catch(e){console.warn('[AGAI] saveData error:',e);}
 }
 
