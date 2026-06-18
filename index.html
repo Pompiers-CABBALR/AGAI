@@ -1419,7 +1419,7 @@ function showParamsTab(sub,btn){
   document.getElementById('params-onedrive').style.display=sub==='onedrive'?'':'none';
   if(sub==='profil')rProfil();
   else if(sub==='admin')rAdm();
-  else if(sub==='onedrive')odRenderStatus();
+  else if(sub==='onedrive'){}
 }
 
 // === MODULE: security.js ===
@@ -3888,7 +3888,7 @@ function oM(id){
         +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'
         +'<span style="font-size:11px;font-weight:600;color:#7C3AED;">'+(r.type==='complet'?'&#x1F692; Renfort complet':'&#x1F465; Renfort personnel')+'</span>'
         +'<span style="font-size:10px;color:var(--t2);">'+r.hDemande+'</span>'
-        +(canCancel?'<button class="btn sm" style="font-size:9px;padding:1px 8px;color:#E24B4A;border-color:#E24B4A;margin-left:auto;" onclick="annulerRenfort(\''+iv.id+'\',\''+r.id+'\')">✕ Annuler tout</button>':'<span style="font-size:10px;color:#888;margin-left:auto;">Annulé</span>')
+        +(canCancel?'<button class="btn sm" style="font-size:9px;padding:1px 8px;color:#E24B4A;border-color:#E24B4A;margin-left:auto;" onclick="annulerRenfortUT(\''+iv.id+'\',\''+r.id+'\')">✕ Annuler tout</button>':'<span style="font-size:10px;color:#888;margin-left:auto;">Annulé</span>')
         +'</div>'
         +(r.note?'<div style="font-size:10px;color:var(--t2);margin-bottom:5px;">'+r.note+'</div>':'')
         +destDetails
@@ -5182,24 +5182,6 @@ function hexAlpha(hex,alpha){
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-function changerEquipeSemaine(wk){
-  const opts=EQUIPES.map(e=>`<option value="${e.id}">${e.nom}</option>`).join('');
-  const cur=getEquipeSemaine(wk);
-  document.getElementById('mt').textContent='Équipe de garde';
-  document.getElementById('mi').textContent='';
-  document.getElementById('mb').innerHTML=`
-    <div style="padding:4px 0;">
-      <div class="fg"><div class="fgl">Équipe assignée à cette semaine</div>
-        <select class="fi" id="chg-eq-sel">${opts}</select>
-      </div>
-      <div class="brow">
-        <button class="btn pr sm" onclick="confirmerChangerEq('${wk}')">✅ Confirmer</button>
-        <button class="btn sm" onclick="cM()">Annuler</button>
-      </div>
-    </div>`;
-  document.getElementById('chg-eq-sel').value=cur?.id||'';
-  document.getElementById('mo').style.display='flex';
-}
 function confirmerChangerEq(wk){
   PLANNING_ROTATIONS[wk]=document.getElementById('chg-eq-sel').value;
   cM();rAstrPlanning();
@@ -8873,7 +8855,7 @@ function rStatsHeader(){
 // ══════════════════════════════════════════════════════
 // PERSISTANCE localStorage
 // ══════════════════════════════════════════════════════
-const STORAGE_KEY='agai_data' // clé partagée entre toutes les versions;
+
 
 
 function savePdfDocuments(ivId) {
@@ -9037,12 +9019,6 @@ function _loadEmailJS(cb) {
   document.head.appendChild(s);
 }
 
-function _loadScript(src, cb) {
-  if (document.querySelector('script[src="'+src+'"]')) { cb(); return; }
-  const s = document.createElement('script');
-  s.src = src; s.onload = cb;
-  document.head.appendChild(s);
-}
 
 function _loadScript(src, cb) {
   if (document.querySelector('script[src="'+src+'"]')) { cb(); return; }
@@ -10853,7 +10829,6 @@ function jbSyncNow(){
 }
 
 function saveAndRefresh(){saveData();}
-function _odSyncAfterSave(){if(typeof odScheduleSync==='function')odScheduleSync();}
 
 
 // === MODULE: planning_annuel.js ===
@@ -10993,14 +10968,6 @@ function setGardeSlot(wk,si,eqId){
   saveData();
   rAstrGarde();
 }
-function setEquipeSemaine(wk,eqId){
-  if(!PLANNING_ROTATIONS)window.PLANNING_ROTATIONS={};
-  if(eqId)PLANNING_ROTATIONS[wk]=eqId;
-  else delete PLANNING_ROTATIONS[wk];
-  // Synchroniser dans les données caserne
-  if(CD())CD().planningRotations=PLANNING_ROTATIONS;
-  saveData();
-}
 
 function remplirGardeAuto(){
   if(!EQUIPES.length){showToast('Créez d\'abord des équipes.','warn');return;}
@@ -11114,10 +11081,8 @@ function effacerPlanningAnnee(){
 
 const OD_FS_KEY = 'agai_od_fsh_v1'; // clé pour stocker le handle de dossier
 const OD_FILENAME = 'agai_data.json';
-const OD_WRITE_DELAY_MS = 800; // debounce écriture (évite les écritures trop fréquentes)
 
 let _odDirHandle = null;     // FileSystemDirectoryHandle courant
-let _odWriteTimer = null;    // timer debounce
 let _odLastWriteTs = 0;      // timestamp dernière écriture réussie
 let _odLastReadTs = 0;       // timestamp dernière lecture réussie
 let _odFsAvailable = (typeof window !== 'undefined' && 'showDirectoryPicker' in window);
@@ -11130,34 +11095,6 @@ function odSetConfig(obj){localStorage.setItem('agai_od_cfg',JSON.stringify({...
 function odFsAvailable(){ return _odFsAvailable; }
 
 // ── Choisir le dossier (une fois, mémorisé) ──
-async function odChooseFolder(){
-  if(!odFsAvailable()){
-    showToast('Votre navigateur ne supporte pas l\'accès aux fichiers. Utilisez Chrome ou Edge.','warn');
-    return false;
-  }
-  try{
-    const dirHandle = await window.showDirectoryPicker({
-      mode: 'readwrite',
-      startIn: 'documents',
-      id: 'agai-onedrive',
-    });
-    _odDirHandle = dirHandle;
-    // Persister le handle pour les prochains chargements
-    try{
-      const db = await _odOpenIDB();
-      await _odIDBSet(db, OD_FS_KEY, dirHandle);
-    }catch(e){}
-    odSetConfig({folderName: dirHandle.name, folderSetAt: Date.now()});
-    showToast('Dossier OneDrive configuré : '+dirHandle.name+' ✓','success');
-    odRenderStatus();
-    // Charger les données existantes si le fichier existe déjà
-    await odPullNow();
-    return true;
-  }catch(e){
-    if(e.name !== 'AbortError') showToast('Erreur accès dossier : '+e.message,'error');
-    return false;
-  }
-}
 
 // ── Restaurer le handle depuis IndexedDB au démarrage ──
 async function odRestoreHandle(){
@@ -11170,12 +11107,12 @@ async function odRestoreHandle(){
     const perm = await handle.queryPermission({mode:'readwrite'});
     if(perm === 'granted'){
       _odDirHandle = handle;
-      odRenderStatus();
-      await odPullNow(); // sync silencieuse au démarrage
+      
+      // pull désactivé
     } else if(perm === 'prompt'){
       // Afficher un bouton pour re-demander la permission
       _odDirHandle = handle;
-      odRenderStatus(); // montrera le bouton "Réautoriser"
+       // montrera le bouton "Réautoriser"
     }
   }catch(e){}
 }
@@ -11186,8 +11123,8 @@ async function odRequestPermission(){
   try{
     const perm = await _odDirHandle.requestPermission({mode:'readwrite'});
     if(perm === 'granted'){
-      odRenderStatus();
-      await odPullNow();
+      
+      // pull désactivé
       return true;
     }
     return false;
@@ -11195,93 +11132,16 @@ async function odRequestPermission(){
 }
 
 // ── PULL : lire agai_data.json depuis le dossier OneDrive ──
-async function odPullNow(){
-  if(!_odDirHandle){ showToast('Choisissez d\'abord le dossier OneDrive.','warn'); return; }
-  try{
-    // Vérifier/demander la permission si nécessaire
-    const perm = await _odDirHandle.queryPermission({mode:'readwrite'});
-    if(perm !== 'granted'){
-      const newPerm = await _odDirHandle.requestPermission({mode:'readwrite'});
-      if(newPerm !== 'granted'){ showToast('Permission refusée pour le dossier OneDrive.','warn'); return; }
-    }
-    let fileHandle;
-    try{ fileHandle = await _odDirHandle.getFileHandle(OD_FILENAME); }
-    catch(e){
-      // Fichier absent → premier lancement, on va l'écrire
-      await odSyncNow();
-      return;
-    }
-    const file = await fileHandle.getFile();
-    const remoteTs = file.lastModified;
-    // Si le fichier distant est plus récent que notre dernière écriture → l'appliquer
-    if(remoteTs > _odLastWriteTs + 2000){
-      const text = await file.text();
-      let data;
-      try{
-        // Essayer déchiffrement d'abord
-        try{ const plain = await _decryptData(text); data = JSON.parse(plain); }
-        catch(e){ data = JSON.parse(text); }
-      } catch(e){ showToast('Fichier OneDrive corrompu ou illisible.','error'); return; }
-      _applyDataObject(data);
-      if(CURRENT_CASERNE_ID) syncCaserneContext();
-      if(CU){ try{rAccueil();}catch(e){} try{rI();}catch(e){} try{rStatsHeader();}catch(e){} }
-      _odLastReadTs = Date.now();
-      odSetConfig({lastSync: Date.now(), lastSyncDir: 'pull'});
-      odRenderStatus();
-      showToast('Données mises à jour depuis OneDrive ✓','success');
-    } else {
-      odSetConfig({lastSync: Date.now(), lastSyncDir: 'up-to-date'});
-      odRenderStatus();
-    }
-  }catch(e){
-    showToast('Erreur lecture OneDrive : '+e.message,'error');
-  }
-}
 
 // ── PUSH : écrire agai_data.json dans le dossier OneDrive ──
-async function odSyncNow(){
-  if(!_odDirHandle) return;
-  try{
-    const perm = await _odDirHandle.queryPermission({mode:'readwrite'});
-    if(perm !== 'granted'){
-      const newPerm = await _odDirHandle.requestPermission({mode:'readwrite'});
-      if(newPerm !== 'granted') return;
-    }
-    const data = _buildDataObject();
-    const json = JSON.stringify(data);
-    // Chiffrer si possible
-    let content = json;
-    if(window.crypto?.subtle){ try{ content = await _encryptData(json); }catch(e){} }
-    const fileHandle = await _odDirHandle.getFileHandle(OD_FILENAME, {create:true});
-    const writable = await fileHandle.createWritable();
-    await writable.write(content);
-    await writable.close();
-    _odLastWriteTs = Date.now();
-    odSetConfig({lastSync: Date.now(), lastSyncDir: 'push'});
-    odRenderStatus();
-  }catch(e){
-    // Erreur silencieuse (ex: fichier verrouillé par OneDrive pendant la sync)
-    // On réessaiera au prochain saveData
-  }
-}
 
 // ── Debounce : ne pas écrire à chaque frappe, attendre 800ms d'inactivité ──
 function odScheduleSync(){
   if(!_odDirHandle) return;
   if(_odWriteTimer) clearTimeout(_odWriteTimer);
-  _odWriteTimer = setTimeout(()=>{ odSyncNow(); }, OD_WRITE_DELAY_MS);
 }
 
 // ── Déconnecter le dossier ──
-function odDisconnect(){
-  confirmModal('Dissocier le dossier OneDrive ? Les données locales sont conservées.',()=>{
-    _odDirHandle = null;
-    try{_odOpenIDB().then(db=>_odIDBDel(db, OD_FS_KEY));}catch(e){}
-    odSetConfig({folderName:null, folderSetAt:null, lastSync:null});
-    odRenderStatus();
-    showToast('Dossier OneDrive dissocié.','info');
-  });
-}
 
 // ── IndexedDB pour persister le FileSystemDirectoryHandle ──
 function _odOpenIDB(){
@@ -11352,42 +11212,6 @@ async function odImportManuel(input){
 }
 
 // ── Rendu du panneau OneDrive ──
-function odRenderStatus(){
-  const cfg = odGetConfig();
-  const stepChoose = document.getElementById('od-step-choose');
-  const stepConnected = document.getElementById('od-step-connected');
-  const stepNoFs = document.getElementById('od-step-nofs');
-  const banner = document.getElementById('od-status-banner');
-  const lastSyncEl = document.getElementById('od-last-sync');
-  if(!banner) return;
-
-  if(!odFsAvailable()){
-    // Navigateur sans File System Access (Firefox, Safari)
-    if(stepChoose) stepChoose.style.display = 'none';
-    if(stepConnected) stepConnected.style.display = 'none';
-    if(stepNoFs) stepNoFs.style.display = '';
-    banner.textContent = '⚠️ Navigateur incompatible — utiliser Chrome ou Edge';
-    banner.style.cssText = 'padding:10px 14px;border-radius:10px;font-size:13px;margin-bottom:12px;background:#FEF9C3;color:#713F12;border:1px solid #F59E0B;';
-    return;
-  }
-
-  const connected = !!_odDirHandle;
-  if(stepChoose) stepChoose.style.display = connected ? 'none' : '';
-  if(stepConnected) stepConnected.style.display = connected ? '' : 'none';
-  if(stepNoFs) stepNoFs.style.display = 'none';
-
-  if(connected){
-    banner.textContent = '● Dossier connecté : '+(_odDirHandle.name||cfg.folderName||'?');
-    banner.style.cssText = 'padding:10px 14px;border-radius:10px;font-size:13px;margin-bottom:12px;background:#EAF3DE;color:#3B6D11;border:1px solid #3B6D11;';
-    if(lastSyncEl && cfg.lastSync){
-      const dir = cfg.lastSyncDir==='push'?'↑ envoyé':'cfg.lastSyncDir==="pull"'?'↓ reçu':'✓';
-      lastSyncEl.textContent = 'Dernière sync : '+new Date(cfg.lastSync).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
-    }
-  } else {
-    banner.textContent = '● Non connecté — choisissez le dossier OneDrive';
-    banner.style.cssText = 'padding:10px 14px;border-radius:10px;font-size:13px;margin-bottom:12px;background:#f5f5f7;color:#6c6c70;border:1px solid #e5e5ea;';
-  }
-}
 
 // ── Init au démarrage ──
 setTimeout(()=>{ odRestoreHandle(); }, 500);
