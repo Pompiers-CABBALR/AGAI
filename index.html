@@ -10660,7 +10660,13 @@ async function _jbPush(data){
       if(Array.isArray(obj))return obj.map(stripPhotos);
       const copy={};
       for(const k in obj){
-        if(k==='photo'&&typeof obj[k]==='string'&&obj[k].startsWith('data:image')){
+        // Exclure les champs lourds qui peuvent être reconstruits à la volée
+        if(k==='photo'&&typeof obj[k]==='string'&&obj[k].startsWith('data:')){
+          copy[k]='__LOCAL__';
+        } else if(k==='_pdfAutorisation'||k==='_pdfAttestation'){
+          // Ces HTML sont reconstruits par _buildAutorisationHTML() à la demande
+          copy[k]='__REBUILD__';
+        } else if(k==='logoB64'&&typeof obj[k]==='string'&&obj[k].length>100){
           copy[k]='__LOCAL__';
         } else {
           copy[k]=stripPhotos(obj[k]);
@@ -10753,16 +10759,17 @@ async function _jbPull(silent){
       function restorePhotos(remObj, locObj){
         if(!remObj||!locObj||typeof remObj!=='object')return;
         if(Array.isArray(remObj)&&Array.isArray(locObj)){
-          remObj.forEach(function(item,i){
-            const locItem=locObj.find(function(x){return x&&item&&x.id===item.id;});
+          remObj.forEach(function(item){
+            if(!item||!item.id)return;
+            const locItem=locObj.find(function(x){return x&&x.id===item.id;});
             if(locItem)restorePhotos(item,locItem);
           });
           return;
         }
         for(const k in remObj){
-          if(remObj[k]==='__LOCAL__'&&locObj[k]&&locObj[k].startsWith('data:image')){
+          if((remObj[k]==='__LOCAL__'||remObj[k]==='__REBUILD__')&&locObj[k]&&typeof locObj[k]==='string'&&locObj[k].length>4){
             remObj[k]=locObj[k];
-          } else if(remObj[k]&&typeof remObj[k]==='object'){
+          } else if(remObj[k]&&typeof remObj[k]==='object'&&locObj[k]&&typeof locObj[k]==='object'){
             restorePhotos(remObj[k],locObj[k]);
           }
         }
