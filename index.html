@@ -10655,14 +10655,13 @@ async function _jbPush(data){
   if(_jbSaving){window.setTimeout(function(){_jbPush(data);},1000);return;}
   _jbSaving=true;_jbSetStatus('saving');
   try{
-    // Créer une copie allégée : retirer les photos base64 (trop lourdes pour JSONBin)
     function stripPhotos(obj){
       if(!obj||typeof obj!=='object')return obj;
       if(Array.isArray(obj))return obj.map(stripPhotos);
       const copy={};
       for(const k in obj){
         if(k==='photo'&&typeof obj[k]==='string'&&obj[k].startsWith('data:image')){
-          copy[k]='__LOCAL__'; // marqueur : photo stockée localement
+          copy[k]='__LOCAL__';
         } else {
           copy[k]=stripPhotos(obj[k]);
         }
@@ -10670,10 +10669,10 @@ async function _jbPush(data){
       return copy;
     }
     const lightData=stripPhotos(data);
-    // Lire d'abord les données actuelles du Bin
-    const getResp=await fetch(JSONBIN_URL+'?meta=false',{headers:{'X-Master-Key':JSONBIN_KEY,'X-Access-Key':JSONBIN_KEY}});
-    if(!getResp.ok)throw new Error('GET HTTP '+getResp.status);
-    const current=await getResp.json();
+    // Utiliser le cache local pour la fusion (évite une requête GET + problème de redirection)
+    let current={};
+    try{const cached=localStorage.getItem(JB_CACHE_KEY);if(cached)current=JSON.parse(cached);}catch(e){}
+    // Fusionner
     // Fusionner : garder les données des autres casernes, merger intelligemment la nôtre
     const merged=Object.assign({},current,lightData);
     merged.CASERNE_DATA=Object.assign({},current.CASERNE_DATA||{});
@@ -10769,6 +10768,8 @@ async function _jbPull(silent){
         }
       }
       restorePhotos(remoteData, myData);
+      // S'assurer que la caserne existe dans CASERNE_DATA après _applyDataObject
+      if(!CASERNE_DATA[activeCid])CASERNE_DATA[activeCid]=myData;
       // Fusion au niveau des enregistrements individuels
       // IVS : garder toutes les interventions des deux, la version locale prime
       const mergeById=(local,remote)=>{
