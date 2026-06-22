@@ -10461,6 +10461,7 @@ function closeIframeModal() {
 // Clé dérivée d'une passphrase fixe par origine (protège contre lecture directe du LS)
 // Pour un niveau supérieur, dériver depuis SESSION_TOKEN après connexion.
 const _STORAGE_PASSPHRASE='agai-local-enc-v1';
+const STORAGE_KEY='agai_data';
 const _ENC_STORAGE_KEY=STORAGE_KEY+'_enc';
 
 async function _getStorageKey(){
