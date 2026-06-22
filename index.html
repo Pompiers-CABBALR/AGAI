@@ -10655,16 +10655,31 @@ async function _jbPush(data){
   if(_jbSaving){window.setTimeout(function(){_jbPush(data);},1000);return;}
   _jbSaving=true;_jbSetStatus('saving');
   try{
+    // Créer une copie allégée : retirer les photos base64 (trop lourdes pour JSONBin)
+    function stripPhotos(obj){
+      if(!obj||typeof obj!=='object')return obj;
+      if(Array.isArray(obj))return obj.map(stripPhotos);
+      const copy={};
+      for(const k in obj){
+        if(k==='photo'&&typeof obj[k]==='string'&&obj[k].startsWith('data:image')){
+          copy[k]='__LOCAL__'; // marqueur : photo stockée localement
+        } else {
+          copy[k]=stripPhotos(obj[k]);
+        }
+      }
+      return copy;
+    }
+    const lightData=stripPhotos(data);
     // Lire d'abord les données actuelles du Bin
     const getResp=await fetch(JSONBIN_URL+'?meta=false',{headers:{'X-Master-Key':JSONBIN_KEY,'X-Access-Key':JSONBIN_KEY}});
     if(!getResp.ok)throw new Error('GET HTTP '+getResp.status);
     const current=await getResp.json();
     // Fusionner : garder les données des autres casernes, merger intelligemment la nôtre
-    const merged=Object.assign({},current,data);
+    const merged=Object.assign({},current,lightData);
     merged.CASERNE_DATA=Object.assign({},current.CASERNE_DATA||{});
-    Object.keys(data.CASERNE_DATA||{}).forEach(cid=>{
+    Object.keys(lightData.CASERNE_DATA||{}).forEach(cid=>{
       const remCas=current.CASERNE_DATA&&current.CASERNE_DATA[cid];
-      const myCas=data.CASERNE_DATA[cid];
+      const myCas=lightData.CASERNE_DATA[cid];
       if(!remCas||typeof remCas!=='object'){
         merged.CASERNE_DATA[cid]=myCas;
         return;
@@ -10696,17 +10711,17 @@ async function _jbPush(data){
       merged.CASERNE_DATA[cid].users=myCas.users||remCas.users;
     });
     // Fusionner les données globales
-    merged.GLOBAL_ACCOUNTS=data.GLOBAL_ACCOUNTS;
-    merged.NAT=data.NAT;
-    merged.COM=data.COM;
-    merged.APL_COUNTER=Object.assign({},current.APL_COUNTER||{},data.APL_COUNTER||{});
-    merged.INT_GLOBAL_COUNTER=Object.assign({},current.INT_GLOBAL_COUNTER||{},data.INT_GLOBAL_COUNTER||{});
-    merged.INT_CAS_COUNTER=Object.assign({},current.INT_CAS_COUNTER||{},data.INT_CAS_COUNTER||{});
-    merged.PILP_COUNTER=Object.assign({},current.PILP_COUNTER||{},data.PILP_COUNTER||{});
-    merged.DISPO_REQUESTS=Object.assign({},current.DISPO_REQUESTS||{},data.DISPO_REQUESTS||{});
-    merged.DISPOS_UNLOCKED=Object.assign({},current.DISPOS_UNLOCKED||{},data.DISPOS_UNLOCKED||{});
-    merged.LOGIN_HISTORY=data.LOGIN_HISTORY||current.LOGIN_HISTORY||[];
-    merged.v=data.v;
+    merged.GLOBAL_ACCOUNTS=lightData.GLOBAL_ACCOUNTS;
+    merged.NAT=lightData.NAT;
+    merged.COM=lightData.COM;
+    merged.APL_COUNTER=Object.assign({},current.APL_COUNTER||{},lightData.APL_COUNTER||{});
+    merged.INT_GLOBAL_COUNTER=Object.assign({},current.INT_GLOBAL_COUNTER||{},lightData.INT_GLOBAL_COUNTER||{});
+    merged.INT_CAS_COUNTER=Object.assign({},current.INT_CAS_COUNTER||{},lightData.INT_CAS_COUNTER||{});
+    merged.PILP_COUNTER=Object.assign({},current.PILP_COUNTER||{},lightData.PILP_COUNTER||{});
+    merged.DISPO_REQUESTS=Object.assign({},current.DISPO_REQUESTS||{},lightData.DISPO_REQUESTS||{});
+    merged.DISPOS_UNLOCKED=Object.assign({},current.DISPOS_UNLOCKED||{},lightData.DISPOS_UNLOCKED||{});
+    merged.LOGIN_HISTORY=lightData.LOGIN_HISTORY||current.LOGIN_HISTORY||[];
+    merged.v=lightData.v;
     // Sauvegarder le merge
     const putResp=await fetch(JSONBIN_URL,{method:'PUT',headers:{'Content-Type':'application/json','X-Master-Key':JSONBIN_KEY,'X-Access-Key':JSONBIN_KEY,'X-Bin-Versioning':'false'},body:JSON.stringify(merged)});
     if(!putResp.ok)throw new Error('PUT HTTP '+putResp.status);
@@ -10730,11 +10745,30 @@ async function _jbPull(silent){
     // Fusionner intelligemment : ne pas écraser la caserne active
     const activeCid=CURRENT_CASERNE_ID;
     if(remote.CASERNE_DATA&&activeCid){
-      // Sauvegarder les données locales de la caserne active
+      // Sauvegarder les données locales de la caserne active (avec les photos)
       const myData=JSON.parse(JSON.stringify(CASERNE_DATA[activeCid]||{}));
       // Appliquer toutes les données distantes
       _applyDataObject(remote);
       const remoteData=CASERNE_DATA[activeCid]||{};
+      // Restaurer les photos locales marquées __LOCAL__
+      function restorePhotos(remObj, locObj){
+        if(!remObj||!locObj||typeof remObj!=='object')return;
+        if(Array.isArray(remObj)&&Array.isArray(locObj)){
+          remObj.forEach(function(item,i){
+            const locItem=locObj.find(function(x){return x&&item&&x.id===item.id;});
+            if(locItem)restorePhotos(item,locItem);
+          });
+          return;
+        }
+        for(const k in remObj){
+          if(remObj[k]==='__LOCAL__'&&locObj[k]&&locObj[k].startsWith('data:image')){
+            remObj[k]=locObj[k];
+          } else if(remObj[k]&&typeof remObj[k]==='object'){
+            restorePhotos(remObj[k],locObj[k]);
+          }
+        }
+      }
+      restorePhotos(remoteData, myData);
       // Fusion au niveau des enregistrements individuels
       // IVS : garder toutes les interventions des deux, la version locale prime
       const mergeById=(local,remote)=>{
