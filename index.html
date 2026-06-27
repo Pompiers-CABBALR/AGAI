@@ -1171,8 +1171,10 @@ function initCaserneData(cid){
   if(CASERNE_DATA[cid])return;
   const c=CASERNES.find(x=>x.id===cid);
   const adminLogin=cid.toLowerCase()+'.admin';
+  // L'État-Major est l'espace de saisie du chef de corps : pas de compte admin dédié
+  const defaultUsers=(cid==='EMAJ')?[]:[{l:adminLogin,p:'admin123',prenom:'Admin',nom:c?c.nom:cid,grade:'Lieutenant',fonction:'Chef de centre',rights:["Prise d'appel","Interventions","Historique complet","Chef d'agrès","Tireur PILP","Administration"],rl:'Administrateur'}];
   CASERNE_DATA[cid]={
-    users:[{l:adminLogin,p:'admin123',prenom:'Admin',nom:c?c.nom:cid,grade:'Lieutenant',fonction:'Chef de centre',rights:["Prise d'appel","Interventions","Historique complet","Chef d'agrès","Tireur PILP","Administration"],rl:'Administrateur'}],
+    users:defaultUsers,
     ivs:[],pilpIvs:[],equipes:[],dispos:{},piquets:{},planningRotations:{},disposValidated:{},piquetsValidated:{},renforts:[],
     astrConfig:{granularity:60,engins:['VTU-01','VTU-02','VTU-03','VPI'],deadline:{dayOfWeek:5,hour:23,minute:59},deadlinePiquet:{dayOfWeek:0,hour:18,minute:0},weekStartDay:1,weekStartHour:0},
   };
@@ -1744,7 +1746,7 @@ function renderSuperAdmin(){
           <button class="btn sm" style="font-size:11px;margin-top:8px;" onclick="editCompteSpecial('chef_corps')">✏️ Modifier</button>
         </div>
         <!-- Admins casernes -->
-        ${CASERNES.map(c=>{
+        ${OP_CASERNES().map(c=>{
           const d=CASERNE_DATA[c.id]||{users:[]};
           const admin=d.users?.find(u=>u.rights?.includes('Administration'));
           return `<div style="background:${c.couleur}11;border-radius:10px;padding:12px;border:1px solid ${c.couleur}33;">
@@ -1757,7 +1759,7 @@ function renderSuperAdmin(){
         }).join('')}
       </div>
     </div>`;
-  const casHtml=CASERNES.map(c=>{
+  const casHtml=OP_CASERNES().map(c=>{
     const d=CASERNE_DATA[c.id]||{users:[],ivs:[],pilpIvs:[]};
     const nbUsers=d.users?.length||0;
     const nbIv=d.ivs?.length||0;
@@ -1828,7 +1830,7 @@ function renderSuperAdmin(){
       <!-- Init par caserne : UT, mois, stats -->
       <div style="font-size:12px;font-weight:600;color:#666;margin-bottom:8px;">📋 Initialisation par caserne (démarrage en cours d'année)</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:10px;">
-        ${CASERNES.map(c=>{
+        ${OP_CASERNES().map(c=>{
           const d=CASERNE_DATA[c.id]||{};
           const init=d._initCompteurs||{};
           const ivsInit=init.ivsParNature||[];
@@ -10663,6 +10665,10 @@ function _applyDataObject(data){
     CASERNES.push({id:'EMAJ',nom:'État-Major',code:'EMA',couleur:'#1D4ED8',email:'',_emaj:true});
   }
   initCaserneData('EMAJ');
+  // Nettoyer un éventuel compte admin auto-créé pour l'État-Major (ne doit pas exister)
+  if(data.CASERNE_DATA&&data.CASERNE_DATA.EMAJ&&Array.isArray(data.CASERNE_DATA.EMAJ.users)){
+    data.CASERNE_DATA.EMAJ.users=data.CASERNE_DATA.EMAJ.users.filter(u=>u&&u.l!=='emaj.admin');
+  }
   if(data.GLOBAL_ACCOUNTS&&data.GLOBAL_ACCOUNTS.length){GLOBAL_ACCOUNTS.length=0;data.GLOBAL_ACCOUNTS.forEach(a=>GLOBAL_ACCOUNTS.push(a));}
   if(data.CASERNE_DATA){
     Object.keys(data.CASERNE_DATA).forEach(cid=>{
