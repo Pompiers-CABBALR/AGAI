@@ -3497,6 +3497,43 @@ function ce(f){const m={'a':'fa','r':'fr','t':'ft','c':'ci'};const el=document.g
 function vF(){let ok=true;[['a','ea'],['r','er'],['t','et']].forEach(([id,eid])=>{const el=document.getElementById('f'+id);if(!el.value.trim()){ok=false;el.classList.add('err');document.getElementById(eid).style.display='block';}});if(!selC2){ok=false;document.getElementById('ci').classList.add('err');document.getElementById('ec').style.display='block';}if(!ok)document.getElementById('vb2').style.display='block';return ok;}
 
 // ────────────────── ENREGISTRER APPEL ──────────────────
+// Capture les détails contextuels saisis dans les sous-menus de la prise d'appel.
+// Lit uniquement les sous-menus visibles et les sélections actives, sans rien casser.
+function _captureAppelDetails(){
+  const d={};
+  const txt=(id)=>{const e=document.getElementById(id);return e&&e.value?e.value.trim():'';};
+  const selOf=(grpId)=>{const g=document.getElementById(grpId);if(!g)return'';const s=g.querySelector('.smopt.sel');return s?s.textContent.trim():'';};
+  const vis=(id)=>{const e=document.getElementById(id);return e&&e.offsetParent!==null;};
+  // Guêpes (sm-g) : localisation + hauteur
+  if(vis('sm-g')){
+    const loc=selOf('lg');if(loc)d['Localisation du nid']=loc==='Autre'?(txt('lg-autre-txt')||'Autre'):loc;
+    const hg=txt('hg-val');if(hg)d['Hauteur']=hg+' m';
+  }
+  // Frelons (sm-f) : localisation + hauteur + taille
+  if(vis('sm-f')){
+    const loc=selOf('lf');if(loc)d['Localisation du nid']=loc==='Autre'?(txt('lf-autre-txt')||'Autre'):loc;
+    const hf=txt('hf-val');if(hf)d['Hauteur']=hf+' m';
+    if(nidSize)d['Taille du nid']=nidSize;
+  }
+  // Essaim abeilles (sm-a) : localisation
+  if(vis('sm-a')){
+    const loc=selOf('la');if(loc)d['Localisation de l\u2019essaim']=loc;
+  }
+  // Animaux (sm-n) : type + situation
+  if(vis('sm-n')){
+    const ta=selOf('ta');if(ta)d['Type d\u2019animal']=ta;
+    const si=selOf('si');if(si)d['Situation de l\u2019animal']=si;
+  }
+  // Inondation (sm-e) : hauteur + surface + volume
+  if(vis('sm-e')){
+    const he=txt('he'),se=txt('se');
+    if(he)d['Hauteur d\u2019eau']=he+' m';
+    if(se)d['Surface']=se+' m\u00b2';
+    if(he&&se&&!isNaN(parseFloat(he))&&!isNaN(parseFloat(se)))d['Volume estim\u00e9']=(parseFloat(he)*parseFloat(se)).toFixed(1)+' m\u00b3';
+  }
+  return Object.keys(d).length?d:null;
+}
+
 function enr(){
   if(!vF())return;
   const h=hoA?getH(hoA):getH(N());
@@ -3511,6 +3548,7 @@ function enr(){
   const numApl=nextAplNum(annee);
   const nums=nextIntNum(annee); // Réservé pour quand l'intervention sera terminée
   let det=document.getElementById('fo').value.trim();
+  const appelDetails=_captureAppelDetails();
   // Incrémenter compteur appels
   incCallCounter();
 
@@ -3520,7 +3558,7 @@ function enr(){
     const ivBase={id:numsInt.idCas,_numApl:numApl,_numCaserne:numsInt.numCas,_numGlobal:numsInt.numGlobal,
       n:selNat,addr,com,h,op:CU.l,s:'terminee',det,eng:null,
       req:document.getElementById('fr').value.trim(),tel:document.getElementById('ft').value.trim(),
-      obs:'',agr:CU.l,rappels:exPilp.length,avisIds:[],_lienPilp:true,
+      obs:'',agr:CU.l,rappels:exPilp.length,avisIds:[],_lienPilp:true,_appelDetails:appelDetails,
       tl:[mkTL('en-attente',h,CU.l),mkTL('terminee',h,CU.l+' → PILP')]};
     IVS.unshift(ivBase);
     if(CD())CD().ivs=IVS;
@@ -3545,7 +3583,7 @@ function enr(){
   const newIv={id:numApl,_numApl:numApl,
     n:selNat,addr,com,h,op:CU.l,s:'en-attente',det,eng:null,_sdis:document.getElementById('chk-sdis')?.checked||false,
     req:document.getElementById('fr').value.trim(),tel:document.getElementById('ft').value.trim(),
-    obs:'',agr:null,rappels:exIv.length,avisIds:exIv.map(iv=>iv.id),
+    obs:'',agr:null,rappels:exIv.length,avisIds:exIv.map(iv=>iv.id),_appelDetails:appelDetails,
     tl:[mkTL('en-attente',h,CU.l)]};
   IVS.unshift(newIv);
   if(CD())CD().ivs=IVS;
@@ -3966,6 +4004,8 @@ function oM(id){
         ${iv._agr2?`<span style="color:var(--t2);">&#x1F3AF; 2e&nbsp;<span style="font-family:monospace;font-weight:600;color:var(--tx);">${iv._agr2}</span></span>`:''}
       </div>
     </div>
+    ${iv._appelDetails&&Object.keys(iv._appelDetails).length?`<div class="mr"><div class="ml">Informations de l'appel</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:3px;">${Object.keys(iv._appelDetails).map(k=>`<span style="font-size:13px;"><span style="color:var(--t2);">${escHtml(k)} :</span> <strong>${escHtml(String(iv._appelDetails[k]))}</strong></span>`).join('')}</div></div></div>`:''}
+    ${iv.det?`<div class="mr"><div class="ml">Observations de l'appel</div><div class="mv2" style="white-space:pre-wrap;">${escHtml(iv.det)}</div></div>`:''}
     ${iv._transfertDe?`<div class="mr"><div class="ml">Transfert reçu de</div><div class="mv2" style="color:var(--amb);font-weight:500;">&#x1F500; ${CASERNES.find(c=>c.id===iv._transfertDe)?.nom||iv._transfertDe}</div></div>`:''}
     ${iv._transfertVers?`<div class="mr"><div class="ml">Transféré vers</div><div class="mv2" style="color:#888;">&#x1F500; ${CASERNES.find(c=>c.id===iv._transfertVers)?.nom||iv._transfertVers}</div></div>`:''}
     ${iv._refugeAnimalier?`<div class="mr"><div class="ml">Refuge animalier</div><div class="mv2" style="color:var(--grn);">&#x1F43E; Transmis au refuge — ${iv._refugeAnimalier}</div></div>`:''}
