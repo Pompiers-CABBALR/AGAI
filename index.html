@@ -1164,6 +1164,7 @@ let CASERNES=[
   {id:'CIS05',nom:'UT Lapugnoy',                  code:'LAP',couleur:'#E67E22',email:''},
   {id:'CIS06',nom:'UT Noyelles-lès-Vermelles',code:'NOY',couleur:'#16A085',email:''},
   {id:'CIS07',nom:'UT Sailly-Labourse',           code:'SAI',couleur:'#D35400',email:''},
+  {id:'EMAJ',nom:'État-Major',                     code:'EMA',couleur:'#1D4ED8',email:'',_emaj:true},
 ];
 const CASERNE_DATA={};
 function initCaserneData(cid){
@@ -1177,11 +1178,13 @@ function initCaserneData(cid){
   };
 }
 CASERNES.forEach(c=>initCaserneData(c.id));
+// Casernes opérationnelles (exclut l'État-Major, qui est l'espace de saisie du chef de corps)
+function OP_CASERNES(){return CASERNES.filter(c=>c.id!=='EMAJ');}
 let CURRENT_CASERNE_ID=null;
 // ── Configuration Supabase (bascule prudente) ──
 // USE_SUPABASE : false = JSONBin (comportement actuel), true = Supabase temps réel.
 // Bascule toute la synchro d'un seul mot. Tant que false, RIEN ne change.
-const USE_SUPABASE = true;
+const USE_SUPABASE = false;
 const SB_URL  = 'https://lpzblzqxmoiwghvkhqnt.supabase.co';
 const SB_KEY  = 'sb_publishable_PehrBg34OLpPTmv9GtuIQg_KMFtUcQX';
 const SB_REST = SB_URL + '/rest/v1';
@@ -1694,6 +1697,8 @@ function showGlobalView(role){
   if(gvNav){
     if(role==='superadmin'&&CC()){
       gvNav.innerHTML=`<button onclick="retourCaserne()" style="background:rgba(255,255,255,.15);border:none;color:#fff;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:12px;margin-right:8px;">← ${CC().nom}</button>`;
+    } else if(role==='chef_corps'){
+      gvNav.innerHTML='<button onclick="ccAccederEspaceSaisie()" style="background:rgba(255,255,255,.25);border:none;color:#fff;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;">✏️ Mon espace de saisie</button>';
     } else {
       gvNav.innerHTML='';
     }
@@ -2174,7 +2179,7 @@ function renderGlobalStats(){
   const annee=new Date().getFullYear();
   const mois=new Date().getMonth()+1;
   const moisStr=annee+'-'+String(mois).padStart(2,'0');
-  const rows=CASERNES.map(c=>{
+  const rows=OP_CASERNES().map(c=>{
     const d=CASERNE_DATA[c.id]||{ivs:[]};
     const ivs=(d.ivs||[]).filter(iv=>!iv._isPilip&&iv.s!=='annulee');
     const nbAnn=ivs.filter(iv=>(iv.h||'').startsWith(String(annee))).length;
@@ -2224,7 +2229,7 @@ function renderChefCorps(){
 function getIvsForCC(){
   const annStr=String(ccAnnee);
   const prefix=ccMois>0?annStr+String(ccMois).padStart(2,'0'):annStr;
-  const cas=ccCaserne==='all'?CASERNES:CASERNES.filter(function(c){return c.id===ccCaserne;});
+  const cas=ccCaserne==='all'?OP_CASERNES():OP_CASERNES().filter(function(c){return c.id===ccCaserne;});
   const all=[];
   cas.forEach(function(c){
     const d=CASERNE_DATA[c.id]||{ivs:[]};
@@ -2246,7 +2251,7 @@ function renderChefCorpsBody(){
     const moisOpts='<option value="0">Toute l\u2019ann\u00e9e</option>'+MOIS_NOMS.map(function(m,i){
       return '<option value="'+(i+1)+'"'+(ccMois===i+1?' selected':'')+'>'+m+'</option>';
     }).join('');
-    const casOpts='<option value="all">Toutes les casernes</option>'+CASERNES.map(function(c){
+    const casOpts='<option value="all">Toutes les casernes</option>'+OP_CASERNES().map(function(c){
       return '<option value="'+c.id+'"'+(ccCaserne===c.id?' selected':'')+'>'+c.nom+'</option>';
     }).join('');
     nav.innerHTML='<div style="background:#fff;border-radius:12px;padding:10px 14px;border:1px solid #ddd;margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
@@ -2261,7 +2266,7 @@ function renderChefCorpsBody(){
   const body=document.getElementById('cc-body');if(!body)return;
   const ivs=getIvsForCC();
   const total=ivs.length;
-  const cas=ccCaserne==='all'?CASERNES:CASERNES.filter(function(c){return c.id===ccCaserne;});
+  const cas=ccCaserne==='all'?OP_CASERNES():OP_CASERNES().filter(function(c){return c.id===ccCaserne;});
   const periodeLabel=ccMois>0?MOIS_NOMS[ccMois-1]+' '+ccAnnee:String(ccAnnee);
 
   // Carte total + cartes par caserne
@@ -2429,6 +2434,64 @@ function saAccederChefCorps(){
     gvNav.innerHTML=rc2+'<button onclick="showGlobalView(\'superadmin\')" style="background:rgba(255,255,255,.25);border:none;color:#fff;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;">&#x1F310; Vue globale</button>';
   }
 }
+
+// ── Chef de corps : accès à son espace de saisie (caserne État-Major) ──
+function ccAccederEspaceSaisie(){
+  if(GLOBAL_ROLE!=='chef_corps'&&!isSuperAdmin())return;
+  CURRENT_CASERNE_ID='EMAJ';
+  initCaserneData('EMAJ');
+  // Donner au chef de corps les droits de saisie dans cet espace
+  if(CU){CU.rights=["Interventions","Formation","Chef d'agrès","Historique complet"];}
+  syncCaserneContext();
+  const c=CASERNES.find(x=>x.id==='EMAJ');
+  const t2u=document.getElementById('t2u'),t2r=document.getElementById('t2r');
+  if(t2u)t2u.textContent=(CU?CU.l:'')+' — '+(c?c.nom:'État-Major');
+  if(t2r)t2r.textContent='Chef de Corps · '+(c?c.code:'EMA');
+  // Basculer de la vue globale vers l'app
+  document.getElementById('global-view').style.display='none';
+  const ap=document.getElementById('app');ap.style.display='flex';
+  GRADES.forEach(g=>{['prof-grade-sel','nu-grade'].forEach(id=>{const el=document.getElementById(id);if(el&&![...el.options].find(o=>o.textContent===g)){const o=document.createElement('option');o.textContent=g;el.appendChild(o);}});});
+  applyNavRights();
+  // Afficher le bouton de retour au tableau de bord dans la barre de l'app
+  let backBtn=document.getElementById('cc-back-dash');
+  if(!backBtn){
+    const nav=document.getElementById('nav-global');
+    if(nav&&nav.parentNode){
+      backBtn=document.createElement('button');
+      backBtn.id='cc-back-dash';
+      backBtn.className='nb';
+      backBtn.style.cssText='background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;padding:4px 8px;font-size:11px;font-weight:600;cursor:pointer;';
+      backBtn.innerHTML='📊 Tableau de bord';
+      backBtn.onclick=ccRetourTableauBord;
+      nav.parentNode.insertBefore(backBtn,nav);
+    }
+  }
+  if(backBtn)backBtn.classList.remove('hidden');
+  rAccueil();rI();
+  rProfil();
+  const stStd=document.getElementById('subtab-btn-std');
+  const stPilp=document.getElementById('subtab-btn-pilp');
+  if(stStd){stStd.classList.add('active');if(stPilp)stPilp.classList.remove('active');}
+  const ssStd=document.getElementById('subtab-std');if(ssStd)ssStd.style.display='';
+  const ssPilp=document.getElementById('subtab-pilp');if(ssPilp)ssPilp.style.display='none';
+  const ssHist=document.getElementById('subtab-hist');if(ssHist)ssHist.style.display='none';
+  document.querySelectorAll('.sec').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.nb').forEach(b=>b.classList.remove('active'));
+  const th=document.getElementById('tab-home');if(th)th.classList.add('active');
+  const navHome=document.getElementById('nav-home');if(navHome)navHome.classList.add('active');
+  const elBonj=document.getElementById('acc-bonjour');
+  if(elBonj&&CU){const hh=new Date().getHours();const salut=hh>=18?'Bonsoir':hh>=12?'Bon apr\u00e8s-midi':'Bonjour';elBonj.textContent=salut+', '+(CU.prenom||CU.l)+'\u00a0!';}
+}
+
+// ── Chef de corps : retour à son tableau de bord ──
+function ccRetourTableauBord(){
+  CURRENT_CASERNE_ID=null;
+  if(CU)CU.rights=[];
+  const backBtn=document.getElementById('cc-back-dash');
+  if(backBtn)backBtn.classList.add('hidden');
+  showGlobalView('chef_corps');
+}
+
 function editCompteSpecial(role){
   const acc=GLOBAL_ACCOUNTS.find(a=>a.role===role);
   if(!acc)return;
@@ -10595,6 +10658,11 @@ function _buildDataObject(){
 
 function _applyDataObject(data){
   if(data.CASERNES&&data.CASERNES.length){CASERNES.length=0;data.CASERNES.forEach(c=>CASERNES.push(c));}
+  // Garantir la présence de la caserne État-Major (espace de saisie du chef de corps)
+  if(!CASERNES.find(c=>c.id==='EMAJ')){
+    CASERNES.push({id:'EMAJ',nom:'État-Major',code:'EMA',couleur:'#1D4ED8',email:'',_emaj:true});
+  }
+  initCaserneData('EMAJ');
   if(data.GLOBAL_ACCOUNTS&&data.GLOBAL_ACCOUNTS.length){GLOBAL_ACCOUNTS.length=0;data.GLOBAL_ACCOUNTS.forEach(a=>GLOBAL_ACCOUNTS.push(a));}
   if(data.CASERNE_DATA){
     Object.keys(data.CASERNE_DATA).forEach(cid=>{
