@@ -4005,7 +4005,6 @@ function oM(id){
       </div>
     </div>
     ${iv._appelDetails&&Object.keys(iv._appelDetails).length?`<div class="mr"><div class="ml">Informations de l'appel</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:3px;">${Object.keys(iv._appelDetails).map(k=>`<span style="font-size:13px;"><span style="color:var(--t2);">${escHtml(k)} :</span> <strong>${escHtml(String(iv._appelDetails[k]))}</strong></span>`).join('')}</div></div></div>`:''}
-    ${iv.det?`<div class="mr"><div class="ml">Observations de l'appel</div><div class="mv2" style="white-space:pre-wrap;">${escHtml(iv.det)}</div></div>`:''}
     ${iv._transfertDe?`<div class="mr"><div class="ml">Transfert reçu de</div><div class="mv2" style="color:var(--amb);font-weight:500;">&#x1F500; ${CASERNES.find(c=>c.id===iv._transfertDe)?.nom||iv._transfertDe}</div></div>`:''}
     ${iv._transfertVers?`<div class="mr"><div class="ml">Transféré vers</div><div class="mv2" style="color:#888;">&#x1F500; ${CASERNES.find(c=>c.id===iv._transfertVers)?.nom||iv._transfertVers}</div></div>`:''}
     ${iv._refugeAnimalier?`<div class="mr"><div class="ml">Refuge animalier</div><div class="mv2" style="color:var(--grn);">&#x1F43E; Transmis au refuge — ${iv._refugeAnimalier}</div></div>`:''}
@@ -6958,6 +6957,23 @@ function getPiquetActif(wk,login){
 }
 
 // ── Construit le HTML d'un sélecteur d'agent avec rôle ──
+// Renvoie la liste des logins venus en renfort sur l'intervention en cours d'édition.
+// Ces agents appartiennent à une autre caserne : on les fait remonter en tête de liste.
+function _getRenfortPersonnel(){
+  const d=window._piqData||{};
+  if(!d.ivId)return [];
+  const iv=IVS.find(function(v){return v.id===d.ivId;});
+  if(!iv||!iv._equipage1)return [];
+  const out=[];
+  iv._equipage1.forEach(function(e){
+    if(e&&e.renfort&&e.login&&!out.find(function(x){return x.login===e.login;})){
+      const cas=CASERNES.find(function(c){return c.id===e.caserneRenfort;});
+      out.push({login:e.login,nom:e.nom||'',prenom:e.prenom||'',grade:e.grade||'',caserneNom:cas?cas.nom:(e.caserneRenfort||'Renfort')});
+    }
+  });
+  return out;
+}
+
 function agentSelectHtml(role,idSel,suggestedLogin,piqLabel,required,excludeLogins){
   const reqBadge=required?'<span style="color:#E24B4A;">*</span>':'<span style="font-size:10px;color:var(--t2);font-weight:400;">(optionnel)</span>';
   const piqBadge=suggestedLogin?'<span style="font-size:9px;background:#EAF3DE;color:#3B6D11;border-radius:4px;padding:1px 5px;margin-left:4px;">piquet</span>':'';
@@ -6989,9 +7005,19 @@ function refreshEquipageSelects(){
       return u.l===currentVal||!allExclude.includes(u.l);
     }).sort(function(a,b){return (a.nom+' '+a.prenom).localeCompare(b.nom+' '+b.prenom,'fr');});
     const suggested=sel.dataset.suggested||'';
-    sel.innerHTML='<option value="">— Aucun —</option>'+users.map(function(u){
-      return '<option value="'+u.l+'"'+(u.l===currentVal?' selected':'')+'>'+fullName(u)+' ('+gradeAbbr(u.grade)+')'+(u.l===suggested?' ★':'')+'</option>';
+    // Personnel renfort (autre caserne) — affiché en tête de liste
+    const renforts=_getRenfortPersonnel().filter(function(r){return r.login===currentVal||!allExclude.includes(r.login);});
+    const renfortOpts=renforts.map(function(r){
+      const nom=(r.prenom||r.nom)?((r.prenom||'')+' '+(r.nom||'')).trim():r.login;
+      return '<option value="'+r.login+'"'+(r.login===currentVal?' selected':'')+'>&#x1F692; '+nom+(r.grade?' ('+gradeAbbr(r.grade)+')':'')+' — '+r.caserneNom+'</option>';
     }).join('');
+    const renfortLogins=renforts.map(function(r){return r.login;});
+    const usersFiltered=users.filter(function(u){return !renfortLogins.includes(u.l);});
+    sel.innerHTML='<option value="">— Aucun —</option>'
+      +(renfortOpts?'<optgroup label="Renfort UT">'+renfortOpts+'</optgroup><optgroup label="Ma caserne">':'')
+      +usersFiltered.map(function(u){
+      return '<option value="'+u.l+'"'+(u.l===currentVal?' selected':'')+'>'+fullName(u)+' ('+gradeAbbr(u.grade)+')'+(u.l===suggested?' ★':'')+'</option>';
+    }).join('')+(renfortOpts?'</optgroup>':'');
   });
   renderSuperAdmin._lastCall=Date.now();
   setTimeout(function(){renderJoursFeries(new Date().getFullYear());},0);
@@ -7136,7 +7162,7 @@ function showPersonnelModal(id){
   // Initialiser les options après insertion du HTML
   setTimeout(function(){refreshEquipageSelects();},0);
   // Exposer buildEquipage1Dyn/2Dyn pour le onchange
-  window._piqData={cond1Sugg,eq1Sugg,cond2Sugg,eq2Sugg,agr2,u2,CUl:CU.l};
+  window._piqData={cond1Sugg,eq1Sugg,cond2Sugg,eq2Sugg,agr2,u2,CUl:CU.l,ivId:id};
 }
 
 function buildEquipage1Dyn(enginVal){
@@ -7566,7 +7592,7 @@ function showRenfortEquipageModal(cid,renfortId){
     +'</div>'
     +'<div class="brow" style="margin-top:10px;">'
     +'<button class="btn sm" style="background:#7C3AED;color:#fff;" onclick="confirmerRenfortEquipage(\''+cid+'\',\''+renfortId+'\')">&#x1F692; Confirmer le d\u00e9part</button>'
-    +'<button class="btn sm" onclick="oM(\''+ivId+'\')" >Retour</button>'
+    +'<button class="btn sm" onclick="cM()">Retour</button>'
     +'</div></div>';
   document.getElementById('mo').style.display='flex';
 }
@@ -7588,7 +7614,10 @@ function confirmerRenfortEquipage(cid,renfortId){
   [0,1,2,3].forEach(function(i){
     const sel=document.getElementById('renfort-eq-'+i);
     const roles=['Chef d\u2019agr\u00e8s','Conducteur','\u00c9quipier','\u00c9quipier 2'];
-    if(sel&&sel.value)equip.push({role:roles[i],login:sel.value,hDebut:getHHMM(N())});
+    if(sel&&sel.value){
+      const u=USERS.find(function(x){return x.l===sel.value;})||{};
+      equip.push({role:roles[i],login:sel.value,hDebut:getHHMM(N()),nom:u.nom||'',prenom:u.prenom||'',grade:u.grade||''});
+    }
   });
   r.equipageRenfort=equip;
   r.enginRenfort=engin;
