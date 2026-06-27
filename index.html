@@ -4010,8 +4010,8 @@ function oM(id){
     ${iv._refugeAnimalier?`<div class="mr"><div class="ml">Refuge animalier</div><div class="mv2" style="color:var(--grn);">&#x1F43E; Transmis au refuge — ${iv._refugeAnimalier}</div></div>`:''}
 
     ${(iv.eng||iv._hDebut||iv._hFin)?'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:8px;margin:6px 0;">'+(iv.eng?'<div style="background:var(--bg);border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Engin</div><span class="bdg bb">'+iv.eng+'</span></div>':'')+(iv._hDebut?'<div style="background:#FEF9EC;border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--amb);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">&#x23F1; Début</div><div style="font-weight:700;color:var(--amb);font-size:15px;">'+iv._hDebut+'</div></div>':'')+(iv._hFin?'<div style="background:#F0FAF0;border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--grn);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">&#x2705; Fin</div><div style="font-weight:700;color:var(--grn);font-size:15px;">'+iv._hFin+'</div></div>':'')+(iv._hDebut&&iv._hFin?'<div style="background:#F0F4FF;border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--pur);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">&#x23F3; Durée</div><div style="font-weight:700;color:var(--pur);font-size:15px;">'+dureeHHMM(iv._hDebut,iv._hFin)+'</div></div>':'')+'</div>':''}
-    ${iv._equipage1?`<div class="mr"><div class="ml">&#x1F692; ${iv._engin1||'Engin 1'}</div><div class="mv2"><div style="display:flex;flex-wrap:wrap;gap:4px;">${iv._equipage1.map(e=>{const u=USERS.find(x=>x.l===e.login);return'<span style="background:#EEF2FF;color:#3730A3;border-radius:6px;padding:2px 8px;font-size:11px;"><span style="font-size:9px;opacity:.7;">'+e.role+'</span> '+(u?fullName(u):e.login)+'</span>';}).join('')}</div></div></div>`:''}
-    ${iv._equipage2?`<div class="mr"><div class="ml">&#x1F692; ${iv._engin2||'Engin 2'}</div><div class="mv2"><div style="display:flex;flex-wrap:wrap;gap:4px;">${iv._equipage2.map(e=>{const u=USERS.find(x=>x.l===e.login);return'<span style="background:#F0FDF4;color:#166534;border-radius:6px;padding:2px 8px;font-size:11px;"><span style="font-size:9px;opacity:.7;">'+e.role+'</span> '+(u?fullName(u):e.login)+'</span>';}).join('')}</div></div></div>`:''}
+    ${iv._equipage1?`<div class="mr"><div class="ml">&#x1F692; ${iv._engin1||'Engin 1'}</div><div class="mv2"><div style="display:flex;flex-wrap:wrap;gap:4px;">${iv._equipage1.map(e=>{const u=USERS.find(x=>x.l===e.login);const nom=u?fullName(u):((e.prenom||e.nom)?((e.prenom||'')+' '+(e.nom||'')).trim():e.login);return'<span style="background:'+(e.renfort?'#F5F3FF':'#EEF2FF')+';color:'+(e.renfort?'#6D28D9':'#3730A3')+';border-radius:6px;padding:2px 8px;font-size:11px;">'+(e.renfort?'&#x1F692; ':'')+'<span style="font-size:9px;opacity:.7;">'+e.role+'</span> '+nom+(e.renfort&&e.caserneNom?' <span style="font-size:9px;opacity:.7;">('+e.caserneNom+')</span>':'')+'</span>';}).join('')}</div></div></div>`:''}
+    ${iv._equipage2?`<div class="mr"><div class="ml">&#x1F692; ${iv._engin2||'Engin 2'}</div><div class="mv2"><div style="display:flex;flex-wrap:wrap;gap:4px;">${iv._equipage2.map(e=>{const u=USERS.find(x=>x.l===e.login);const nom=u?fullName(u):((e.prenom||e.nom)?((e.prenom||'')+' '+(e.nom||'')).trim():e.login);return'<span style="background:'+(e.renfort?'#F5F3FF':'#F0FDF4')+';color:'+(e.renfort?'#6D28D9':'#166534')+';border-radius:6px;padding:2px 8px;font-size:11px;">'+(e.renfort?'&#x1F692; ':'')+'<span style="font-size:9px;opacity:.7;">'+e.role+'</span> '+nom+(e.renfort&&e.caserneNom?' <span style="font-size:9px;opacity:.7;">('+e.caserneNom+')</span>':'')+'</span>';}).join('')}</div></div></div>`:''}
     ${(iv._releves&&iv._releves.filter(r=>!r.isRenfort).length)?`<div class="mr"><div class="ml" style="color:#0369A1;">&#x1F504; Relèves</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:6px;">${iv._releves.filter(r=>!r.isRenfort).map((r,ri)=>{
       const enAttenteRetour=r.ancienEquipage.filter(e=>!e.hRetour);
       const rentres=r.ancienEquipage.filter(e=>e.hRetour);
@@ -6957,19 +6957,32 @@ function getPiquetActif(wk,login){
 }
 
 // ── Construit le HTML d'un sélecteur d'agent avec rôle ──
-// Renvoie la liste des logins venus en renfort sur l'intervention en cours d'édition.
-// Ces agents appartiennent à une autre caserne : on les fait remonter en tête de liste.
+// Renvoie la liste des agents venus en renfort sur l'intervention en cours d'édition.
+// IMPORTANT : on lit l'équipage depuis les demandes de renfort stockées dans la
+// caserne qui aide (caserneDest), car ces données se synchronisent correctement.
+// (Modifier _equipage1 de l'intervention source ne survit pas à la fusion par ID.)
 function _getRenfortPersonnel(){
   const d=window._piqData||{};
   if(!d.ivId)return [];
-  const iv=IVS.find(function(v){return v.id===d.ivId;});
-  if(!iv||!iv._equipage1)return [];
   const out=[];
-  iv._equipage1.forEach(function(e){
-    if(e&&e.renfort&&e.login&&!out.find(function(x){return x.login===e.login;})){
-      const cas=CASERNES.find(function(c){return c.id===e.caserneRenfort;});
-      out.push({login:e.login,nom:e.nom||'',prenom:e.prenom||'',grade:e.grade||'',caserneNom:cas?cas.nom:(e.caserneRenfort||'Renfort')});
-    }
+  // Parcourir toutes les casernes à la recherche de demandes de renfort
+  // acceptées pour cette intervention, avec un équipage composé.
+  Object.keys(CASERNE_DATA).forEach(function(destCid){
+    if(destCid==='_cabbalrActif'||destCid==='_initCabbalr'||destCid==='_global')return;
+    const dd=CASERNE_DATA[destCid];
+    if(!dd||!Array.isArray(dd.renforts))return;
+    dd.renforts.forEach(function(r){
+      if(r.ivId!==d.ivId)return;
+      if(r.caserneSource!==CURRENT_CASERNE_ID)return; // c'est bien une demande émise par MA caserne
+      if(!Array.isArray(r.equipageRenfort)||!r.equipageRenfort.length)return;
+      if(r.statut==='refuse'||r.statut==='annule')return;
+      const cas=CASERNES.find(function(c){return c.id===destCid;});
+      r.equipageRenfort.forEach(function(e){
+        if(e&&e.login&&!out.find(function(x){return x.login===e.login;})){
+          out.push({login:e.login,nom:e.nom||'',prenom:e.prenom||'',grade:e.grade||'',role:e.role||'',caserneNom:cas?cas.nom:(destCid||'Renfort')});
+        }
+      });
+    });
   });
   return out;
 }
@@ -7221,6 +7234,10 @@ function confirmerDepart(id){
   if(!iv.tl)iv.tl=[];
   iv.s='en-cours';iv.agr=CU.l;
   iv._hDebut=heure;
+  // Compléter les infos des agents renfort (absents de USERS) pour l'affichage et le PDF
+  const _renfortList=_getRenfortPersonnel();
+  const _enrich=function(arr){arr.forEach(function(e){if(e&&e.login&&!USERS.find(function(u){return u.l===e.login;})){const rf=_renfortList.find(function(r){return r.login===e.login;});if(rf){e.renfort=true;e.nom=rf.nom;e.prenom=rf.prenom;e.grade=rf.grade;e.caserneNom=rf.caserneNom;}}});};
+  _enrich(eq1);_enrich(eq2);
   iv._equipage1=eq1;
   iv._engin1=engin1;
   iv._equipage2=eq2.length?eq2:null;
