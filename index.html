@@ -5974,8 +5974,9 @@ function clearDispo(){
   setAllDispoFor(wk,CU.l,null,eq?eq.color:'#888');
 }
 function saveDispo(){
-  saveData();
-  _jbEditLock=0;
+  // Marquer l'édition AVANT le push pour protéger les dispos locales pendant la propagation
+  _jbEditLock=Date.now();
+  saveData(true); // push immédiat : les disponibilités sont critiques
   const msg=document.getElementById('astr-dispo-msg');
   if(msg){msg.style.display='block';msg.style.color='var(--grn)';msg.textContent='✅ Disponibilités enregistrées !';setTimeout(()=>msg.style.display='none',3000);}
 }
@@ -11659,9 +11660,17 @@ async function _rcPull(silent){
     // Protéger les modifications locales en cours sur la caserne active (édition < 15s)
     const activeCid = CURRENT_CASERNE_ID;
     if(activeCid && Date.now()-_jbEditLock < 15000 && CASERNE_DATA[activeCid]){
-      // Conserver dispos locales en cours d'édition
+      // Fusionner les dispos : on garde le remote comme base, et on réapplique
+      // les dispos locales par-dessus (priorité au local en cours d'édition).
+      // Ainsi on ne perd ni mes dispos, ni celles qu'un autre agent vient d'enregistrer.
       if(data.CASERNE_DATA[activeCid]){
-        data.CASERNE_DATA[activeCid].dispos = CASERNE_DATA[activeCid].dispos;
+        const remoteDispos = data.CASERNE_DATA[activeCid].dispos || {};
+        const localDispos = CASERNE_DATA[activeCid].dispos || {};
+        const merged = JSON.parse(JSON.stringify(remoteDispos));
+        Object.keys(localDispos).forEach(function(wk){
+          merged[wk] = Object.assign({}, remoteDispos[wk]||{}, localDispos[wk]||{});
+        });
+        data.CASERNE_DATA[activeCid].dispos = merged;
       }
     }
     _applyDataObject(data);
