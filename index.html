@@ -358,6 +358,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 #astr-planning-grid{overflow-x:auto;-webkit-overflow-scrolling:touch;}
 .admin-scroll-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
 @media(max-width:480px){
+  /* 16px minimum sur les champs : empêche le zoom automatique d'iOS/Safari à la saisie */
+  .fi,.lf input,.urow input,input,select,textarea{font-size:16px;}
+  /* Boutons de choix des sous-menus (prise d'appel) plus grands au doigt */
+  .smopt{font-size:15px;padding:11px 12px;}
+  .szo{padding:11px;}
+  .szo .a{font-size:14px;}
+  .szo .b{font-size:11px;}
   .frow{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch;}
   .fb{flex-shrink:0;}
   .nb{font-size:26px;padding:10px 10px;}
