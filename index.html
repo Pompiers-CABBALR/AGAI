@@ -378,7 +378,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   .brow .btn{flex:1;text-align:center;}
   .accueil-bonjour{font-size:18px;}
   #astr-planning-grid table{font-size:10px;}
-  /* Planning compact sur mobile : colonnes plus fines pour voir plus d'heures */
+}
+/* Planning compact : s'applique aussi en mode paysage du téléphone (jusqu'à 1024px) */
+@media(max-width:1024px){
+  #astr-planning-grid table{font-size:10px;}
   #astr-planning-grid th[style*="min-width:130px"]{min-width:78px!important;font-size:9px;padding:3px 3px!important;}
   #astr-planning-grid th[style*="min-width:60px"]{min-width:26px!important;font-size:7px;padding:3px 1px!important;}
   #astr-planning-grid thead th{min-width:12px!important;padding:2px 0!important;}
