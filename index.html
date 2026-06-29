@@ -1205,6 +1205,14 @@ CASERNES.forEach(c=>initCaserneData(c.id));
 // Casernes opérationnelles (exclut l'État-Major, qui est l'espace de saisie du chef de corps)
 function OP_CASERNES(){return CASERNES.filter(c=>c.id!=='EMAJ');}
 let CURRENT_CASERNE_ID=null;
+// Configuration globale des types d'engins (nombre de places + rôles), partagée entre casernes.
+// Chaque rôle : {role:'...', n:nombre}. Modifiable par le superadmin.
+let ENGIN_TYPES=[
+  {type:'VTU',roles:[{role:"Chef d'agrès",n:1},{role:'Conducteur',n:1},{role:'Équipier',n:1}]},
+  {type:'VPI',roles:[{role:"Chef d'agrès",n:1},{role:'Conducteur',n:1},{role:"Chef d'équipe",n:1},{role:'Équipier',n:1}]},
+  {type:'VL', roles:[{role:"Chef d'agrès",n:1}]},
+];
+const ENGIN_ROLES_DISPONIBLES=["Chef d'agrès","Conducteur","Chef d'équipe","Équipier"];
 // ── Configuration Supabase (bascule prudente) ──
 // USE_SUPABASE : false = JSONBin (comportement actuel), true = Supabase temps réel.
 // Bascule toute la synchro d'un seul mot. Tant que false, RIEN ne change.
@@ -6994,6 +7002,33 @@ function dureeHHMM(debut,fin){
 // ── Détermine si un engin est VPI ──
 function isVPI(engin){return engin&&engin.toUpperCase().startsWith('VPI');}
 
+// Détecte le type d'un engin (VTU, VPI, VL...).
+// Priorité : association explicite (ASTR_CONFIG.enginTypes), sinon préfixe avant le tiret.
+function getEnginType(nom){
+  if(!nom)return '';
+  const map=(ASTR_CONFIG&&ASTR_CONFIG.enginTypes)||{};
+  if(map[nom])return map[nom];
+  // Déduire par préfixe : "VTU-01" -> "VTU", "VPI" -> "VPI"
+  const base=nom.toUpperCase().split('-')[0].trim();
+  const found=ENGIN_TYPES.find(function(t){return t.type.toUpperCase()===base;});
+  return found?found.type:base;
+}
+
+// Renvoie la composition (rôles + nombre) d'un engin selon son type.
+function getEnginRoles(nom){
+  const type=getEnginType(nom);
+  const t=ENGIN_TYPES.find(function(x){return x.type.toUpperCase()===type.toUpperCase();});
+  if(t&&Array.isArray(t.roles))return t.roles;
+  // Repli si type inconnu : comportement historique (VPI=4, autres=3)
+  if(isVPI(nom))return [{role:"Chef d'agrès",n:1},{role:'Conducteur',n:1},{role:"Chef d'équipe",n:1},{role:'Équipier',n:1}];
+  return [{role:"Chef d'agrès",n:1},{role:'Conducteur',n:1},{role:'Équipier',n:1}];
+}
+
+// Nombre total de places d'un engin
+function getEnginNbPlaces(nom){
+  return getEnginRoles(nom).reduce(function(s,r){return s+(r.n||0);},0);
+}
+
 // ── Récupère le piquet actif pour un login donné ──
 function getPiquetActif(wk,login){
   const now=N();
@@ -10838,6 +10873,7 @@ function _buildDataObject(){
     CASERNE_DATA:{},
     NAT:JSON.parse(JSON.stringify(NAT)),
     COM:JSON.parse(JSON.stringify(COM)),
+    ENGIN_TYPES:JSON.parse(JSON.stringify(ENGIN_TYPES)),
     APL_COUNTER:{...APL_COUNTER},
     INT_GLOBAL_COUNTER:{...INT_GLOBAL_COUNTER},
     INT_CAS_COUNTER:{...INT_CAS_COUNTER},
@@ -10936,6 +10972,7 @@ function _applyDataObject(data){
     });
   }
   if(data.NAT&&data.NAT.length){NAT.length=0;data.NAT.forEach(n=>NAT.push(n));}
+  if(data.ENGIN_TYPES&&data.ENGIN_TYPES.length){ENGIN_TYPES.length=0;data.ENGIN_TYPES.forEach(t=>ENGIN_TYPES.push(t));}
   if(data.COM&&data.COM.length){COM.length=0;data.COM.forEach(c=>COM.push(c));}
   if(data.APL_COUNTER)Object.assign(APL_COUNTER,data.APL_COUNTER);
   if(data.INT_GLOBAL_COUNTER)Object.assign(INT_GLOBAL_COUNTER,data.INT_GLOBAL_COUNTER);
@@ -11276,6 +11313,7 @@ function _sbSplitRows(data){
     GLOBAL_ACCOUNTS: data.GLOBAL_ACCOUNTS,
     NAT: data.NAT,
     COM: data.COM,
+    ENGIN_TYPES: data.ENGIN_TYPES,
     APL_COUNTER: data.APL_COUNTER,
     INT_GLOBAL_COUNTER: data.INT_GLOBAL_COUNTER,
     INT_CAS_COUNTER: data.INT_CAS_COUNTER,
@@ -11309,7 +11347,7 @@ function _sbAssembleRows(rows){
       const g = r.data || {};
       Object.assign(data, {
         v: g.v, CASERNES: g.CASERNES, GLOBAL_ACCOUNTS: g.GLOBAL_ACCOUNTS,
-        NAT: g.NAT, COM: g.COM, APL_COUNTER: g.APL_COUNTER,
+        NAT: g.NAT, COM: g.COM, ENGIN_TYPES: g.ENGIN_TYPES, APL_COUNTER: g.APL_COUNTER,
         INT_GLOBAL_COUNTER: g.INT_GLOBAL_COUNTER, INT_CAS_COUNTER: g.INT_CAS_COUNTER,
         PILP_COUNTER: g.PILP_COUNTER, DISPOS_UNLOCKED: g.DISPOS_UNLOCKED,
         DISPO_REQUESTS: g.DISPO_REQUESTS, LOGIN_HISTORY: g.LOGIN_HISTORY
@@ -11595,7 +11633,7 @@ function _rcSplitAll(data){
   let rows = [];
   // Ligne globale unique (compteurs, comptes, NAT/COM, etc.) — type 'global'
   rows.push({ id:'_GLOBAL'+RC_SEP+'global'+RC_SEP+'main', caserne:'_GLOBAL', type:'global', data:{
-    v:data.v, CASERNES:data.CASERNES, GLOBAL_ACCOUNTS:data.GLOBAL_ACCOUNTS, NAT:data.NAT, COM:data.COM,
+    v:data.v, CASERNES:data.CASERNES, GLOBAL_ACCOUNTS:data.GLOBAL_ACCOUNTS, NAT:data.NAT, COM:data.COM, ENGIN_TYPES:data.ENGIN_TYPES,
     APL_COUNTER:data.APL_COUNTER, INT_GLOBAL_COUNTER:data.INT_GLOBAL_COUNTER, INT_CAS_COUNTER:data.INT_CAS_COUNTER,
     PILP_COUNTER:data.PILP_COUNTER, DISPOS_UNLOCKED:data.DISPOS_UNLOCKED, DISPO_REQUESTS:data.DISPO_REQUESTS,
     LOGIN_HISTORY:data.LOGIN_HISTORY
@@ -11725,7 +11763,7 @@ async function _rcPull(silent){
       if(r.caserne==='_GLOBAL'){
         if(r.type==='global' && !r.deleted){
           const g=r.data||{};
-          Object.assign(data, {v:g.v, CASERNES:g.CASERNES, GLOBAL_ACCOUNTS:g.GLOBAL_ACCOUNTS, NAT:g.NAT, COM:g.COM,
+          Object.assign(data, {v:g.v, CASERNES:g.CASERNES, GLOBAL_ACCOUNTS:g.GLOBAL_ACCOUNTS, NAT:g.NAT, COM:g.COM, ENGIN_TYPES:g.ENGIN_TYPES,
             APL_COUNTER:g.APL_COUNTER, INT_GLOBAL_COUNTER:g.INT_GLOBAL_COUNTER, INT_CAS_COUNTER:g.INT_CAS_COUNTER,
             PILP_COUNTER:g.PILP_COUNTER, DISPOS_UNLOCKED:g.DISPOS_UNLOCKED, DISPO_REQUESTS:g.DISPO_REQUESTS, LOGIN_HISTORY:g.LOGIN_HISTORY});
         }
