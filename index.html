@@ -7584,11 +7584,20 @@ function envoyerRenfort(ivId){
     equipageRendort:null,
   };
   // Envoyer à chaque caserne destinataire
+  const _renfortRecords=[];
   destinataires.forEach(function(cid){
     if(!CASERNE_DATA[cid])initCaserneData(cid);
     if(!CASERNE_DATA[cid].renforts)CASERNE_DATA[cid].renforts=[];
-    CASERNE_DATA[cid].renforts.push({...renfort,caserneDest:cid});
+    const renfortDest={...renfort,caserneDest:cid};
+    CASERNE_DATA[cid].renforts.push(renfortDest);
+    // En mode records : préparer l'enregistrement à pousser vers la caserne destinataire
+    if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcId==='function'){
+      _renfortRecords.push({id:_rcId(cid,'renfort',renfortDest.id),caserne:cid,type:'renfort',data:renfortDest,deleted:false});
+    }
   });
+  // Pousser explicitement ces demandes vers Supabase (sinon elles ne partent pas,
+  // car la synchro ne pousse normalement que la caserne active de l'émetteur)
+  if(_renfortRecords.length&&typeof _rcPushRecords==='function'){_rcPushRecords(_renfortRecords);}
   // Garder trace dans l'intervention
   if(!iv._renforts)iv._renforts=[];
   iv._renforts.push({id:renfortId,type,destinataires,hDemande:heure,note,statut:'en-attente'});
@@ -11575,6 +11584,30 @@ function _rcSplitAll(data){
     rows = rows.concat(_rcSplitCaserne(cid, data.CASERNE_DATA[cid]));
   });
   return rows;
+}
+
+// ── Pousse une liste d'enregistrements précis vers Supabase ──
+// Utilisé quand on écrit dans une caserne autre que la caserne active
+// (ex. demande de renfort distribuée à plusieurs casernes destinataires).
+async function _rcPushRecords(records){
+  if(!USE_RECORDS) return;
+  if(!records || !records.length) return;
+  try {
+    const currentUser = (typeof CU!=='undefined' && CU) ? (CU.l||'') : '';
+    const payload = records.map(function(r){
+      return { id:r.id, caserne:r.caserne, type:r.type, data:r.data, deleted:!!r.deleted, updated_by:currentUser };
+    });
+    const resp = await fetch(RC_REST, {
+      method:'POST',
+      headers:Object.assign({}, _sbHeaders, { 'Prefer':'resolution=merge-duplicates,return=minimal' }),
+      body:JSON.stringify(payload)
+    });
+    if(!resp.ok) throw new Error('records push HTTP '+resp.status);
+    _rcLastPush = Date.now();
+  } catch(e){
+    console.warn('[AGAI][RC] PushRecords error:', e);
+    showToast('Erreur d\'envoi (sync)','error');
+  }
 }
 
 // ── Marque des enregistrements comme supprimés (suppression douce) ──
