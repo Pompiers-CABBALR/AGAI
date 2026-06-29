@@ -4795,6 +4795,27 @@ function rAdm(){
     const formateurCell=`<td style="padding:4px 6px;"><div style="display:flex;gap:0;min-width:240px;">${colsHtml}</div></td>`;
     return `<tr>${matriculeCell}${nomCell}${prenomCell}${gradeCell}${fonctionCell}${fonct2Cell}<td style="font-family:monospace;font-size:11px;color:var(--t2);">${u.l}</td>${pwdCell}${rightsCell}${formateurCell}${delCell}</tr>`;
   }).join('');
+  // Dans l'espace État-Major : afficher la ligne du chef de corps (compte global), modifiable via sa modale
+  if(CURRENT_CASERNE_ID==='EMAJ'&&GLOBAL_ROLE==='chef_corps'){
+    const cc=GLOBAL_ACCOUNTS.find(function(a){return a.role==='chef_corps';});
+    if(cc){
+      const ff=(cc.fonctionsFormateur||[]).join(', ')||'—';
+      const ccRow='<tr style="background:#EFF6FF;">'
+        +'<td style="font-size:12px;">'+escHtml(cc.matricule||'—')+'</td>'
+        +'<td style="font-size:12px;font-weight:500;">'+escHtml(cc.nom||'')+' <span style="font-size:10px;background:#DBEAFE;color:#1D4ED8;padding:2px 7px;border-radius:8px;font-weight:600;">Chef de Corps</span></td>'
+        +'<td style="font-size:12px;">'+escHtml(cc.prenom||'')+'</td>'
+        +'<td style="font-size:12px;color:var(--t2);">'+escHtml(cc.grade||'')+'</td>'
+        +'<td style="font-size:12px;color:var(--t2);">'+escHtml(cc.fonction||'')+'</td>'
+        +'<td style="color:var(--t2);font-size:11px;text-align:center;">—</td>'
+        +'<td style="font-family:monospace;font-size:11px;color:var(--t2);">'+escHtml(cc.l||'')+'</td>'
+        +'<td style="color:var(--t2);font-size:11px;">—</td>'
+        +'<td style="color:var(--t2);font-size:11px;text-align:center;">—</td>'
+        +'<td style="font-size:11px;color:var(--t2);">'+escHtml(ff)+'</td>'
+        +'<td style="text-align:center;"><button style="background:var(--bg);color:#1D4ED8;border:1px solid #1D4ED8;border-radius:5px;padding:3px 8px;font-size:11px;cursor:pointer;" onclick="ccEditMesInfos()">&#x270F;&#xFE0F; Modifier</button></td>'
+        +'</tr>';
+      tbody.innerHTML=ccRow+tbody.innerHTML;
+    }
+  }
 }
 function genLogin(nom,prenom){
   // Génère un login unique : nom.prenom, puis nom.prenom2, nom.prenom3…
