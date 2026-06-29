@@ -1191,7 +1191,7 @@ let CURRENT_CASERNE_ID=null;
 // USE_SUPABASE : false = JSONBin (comportement actuel), true = Supabase temps réel.
 // Bascule toute la synchro d'un seul mot. Tant que false, RIEN ne change.
 const USE_SUPABASE = false;
-const USE_RECORDS = true;
+const USE_RECORDS = false;
 const SB_URL  = 'https://lpzblzqxmoiwghvkhqnt.supabase.co';
 const SB_KEY  = 'sb_publishable_PehrBg34OLpPTmv9GtuIQg_KMFtUcQX';
 const SB_REST = SB_URL + '/rest/v1';
@@ -2120,8 +2120,11 @@ function saSaveFourriereEmail(){
 function saResetIvs(cid){
   if(!window.confirm('⚠️ Supprimer TOUTES les interventions de cette caserne ? Cette action est irréversible.')){return;}
   const d=CASERNE_DATA[cid];if(!d)return;
+  const allIvIds=(d.ivs||[]).map(function(iv){return iv.id;});
+  const allPilpIds=(d.pilpIvs||[]).map(function(iv){return iv.id;});
   d.ivs=[];d.pilpIvs=[];
   if(cid===CURRENT_CASERNE_ID){IVS=[];PILP_IVS=[];}
+  if(USE_RECORDS){_rcMarkDeleted(cid,'iv',allIvIds);_rcMarkDeleted(cid,'pilp',allPilpIds);}
   saveData();cM();
   saPostDeleteRefresh(cid);
   showToast('Toutes les interventions ont été supprimées','success');
@@ -2176,9 +2179,13 @@ function saConfirmDeleteIvs(cid){
   if(!checked.length){showToast('Aucune intervention sélectionnée.','warn');return;}
   const d=CASERNE_DATA[cid];if(!d)return;
   if(!window.confirm('Supprimer '+checked.length+' intervention(s) ? Cette action est irréversible.')){return;}
+  // Séparer ivs et pilpIvs supprimées pour marquer deleted dans records
+  const delIvs=(d.ivs||[]).filter(function(iv){return checked.includes(iv.id);}).map(function(iv){return iv.id;});
+  const delPilp=(d.pilpIvs||[]).filter(function(iv){return checked.includes(iv.id);}).map(function(iv){return iv.id;});
   d.ivs=(d.ivs||[]).filter(function(iv){return !checked.includes(iv.id);});
   d.pilpIvs=(d.pilpIvs||[]).filter(function(iv){return !checked.includes(iv.id);});
   if(cid===CURRENT_CASERNE_ID){IVS=d.ivs;PILP_IVS=d.pilpIvs;}
+  if(USE_RECORDS){_rcMarkDeleted(cid,'iv',delIvs);_rcMarkDeleted(cid,'pilp',delPilp);}
   saveData();cM();saPostDeleteRefresh(cid);
   showToast(checked.length+' intervention(s) supprimée(s)','success');
 }
@@ -11541,6 +11548,30 @@ function _rcSplitAll(data){
     rows = rows.concat(_rcSplitCaserne(cid, data.CASERNE_DATA[cid]));
   });
   return rows;
+}
+
+// ── Marque des enregistrements comme supprimés (suppression douce) ──
+// Envoie deleted=true à Supabase pour chaque id. À appeler AVANT de retirer
+// les éléments des listes locales, sinon la suppression ne se propage pas.
+async function _rcMarkDeleted(caserne, type, recordIds){
+  if(!USE_RECORDS) return; // en mode normal, rien à faire
+  if(!recordIds || !recordIds.length) return;
+  try {
+    const currentUser = (typeof CU!=='undefined' && CU) ? (CU.l||'') : '';
+    const payload = recordIds.map(function(rid){
+      return { id:_rcId(caserne,type,rid), caserne:caserne, type:type, data:{id:rid,_deleted:true}, deleted:true, updated_by:currentUser };
+    });
+    const resp = await fetch(RC_REST, {
+      method:'POST',
+      headers:Object.assign({}, _sbHeaders, { 'Prefer':'resolution=merge-duplicates,return=minimal' }),
+      body:JSON.stringify(payload)
+    });
+    if(!resp.ok) throw new Error('records delete HTTP '+resp.status);
+    _rcLastPush = Date.now();
+  } catch(e){
+    console.warn('[AGAI][RC] MarkDeleted error:', e);
+    showToast('Erreur lors de la suppression (sync)','error');
+  }
 }
 
 // ── En-têtes Supabase (réutilise _sbHeaders défini dans le module Supabase) ──
