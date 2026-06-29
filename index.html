@@ -2474,7 +2474,10 @@ function ccAccederEspaceSaisie(){
   CURRENT_CASERNE_ID='EMAJ';
   initCaserneData('EMAJ');
   // Donner au chef de corps les droits de saisie dans cet espace
-  if(CU){CU.rights=["Interventions","Formation","Chef d'agrès","Historique complet"];}
+  if(CU){
+    const acc=GLOBAL_ACCOUNTS.find(function(a){return a.role==='chef_corps';});
+    CU.rights=(acc&&Array.isArray(acc.rightsCC))?acc.rightsCC.slice():["Interventions","Formation","Chef d'agrès","Historique complet"];
+  }
   syncCaserneContext();
   const c=CASERNES.find(x=>x.id==='EMAJ');
   const t2u=document.getElementById('t2u'),t2r=document.getElementById('t2r');
@@ -2586,12 +2589,22 @@ function editCompteSpecial(role){
   const label=role==='superadmin'?'Super Administrateur':'Chef de Corps';
   document.getElementById('mt').textContent='Modifier — '+label;
   document.getElementById('mi').textContent='';
+  // Section droits, uniquement pour le chef de corps
+  const curRights=acc.rightsCC||["Interventions","Formation","Chef d'agrès","Historique complet"];
+  const rightsSection=(role==='chef_corps')?`
+    <div class="fg"><div class="fgl">Fonctions dans l'espace de saisie</div>
+      <div style="background:#F8F9FA;border:1px solid var(--brd);border-radius:8px;padding:8px;">
+        ${ALL_RIGHTS.map(r=>`<label style="display:flex;align-items:center;gap:8px;margin:4px 0;font-size:13px;cursor:pointer;"><input type="checkbox" class="ec-cc-right" value="${r.replace(/"/g,'&quot;')}"${curRights.includes(r)?' checked':''}/> ${r}</label>`).join('')}
+      </div>
+      <div style="font-size:10px;color:var(--t2);margin-top:4px;">Détermine ce que le chef de corps peut faire dans son espace de saisie (État-Major).</div>
+    </div>`:'';
   document.getElementById('mb').innerHTML=`<div>
     <div class="fg"><div class="fgl">Prénom</div><input class="fi" type="text" id="ec-prenom" value="${acc.prenom}" oninput="prevEcLogin()"/></div>
     <div class="fg"><div class="fgl">Nom</div><input class="fi" type="text" id="ec-nom" value="${acc.nom}" oninput="prevEcLogin()"/></div>
     <div class="fg"><div class="fgl">Grade</div><select class="fi" id="ec-grade">${GRADES.map(g=>`<option${g===acc.grade?' selected':''}>${g}</option>`).join('')}</select></div>
     <div class="fg"><div class="fgl">Identifiant (auto)</div><input class="fi" type="text" id="ec-login" value="${acc.l}" style="font-family:monospace;font-size:12px;"/></div>
     <div class="fg"><div class="fgl">Nouveau mot de passe</div><input class="fi" type="password" id="ec-mdp" placeholder="Laisser vide pour ne pas changer"/></div>
+    ${rightsSection}
     <div id="ec-err" style="font-size:12px;color:#E24B4A;display:none;margin-bottom:8px;"></div>
     <div class="brow">
       <button class="btn pr sm" onclick="saveCompteSpecial('${role}')">&#x1F4BE; Enregistrer</button>
@@ -2619,6 +2632,11 @@ async function saveCompteSpecial(role){
   const oldLogin=acc.l;
   acc.prenom=prenom;acc.nom=nom;acc.l=login;acc.grade=grade;
   if(mdp){acc.p=await hashPassword(mdp);} // P1
+  // Droits du chef de corps (définis par le superadmin)
+  if(role==='chef_corps'){
+    const checked=[...document.querySelectorAll('.ec-cc-right:checked')].map(function(c){return c.value;});
+    acc.rightsCC=checked;
+  }
   if(CU&&(CU.l===oldLogin||CU.l===login)){CU.prenom=prenom;CU.nom=nom;CU.l=login;
     const t2u=document.getElementById('t2u');
     if(t2u)t2u.textContent=login+(CC()?' \u2014 '+CC().nom:'');
