@@ -845,6 +845,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           <div class="brow" style="margin-top:8px;">
             <button class="btn" style="border-color:#7C3AED;color:#7C3AED;" onclick="_sbMigrateFromJsonbin()">🚀 Migrer les données vers Supabase</button>
           </div>
+          <div class="brow" style="margin-top:8px;">
+            <button class="btn" style="border-color:#059669;color:#059669;" onclick="_rcMigrate()">🗂️ Migrer vers records (multi-utilisateurs)</button>
+          </div>
           <div style="font-size:11px;color:var(--t2);margin-top:6px;line-height:1.4;">Mode actif : <strong id="sync-mode-label">JSONBin</strong>. La migration copie toutes les données JSONBin vers Supabase (sans rien supprimer côté JSONBin).</div>
         </div>
         <div class="panel">
@@ -1188,6 +1191,7 @@ let CURRENT_CASERNE_ID=null;
 // USE_SUPABASE : false = JSONBin (comportement actuel), true = Supabase temps réel.
 // Bascule toute la synchro d'un seul mot. Tant que false, RIEN ne change.
 const USE_SUPABASE = false;
+const USE_RECORDS = false;
 const SB_URL  = 'https://lpzblzqxmoiwghvkhqnt.supabase.co';
 const SB_KEY  = 'sb_publishable_PehrBg34OLpPTmv9GtuIQg_KMFtUcQX';
 const SB_REST = SB_URL + '/rest/v1';
@@ -1435,7 +1439,7 @@ function showParamsTab(sub,btn){
   document.getElementById('params-profil').style.display=sub==='profil'?'':'none';
   document.getElementById('params-admin').style.display=sub==='admin'?'':'none';
   document.getElementById('params-onedrive').style.display=sub==='onedrive'?'':'none';
-  if(sub==='onedrive'){var _sml=document.getElementById('sync-mode-label');if(_sml)_sml.textContent=(typeof USE_SUPABASE!=='undefined'&&USE_SUPABASE)?'Supabase (temps réel)':'JSONBin';}
+  if(sub==='onedrive'){var _sml=document.getElementById('sync-mode-label');if(_sml)_sml.textContent=(typeof USE_RECORDS!=='undefined'&&USE_RECORDS)?'Records (multi-utilisateurs temps réel)':((typeof USE_SUPABASE!=='undefined'&&USE_SUPABASE)?'Supabase (temps réel)':'JSONBin');}
   if(sub==='profil')rProfil();
   else if(sub==='admin')rAdm();
   else if(sub==='onedrive')odRenderStatus();
@@ -3883,7 +3887,7 @@ function oM(id){
           ?`<button class="btn sel-btn sm" disabled style="opacity:0.5;cursor:not-allowed;">⏳ Sélectionné par ${nomAutre}</button>`
           :`<button class="btn sel-btn sm" onclick="cS('${iv.id}','selectionne')">☑ Sélectionner</button>`
         }
-        ${(ag||chef)?`<button class="btn sm" style="background:#7C3AED;color:#fff;border-color:#7C3AED;" onclick="showRenfortModal('${iv.id}')">&#x1F4E2; Renfort UT</button>`:''}
+        ${(ag||chef||hasRight('Interventions'))?`<button class="btn sm" style="background:#7C3AED;color:#fff;border-color:#7C3AED;" onclick="showRenfortModal('${iv.id}')">&#x1F4E2; Renfort UT</button>`:''}
         ${chef?`<button class="btn sm" style="color:#E67E22;border-color:#E67E22;" onclick="transfererIV('${iv.id}')">&#x1F500; Transférer</button>`:''}
         ${chef&&iv.n&&(iv.n.toLowerCase().includes('animal')||iv.n.toLowerCase().includes('animaux'))?`<button class="btn sm" style="color:#27AE60;border-color:#27AE60;" onclick="refugeAnimalier('${iv.id}')">&#x1F43E; Refuge animalier</button>`:''}
         ${chef?`<button class="btn sm" style="color:#888;border-color:#ccc;" onclick="annulerIV('${iv.id}')">✕ Annuler</button>`:''}
@@ -7465,9 +7469,11 @@ function confirmerRenfortInterne(ivId){
   showToast('Renfort interne ajout\u00e9 \u00e0 '+heure,'success');
 }
 
-function showRenfortModal(ivId){
+function showRenfortModal(ivId,forcePersonnel){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
-  const autresCasernes=CASERNES.filter(function(c){return c.id!==CURRENT_CASERNE_ID;});
+  // Si l'utilisateur n'est pas chef d'agrès, il ne peut demander qu'un renfort personnel
+  if(forcePersonnel===undefined)forcePersonnel=!(isAgres()||isChef()||hasRight('Administration'));
+  const autresCasernes=CASERNES.filter(function(c){return c.id!==CURRENT_CASERNE_ID&&c.id!=='EMAJ';});
   if(!autresCasernes.length){showToast('Aucune autre caserne disponible.','warn');return;}
 
   const caseCheckboxes=autresCasernes.map(function(c){
@@ -7481,7 +7487,9 @@ function showRenfortModal(ivId){
   document.getElementById('mi').textContent=iv.n+' \u2014 '+iv.com;
   document.getElementById('mb').innerHTML=
     '<div>'
-    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">'
+    +(forcePersonnel
+      ?'<div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:10px;padding:10px;margin-bottom:14px;font-size:12px;color:#5B21B6;">&#x1F465; <strong>Renfort personnel</strong> \u2014 Personnel uniquement.<div style="font-size:10px;color:var(--t2);margin-top:2px;">Le renfort complet (camion + \u00e9quipage) est r\u00e9serv\u00e9 au chef d\u2019agr\u00e8s.</div><input type="hidden" name="renfort-type" value="personnel"/></div>'
+      :'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">'
     +'<label style="display:flex;align-items:center;gap:8px;padding:10px;border:2px solid #7C3AED;border-radius:10px;cursor:pointer;background:#F5F3FF;" id="lbl-renfort-complet">'
     +'<input type="radio" name="renfort-type" value="complet" style="accent-color:#7C3AED;" onchange="updateRenfortType()" checked/>'
     +'<span><div style="font-size:12px;font-weight:600;color:#7C3AED;">&#x1F692; Renfort complet</div><div style="font-size:10px;color:var(--t2);">Camion + \u00e9quipage</div></span>'
@@ -7490,7 +7498,7 @@ function showRenfortModal(ivId){
     +'<input type="radio" name="renfort-type" value="personnel" style="accent-color:#7C3AED;" onchange="updateRenfortType()"/>'
     +'<span><div style="font-size:12px;font-weight:600;color:var(--t);">&#x1F465; Renfort personnel</div><div style="font-size:10px;color:var(--t2);">Personnel uniquement</div></span>'
     +'</label>'
-    +'</div>'
+    +'</div>')
     +'<div style="font-size:12px;font-weight:600;margin-bottom:8px;">Caserne(s) destinataire(s) :</div>'
     +'<div id="renfort-cas-list">'+caseCheckboxes+'</div>'
     +'<div id="renfort-note-block" style="margin-top:10px;">'
@@ -7516,7 +7524,9 @@ function updateRenfortType(){
 
 function envoyerRenfort(ivId){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
-  const type=document.querySelector('input[name="renfort-type"]:checked')?.value||'complet';
+  const checkedType=document.querySelector('input[name="renfort-type"]:checked')?.value;
+  const hiddenType=document.querySelector('input[type="hidden"][name="renfort-type"]')?.value;
+  const type=checkedType||hiddenType||'complet';
   const note=document.getElementById('renfort-note')?.value.trim()||'';
   const destinataires=Array.from(document.querySelectorAll('.renfort-cas-chk:checked')).map(function(c){return c.value;});
   if(!destinataires.length){showToast('S\u00e9lectionne au moins une caserne.','warn');return;}
@@ -10919,7 +10929,7 @@ function saveData(immediate){
     // Push immédiat pour les opérations critiques (changements de statut, etc.)
     if(immediate===true){
       _jbSaveTimer=null;
-      if(USE_SUPABASE){_sbPush(data);}else{_jbPush(data);}
+      if(USE_RECORDS){_rcPush(false);}else if(USE_SUPABASE){_sbPush(data);}else{_jbPush(data);}
       return;
     }
     _jbSaveTimer=window.setTimeout(function(){
@@ -10928,7 +10938,7 @@ function saveData(immediate){
       if(CURRENT_CASERNE_ID&&typeof syncCaserneContext==='function')syncCaserneContext();
       const freshData=_buildDataObject();
       localStorage.setItem(JB_CACHE_KEY,JSON.stringify(freshData));
-      if(USE_SUPABASE){_sbPush(freshData);}else{_jbPush(freshData);}
+      if(USE_RECORDS){_rcPush(false);}else if(USE_SUPABASE){_sbPush(freshData);}else{_jbPush(freshData);}
     },2000);
   }catch(e){console.warn('[AGAI] saveData error:',e);}
 }
@@ -11137,7 +11147,9 @@ function loadData(){
       if(CURRENT_CASERNE_ID)syncCaserneContext();
     }catch(e){}
   }
-  if(USE_SUPABASE){
+  if(USE_RECORDS){
+    _rcPull(false).then(function(){_rcStartRealtime();_rcStartPolling();});
+  }else if(USE_SUPABASE){
     _sbPull(false).then(function(){_sbStartRealtime();_sbStartPolling();});
   }else{
     _jbPull(false).then(function(){_jbStartPolling();});
@@ -11150,7 +11162,9 @@ function _loadClear(){
     if(!raw){const oldKeys=['agai_v14','agai_v13'];for(const k of oldKeys){const r=localStorage.getItem(k);if(r){raw=r;break;}}}
     if(raw){const data=JSON.parse(raw);_applyDataObject(data);_postLoadInit();saveData();showToast('Données migrées ✓','success');}
   }catch(e){console.warn('[AGAI] Chargement impossible:',e);}
-  if(USE_SUPABASE){
+  if(USE_RECORDS){
+    _rcPull(false).then(function(){_rcStartRealtime();_rcStartPolling();});
+  }else if(USE_SUPABASE){
     _sbPull(false).then(function(){_sbStartRealtime();_sbStartPolling();});
   }else{
     _jbPull(false).then(function(){_jbStartPolling();});
@@ -11164,7 +11178,7 @@ function _postLoadInit(){
 }
 
 function jbSyncNow(){
-  const puller = USE_SUPABASE ? _sbPull : _jbPull;
+  const puller = USE_RECORDS ? _rcPull : (USE_SUPABASE ? _sbPull : _jbPull);
   puller(false).then(function(ok){
     if(ok)showToast('Données synchronisées ✓','success');
     else showToast('Erreur de synchronisation','error');
@@ -11251,7 +11265,17 @@ async function _sbPush(data){
   try {
     // Allègement identique à JSONBin (photos + PDF régénérables)
     const lite = _stripHeavyForPush(data);
-    const rows = _sbSplitRows(lite);
+    let rows = _sbSplitRows(lite);
+    // ── SÉCURITÉ MULTI-UTILISATEURS ──
+    // Un utilisateur ne pousse QUE les lignes qu'il a le droit de modifier :
+    // sa caserne active + la ligne globale. Sinon il écraserait les casernes
+    // des autres avec sa copie locale (potentiellement périmée).
+    // Le superadmin (qui édite légitimement plusieurs casernes) pousse tout.
+    if (!(typeof isSuperAdmin === 'function' && isSuperAdmin())) {
+      const allowed = new Set([SB_GLOBAL_ROW]);
+      if (CURRENT_CASERNE_ID) allowed.add(CURRENT_CASERNE_ID);
+      rows = rows.filter(function(r){ return allowed.has(r.caserne); });
+    }
     const currentUser = (typeof CU !== 'undefined' && CU) ? (CU.l || '') : '';
     const payload = rows.map(r => ({
       caserne: r.caserne,
@@ -11423,6 +11447,272 @@ async function _sbMigrateFromJsonbin(){
     alert('Erreur lors de la migration :\n'+e.message);
   }
 }
+
+// ══════════════════════════════════════════════════════
+// MODULE RECORDS (Option 3 : une ligne par enregistrement)
+// Drapeau USE_RECORDS déclaré près des globales.
+// ══════════════════════════════════════════════════════
+
+const RC_SEP = '__'; // séparateur d'id : CIS02__iv__APL_2026_000009
+const RC_REST = SB_URL + '/rest/v1/records';
+let _rcSaving = false;
+let _rcRealtime = null;
+let _rcPollTimer = null;
+let _rcLastPush = 0;
+const _rcPendingDirty = new Set(); // ids modifiés localement en attente de push
+
+// Construit un id global unique
+function _rcId(caserne, type, key){ return caserne + RC_SEP + type + RC_SEP + key; }
+
+// ── Découpe une caserne en lignes records ──
+// Renvoie un tableau {id,caserne,type,data,deleted}
+function _rcSplitCaserne(cid, d){
+  const rows = [];
+  if(!d) return rows;
+  const listTypes = {ivs:'iv', pilpIvs:'pilp', equipes:'equipe', fmpas:'fmpa', formStag:'formStag', formForm:'formForm', renforts:'renfort'};
+  Object.keys(listTypes).forEach(function(listKey){
+    const type = listTypes[listKey];
+    (d[listKey]||[]).forEach(function(item){
+      if(!item || !item.id) return;
+      rows.push({ id:_rcId(cid,type,item.id), caserne:cid, type:type, data:item, deleted:!!item._deleted });
+    });
+  });
+  // Users : une ligne par login
+  (d.users||[]).forEach(function(u){
+    if(!u || !u.l) return;
+    rows.push({ id:_rcId(cid,'user',u.l), caserne:cid, type:'user', data:u, deleted:!!u._deleted });
+  });
+  // Dispos : une ligne par (semaine, login)
+  const dispos = d.dispos||{};
+  Object.keys(dispos).forEach(function(wk){
+    const week = dispos[wk]||{};
+    Object.keys(week).forEach(function(login){
+      rows.push({ id:_rcId(cid,'dispo',wk+RC_SEP+login), caserne:cid, type:'dispo', data:{wk:wk, login:login, slots:week[login]}, deleted:false });
+    });
+  });
+  // Config caserne : tout le reste (structures non-listes) dans une ligne unique
+  const cfg = {
+    piquets: d.piquets||{},
+    planningRotations: d.planningRotations||{},
+    disposValidated: d.disposValidated||{},
+    piquetsValidated: d.piquetsValidated||{},
+    astrConfig: d.astrConfig||{}
+  };
+  rows.push({ id:_rcId(cid,'config','main'), caserne:cid, type:'config', data:cfg, deleted:false });
+  return rows;
+}
+
+// ── Reconstruit l'objet CASERNE_DATA[cid] à partir de lignes records ──
+function _rcAssembleCaserne(rows){
+  const out = { users:[], ivs:[], pilpIvs:[], equipes:[], fmpas:[], formStag:[], formForm:[], renforts:[],
+                dispos:{}, piquets:{}, planningRotations:{}, disposValidated:{}, piquetsValidated:{}, astrConfig:{} };
+  const listMap = {iv:'ivs', pilp:'pilpIvs', equipe:'equipes', fmpa:'fmpas', formStag:'formStag', formForm:'formForm', renfort:'renforts'};
+  rows.forEach(function(r){
+    if(r.deleted) return; // on ignore les enregistrements supprimés à la reconstruction
+    if(listMap[r.type]){
+      out[listMap[r.type]].push(r.data);
+    } else if(r.type==='user'){
+      out.users.push(r.data);
+    } else if(r.type==='dispo'){
+      const dd = r.data||{};
+      if(dd.wk && dd.login){ if(!out.dispos[dd.wk]) out.dispos[dd.wk]={}; out.dispos[dd.wk][dd.login]=dd.slots; }
+    } else if(r.type==='config'){
+      const c = r.data||{};
+      out.piquets=c.piquets||{}; out.planningRotations=c.planningRotations||{};
+      out.disposValidated=c.disposValidated||{}; out.piquetsValidated=c.piquetsValidated||{};
+      out.astrConfig=c.astrConfig||{};
+    }
+  });
+  return out;
+}
+
+// ── Découpe TOUTES les casernes + global en lignes records ──
+function _rcSplitAll(data){
+  let rows = [];
+  // Ligne globale unique (compteurs, comptes, NAT/COM, etc.) — type 'global'
+  rows.push({ id:'_GLOBAL'+RC_SEP+'global'+RC_SEP+'main', caserne:'_GLOBAL', type:'global', data:{
+    v:data.v, CASERNES:data.CASERNES, GLOBAL_ACCOUNTS:data.GLOBAL_ACCOUNTS, NAT:data.NAT, COM:data.COM,
+    APL_COUNTER:data.APL_COUNTER, INT_GLOBAL_COUNTER:data.INT_GLOBAL_COUNTER, INT_CAS_COUNTER:data.INT_CAS_COUNTER,
+    PILP_COUNTER:data.PILP_COUNTER, DISPOS_UNLOCKED:data.DISPOS_UNLOCKED, DISPO_REQUESTS:data.DISPO_REQUESTS,
+    LOGIN_HISTORY:data.LOGIN_HISTORY
+  }, deleted:false });
+  Object.keys(data.CASERNE_DATA||{}).forEach(function(cid){
+    if(cid==='_cabbalrActif'||cid==='_initCabbalr'||cid==='_global') return;
+    rows = rows.concat(_rcSplitCaserne(cid, data.CASERNE_DATA[cid]));
+  });
+  return rows;
+}
+
+// ── En-têtes Supabase (réutilise _sbHeaders défini dans le module Supabase) ──
+
+// ── PUSH : envoie uniquement les enregistrements modifiés (dirty) ──
+// Si fullPush=true, envoie tout (utilisé pour la migration et le 1er chargement).
+async function _rcPush(fullPush){
+  if(_rcSaving){ window.setTimeout(function(){ _rcPush(fullPush); }, 800); return; }
+  _rcSaving = true; _jbSetStatus('saving');
+  try {
+    const data = _buildDataObject();
+    let rows;
+    if(fullPush){
+      rows = _rcSplitAll(data);
+    } else {
+      // Ne pousser que la caserne active + les enregistrements marqués dirty
+      const activeCid = CURRENT_CASERNE_ID;
+      let candidate = [];
+      if(isSuperAdmin()){
+        candidate = _rcSplitAll(data);
+      } else {
+        // ligne globale + caserne active
+        const all = _rcSplitAll(data);
+        candidate = all.filter(function(r){ return r.caserne==='_GLOBAL' || r.caserne===activeCid; });
+      }
+      // Si des ids dirty sont connus, restreindre à ceux-là (+ global toujours poussé léger)
+      if(_rcPendingDirty.size>0){
+        rows = candidate.filter(function(r){ return _rcPendingDirty.has(r.id) || r.type==='global' || r.type==='config'; });
+      } else {
+        rows = candidate;
+      }
+    }
+    if(!rows.length){ _rcSaving=false; _jbSetStatus('ok'); return; }
+    // Allègement : retirer photos lourdes des interventions (réutilise la logique existante)
+    rows = rows.map(function(r){
+      if(r.type==='iv' && r.data){ const lite=Object.assign({},r.data); delete lite.frelonPhotos; delete lite._pdfCache; return Object.assign({},r,{data:lite}); }
+      return r;
+    });
+    const currentUser = (typeof CU!=='undefined' && CU) ? (CU.l||'') : '';
+    const payload = rows.map(function(r){ return { id:r.id, caserne:r.caserne, type:r.type, data:r.data, deleted:r.deleted, updated_by:currentUser }; });
+    const resp = await fetch(RC_REST, {
+      method:'POST',
+      headers:Object.assign({}, _sbHeaders, { 'Prefer':'resolution=merge-duplicates,return=minimal' }),
+      body:JSON.stringify(payload)
+    });
+    if(!resp.ok) throw new Error('records POST HTTP '+resp.status);
+    localStorage.setItem(JB_CACHE_KEY, JSON.stringify(data));
+    _rcLastPush = Date.now(); _rcPendingDirty.clear();
+    _jbSetStatus('ok');
+  } catch(e){
+    console.warn('[AGAI][RC] Push error:', e); _jbSetStatus('error');
+  } finally {
+    _rcSaving = false;
+  }
+}
+
+// ── PULL : lit tous les enregistrements et reconstruit l'état ──
+async function _rcPull(silent){
+  if(_rcSaving) return true;
+  try {
+    if(!silent) _jbSetStatus('loading');
+    const resp = await fetch(RC_REST + '?select=id,caserne,type,data,deleted', { headers:_sbHeaders });
+    if(!resp.ok) throw new Error('records GET HTTP '+resp.status);
+    const rows = await resp.json();
+    if(!Array.isArray(rows)) throw new Error('Données records invalides');
+    // Reconstruire l'objet complet
+    const data = { CASERNE_DATA:{} };
+    const byCaserne = {};
+    rows.forEach(function(r){
+      if(r.caserne==='_GLOBAL'){
+        if(r.type==='global' && !r.deleted){
+          const g=r.data||{};
+          Object.assign(data, {v:g.v, CASERNES:g.CASERNES, GLOBAL_ACCOUNTS:g.GLOBAL_ACCOUNTS, NAT:g.NAT, COM:g.COM,
+            APL_COUNTER:g.APL_COUNTER, INT_GLOBAL_COUNTER:g.INT_GLOBAL_COUNTER, INT_CAS_COUNTER:g.INT_CAS_COUNTER,
+            PILP_COUNTER:g.PILP_COUNTER, DISPOS_UNLOCKED:g.DISPOS_UNLOCKED, DISPO_REQUESTS:g.DISPO_REQUESTS, LOGIN_HISTORY:g.LOGIN_HISTORY});
+        }
+        return;
+      }
+      if(!byCaserne[r.caserne]) byCaserne[r.caserne]=[];
+      byCaserne[r.caserne].push(r);
+    });
+    Object.keys(byCaserne).forEach(function(cid){
+      data.CASERNE_DATA[cid] = _rcAssembleCaserne(byCaserne[cid]);
+    });
+    // Protéger les modifications locales en cours sur la caserne active (édition < 15s)
+    const activeCid = CURRENT_CASERNE_ID;
+    if(activeCid && Date.now()-_jbEditLock < 15000 && CASERNE_DATA[activeCid]){
+      // Conserver dispos locales en cours d'édition
+      if(data.CASERNE_DATA[activeCid]){
+        data.CASERNE_DATA[activeCid].dispos = CASERNE_DATA[activeCid].dispos;
+      }
+    }
+    _applyDataObject(data);
+    _postLoadInit();
+    if(activeCid) syncCaserneContext();
+    localStorage.setItem(JB_CACHE_KEY, JSON.stringify(data));
+    try{rI();}catch(e){}try{rAccueil();}catch(e){}try{rHist();}catch(e){}try{rAstrDispo();}catch(e){}try{rAstrEquipes();}catch(e){}
+    const isTyping = document.getElementById('admin-add') && document.getElementById('admin-add').style.display!=='none'
+      && (document.getElementById('nu-prenom')?.value || document.getElementById('nu-nom')?.value || document.getElementById('nu-mdp')?.value);
+    if(!isTyping){ try{rAdm();}catch(e){} }
+    _jbSetStatus('ok'); return true;
+  } catch(e){
+    console.warn('[AGAI][RC] Pull error:', e); _jbSetStatus('error'); return false;
+  }
+}
+
+// ── Temps réel records ──
+function _rcStartRealtime(){
+  try {
+    if(_rcRealtime){ try{_rcRealtime.close();}catch(e){} _rcRealtime=null; }
+    const wsUrl = SB_URL.replace('https://','wss://') + '/realtime/v1/websocket?apikey=' + SB_KEY + '&vsn=1.0.0';
+    const ws = new WebSocket(wsUrl);
+    _rcRealtime = ws;
+    ws.onopen = function(){
+      ws.send(JSON.stringify({ topic:'realtime:public:records', event:'phx_join',
+        payload:{ config:{ postgres_changes:[{ event:'*', schema:'public', table:'records' }] } }, ref:'1' }));
+      ws._hb = setInterval(function(){ try{ ws.send(JSON.stringify({topic:'phoenix',event:'heartbeat',payload:{},ref:'hb'})); }catch(e){} }, 25000);
+    };
+    ws.onmessage = function(msg){
+      try {
+        const m = JSON.parse(msg.data);
+        if(m.event==='postgres_changes'){
+          if(_rcSaving) return;
+          if(Date.now()-_rcLastPush < 2000) return; // ignorer notre propre écho
+          if(Date.now()-_jbEditLock < 12000) return; // édition en cours
+          _rcPull(true);
+        }
+      } catch(e){}
+    };
+    ws.onclose = function(){ if(ws._hb) clearInterval(ws._hb); if(USE_RECORDS) window.setTimeout(_rcStartRealtime, 5000); };
+    ws.onerror = function(){ try{ws.close();}catch(e){} };
+  } catch(e){
+    console.warn('[AGAI][RC] Realtime error:', e); _rcStartPolling();
+  }
+}
+
+function _rcStartPolling(){
+  if(_rcPollTimer) clearInterval(_rcPollTimer);
+  _rcPollTimer = window.setInterval(function(){
+    if(_rcSaving) return;
+    if(Date.now()-_rcLastPush < 10000) return;
+    if(Date.now()-_jbEditLock < 12000) return;
+    _rcPull(true);
+  }, 30000);
+}
+
+// ── Migration : copie les données actuelles (cache local) vers la table records ──
+async function _rcMigrate(){
+  if(!confirm('Migrer toutes les données actuelles vers le nouveau système (records) ?\n\nCela COPIE les données, rien n\'est supprimé.\nÀ faire une seule fois avant de basculer USE_RECORDS.')) return;
+  _jbSetStatus('saving');
+  try {
+    const data = _buildDataObject();
+    const rows = _rcSplitAll(data);
+    const currentUser = 'migration';
+    // Envoyer par paquets de 200 lignes pour éviter une requête trop grosse
+    let sent = 0;
+    for(let i=0;i<rows.length;i+=200){
+      const chunk = rows.slice(i,i+200).map(function(r){ return {id:r.id,caserne:r.caserne,type:r.type,data:r.data,deleted:r.deleted,updated_by:currentUser}; });
+      const resp = await fetch(RC_REST, { method:'POST', headers:Object.assign({},_sbHeaders,{'Prefer':'resolution=merge-duplicates,return=minimal'}), body:JSON.stringify(chunk) });
+      if(!resp.ok) throw new Error('records POST HTTP '+resp.status);
+      sent += chunk.length;
+    }
+    _jbSetStatus('ok');
+    showToast('Migration records réussie ✓ ('+sent+' lignes)','success');
+    alert('Migration terminée !\n\n'+sent+' enregistrements copiés vers la table records.\n\nVous pouvez vérifier dans Supabase, puis basculer USE_RECORDS sur true.');
+  } catch(e){
+    console.warn('[AGAI][RC] Migration error:', e); _jbSetStatus('error');
+    showToast('Erreur migration records','error');
+    alert('Erreur lors de la migration records :\n'+e.message);
+  }
+}
+
 
 function saveAndRefresh(){saveData();}
 function _odSyncAfterSave(){if(typeof odScheduleSync==='function')odScheduleSync();}
