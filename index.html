@@ -7507,7 +7507,7 @@ function showRenfortModal(ivId,forcePersonnel){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
   // Si l'utilisateur n'est pas chef d'agrès, il ne peut demander qu'un renfort personnel
   if(forcePersonnel===undefined)forcePersonnel=!(isAgres()||isChef()||hasRight('Administration'));
-  const autresCasernes=CASERNES.filter(function(c){return c.id!==CURRENT_CASERNE_ID&&c.id!=='EMAJ';});
+  const autresCasernes=CASERNES.filter(function(c){return c.id!==CURRENT_CASERNE_ID;});
   if(!autresCasernes.length){showToast('Aucune autre caserne disponible.','warn');return;}
 
   const caseCheckboxes=autresCasernes.map(function(c){
