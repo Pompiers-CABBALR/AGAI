@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=5.0,minimum-scale=1.0,viewport-fit=cover"/>
 <title>AGAI</title>
 <style>
 /*
@@ -43,7 +43,8 @@
 
 /* ── 1. Reset & variables CSS ── */
 *{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f2f2f7;min-height:100vh;font-size:14px;}
+html{overflow-x:hidden;max-width:100%;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f2f2f7;min-height:100vh;font-size:14px;overflow-x:hidden;max-width:100%;}
 :root{
   /* Couleurs sémantiques */
   --red:#C0392B;--rl:#FCEBEB;--rd:#A32D2D;
@@ -359,7 +360,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 @media(max-width:480px){
   .frow{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch;}
   .fb{flex-shrink:0;}
-  .nb{font-size:9px;padding:9px 2px;}
+  .nb{font-size:26px;padding:10px 10px;}
   .tt{font-size:11px;}
   .ts2{display:none;}
   .ttime{font-size:10px;}
@@ -1190,7 +1191,7 @@ let CURRENT_CASERNE_ID=null;
 // ── Configuration Supabase (bascule prudente) ──
 // USE_SUPABASE : false = JSONBin (comportement actuel), true = Supabase temps réel.
 // Bascule toute la synchro d'un seul mot. Tant que false, RIEN ne change.
-const USE_SUPABASE = false;
+const USE_SUPABASE = true;
 const USE_RECORDS = true;
 const SB_URL  = 'https://lpzblzqxmoiwghvkhqnt.supabase.co';
 const SB_KEY  = 'sb_publishable_PehrBg34OLpPTmv9GtuIQg_KMFtUcQX';
