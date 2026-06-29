@@ -6213,7 +6213,7 @@ function rAstrPiquets(){
               const heures=(m.hDebut&&m.hFin&&(m.hDebut!==p.debut||m.hFin!==p.fin))
                 ?'<span style="font-size:9px;opacity:.7;margin-left:3px;">'+m.hDebut+'&ndash;'+m.hFin+'</span>':'';
               const sol=getSollicitation(m.login);
-              const solBadge=sol>0?'<span style="background:#E5E7EB;color:#374151;border-radius:4px;padding:0 4px;font-size:9px;margin-left:3px;font-weight:600;">\uD83D\uDD04'+sol+'</span>':'';
+              const solBadge='';
               crew+='<div style="font-weight:500;font-size:11px;">'+(u?fullName(u):m.login)+heures+solBadge+'</div>';
             });
           });
@@ -6268,14 +6268,10 @@ function rAstrPiquets(){
         return membres.some(function(m){return m.login===u.l;});
       }).length;
       const sol=getSollicitation(u.l);
-      html+='<div class="eq-member-row">'
-        +'<div style="flex:1;font-weight:500;font-size:12px;">'+fullName(u)+'</div>'
-        +'<div style="display:flex;align-items:center;gap:6px;">'
-        +'<div style="width:70px;background:#f0f0f0;border-radius:5px;height:8px;overflow:hidden;">'
-        +'<div style="width:'+pct+'%;background:'+pctColor+';height:100%;border-radius:5px;"></div></div>'
-        +'<span style="font-size:11px;color:var(--t2);width:28px;text-align:right;">'+pct+'%</span>'
-        +'<span title="Sollicitation piquets cette semaine" style="font-size:10px;background:'+(sol>0?'#EFF6FF':'#F3F4F6')+';color:'+(sol>0?'#1D4ED8':'#9CA3AF')+';border-radius:4px;padding:1px 6px;font-weight:600;min-width:32px;text-align:center;">'+sol+'%🔄</span>'
-        +'</div></div>';
+      html+='<div class="eq-member-row" style="display:block;">'
+        +'<div style="font-weight:500;font-size:12px;">'+fullName(u)+'</div>'
+        +_renderAgentBars(u.l,pct,pctColor)
+        +'</div>';
     });
     html+='</div>';
   });
@@ -6295,14 +6291,10 @@ function rAstrPiquets(){
         return membres.some(function(m){return m.login===u.l;});
       }).length;
       const solSE=getSollicitation(u.l);
-      html+='<div class="eq-member-row">'
-        +'<div style="flex:1;font-weight:500;font-size:12px;">'+fullName(u)+'</div>'
-        +'<div style="display:flex;align-items:center;gap:6px;">'
-        +'<div style="width:70px;background:#f0f0f0;border-radius:5px;height:8px;overflow:hidden;">'
-        +'<div style="width:'+pct+'%;background:'+pctColor+';height:100%;border-radius:5px;"></div></div>'
-        +'<span style="font-size:11px;color:var(--t2);width:28px;text-align:right;">'+pct+'%</span>'
-        +'<span title="Sollicitation piquets cette semaine" style="font-size:10px;background:'+(solSE>0?'#EFF6FF':'#F3F4F6')+';color:'+(solSE>0?'#1D4ED8':'#9CA3AF')+';border-radius:4px;padding:1px 6px;font-weight:600;min-width:32px;text-align:center;">'+solSE+'%🔄</span>'
-        +'</div></div>';
+      html+='<div class="eq-member-row" style="display:block;">'
+        +'<div style="font-weight:500;font-size:12px;">'+fullName(u)+'</div>'
+        +_renderAgentBars(u.l,pct,pctColor)
+        +'</div>';
     });
     html+='</div>';
   }
@@ -12387,6 +12379,32 @@ function agentsAvecDispos(wk){
 // Grades chef d’agrès
 const GRADES_CHEF_AGRES=['Caporal-chef','Sergent','Sergent-chef','Adjudant','Adjudant-chef','Lieutenant','Capitaine','Commandant','Lieutenant-colonel','Colonel'];
 function isChefAgresByGrade(u){return GRADES_CHEF_AGRES.includes(u.grade)||u.rights?.includes("Chef d'agrès");}
+// Rendu des indicateurs d'un agent : Dispo (barre), puis Répartition + Occupation des piquets
+function _renderAgentBars(login,pct,pctColor){
+  const rep=getPiquetRepartition(login);
+  const occ=getPiquetOccupation(login);
+  const bar=function(w,color){return '<div style="flex:1;background:#f0f0f0;border-radius:5px;height:8px;overflow:hidden;"><div style="width:'+Math.min(w,100)+'%;background:'+color+';height:100%;border-radius:5px;"></div></div>';};
+  return '<div style="margin-top:4px;">'
+    +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">'
+      +'<span style="font-size:10px;color:var(--t2);width:42px;">Dispo</span>'
+      +bar(pct,pctColor)
+      +'<span style="font-size:11px;font-weight:500;width:32px;text-align:right;">'+pct+'%</span>'
+    +'</div>'
+    +'<div style="display:flex;align-items:center;gap:10px;">'
+      +'<div style="flex:1;display:flex;align-items:center;gap:5px;">'
+        +'<span style="font-size:10px;color:var(--t2);width:62px;">R\u00e9partition</span>'
+        +bar(rep,'#378ADD')
+        +'<span style="font-size:11px;font-weight:500;width:32px;text-align:right;color:#185FA5;">'+rep+'%</span>'
+      +'</div>'
+      +'<div style="flex:1;display:flex;align-items:center;gap:5px;">'
+        +'<span style="font-size:10px;color:var(--t2);width:58px;">Occupation</span>'
+        +bar(occ,'#7F77DD')
+        +'<span style="font-size:11px;font-weight:500;width:32px;text-align:right;color:#534AB7;">'+occ+'%</span>'
+      +'</div>'
+    +'</div>'
+  +'</div>';
+}
+
 function getSollicitation(login){
   // Pourcentage de sollicitation = jours où l'agent est affecté / 7 jours
   const wk=weekKey(getMondayOfWeek(astrPiquetWeek));
@@ -12400,6 +12418,57 @@ function getSollicitation(login){
     }
   });
   return Math.round(jours.size/7*100);
+}
+
+// Heures de piquet d'un agent sur la semaine affichée
+function getPiquetHeures(login,wk){
+  wk=wk||weekKey(getMondayOfWeek(astrPiquetWeek));
+  const piquetsSem=PIQUETS[wk]||[];
+  let minutes=0;
+  piquetsSem.forEach(function(p){
+    const membres=p.membres&&p.membres.length?p.membres:[];
+    membres.forEach(function(m){
+      if(m.login!==login)return;
+      const deb=m.hDebut||p.debut;
+      const fin=m.hFin||p.fin;
+      if(!deb||!fin)return;
+      let d=timeToMin(deb),f=timeToMin(fin);
+      if(f<=d)f+=1440; // créneau passant minuit
+      minutes+=(f-d);
+    });
+  });
+  return minutes/60; // en heures
+}
+
+// Total des heures de piquet de toute la caserne (pour la répartition)
+function getPiquetHeuresTotal(wk){
+  wk=wk||weekKey(getMondayOfWeek(astrPiquetWeek));
+  const piquetsSem=PIQUETS[wk]||[];
+  let minutes=0;
+  piquetsSem.forEach(function(p){
+    const membres=p.membres&&p.membres.length?p.membres:[];
+    membres.forEach(function(m){
+      const deb=m.hDebut||p.debut;
+      const fin=m.hFin||p.fin;
+      if(!deb||!fin)return;
+      let d=timeToMin(deb),f=timeToMin(fin);
+      if(f<=d)f+=1440;
+      minutes+=(f-d);
+    });
+  });
+  return minutes/60;
+}
+
+// Taux de répartition : part de l'agent dans le total des piquets (%)
+function getPiquetRepartition(login,wk){
+  const total=getPiquetHeuresTotal(wk);
+  if(total<=0)return 0;
+  return Math.round(getPiquetHeures(login,wk)/total*100);
+}
+
+// Taux d'occupation : heures de piquet de l'agent sur 168h (semaine complète) (%)
+function getPiquetOccupation(login,wk){
+  return Math.round(getPiquetHeures(login,wk)/168*100);
 }
 
 function piquetAgentOpts(agents,exclude,includeNone){
