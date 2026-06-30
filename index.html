@@ -1916,6 +1916,15 @@ function renderSuperAdmin(){
       </div>
     </div>
     <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;border:1px solid #eee;">
+      <div style="font-size:14px;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:8px;">&#x1F510; Déconnexion automatique</div>
+      <div style="font-size:12px;color:#666;margin-bottom:12px;">Délai d'inactivité en arrière-plan (app quittée, écran verrouillé) avant déconnexion. 0 = désactivé.</div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <input type="number" id="sa-bglogout" min="0" max="480" value="15" style="width:90px;padding:6px 10px;border:1px solid #ccc;border-radius:6px;font-size:13px;text-align:center;"/>
+        <span style="font-size:13px;color:#444;">minutes</span>
+        <button class="btn pr sm" style="margin-left:auto;" onclick="saSaveBgLogout()">💾 Enregistrer</button>
+      </div>
+    </div>
+    <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;border:1px solid #eee;">
       <div style="font-size:14px;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:8px;">&#x1F692; Types d'engins</div>
       <div style="font-size:12px;color:#666;margin-bottom:12px;">Définissez le nombre de places et les rôles de chaque type d'engin (VTU, VPI, VL…). Appliqué à tous les engins de ce type.</div>
       <div id="sa-engin-types"></div>
@@ -2043,6 +2052,10 @@ function renderSuperAdmin(){
   if(_lprev){_lprev.src=_getLogoSrc();_lprev.style.display='block';}
   // Rendu de la configuration des types d'engins
   try{renderEnginTypes();}catch(e){}
+  try{
+    const _bg=document.getElementById('sa-bglogout');
+    if(_bg)_bg.value=(ASTR_CONFIG&&typeof ASTR_CONFIG.bgLogoutMin==='number')?ASTR_CONFIG.bgLogoutMin:15;
+  }catch(e){}
 }
 
 
@@ -3513,6 +3526,39 @@ document.addEventListener('DOMContentLoaded',function(){
       }
     }
     dd.addEventListener('pointerdown',pickAddr);
+  }
+});
+
+// ── Déconnexion automatique après inactivité en arrière-plan ──
+// Si l'app reste en arrière-plan (quittée, autre app, écran verrouillé) plus
+// longtemps que le délai configuré, l'utilisateur est déconnecté à son retour.
+// Un retour rapide (réponse à un appel, photo…) ne déconnecte pas.
+let _bgTimer=null,_bgHiddenAt=0;
+function _getBgLogoutMs(){
+  // Délai configurable (minutes) via ASTR_CONFIG.bgLogoutMin, défaut 15 min. 0 = désactivé.
+  const min=(typeof ASTR_CONFIG!=='undefined'&&ASTR_CONFIG&&typeof ASTR_CONFIG.bgLogoutMin==='number')?ASTR_CONFIG.bgLogoutMin:15;
+  return min>0?min*60*1000:0;
+}
+document.addEventListener('visibilitychange',function(){
+  const ms=_getBgLogoutMs();
+  if(document.hidden){
+    // L'app passe en arrière-plan : mémoriser l'heure et armer le minuteur
+    _bgHiddenAt=Date.now();
+    if(ms>0 && CU && isSessionValid()){
+      if(_bgTimer)clearTimeout(_bgTimer);
+      _bgTimer=setTimeout(function(){
+        if(CU){try{doLogout();}catch(e){}}
+      },ms);
+    }
+  } else {
+    // L'app revient au premier plan : annuler le minuteur en attente
+    if(_bgTimer){clearTimeout(_bgTimer);_bgTimer=null;}
+    // Ceinture-bretelles : sur iOS le minuteur peut être suspendu en arrière-plan.
+    // On vérifie le temps réellement écoulé et on déconnecte si le délai est dépassé.
+    if(ms>0 && _bgHiddenAt && CU && (Date.now()-_bgHiddenAt)>=ms){
+      try{doLogout();}catch(e){}
+    }
+    _bgHiddenAt=0;
   }
 });
 // Fermer le dropdown quand on clique ailleurs
@@ -5977,6 +6023,8 @@ function rAstrDispo(){
 }
 
 function toggleDispoCell(wk,login,d,s,el,eqColor){
+  // Ignore le click synthétique généré juste après un geste tactile (évite le double-toggle)
+  if(_dispoTouchHandled && (Date.now()-_dispoTouchHandled)<600){return;}
   _jbEditLock=Date.now();
   if(!DISPOS[wk])DISPOS[wk]={};
   if(!DISPOS[wk][login])DISPOS[wk][login]={};
@@ -5987,7 +6035,7 @@ function toggleDispoCell(wk,login,d,s,el,eqColor){
   else{DISPOS[wk][login][key]=true;el.style.background='#22C55E';}
 }
 // ── Drag pour saisie dispo ──
-let _dragActive=false,_dragTargetVal=true;
+let _dragActive=false,_dragTargetVal=true,_dispoTouchHandled=0;
 function startDispoDrag(el){
   _jbEditLock=Date.now();
   _dragActive=true;
@@ -6014,6 +6062,37 @@ function applyDispoDrag(el){
   el.dataset.val=_dragTargetVal===null?'null':String(_dragTargetVal);
 }
 document.addEventListener('mouseup',()=>{_dragActive=false;});
+
+// ── Support tactile du glisser pour les disponibilités (smartphone) ──
+// Les événements souris (onmouseenter) n'existent pas au tactile ; on détecte
+// la case sous le doigt via elementFromPoint pendant le touchmove.
+function _dispoCellFromTouch(t){
+  const el=document.elementFromPoint(t.clientX,t.clientY);
+  if(el&&el.dataset&&el.dataset.wk&&el.dataset.login&&el.dataset.d!==undefined&&el.dataset.s!==undefined)return el;
+  return null;
+}
+document.addEventListener('touchstart',function(e){
+  const t=e.touches[0];if(!t)return;
+  const cell=_dispoCellFromTouch(t);
+  if(cell){
+    e.preventDefault(); // empêche le scroll pendant le glisser sur la grille
+    _dispoTouchHandled=Date.now();
+    startDispoDrag(cell);
+    cell._dispoTouched=true;
+  }
+},{passive:false});
+document.addEventListener('touchmove',function(e){
+  if(!_dragActive)return;
+  const t=e.touches[0];if(!t)return;
+  const cell=_dispoCellFromTouch(t);
+  if(cell){
+    e.preventDefault();
+    _dispoTouchHandled=Date.now();
+    continueDispoDrag(cell);
+  }
+},{passive:false});
+document.addEventListener('touchend',function(){_dragActive=false;_dispoTouchHandled=Date.now();});
+document.addEventListener('touchcancel',function(){_dragActive=false;});
 function setAllDispoFor(wk,login,val,eqColor){
   _jbEditLock=Date.now();
   // Vérifier les droits avant toute modification
@@ -7241,6 +7320,17 @@ function etSetRoleN(ti,ri,val){const n=Math.max(1,Math.min(20,parseInt(val)||1))
 function etDelRole(ti,ri){ENGIN_TYPES[ti].roles.splice(ri,1);_etSave();}
 function etAddRole(ti){ENGIN_TYPES[ti].roles.push({role:ENGIN_ROLES_DISPONIBLES[0],n:1});_etSave();}
 function etAddCustomRole(ti){const inp=document.getElementById('et-newrole-'+ti);const val=(inp.value||'').trim();if(!val)return;ENGIN_TYPES[ti].roles.push({role:val,n:1});inp.value='';_etSave();}
+
+function saSaveBgLogout(){
+  const inp=document.getElementById('sa-bglogout');if(!inp)return;
+  let v=parseInt(inp.value);
+  if(isNaN(v)||v<0)v=0;
+  if(v>480)v=480;
+  ASTR_CONFIG.bgLogoutMin=v;
+  if(typeof CD==='function'&&CD())CD().astrConfig=ASTR_CONFIG;
+  if(typeof saveData==='function')saveData();
+  showToast(v>0?('Déconnexion auto réglée sur '+v+' min'):'Déconnexion auto désactivée','success');
+}
 
 function renderJoursFeries(annee){
   const grid=document.getElementById('sa-feries-grid');if(!grid)return;
