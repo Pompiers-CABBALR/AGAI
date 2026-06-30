@@ -7050,6 +7050,21 @@ function getEnginNbPlaces(nom){
   return getEnginRoles(nom).reduce(function(s,r){return s+(r.n||0);},0);
 }
 
+// Compte, pour un engin, combien de chaque rôle standard la config prévoit.
+// Renvoie {conducteur:N, chefEquipe:N, equipier:N}. Le chef d'agrès est implicite.
+function _enginRoleCount(nom){
+  const roles=getEnginRoles(nom);
+  const norm=function(s){return (s||'').toLowerCase().replace(/[\u00e8\u00e9\u00ea]/g,'e').replace(/[^a-z]/g,'');};
+  let conducteur=0,chefEquipe=0,equipier=0;
+  roles.forEach(function(r){
+    const k=norm(r.role);const n=r.n||0;
+    if(k==='conducteur')conducteur+=n;
+    else if(k==='chefdequipe')chefEquipe+=n;
+    else if(k==='equipier')equipier+=n;
+  });
+  return {conducteur:conducteur,chefEquipe:chefEquipe,equipier:equipier};
+}
+
 // ── Récupère le piquet actif pour un login donné ──
 function getPiquetActif(wk,login){
   const now=N();
@@ -7270,20 +7285,16 @@ function showPersonnelModal(id){
 
   // ── Équipage engin 1 ──
   function buildEquipage1(enginVal){
-    const vpi=isVPI(enginVal);
+    const rc=_enginRoleCount(enginVal);
     const caHtml='<div style="margin-bottom:8px;background:#EEF2FF;border-radius:8px;padding:8px 10px;">'
       +'<div style="font-size:11px;font-weight:600;color:#3730A3;margin-bottom:2px;">Chef d\u2019agr\u00e8s</div>'
       +'<div style="font-size:12px;font-weight:700;">'+fullName(USERS.find(function(u){return u.l===CU.l;})||{prenom:CU.l,nom:''})+' <span style="font-size:10px;color:var(--t2);">(vous)</span></div>'
       +'</div>';
-    const condHtml=agentSelectHtml('Conducteur','eq-conducteur',cond1Sugg,true,true,[CU.l]);
-    if(vpi){
-      const chefEqHtml=agentSelectHtml('Chef d\u2019\u00e9quipe','eq-chef-equipe',eq1Sugg,true,false,[CU.l]);
-      const eq1Html=agentSelectHtml('\u00c9quipier','eq-equipier1','',false,false,[CU.l]);
-      return caHtml+condHtml+chefEqHtml+eq1Html;
-    } else {
-      const eq1Html=agentSelectHtml('\u00c9quipier','eq-equipier1',eq1Sugg,false,false,[CU.l]);
-      return caHtml+condHtml+eq1Html;
-    }
+    let html=caHtml;
+    if(rc.conducteur>0)html+=agentSelectHtml('Conducteur','eq-conducteur',cond1Sugg,true,true,[CU.l]);
+    if(rc.chefEquipe>0)html+=agentSelectHtml('Chef d\u2019\u00e9quipe','eq-chef-equipe',eq1Sugg,true,false,[CU.l]);
+    if(rc.equipier>0)html+=agentSelectHtml('\u00c9quipier','eq-equipier1',rc.chefEquipe>0?'':eq1Sugg,false,false,[CU.l]);
+    return html;
   }
 
   const u2=agr2?USERS.find(function(u){return u.l===agr2;}):null;
