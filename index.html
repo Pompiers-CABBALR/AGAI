@@ -7076,7 +7076,14 @@ function getPiquetActif(wk,login){
   const jourActuel=JOURS_FULL[dowJS===0?6:dowJS-1];
   const jourPrec=JOURS_FULL[(dowJS===0?6:dowJS-1+6)%7];
   return (PIQUETS[wk]||[]).find(function(p){
-    if(p.chefAgres!==login)return false;
+    // chef d'agrès : raccourci p.chefAgres, ou repli sur les membres (insensible apostrophe)
+    let caLogin=p.chefAgres;
+    if(!caLogin&&p.membres&&p.membres.length){
+      const _nr=function(s){return (s||'').toLowerCase().replace(/[\u00e8\u00e9\u00ea]/g,'e').replace(/[^a-z]/g,'');};
+      const caM=p.membres.find(function(m){return _nr(m.role)===_nr("Chef d'agr\u00e8s");});
+      if(caM)caLogin=caM.login;
+    }
+    if(caLogin!==login)return false;
     const dMin=timeToMin(p.debut),fMin=timeToMin(p.fin);
     const overnight=p.fin<=p.debut;
     if(overnight){
@@ -7087,6 +7094,26 @@ function getPiquetActif(wk,login){
     }
     return false;
   })||null;
+}
+
+// ── Extrait l'équipage d'un piquet (robuste : lit les membres, repli sur les raccourcis) ──
+function getPiquetEquipage(piq){
+  const res={conducteur:'',chefEquipe:'',equipier:''};
+  if(!piq)return res;
+  const _nr=function(s){return (s||'').toLowerCase().replace(/[\u00e8\u00e9\u00ea]/g,'e').replace(/[^a-z]/g,'');};
+  if(piq.membres&&piq.membres.length){
+    piq.membres.forEach(function(m){
+      const k=_nr(m.role);
+      if(k===_nr('Conducteur')&&!res.conducteur)res.conducteur=m.login;
+      else if(k===_nr("Chef d'\u00e9quipe")&&!res.chefEquipe)res.chefEquipe=m.login;
+      else if(k===_nr('\u00c9quipier')&&!res.equipier)res.equipier=m.login;
+    });
+  }
+  // Repli sur les raccourcis si membres absents/incomplets
+  if(!res.conducteur&&piq.conducteur)res.conducteur=piq.conducteur;
+  if(!res.chefEquipe&&piq.chefEquipe)res.chefEquipe=piq.chefEquipe;
+  if(!res.equipier&&piq.stagiaire)res.equipier=piq.stagiaire;
+  return res;
 }
 
 // ── Construit le HTML d'un sélecteur d'agent avec rôle ──
@@ -7269,18 +7296,20 @@ function showPersonnelModal(id){
 
   // Piquet du CA principal
   const piq1=getPiquetActif(wk,CU.l);
+  const _eq1=getPiquetEquipage(piq1);
   const engin1Sugg=piq1?piq1.engin:'';
-  const cond1Sugg=piq1?piq1.conducteur:'';
-  const chefEq1Sugg=piq1?(piq1.chefEquipe||''):'';
-  const eq1Sugg=piq1?piq1.stagiaire:'';
+  const cond1Sugg=_eq1.conducteur;
+  const chefEq1Sugg=_eq1.chefEquipe;
+  const eq1Sugg=_eq1.equipier;
 
   // Piquet du 2ème chef d'agrès (si présent)
   const agr2=iv._agr2||'';
   const piq2=agr2?getPiquetActif(wk,agr2):null;
+  const _eq2=getPiquetEquipage(piq2);
   const engin2Sugg=piq2?piq2.engin:'';
-  const cond2Sugg=piq2?piq2.conducteur:'';
-  const chefEq2Sugg=piq2?(piq2.chefEquipe||''):'';
-  const eq2Sugg=piq2?piq2.stagiaire:'';
+  const cond2Sugg=_eq2.conducteur;
+  const chefEq2Sugg=_eq2.chefEquipe;
+  const eq2Sugg=_eq2.equipier;
 
   const enginOpts=function(sugg){
     return [''].concat(ASTR_CONFIG.engins||[]).map(function(e){
