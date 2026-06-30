@@ -3034,9 +3034,8 @@ function doLogout(){
   if(SESSION_TOKEN){
     const entry=LOGIN_HISTORY.find(e=>e.id===SESSION_TOKEN);
     if(entry){entry.hDeconnexion=new Date().toISOString();entry.actif=false;}
-    saveData();
+    saveData(true); // push immédiat : l'historique de connexion est partagé
   }
-  saveData();
   _clearSession(); // P2 : invalider la session
   CU=null;GLOBAL_ROLE=null;CURRENT_CASERNE_ID=null;syncCaserneContext();
   // Masquer la vue globale si visible
@@ -11924,6 +11923,48 @@ async function _rcMarkDeleted(caserne, type, recordIds){
 
 // ── PUSH : envoie uniquement les enregistrements modifiés (dirty) ──
 // Si fullPush=true, envoie tout (utilisé pour la migration et le 1er chargement).
+// ── Fusionne deux historiques de connexion par id de session ──
+// Garde l'entrée la plus complète : une déconnexion renseignée prime sur "actif".
+function _mergeLoginHistory(localArr, remoteArr){
+  const map={};
+  const add=function(e){
+    if(!e||!e.id)return;
+    const ex=map[e.id];
+    if(!ex){map[e.id]=e;return;}
+    // Priorité à l'entrée qui a une heure de déconnexion
+    const exHas=!!ex.hDeconnexion, eHas=!!e.hDeconnexion;
+    if(eHas&&!exHas){map[e.id]=e;}
+    else if(eHas&&exHas){ if((e.hDeconnexion||'')>(ex.hDeconnexion||''))map[e.id]=e; }
+    // sinon on garde l'existant
+  };
+  (remoteArr||[]).forEach(add);
+  (localArr||[]).forEach(add);
+  // Trier par heure de connexion décroissante (plus récent d'abord), limiter à 500
+  const out=Object.keys(map).map(function(k){return map[k];});
+  out.sort(function(a,b){return (b.hConnexion||'').localeCompare(a.hConnexion||'');});
+  return out.slice(0,500);
+}
+
+// ── Pousse uniquement la ligne globale (LOGIN_HISTORY, etc.) avec keepalive ──
+// Utilisé à la fermeture de page pour enregistrer la déconnexion de façon fiable,
+// sans écraser le reste (on n'envoie QUE la ligne globale).
+function _rcPushGlobalRowKeepalive(){
+  if(!USE_RECORDS)return;
+  try{
+    const data=_buildDataObject();
+    const rows=_rcSplitAll(data).filter(function(r){return r.type==='global';});
+    if(!rows.length)return;
+    const currentUser=(typeof CU!=='undefined'&&CU)?(CU.l||''):'';
+    const payload=rows.map(function(r){return {id:r.id,caserne:r.caserne,type:r.type,data:r.data,deleted:!!r.deleted,updated_by:currentUser};});
+    fetch(RC_REST,{
+      method:'POST',
+      headers:Object.assign({},_sbHeaders,{'Prefer':'resolution=merge-duplicates,return=minimal'}),
+      body:JSON.stringify(payload),
+      keepalive:true
+    }).catch(function(){});
+  }catch(e){}
+}
+
 async function _rcPush(fullPush){
   if(_rcSaving){ window.setTimeout(function(){ _rcPush(fullPush); }, 800); return; }
   _rcSaving = true; _jbSetStatus('saving');
@@ -11993,6 +12034,10 @@ async function _rcPull(silent){
           Object.assign(data, {v:g.v, CASERNES:g.CASERNES, GLOBAL_ACCOUNTS:g.GLOBAL_ACCOUNTS, NAT:g.NAT, COM:g.COM, ENGIN_TYPES:g.ENGIN_TYPES,
             APL_COUNTER:g.APL_COUNTER, INT_GLOBAL_COUNTER:g.INT_GLOBAL_COUNTER, INT_CAS_COUNTER:g.INT_CAS_COUNTER,
             PILP_COUNTER:g.PILP_COUNTER, DISPOS_UNLOCKED:g.DISPOS_UNLOCKED, DISPO_REQUESTS:g.DISPO_REQUESTS, LOGIN_HISTORY:g.LOGIN_HISTORY});
+          // Fusion de l'historique de connexion : on combine remote et local par id
+          // de session, en gardant l'entrée la plus complète (déconnexion renseignée
+          // l'emporte). Évite qu'une connexion d'un autre poste efface une déconnexion.
+          data.LOGIN_HISTORY=_mergeLoginHistory(typeof LOGIN_HISTORY!=='undefined'?LOGIN_HISTORY:[], g.LOGIN_HISTORY||[]);
           // Clés globales rangées dans CASERNE_DATA (réglages superadmin partagés)
           if(!data.CASERNE_DATA)data.CASERNE_DATA={};
           if(g._cabbalrActif!==undefined)data.CASERNE_DATA._cabbalrActif=g._cabbalrActif;
@@ -12661,14 +12706,14 @@ window.addEventListener('pagehide', function(){
   if(SESSION_TOKEN){
     const entry=LOGIN_HISTORY.find(e=>e.id===SESSION_TOKEN);
     if(entry){entry.hDeconnexion=new Date().toISOString();entry.actif=false;}
-    // Persistance synchrone en localStorage uniquement.
-    // (On NE fait PAS de sendBeacon vers JSONBin : un PUT sans en-têtes d'auth
-    // ni fusion écraserait le bin partagé. Le cache local sera repoussé
-    // proprement via _jbPush — avec merge — à la prochaine ouverture/sync.)
+    // Persistance synchrone en localStorage.
     try{
       const data=_buildDataObject();
       localStorage.setItem(JB_CACHE_KEY,JSON.stringify(data));
     }catch(e){}
+    // En mode records : pousser UNIQUEMENT la ligne globale (LOGIN_HISTORY) via
+    // une requête keepalive, qui survit à la fermeture sans écraser le reste.
+    try{_rcPushGlobalRowKeepalive();}catch(e){}
   }
 });
 window.addEventListener('beforeunload', function(){
@@ -12679,6 +12724,7 @@ window.addEventListener('beforeunload', function(){
       const data=_buildDataObject();
       localStorage.setItem(JB_CACHE_KEY,JSON.stringify(data));
     }catch(e){}
+    try{_rcPushGlobalRowKeepalive();}catch(e){}
   }
 });
 
