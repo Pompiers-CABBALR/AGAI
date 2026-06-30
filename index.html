@@ -7884,6 +7884,14 @@ function cloturerRenfort(cid,renfortId){
   const r=CASERNE_DATA[cid]?.renforts?.find(function(x){return x.id===renfortId;});if(!r)return;
   r.statut='termine';
   r.hFin=getHHMM(N());
+  // Clôturer aussi l'IV de renfort locale (sinon elle reste affichée "en-cours")
+  const ivLocale=(CASERNE_DATA[cid]?.ivs||[]).find(function(iv){return iv._renfortId===renfortId;});
+  if(ivLocale){
+    ivLocale.s='terminee';
+    ivLocale._hFin=r.hFin;
+    if(!ivLocale.tl)ivLocale.tl=[];
+    ivLocale.tl.push({s:'terminee',h:getH(N()),who:CU?CU.l:'',note:'Clôture renfort'});
+  }
   saveData(true);rI(); // push immédiat : changement de statut partagé
   showToast('Renfort cl\u00f4tur\u00e9 \u00e0 '+r.hFin,'success');
 }
@@ -12761,11 +12769,14 @@ let _pqLineId=0;
 function pqBuildForm(wk,engin,jourDefaut,existingP){
   // Liste des rôles distincts de l'engin selon la config superadmin
   const cfgRoles=getEnginRoles(engin);
+  const _normRole=function(s){return (s||'').toLowerCase().replace(/[\u00e8\u00e9\u00ea]/g,'e').replace(/[^a-z]/g,'');};
   let roles=[];
-  cfgRoles.forEach(function(r){if(r.role&&roles.indexOf(r.role)===-1)roles.push(r.role);});
-  // S'assurer que le chef d'agrès est présent en tête
+  cfgRoles.forEach(function(r){
+    if(r.role&&!roles.some(function(x){return _normRole(x)===_normRole(r.role);}))roles.push(r.role);
+  });
+  // S'assurer que le chef d'agrès est présent en tête (sans doublon, quelle que soit l'apostrophe)
   const CA='Chef d\u2019agr\u00e8s';
-  if(roles.indexOf(CA)===-1)roles.unshift(CA);
+  if(!roles.some(function(x){return _normRole(x)===_normRole(CA);}))roles.unshift(CA);
   if(!roles.length)roles=isVPI(engin)?PQ_ROLES_VPI:PQ_ROLES_VTU;
   const debutDef=existingP?existingP.debut:'08:00';
   const finDef=existingP?existingP.fin:'20:00';
