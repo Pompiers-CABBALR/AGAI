@@ -11861,7 +11861,9 @@ function _rcSplitAll(data){
     v:data.v, CASERNES:data.CASERNES, GLOBAL_ACCOUNTS:data.GLOBAL_ACCOUNTS, NAT:data.NAT, COM:data.COM, ENGIN_TYPES:data.ENGIN_TYPES,
     APL_COUNTER:data.APL_COUNTER, INT_GLOBAL_COUNTER:data.INT_GLOBAL_COUNTER, INT_CAS_COUNTER:data.INT_CAS_COUNTER,
     PILP_COUNTER:data.PILP_COUNTER, DISPOS_UNLOCKED:data.DISPOS_UNLOCKED, DISPO_REQUESTS:data.DISPO_REQUESTS,
-    LOGIN_HISTORY:data.LOGIN_HISTORY
+    LOGIN_HISTORY:data.LOGIN_HISTORY,
+    _cabbalrActif:(data.CASERNE_DATA&&data.CASERNE_DATA._cabbalrActif),
+    _initCabbalr:(data.CASERNE_DATA&&data.CASERNE_DATA._initCabbalr)
   }, deleted:false });
   Object.keys(data.CASERNE_DATA||{}).forEach(function(cid){
     if(cid==='_cabbalrActif'||cid==='_initCabbalr'||cid==='_global') return;
@@ -11991,6 +11993,10 @@ async function _rcPull(silent){
           Object.assign(data, {v:g.v, CASERNES:g.CASERNES, GLOBAL_ACCOUNTS:g.GLOBAL_ACCOUNTS, NAT:g.NAT, COM:g.COM, ENGIN_TYPES:g.ENGIN_TYPES,
             APL_COUNTER:g.APL_COUNTER, INT_GLOBAL_COUNTER:g.INT_GLOBAL_COUNTER, INT_CAS_COUNTER:g.INT_CAS_COUNTER,
             PILP_COUNTER:g.PILP_COUNTER, DISPOS_UNLOCKED:g.DISPOS_UNLOCKED, DISPO_REQUESTS:g.DISPO_REQUESTS, LOGIN_HISTORY:g.LOGIN_HISTORY});
+          // Clés globales rangées dans CASERNE_DATA (réglages superadmin partagés)
+          if(!data.CASERNE_DATA)data.CASERNE_DATA={};
+          if(g._cabbalrActif!==undefined)data.CASERNE_DATA._cabbalrActif=g._cabbalrActif;
+          if(g._initCabbalr!==undefined)data.CASERNE_DATA._initCabbalr=g._initCabbalr;
         }
         return;
       }
