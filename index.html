@@ -1209,11 +1209,11 @@ let CURRENT_CASERNE_ID=null;
 // Configuration globale des types d'engins (nombre de places + rôles), partagée entre casernes.
 // Chaque rôle : {role:'...', n:nombre}. Modifiable par le superadmin.
 let ENGIN_TYPES=[
-  {type:'VTU',roles:[{role:"Chef d'agrès",n:1},{role:'Conducteur',n:1},{role:'Équipier',n:1}]},
-  {type:'VPI',roles:[{role:"Chef d'agrès",n:1},{role:'Conducteur',n:1},{role:"Chef d'équipe",n:1},{role:'Équipier',n:1}]},
-  {type:'VL', roles:[{role:"Chef d'agrès",n:1}]},
+  {type:'VTU',roles:[{role:"Chef d\u2019agrès",n:1},{role:'Conducteur',n:1},{role:'Équipier',n:1}]},
+  {type:'VPI',roles:[{role:"Chef d\u2019agrès",n:1},{role:'Conducteur',n:1},{role:"Chef d\u2019équipe",n:1},{role:'Équipier',n:1}]},
+  {type:'VL', roles:[{role:"Chef d\u2019agrès",n:1}]},
 ];
-const ENGIN_ROLES_DISPONIBLES=["Chef d'agrès","Conducteur","Chef d'équipe","Équipier"];
+const ENGIN_ROLES_DISPONIBLES=["Chef d\u2019agrès","Conducteur","Chef d\u2019équipe","Équipier"];
 // ── Configuration Supabase (bascule prudente) ──
 // USE_SUPABASE : false = JSONBin (comportement actuel), true = Supabase temps réel.
 // Bascule toute la synchro d'un seul mot. Tant que false, RIEN ne change.
@@ -7041,8 +7041,8 @@ function getEnginRoles(nom){
   const t=ENGIN_TYPES.find(function(x){return x.type.toUpperCase()===type.toUpperCase();});
   if(t&&Array.isArray(t.roles))return t.roles;
   // Repli si type inconnu : comportement historique (VPI=4, autres=3)
-  if(isVPI(nom))return [{role:"Chef d'agrès",n:1},{role:'Conducteur',n:1},{role:"Chef d'équipe",n:1},{role:'Équipier',n:1}];
-  return [{role:"Chef d'agrès",n:1},{role:'Conducteur',n:1},{role:'Équipier',n:1}];
+  if(isVPI(nom))return [{role:"Chef d\u2019agrès",n:1},{role:'Conducteur',n:1},{role:"Chef d\u2019équipe",n:1},{role:'Équipier',n:1}];
+  return [{role:"Chef d\u2019agrès",n:1},{role:'Conducteur',n:1},{role:'Équipier',n:1}];
 }
 
 // Nombre total de places d'un engin
@@ -7302,20 +7302,16 @@ function showPersonnelModal(id){
   // ── Équipage engin 2 (si 2ème chef) ──
   function buildEquipage2(enginVal){
     if(!agr2)return '';
-    const vpi=isVPI(enginVal);
+    const rc=_enginRoleCount(enginVal);
     const ca2Html='<div style="margin-bottom:8px;background:#EEF2FF;border-radius:8px;padding:8px 10px;">'
       +'<div style="font-size:11px;font-weight:600;color:#3730A3;margin-bottom:2px;">Chef d\u2019agr\u00e8s</div>'
       +'<div style="font-size:12px;font-weight:700;">'+(u2?fullName(u2):agr2)+'</div>'
       +'</div>';
-    const cond2Html=agentSelectHtml('Conducteur','eq-cond2',cond2Sugg,true,true,[CU.l,agr2]);
-    if(vpi){
-      const chefEq2Html=agentSelectHtml('Chef d\u2019\u00e9quipe','eq-chef-equipe2',eq2Sugg,false,false,[CU.l,agr2]);
-      const eq2Html=agentSelectHtml('\u00c9quipier','eq-equipier2','',false,false,[CU.l,agr2]);
-      return ca2Html+cond2Html+chefEq2Html+eq2Html;
-    } else {
-      const eq2Html=agentSelectHtml('\u00c9quipier','eq-equipier2',eq2Sugg,false,false,[CU.l,agr2]);
-      return ca2Html+cond2Html+eq2Html;
-    }
+    let html=ca2Html;
+    if(rc.conducteur>0)html+=agentSelectHtml('Conducteur','eq-cond2',cond2Sugg,true,true,[CU.l,agr2]);
+    if(rc.chefEquipe>0)html+=agentSelectHtml('Chef d\u2019\u00e9quipe','eq-chef-equipe2',eq2Sugg,false,false,[CU.l,agr2]);
+    if(rc.equipier>0)html+=agentSelectHtml('\u00c9quipier','eq-equipier2',rc.chefEquipe>0?'':eq2Sugg,false,false,[CU.l,agr2]);
+    return html;
   }
 
   const eq1Html=buildEquipage1(engin1Sugg);
@@ -7352,34 +7348,30 @@ function showPersonnelModal(id){
 
 function buildEquipage1Dyn(enginVal){
   const d=window._piqData||{};
-  const vpi=isVPI(enginVal);
+  const rc=_enginRoleCount(enginVal);
   const caHtml='<div style="margin-bottom:8px;background:#EEF2FF;border-radius:8px;padding:8px 10px;">'
     +'<div style="font-size:11px;font-weight:600;color:#3730A3;margin-bottom:2px;">Chef d\u2019agr\u00e8s</div>'
     +'<div style="font-size:12px;font-weight:700;">'+fullName(USERS.find(function(u){return u.l===d.CUl;})||{prenom:d.CUl,nom:''})+' <span style="font-size:10px;color:var(--t2);">(vous)</span></div>'
     +'</div>';
-  const condHtml=agentSelectHtml('Conducteur','eq-conducteur',d.cond1Sugg,true,true,[d.CUl]);
-  if(vpi){
-    return caHtml+condHtml
-      +agentSelectHtml('Chef d\u2019\u00e9quipe','eq-chef-equipe',d.eq1Sugg,false,false,[d.CUl])
-      +agentSelectHtml('\u00c9quipier','eq-equipier1','',false,false,[d.CUl]);
-  }
-  return caHtml+condHtml+agentSelectHtml('\u00c9quipier','eq-equipier1',d.eq1Sugg,false,false,[d.CUl]);
+  let html=caHtml;
+  if(rc.conducteur>0)html+=agentSelectHtml('Conducteur','eq-conducteur',d.cond1Sugg,true,true,[d.CUl]);
+  if(rc.chefEquipe>0)html+=agentSelectHtml('Chef d\u2019\u00e9quipe','eq-chef-equipe',d.eq1Sugg,false,false,[d.CUl]);
+  if(rc.equipier>0)html+=agentSelectHtml('\u00c9quipier','eq-equipier1',rc.chefEquipe>0?'':d.eq1Sugg,false,false,[d.CUl]);
+  return html;
 }
 
 function buildEquipage2Dyn(enginVal){
   const d=window._piqData||{};
   if(!d.agr2)return '';
-  const vpi=isVPI(enginVal);
+  const rc=_enginRoleCount(enginVal);
   const ca2Html='<div style="margin-bottom:8px;background:#EEF2FF;border-radius:8px;padding:8px 10px;">'
     +'<div style="font-size:11px;font-weight:600;color:#3730A3;margin-bottom:2px;">Chef d\u2019agr\u00e8s</div>'
     +'<div style="font-size:12px;font-weight:700;">'+(d.u2?fullName(d.u2):d.agr2)+'</div></div>';
-  const cond2Html=agentSelectHtml('Conducteur','eq-cond2',d.cond2Sugg,true,true,[d.CUl,d.agr2]);
-  if(vpi){
-    return ca2Html+cond2Html
-      +agentSelectHtml('Chef d\u2019\u00e9quipe','eq-chef-equipe2',d.eq2Sugg,false,false,[d.CUl,d.agr2])
-      +agentSelectHtml('\u00c9quipier','eq-equipier2','',false,false,[d.CUl,d.agr2]);
-  }
-  return ca2Html+cond2Html+agentSelectHtml('\u00c9quipier','eq-equipier2',d.eq2Sugg,false,false,[d.CUl,d.agr2]);
+  let html=ca2Html;
+  if(rc.conducteur>0)html+=agentSelectHtml('Conducteur','eq-cond2',d.cond2Sugg,true,true,[d.CUl,d.agr2]);
+  if(rc.chefEquipe>0)html+=agentSelectHtml('Chef d\u2019\u00e9quipe','eq-chef-equipe2',d.eq2Sugg,false,false,[d.CUl,d.agr2]);
+  if(rc.equipier>0)html+=agentSelectHtml('\u00c9quipier','eq-equipier2',rc.chefEquipe>0?'':d.eq2Sugg,false,false,[d.CUl,d.agr2]);
+  return html;
 }
 
 function confirmerDepart(id){
@@ -12767,8 +12759,14 @@ const PQ_ROLE_TEXT_COLORS={'Chef d\u2019agr\u00e8s':'var(--blu)','Conducteur':'v
 let _pqLineId=0;
 
 function pqBuildForm(wk,engin,jourDefaut,existingP){
-  const vpi=isVPI(engin);
-  const roles=vpi?PQ_ROLES_VPI:PQ_ROLES_VTU;
+  // Liste des rôles distincts de l'engin selon la config superadmin
+  const cfgRoles=getEnginRoles(engin);
+  let roles=[];
+  cfgRoles.forEach(function(r){if(r.role&&roles.indexOf(r.role)===-1)roles.push(r.role);});
+  // S'assurer que le chef d'agrès est présent en tête
+  const CA='Chef d\u2019agr\u00e8s';
+  if(roles.indexOf(CA)===-1)roles.unshift(CA);
+  if(!roles.length)roles=isVPI(engin)?PQ_ROLES_VPI:PQ_ROLES_VTU;
   const debutDef=existingP?existingP.debut:'08:00';
   const finDef=existingP?existingP.fin:'20:00';
   _pqLineId=0;
