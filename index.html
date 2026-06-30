@@ -781,6 +781,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
             <div id="engins-list" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;"></div>
             <div style="display:flex;gap:6px;">
               <input class="fi" type="text" id="new-engin" placeholder="ex. VTU-04" style="flex:1;"/>
+              <select class="fi" id="new-engin-type" style="width:110px;"></select>
               <button class="btn pr sm" onclick="addEngin()">Ajouter</button>
             </div>
           </div>
@@ -1745,6 +1746,10 @@ function retourCaserne(){
   document.getElementById('app').style.display='flex';
 }
 
+// ══════════════════════════════════════════════════════
+// CONFIGURATION DES TYPES D'ENGINS (superadmin)
+// ══════════════════════════════════════════════════════
+
 function renderSuperAdmin(){
   const body=document.getElementById('gv-body');
   // Section gestion des comptes (admins casernes + chef de corps)
@@ -1911,6 +1916,11 @@ function renderSuperAdmin(){
       </div>
     </div>
     <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;border:1px solid #eee;">
+      <div style="font-size:14px;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:8px;">&#x1F692; Types d'engins</div>
+      <div style="font-size:12px;color:#666;margin-bottom:12px;">Définissez le nombre de places et les rôles de chaque type d'engin (VTU, VPI, VL…). Appliqué à tous les engins de ce type.</div>
+      <div id="sa-engin-types"></div>
+    </div>
+    <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;border:1px solid #eee;">
       <div style="font-size:14px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px;">&#x1F4C5; Jours fériés
         <span style="font-size:11px;color:#999;font-weight:400;">Calendrier français — calculé dynamiquement</span>
         <select id="sa-feries-annee" style="margin-left:auto;padding:3px 8px;border-radius:6px;border:1px solid #ccc;font-size:12px;" onchange="renderJoursFeries(this.value)">${
@@ -2031,6 +2041,8 @@ function renderSuperAdmin(){
   // Initialise la prévisualisation du logo
   const _lprev=document.getElementById('sa-logo-preview');
   if(_lprev){_lprev.src=_getLogoSrc();_lprev.style.display='block';}
+  // Rendu de la configuration des types d'engins
+  try{renderEnginTypes();}catch(e){}
 }
 
 
@@ -6663,9 +6675,12 @@ function rAstrEquipes(){
   // Remplir engins
   const enginsList=document.getElementById('engins-list');
   if(enginsList)enginsList.innerHTML=ASTR_CONFIG.engins.map((e,i)=>
-    `<span style="background:var(--bg);border:1px solid var(--brd);border-radius:20px;padding:3px 10px;font-size:12px;display:flex;align-items:center;gap:5px;">${e}
+    `<span style="background:var(--bg);border:1px solid var(--brd);border-radius:20px;padding:3px 10px;font-size:12px;display:flex;align-items:center;gap:5px;">${e} <span style="font-size:10px;color:var(--t2);">(${getEnginType(e)})</span>
       <button style="background:none;border:none;color:#E24B4A;cursor:pointer;font-size:12px;" onclick="delEngin(${i})">✕</button>
     </span>`).join('');
+  // Remplir le select de types pour la création d'engin
+  const typeSel=document.getElementById('new-engin-type');
+  if(typeSel)typeSel.innerHTML=ENGIN_TYPES.map(function(t){return '<option value="'+escHtml(t.type)+'">'+escHtml(t.type)+'</option>';}).join('');
   // Liste équipes
   const list=document.getElementById('astr-equipes-list');
   if(!list)return;
@@ -6770,6 +6785,12 @@ function addEngin(){
   const val=inp.value.trim().toUpperCase();
   if(!val)return;
   if(!ASTR_CONFIG.engins.includes(val))ASTR_CONFIG.engins.push(val);
+  // Associer le type choisi (sinon déduction par préfixe via getEnginType)
+  const typeSel=document.getElementById('new-engin-type');
+  if(typeSel&&typeSel.value){
+    if(!ASTR_CONFIG.enginTypes)ASTR_CONFIG.enginTypes={};
+    ASTR_CONFIG.enginTypes[val]=typeSel.value;
+  }
   inp.value='';
   if(CD())CD().astrConfig=ASTR_CONFIG;
   saveData();rAstrEquipes();
@@ -7129,6 +7150,52 @@ function refreshEquipageSelects(){
   renderSuperAdmin._lastCall=Date.now();
   setTimeout(function(){renderJoursFeries(new Date().getFullYear());},0);
 }
+
+function renderEnginTypes(){
+  const cont=document.getElementById('sa-engin-types');if(!cont)return;
+  let html='<div style="display:flex;flex-direction:column;gap:10px;">';
+  ENGIN_TYPES.forEach(function(t,ti){
+    const nbPlaces=t.roles.reduce(function(s,r){return s+(r.n||0);},0);
+    html+='<div style="border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;background:#fafafa;">'
+      +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">'
+        +'<input type="text" value="'+escHtml(t.type)+'" onchange="etRenameType('+ti+',this.value)" style="font-weight:700;font-size:13px;width:90px;padding:4px 8px;border:1px solid #ccc;border-radius:6px;text-transform:uppercase;"/>'
+        +'<span style="font-size:11px;color:#666;">'+nbPlaces+' place'+(nbPlaces>1?'s':'')+'</span>'
+        +'<button onclick="etDelType('+ti+')" style="margin-left:auto;background:none;border:none;color:#E24B4A;cursor:pointer;font-size:13px;" title="Supprimer ce type">&times;</button>'
+      +'</div>'
+      +'<div style="display:flex;flex-direction:column;gap:5px;">';
+    t.roles.forEach(function(r,ri){
+      html+='<div style="display:flex;align-items:center;gap:6px;">'
+        +'<select onchange="etSetRole('+ti+','+ri+',this.value)" style="flex:1;padding:4px 6px;border:1px solid #ccc;border-radius:6px;font-size:12px;">'
+        +ENGIN_ROLES_DISPONIBLES.map(function(ro){return '<option'+(ro===r.role?' selected':'')+'>'+escHtml(ro)+'</option>';}).join('')
+        +(ENGIN_ROLES_DISPONIBLES.includes(r.role)?'':'<option selected>'+escHtml(r.role)+'</option>')
+        +'</select>'
+        +'<input type="number" min="1" max="20" value="'+(r.n||1)+'" onchange="etSetRoleN('+ti+','+ri+',this.value)" style="width:54px;padding:4px 6px;border:1px solid #ccc;border-radius:6px;font-size:12px;text-align:center;"/>'
+        +'<button onclick="etDelRole('+ti+','+ri+')" style="background:none;border:none;color:#E24B4A;cursor:pointer;font-size:13px;" title="Retirer ce rôle">&times;</button>'
+      +'</div>';
+    });
+    html+='<div style="display:flex;gap:6px;margin-top:4px;">'
+      +'<button class="btn sm" style="font-size:11px;" onclick="etAddRole('+ti+')">+ Ajouter un rôle</button>'
+      +'<input type="text" id="et-newrole-'+ti+'" placeholder="Nouveau rôle personnalisé" style="flex:1;padding:4px 8px;border:1px solid #ccc;border-radius:6px;font-size:11px;"/>'
+      +'<button class="btn sm" style="font-size:11px;" onclick="etAddCustomRole('+ti+')">+ Perso</button>'
+      +'</div>';
+    html+='</div></div>';
+  });
+  html+='</div>';
+  html+='<div style="display:flex;gap:6px;margin-top:10px;">'
+    +'<input type="text" id="et-newtype" placeholder="Nouveau type (ex: VSAV)" style="flex:1;padding:6px 10px;border:1px solid #ccc;border-radius:6px;font-size:12px;text-transform:uppercase;"/>'
+    +'<button class="btn pr sm" onclick="etAddType()">+ Ajouter un type</button>'
+    +'</div>';
+  cont.innerHTML=html;
+}
+function _etSave(){if(typeof saveData==='function')saveData();renderEnginTypes();}
+function etRenameType(ti,val){val=(val||'').trim().toUpperCase();if(!val)return;ENGIN_TYPES[ti].type=val;_etSave();}
+function etDelType(ti){if(!confirm('Supprimer le type "'+ENGIN_TYPES[ti].type+'" ?'))return;ENGIN_TYPES.splice(ti,1);_etSave();}
+function etAddType(){const inp=document.getElementById('et-newtype');const val=(inp.value||'').trim().toUpperCase();if(!val)return;if(ENGIN_TYPES.find(function(t){return t.type.toUpperCase()===val;})){showToast('Ce type existe déjà','warn');return;}ENGIN_TYPES.push({type:val,roles:[{role:"Chef d'agrès",n:1}]});inp.value='';_etSave();}
+function etSetRole(ti,ri,val){ENGIN_TYPES[ti].roles[ri].role=val;_etSave();}
+function etSetRoleN(ti,ri,val){const n=Math.max(1,Math.min(20,parseInt(val)||1));ENGIN_TYPES[ti].roles[ri].n=n;_etSave();}
+function etDelRole(ti,ri){ENGIN_TYPES[ti].roles.splice(ri,1);_etSave();}
+function etAddRole(ti){ENGIN_TYPES[ti].roles.push({role:ENGIN_ROLES_DISPONIBLES[0],n:1});_etSave();}
+function etAddCustomRole(ti){const inp=document.getElementById('et-newrole-'+ti);const val=(inp.value||'').trim();if(!val)return;ENGIN_TYPES[ti].roles.push({role:val,n:1});inp.value='';_etSave();}
 
 function renderJoursFeries(annee){
   const grid=document.getElementById('sa-feries-grid');if(!grid)return;
