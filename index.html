@@ -3736,6 +3736,8 @@ function confirmerAnnulationAppel(ivId){
   iv._annuleAppel=true; // marquer comme annulation au stade appel
   pushTL(iv,'annulee',CU.l);
   iv.tl[iv.tl.length-1].note='Appel annulé : '+motif;
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true); // push immédiat : changement de statut partagé, sinon l'annulation est écrasée au prochain pull
   cM();rF();gS(1);rI();rAccueil();
 }
 function rF(){
@@ -6930,6 +6932,14 @@ function confirmerTransfert(id){
   iv.s='annulee';
   pushTL(iv,'annulee',CU.l);
   iv.tl[iv.tl.length-1].note='Transféré vers '+destCas.nom+(motif?' : '+motif:'');
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true); // push immédiat : annulation de l'original (caserne active)
+  // Pousser explicitement la copie vers la caserne destinataire (mode records)
+  try{
+    if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcPushRecords==='function'){
+      _rcPushRecords([{id:_rcId(destId,'iv',ivCopie.id),caserne:destId,type:'iv',data:ivCopie,deleted:false}]);
+    }
+  }catch(e){}
   cM();rI();rAccueil();
   // Confirmation
   setTimeout(()=>{
@@ -6965,6 +6975,8 @@ function confirmerRefuge(id){
   iv.s='annulee';
   pushTL(iv,'annulee',CU.l);
   iv.tl[iv.tl.length-1].note='Transmis au refuge animalier';
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true); // push immédiat : sinon écrasé au prochain pull
   cM();rI();rAccueil();
 }
 
@@ -6994,6 +7006,8 @@ function confirmerAnnulation(id){
   iv.s='annulee';
   pushTL(iv,'annulee',CU.l);
   if(motif)iv.tl[iv.tl.length-1].note=motif;
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true); // push immédiat : sinon l'annulation est écrasée au prochain pull
   cM();rI();rAccueil();
 }
 // ── Échelle de toit ──
