@@ -43,8 +43,8 @@
 
 /* ── 1. Reset & variables CSS ── */
 *{box-sizing:border-box;margin:0;padding:0;}
-html{overflow-x:hidden;max-width:100%;}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f2f2f7;min-height:100vh;font-size:14px;overflow-x:hidden;max-width:100%;}
+html{overflow-x:hidden;max-width:100%;-webkit-text-size-adjust:100%;text-size-adjust:100%;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f2f2f7;min-height:100vh;font-size:14px;overflow-x:hidden;max-width:100%;-webkit-text-size-adjust:100%;text-size-adjust:100%;}
 :root{
   /* Couleurs sémantiques */
   --red:#C0392B;--rl:#FCEBEB;--rd:#A32D2D;
@@ -101,6 +101,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   #dispo-subnav{width:100%;}
   #dispo-subnav .subtab-btn{flex:1 1 0;min-width:0;padding:10px 4px;font-size:12px;display:flex;flex-direction:column;align-items:center;gap:2px;}
   #dispo-subnav .subtab-btn .sb-txt{display:block;font-size:11px;line-height:1.1;text-align:center;}
+  /* Grille Mes disponibilités : tenir dans la largeur de l'écran */
+  #astr-dispo-grid{max-width:100%;overflow-x:hidden;}
+  #astr-dispo-grid>div{max-width:100%;box-sizing:border-box;}
   .ts2{display:none;}
   .ttime{font-size:10px;}
   #nav-global{padding:3px 5px!important;font-size:14px!important;}
@@ -5833,7 +5836,7 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
     +'</div>';
   h+='<div style="width:100%;">';
   const slotsDay0=getSlotsForDay(0,agGran);
-  h+='<div style="display:flex;margin-bottom:2px;padding-left:50px;">';
+  h+='<div style="display:flex;margin-bottom:2px;padding-left:52px;gap:2px;">';
   for(let s=0;s<slotsDay0;s++){
     const showLbl=(agGran>=60)||(s%(60/agGran)===0);
     h+='<div style="flex:1;text-align:center;min-width:0;"><div style="writing-mode:vertical-lr;transform:rotate(180deg);font-size:11px;font-weight:500;color:var(--t2);height:34px;display:flex;align-items:center;justify-content:center;">'+(showLbl?slotToLabelDay(0,s,agGran):'')+'</div></div>';
@@ -5841,7 +5844,7 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
   h+='</div>';
   for(let d=0;d<7;d++){
     const slotsD=getSlotsForDay(d,agGran);
-    h+='<div style="display:flex;align-items:center;margin-bottom:3px;"><div style="width:50px;flex-shrink:0;font-size:12px;font-weight:600;color:var(--t);">'+jourLabel(d,false)+'</div>';
+    h+='<div style="display:flex;align-items:center;margin-bottom:3px;gap:2px;"><div style="width:50px;flex-shrink:0;font-size:12px;font-weight:600;color:var(--t);">'+jourLabel(d,false)+'</div>';
     for(let s=0;s<slotsD;s++){
       const key=d+'_'+s;
       const val=DISPOS[wk][login][key];
@@ -5850,7 +5853,7 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
       const cursor=canEdit?'pointer':'default';
       const oc=canEdit?'toggleDispoCell(\''+wk+'\',\''+login+'\','+d+','+s+',this,\''+(eq?eq.color:'#22C55E')+'\')':'';
       const dragVal=isDispo?'true':isIndispo?'false':'null';
-      h+='<div style="flex:1;min-width:0;height:28px;background:'+bg+';cursor:'+cursor+';transition:background .1s;border-radius:3px;margin:0 1px;user-select:none;"'
+      h+='<div style="flex:1;min-width:0;height:28px;background:'+bg+';cursor:'+cursor+';transition:background .1s;border-radius:3px;user-select:none;"'
         +' title="'+jourLabel(d,true)+' '+slotToLabelDay(d,s,agGran)+'"'
         +' data-wk="'+wk+'" data-login="'+login+'" data-d="'+d+'" data-s="'+s+'" data-val="'+dragVal+'"'
         +(canEdit?' onmousedown="startDispoDrag(this)" onmouseenter="continueDispoDrag(this)"':'')
