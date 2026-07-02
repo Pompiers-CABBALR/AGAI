@@ -101,9 +101,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   #dispo-subnav{width:100%;}
   #dispo-subnav .subtab-btn{flex:1 1 0;min-width:0;padding:10px 4px;font-size:12px;display:flex;flex-direction:column;align-items:center;gap:2px;}
   #dispo-subnav .subtab-btn .sb-txt{display:block;font-size:11px;line-height:1.1;text-align:center;}
-  /* Grille Mes disponibilités : tenir dans la largeur de l'écran */
-  #astr-dispo-grid{max-width:100%;overflow-x:hidden;}
-  #astr-dispo-grid>div{max-width:100%;box-sizing:border-box;}
   .ts2{display:none;}
   .ttime{font-size:10px;}
   #nav-global{padding:3px 5px!important;font-size:14px!important;}
@@ -5814,7 +5811,7 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
   if(!DISPOS[wk])DISPOS[wk]={};
   if(!DISPOS[wk][login])DISPOS[wk][login]={};
   let h='';
-  h+='<div style="margin-bottom:16px;padding:10px;background:#fff;border-radius:10px;border:1px solid var(--brd);box-sizing:border-box;max-width:100%;overflow:hidden;">';
+  h+='<div style="margin-bottom:16px;padding:10px;background:#fff;border-radius:10px;border:1px solid var(--brd);box-sizing:border-box;max-width:100%;">';
   // En-tête bloc agent
   const pendingReq=isMe&&(DISPO_REQUESTS[wk]||[]).find(function(r){return r.login===login&&r.statut==='en-attente';});
   h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">'
@@ -5834,18 +5831,24 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
       +'<button class="btn sm" style="font-size:10px;padding:2px 7px;color:#E24B4A;" onclick="setAllDispoFor(\''+wk+'\',\''+login+'\',null,\'\')">&#x1F5D1;</button>'
       +'</div>':'')
     +'</div>';
-  h+='<div style="width:100%;box-sizing:border-box;">';
+  // Grille alignée : largeur de case FIXE (aligne en-tête et cases, évite tout décalage).
+  // Enveloppée dans un conteneur à défilement horizontal, comme le planning.
   const slotsDay0=getSlotsForDay(0,agGran);
-  const _cellW='calc((100% - 50px) / '+slotsDay0+')';
-  h+='<div style="display:flex;margin-bottom:2px;padding-left:50px;box-sizing:border-box;">';
+  const _cw=28;        // largeur d'une case (px) — confortable et lisible
+  const _lw=48;        // largeur de la colonne "jour" (px)
+  const _totalW=_lw+slotsDay0*_cw;
+  h+='<div class="dispo-scroll" style="overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;">';
+  h+='<div style="width:'+_totalW+'px;">';
+  // En-tête des heures
+  h+='<div style="display:flex;margin-bottom:2px;"><div style="width:'+_lw+'px;flex-shrink:0;"></div>';
   for(let s=0;s<slotsDay0;s++){
     const showLbl=(agGran>=60)||(s%(60/agGran)===0);
-    h+='<div style="width:'+_cellW+';box-sizing:border-box;text-align:center;min-width:0;"><div style="writing-mode:vertical-lr;transform:rotate(180deg);font-size:11px;font-weight:500;color:var(--t2);height:34px;display:flex;align-items:center;justify-content:center;">'+(showLbl?slotToLabelDay(0,s,agGran):'')+'</div></div>';
+    h+='<div style="width:'+_cw+'px;flex-shrink:0;text-align:center;"><div style="writing-mode:vertical-lr;transform:rotate(180deg);font-size:11px;font-weight:500;color:var(--t2);height:34px;display:flex;align-items:center;justify-content:center;">'+(showLbl?slotToLabelDay(0,s,agGran):'')+'</div></div>';
   }
   h+='</div>';
   for(let d=0;d<7;d++){
     const slotsD=getSlotsForDay(d,agGran);
-    h+='<div style="display:flex;align-items:center;margin-bottom:3px;box-sizing:border-box;"><div style="width:50px;flex-shrink:0;font-size:12px;font-weight:600;color:var(--t);">'+jourLabel(d,false)+'</div>';
+    h+='<div style="display:flex;align-items:center;margin-bottom:3px;"><div style="width:'+_lw+'px;flex-shrink:0;font-size:12px;font-weight:600;color:var(--t);">'+jourLabel(d,false)+'</div>';
     for(let s=0;s<slotsD;s++){
       const key=d+'_'+s;
       const val=DISPOS[wk][login][key];
@@ -5854,7 +5857,7 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
       const cursor=canEdit?'pointer':'default';
       const oc=canEdit?'toggleDispoCell(\''+wk+'\',\''+login+'\','+d+','+s+',this,\''+(eq?eq.color:'#22C55E')+'\')':'';
       const dragVal=isDispo?'true':isIndispo?'false':'null';
-      h+='<div style="width:'+_cellW+';box-sizing:border-box;min-width:0;height:28px;background:'+bg+';cursor:'+cursor+';transition:background .1s;border-radius:3px;border:1px solid #fff;user-select:none;"'
+      h+='<div style="width:'+_cw+'px;flex-shrink:0;box-sizing:border-box;height:28px;background:'+bg+';cursor:'+cursor+';transition:background .1s;border-radius:3px;border:1px solid #fff;user-select:none;"'
         +' title="'+jourLabel(d,true)+' '+slotToLabelDay(d,s,agGran)+'"'
         +' data-wk="'+wk+'" data-login="'+login+'" data-d="'+d+'" data-s="'+s+'" data-val="'+dragVal+'"'
         +(canEdit?' onmousedown="startDispoDrag(this)" onmouseenter="continueDispoDrag(this)"':'')
