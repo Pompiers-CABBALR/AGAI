@@ -5834,16 +5834,18 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
   // Grille alignée : largeur de case FIXE (aligne en-tête et cases, évite tout décalage).
   // Enveloppée dans un conteneur à défilement horizontal, comme le planning.
   const slotsDay0=getSlotsForDay(0,agGran);
-  const _cw=28;        // largeur d'une case (px) — confortable et lisible
+  const _cw=28;        // largeur MINIMALE d'une case (px) — sous laquelle on défile
   const _lw=48;        // largeur de la colonne "jour" (px)
   const _totalW=_lw+slotsDay0*_cw;
+  // Le conteneur interne s'étire à 100% sur grand écran (cases élargies via flex),
+  // mais garde une largeur minimale sur petit écran (défilement horizontal).
   h+='<div class="dispo-scroll" style="overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;">';
-  h+='<div style="width:'+_totalW+'px;">';
+  h+='<div style="min-width:'+_totalW+'px;width:100%;">';
   // En-tête des heures
   h+='<div style="display:flex;margin-bottom:2px;"><div style="width:'+_lw+'px;flex-shrink:0;"></div>';
   for(let s=0;s<slotsDay0;s++){
     const showLbl=(agGran>=60)||(s%(60/agGran)===0);
-    h+='<div style="width:'+_cw+'px;flex-shrink:0;text-align:center;"><div style="writing-mode:vertical-lr;transform:rotate(180deg);font-size:11px;font-weight:500;color:var(--t2);height:34px;display:flex;align-items:center;justify-content:center;">'+(showLbl?slotToLabelDay(0,s,agGran):'')+'</div></div>';
+    h+='<div style="flex:1 0 '+_cw+'px;text-align:center;"><div style="writing-mode:vertical-lr;transform:rotate(180deg);font-size:11px;font-weight:500;color:var(--t2);height:34px;display:flex;align-items:center;justify-content:center;">'+(showLbl?slotToLabelDay(0,s,agGran):'')+'</div></div>';
   }
   h+='</div>';
   for(let d=0;d<7;d++){
@@ -5857,7 +5859,7 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
       const cursor=canEdit?'pointer':'default';
       const oc=canEdit?'toggleDispoCell(\''+wk+'\',\''+login+'\','+d+','+s+',this,\''+(eq?eq.color:'#22C55E')+'\')':'';
       const dragVal=isDispo?'true':isIndispo?'false':'null';
-      h+='<div style="width:'+_cw+'px;flex-shrink:0;box-sizing:border-box;height:28px;background:'+bg+';cursor:'+cursor+';transition:background .1s;border-radius:3px;border:1px solid #fff;user-select:none;"'
+      h+='<div style="flex:1 0 '+_cw+'px;box-sizing:border-box;height:28px;background:'+bg+';cursor:'+cursor+';transition:background .1s;border-radius:3px;border:1px solid #fff;user-select:none;"'
         +' title="'+jourLabel(d,true)+' '+slotToLabelDay(d,s,agGran)+'"'
         +' data-wk="'+wk+'" data-login="'+login+'" data-d="'+d+'" data-s="'+s+'" data-val="'+dragVal+'"'
         +(canEdit?' onmousedown="startDispoDrag(this)" onmouseenter="continueDispoDrag(this)"':'')
