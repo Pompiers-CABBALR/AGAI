@@ -5814,7 +5814,7 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
   if(!DISPOS[wk])DISPOS[wk]={};
   if(!DISPOS[wk][login])DISPOS[wk][login]={};
   let h='';
-  h+='<div style="margin-bottom:16px;padding:10px;background:#fff;border-radius:10px;border:1px solid var(--brd);">';
+  h+='<div style="margin-bottom:16px;padding:10px;background:#fff;border-radius:10px;border:1px solid var(--brd);box-sizing:border-box;max-width:100%;overflow:hidden;">';
   // En-tête bloc agent
   const pendingReq=isMe&&(DISPO_REQUESTS[wk]||[]).find(function(r){return r.login===login&&r.statut==='en-attente';});
   h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">'
@@ -5834,17 +5834,18 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
       +'<button class="btn sm" style="font-size:10px;padding:2px 7px;color:#E24B4A;" onclick="setAllDispoFor(\''+wk+'\',\''+login+'\',null,\'\')">&#x1F5D1;</button>'
       +'</div>':'')
     +'</div>';
-  h+='<div style="width:100%;">';
+  h+='<div style="width:100%;box-sizing:border-box;">';
   const slotsDay0=getSlotsForDay(0,agGran);
-  h+='<div style="display:flex;margin-bottom:2px;padding-left:52px;gap:2px;">';
+  const _cellW='calc((100% - 50px) / '+slotsDay0+')';
+  h+='<div style="display:flex;margin-bottom:2px;padding-left:50px;box-sizing:border-box;">';
   for(let s=0;s<slotsDay0;s++){
     const showLbl=(agGran>=60)||(s%(60/agGran)===0);
-    h+='<div style="flex:1;text-align:center;min-width:0;"><div style="writing-mode:vertical-lr;transform:rotate(180deg);font-size:11px;font-weight:500;color:var(--t2);height:34px;display:flex;align-items:center;justify-content:center;">'+(showLbl?slotToLabelDay(0,s,agGran):'')+'</div></div>';
+    h+='<div style="width:'+_cellW+';box-sizing:border-box;text-align:center;min-width:0;"><div style="writing-mode:vertical-lr;transform:rotate(180deg);font-size:11px;font-weight:500;color:var(--t2);height:34px;display:flex;align-items:center;justify-content:center;">'+(showLbl?slotToLabelDay(0,s,agGran):'')+'</div></div>';
   }
   h+='</div>';
   for(let d=0;d<7;d++){
     const slotsD=getSlotsForDay(d,agGran);
-    h+='<div style="display:flex;align-items:center;margin-bottom:3px;gap:2px;"><div style="width:50px;flex-shrink:0;font-size:12px;font-weight:600;color:var(--t);">'+jourLabel(d,false)+'</div>';
+    h+='<div style="display:flex;align-items:center;margin-bottom:3px;box-sizing:border-box;"><div style="width:50px;flex-shrink:0;font-size:12px;font-weight:600;color:var(--t);">'+jourLabel(d,false)+'</div>';
     for(let s=0;s<slotsD;s++){
       const key=d+'_'+s;
       const val=DISPOS[wk][login][key];
@@ -5853,7 +5854,7 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
       const cursor=canEdit?'pointer':'default';
       const oc=canEdit?'toggleDispoCell(\''+wk+'\',\''+login+'\','+d+','+s+',this,\''+(eq?eq.color:'#22C55E')+'\')':'';
       const dragVal=isDispo?'true':isIndispo?'false':'null';
-      h+='<div style="flex:1;min-width:0;height:28px;background:'+bg+';cursor:'+cursor+';transition:background .1s;border-radius:3px;user-select:none;"'
+      h+='<div style="width:'+_cellW+';box-sizing:border-box;min-width:0;height:28px;background:'+bg+';cursor:'+cursor+';transition:background .1s;border-radius:3px;border:1px solid #fff;user-select:none;"'
         +' title="'+jourLabel(d,true)+' '+slotToLabelDay(d,s,agGran)+'"'
         +' data-wk="'+wk+'" data-login="'+login+'" data-d="'+d+'" data-s="'+s+'" data-val="'+dragVal+'"'
         +(canEdit?' onmousedown="startDispoDrag(this)" onmouseenter="continueDispoDrag(this)"':'')
@@ -6375,7 +6376,7 @@ function rAstrPiquets(){
   html+='<div style="font-size:12px;font-weight:600;margin-top:12px;margin-bottom:6px;">Disponibilit&eacute;s</div>';
   html+='<div style="background:var(--bg);border:1px solid var(--brd);border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:10.5px;color:var(--t2);line-height:1.5;">'
     +'<div style="font-weight:600;color:var(--t1);margin-bottom:3px;">L&eacute;gende des indicateurs</div>'
-    +'<div style="display:flex;align-items:center;gap:5px;margin-bottom:2px;"><span style="display:inline-block;width:11px;height:8px;border-radius:3px;background:#22C55E;flex-shrink:0;"></span><b>Dispo</b>&nbsp;: part de cr&eacute;neaux o&ugrave; l\'agent s\'est d&eacute;clar&eacute; disponible dans la semaine.</div>'
+    +'<div style="display:flex;align-items:center;gap:5px;margin-bottom:2px;"><span style="display:inline-block;width:11px;height:8px;border-radius:3px;background:#22C55E;flex-shrink:0;"></span><b>Dispo</b>&nbsp;: part des heures o&ugrave; l\'agent s\'est d&eacute;clar&eacute; disponible dans la semaine.</div>'
     +'<div style="display:flex;align-items:center;gap:5px;margin-bottom:2px;"><span style="display:inline-block;width:11px;height:8px;border-radius:3px;background:#378ADD;flex-shrink:0;"></span><b>R&eacute;partition</b>&nbsp;: part des heures de piquet de l\'agent sur le total des heures de piquet de la caserne (&eacute;quilibre entre agents).</div>'
     +'<div style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:8px;border-radius:3px;background:#7F77DD;flex-shrink:0;"></span><b>Occupation</b>&nbsp;: part des heures de piquet de l\'agent sur les 168&nbsp;h de la semaine.</div>'
     +'</div>';
