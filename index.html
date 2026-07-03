@@ -100,14 +100,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   .subtab-btn{padding:12px 12px;font-size:28px;}
   /* Sous-menu Disponibilités : onglets pleine largeur avec texte visible */
   #dispo-subnav{width:100%;}
-  #dispo-subnav .subtab-btn{flex:1 1 0;min-width:0;padding:10px 4px;font-size:12px;display:flex;flex-direction:column;align-items:center;gap:2px;}
+  #dispo-subnav .subtab-btn{flex:1 1 0;min-width:0;padding:10px 4px;font-size:12px;display:flex;flex-direction:column;align-items:center;gap:2px;white-space:normal;overflow:visible;}
   #dispo-subnav .subtab-btn .sb-txt{display:block;font-size:11px;line-height:1.1;text-align:center;}
   .ts2{display:none;}
   .ttime{font-size:10px;}
   #nav-global{padding:3px 5px!important;font-size:14px!important;}
 }
-.cnt{padding:12px;flex:1;}
+.cnt{padding:12px;flex:1;min-width:0;max-width:100%;box-sizing:border-box;}
 .sec{display:none;}
+.sec.active{display:block;max-width:100%;min-width:0;box-sizing:border-box;}
 .sec.active{display:block;}
 #tab-stats.active{display:flex!important;}
 /* ACCUEIL */
@@ -214,7 +215,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .fb{padding:5px 10px;border-radius:20px;font-size:11px;font-weight:500;cursor:pointer;border:1px solid var(--brd);background:#fff;color:var(--t2);}
 .fb.active{background:var(--red);color:#fff;border-color:var(--red);}
 .fb.pilp-fb.active{background:var(--pilp);border-color:var(--pilp);}
-.subtab-btn{flex:1 1 0;min-width:0;padding:9px 6px;font-size:12px;font-weight:500;color:var(--t2);border:none;background:transparent;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;}
+.subtab-btn{flex:1 1 0;min-width:0;padding:9px 6px;font-size:12px;font-weight:500;color:var(--t2);border:none;background:transparent;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+#astr-subtabs,#dispo-subnav{max-width:100%;box-sizing:border-box;}
 .subtab-btn.active{color:var(--red);border-bottom-color:var(--red);font-weight:600;}
 .subtab-btn:hover:not(.active){color:var(--t);background:var(--bg);}
 /* ── 14. Astreintes ── */
