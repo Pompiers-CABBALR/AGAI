@@ -4351,6 +4351,8 @@ function reclasser(id){
   const sel=document.getElementById('reclass-sel');if(!sel)return;
   const oldN=iv.n;iv.n=sel.value;
   iv.tl.push({s:'reclasse',h:getH(N()),who:CU.l,note:`${oldN} → ${iv.n}`});
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true); // push immédiat : sinon le changement de nature est écrasé au prochain pull
   cM();rI();
   // Reopen modal with fresh data
   setTimeout(()=>oM(id),50);
@@ -7277,11 +7279,16 @@ function agentSelectHtml(role,idSel,suggestedLogin,piqLabel,required,excludeLogi
 // ── Reconstruit toutes les options en excluant les agents déjà pris ──
 function refreshEquipageSelects(){
   const sels=Array.from(document.querySelectorAll('.eq-sel'));
-  // Au premier appel, la valeur courante peut être vide → utiliser suggested comme valeur initiale
   const vals={};
   sels.forEach(function(s){
-    // Si le select est vide (premier appel), utiliser le suggested comme valeur par défaut
-    vals[s.id]=s.value||s.dataset.suggested||'';
+    // La suggestion du piquet ne s'applique QU'À LA PREMIÈRE initialisation du champ.
+    // Ensuite, on respecte le choix de l'utilisateur — y compris "— Aucun —" (valeur vide).
+    if(s.dataset.init==='1'){
+      vals[s.id]=s.value||'';
+    } else {
+      vals[s.id]=s.value||s.dataset.suggested||'';
+      s.dataset.init='1';
+    }
   });
   sels.forEach(function(sel){
     const currentVal=vals[sel.id]||'';
