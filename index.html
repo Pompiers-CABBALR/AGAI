@@ -328,7 +328,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
    RESPONSIVE — Mobile / Tablette / Desktop
 ====================================================== */
 @media(min-width:768px){
-  .cnt{padding:16px 24px;max-width:960px;margin:0 auto;}
+  .cnt{padding:16px 24px;max-width:960px;margin:0 auto;min-width:0;box-sizing:border-box;width:100%;}
   .lcard{padding:32px;}
   .accueil-stats{grid-template-columns:repeat(4,1fr);}
   .srow{gap:8px;}
@@ -343,10 +343,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   .frow{gap:6px;}
   .fb{font-size:12px;padding:6px 12px;}
   .subtab-btn{font-size:13px;padding:10px 14px;}
+  .nav{overflow-x:hidden;flex-wrap:nowrap;justify-content:stretch;}
+  .nav .nb{flex:1 1 0;min-width:0;padding:12px 4px;}
 }
 @media(min-width:1024px){
   .cnt{width:100%;max-width:none;padding:20px 48px;}
-  .nb{flex:none;padding:12px 20px;font-size:13px;}
+  .nav .nb{flex:0 1 auto;padding:12px 20px;font-size:13px;}
   .nav{justify-content:center;padding:0 48px;}
   .srow{grid-template-columns:repeat(6,1fr);}
   .mod{max-width:700px;}
