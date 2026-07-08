@@ -4134,6 +4134,7 @@ function oM(id){
       </div>
     </div>
     ${iv._appelDetails&&Object.keys(iv._appelDetails).length?`<div class="mr"><div class="ml">Informations de l'appel</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:3px;">${Object.keys(iv._appelDetails).map(k=>`<span style="font-size:13px;"><span style="color:var(--t2);">${escHtml(k)} :</span> <strong>${escHtml(String(iv._appelDetails[k]))}</strong></span>`).join('')}</div></div></div>`:''}
+    ${(()=>{const compls=(iv.tl||[]).filter(t=>t.s==='info-compl');return compls.length?`<div class="mr"><div class="ml" style="color:#0369A1;">&#x2139;&#xFE0F; Compléments d'information</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:6px;">${compls.map(t=>`<div style="background:#EFF6FF;border-left:3px solid #0369A1;border-radius:6px;padding:6px 10px;font-size:13px;"><div>${escHtml(t.note||'')}</div><div style="font-size:10px;color:var(--t2);margin-top:2px;">&#x1F4C5; ${escHtml(t.h||'')} · ${escHtml(t.who||'')}</div></div>`).join('')}</div></div></div>`:'';})()}
     ${iv._transfertDe?`<div class="mr"><div class="ml">Transfert reçu de</div><div class="mv2" style="color:var(--amb);font-weight:500;">&#x1F500; ${CASERNES.find(c=>c.id===iv._transfertDe)?.nom||iv._transfertDe}</div></div>`:''}
     ${iv._transfertVers?`<div class="mr"><div class="ml">Transféré vers</div><div class="mv2" style="color:#888;">&#x1F500; ${CASERNES.find(c=>c.id===iv._transfertVers)?.nom||iv._transfertVers}</div></div>`:''}
     ${iv._refugeAnimalier?`<div class="mr"><div class="ml">Refuge animalier</div><div class="mv2" style="color:var(--grn);">&#x1F43E; Transmis au refuge — ${iv._refugeAnimalier}</div></div>`:''}
@@ -11941,7 +11942,7 @@ function _rcId(caserne, type, key){ return caserne + RC_SEP + type + RC_SEP + ke
 function _rcSplitCaserne(cid, d){
   const rows = [];
   if(!d) return rows;
-  const listTypes = {ivs:'iv', pilpIvs:'pilp', equipes:'equipe', fmpas:'fmpa', formStag:'formStag', formForm:'formForm', renforts:'renfort'};
+  const listTypes = {ivs:'iv', pilpIvs:'pilp', equipes:'equipe', fmpas:'fmpa', formStag:'formStag', formForm:'formForm', renforts:'renfort', activites:'activite'};
   Object.keys(listTypes).forEach(function(listKey){
     const type = listTypes[listKey];
     (d[listKey]||[]).forEach(function(item){
@@ -11976,9 +11977,9 @@ function _rcSplitCaserne(cid, d){
 
 // ── Reconstruit l'objet CASERNE_DATA[cid] à partir de lignes records ──
 function _rcAssembleCaserne(rows){
-  const out = { users:[], ivs:[], pilpIvs:[], equipes:[], fmpas:[], formStag:[], formForm:[], renforts:[],
+  const out = { users:[], ivs:[], pilpIvs:[], equipes:[], fmpas:[], formStag:[], formForm:[], renforts:[], activites:[],
                 dispos:{}, piquets:{}, planningRotations:{}, disposValidated:{}, piquetsValidated:{}, astrConfig:{} };
-  const listMap = {iv:'ivs', pilp:'pilpIvs', equipe:'equipes', fmpa:'fmpas', formStag:'formStag', formForm:'formForm', renfort:'renforts'};
+  const listMap = {iv:'ivs', pilp:'pilpIvs', equipe:'equipes', fmpa:'fmpas', formStag:'formStag', formForm:'formForm', renfort:'renforts', activite:'activites'};
   rows.forEach(function(r){
     if(r.deleted) return; // on ignore les enregistrements supprimés à la reconstruction
     if(listMap[r.type]){
@@ -13725,7 +13726,8 @@ function saveActivite(){
     auteur:CU?CU.l:'',auteurNom:CU?(CU.prenom+' '+CU.nom):'',
     ts:Date.now(), historique:[], impressions:[]};
   actGetData().push(entry);
-  saveData();
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true); // push immédiat : sinon l'activité peut être écrasée au prochain pull
   // Reset form
   ['act-date','act-hdebut','act-hfin','act-cr'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('act-duree').value='';
@@ -13836,7 +13838,8 @@ function actSaveEdit(id){
   const now=new Date();
   a.historique.push({date:now.toLocaleDateString('fr-FR')+' '+now.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}),auteur:CU?CU.l:'',auteurNom:CU?(CU.prenom+' '+CU.nom):'',champs:(champs.length?champs.join(', '):'(aucun champ modifié)')+' — '+motif});
   a.type=newType;a.hDebut=newHd;a.hFin=newHf;a.duree=newDuree;a.cr=newCr;a.participants=newPart;
-  saveData();cM();rActiviteList();showToast('Activité modifiée ✓','success');
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);cM();rActiviteList();showToast('Activité modifiée ✓','success'); // push immédiat
 }
 
 // ── Impression rapport ──
