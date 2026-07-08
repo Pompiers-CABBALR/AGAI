@@ -13946,7 +13946,15 @@ function deleteFmpa(id){
   confirmModal('Supprimer cette FMPA ?',function(){
     const data=fmpaGetData();
     const idx=data.findIndex(x=>x.id===id);
-    if(idx>=0){data.splice(idx,1);saveData();rFmpaList();showToast('FMPA supprimée','success');}
+    if(idx>=0){
+      // Propager la suppression au serveur AVANT de retirer localement, sinon la FMPA revient au prochain pull
+      if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcMarkDeleted==='function'&&CURRENT_CASERNE_ID){
+        try{_rcMarkDeleted(CURRENT_CASERNE_ID,'fmpa',[id]);}catch(e){}
+      }
+      data.splice(idx,1);
+      if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+      saveData(true);rFmpaList();showToast('FMPA supprimée','success');
+    }
   });
 }
 
@@ -14259,7 +14267,8 @@ function _saveFormEntry(pfx,idPrefix,getDataFn,toggleFn,listFn,recapFn){
   const participants=Array.from(document.querySelectorAll('#'+pfx+'-participants input:checked')).map(cb=>cb.value);
   const id=idPrefix+'_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
   getDataFn().push({id,titre,ref,lieu,ddebut,dfin,hmatind,hmatinf,hapremd,hapremf,hjour,htotal,participants,auteur:CU?CU.l:'',ts:Date.now()});
-  saveData();
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true); // push immédiat : sinon risque d'écrasement au prochain pull
   toggleFn();
   listFn();recapFn();
   showToast('Formation enregistrée ✓','success');
@@ -14303,7 +14312,14 @@ function deleteFormEntry(type,id){
   const idx=data.findIndex(x=>x.id===id);
   if(idx>=0){
     confirmModal('Supprimer cette formation ?',function(){
-      data.splice(idx,1);saveData();
+      // Propager la suppression au serveur, sinon la formation revient au prochain pull
+      const recType=(type==='stag')?'formStag':'formForm';
+      if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcMarkDeleted==='function'&&CURRENT_CASERNE_ID){
+        try{_rcMarkDeleted(CURRENT_CASERNE_ID,recType,[id]);}catch(e){}
+      }
+      data.splice(idx,1);
+      if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+      saveData(true);
       if(type==='stag'){rFormStagList();rFormStagRecap();}
       else{rFormFormList();rFormFormRecap();}
       showToast('Formation supprimée','success');
@@ -14488,7 +14504,8 @@ function saveFmpa(){
   const entry={id,date,theme,hDebut:hd,hFin:hf,duree,participants,formateurs,numAnnuel,
     auteur:CU?CU.l:'',auteurNom:CU?(CU.prenom+' '+CU.nom):'',ts:Date.now(),historique:[],impressions:[]};
   fmpaGetData().push(entry);
-  saveData();
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true); // push immédiat
   // Reset
   ['fmpa-date','fmpa-theme','fmpa-hdebut','fmpa-hfin'].forEach(i=>{const e=document.getElementById(i);if(e)e.value='';});
   document.getElementById('fmpa-duree').value='';
@@ -14606,7 +14623,8 @@ function fmpaSaveEdit(id){
   const now=new Date();
   a.historique.push({date:now.toLocaleDateString('fr-FR')+' '+now.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}),auteur:CU?CU.l:'',auteurNom:CU?(CU.prenom+' '+CU.nom):'',champs:(champs.length?champs.join(', '):'(aucun champ modifié)')+' — '+motif});
   a.theme=newTheme;a.hDebut=newHd;a.hFin=newHf;a.duree=newDuree;a.participants=newPart;a.formateurs=newForm;
-  saveData();cM();rFmpaList();showToast('FMPA modifiée \u2713','success');
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);cM();rFmpaList();showToast('FMPA modifiée \u2713','success'); // push immédiat
 }
 
 // ── Impression rapport FMPA ──
