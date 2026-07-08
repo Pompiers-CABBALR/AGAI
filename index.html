@@ -1934,6 +1934,11 @@ function renderSuperAdmin(){
       </div>
     </div>
     <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;border:1px solid #eee;">
+      <div style="font-size:14px;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:8px;">&#x1F50E; Diagnostic d'affichage</div>
+      <div style="font-size:12px;color:#666;margin-bottom:12px;">Surligne en rouge les éléments qui dépassent la largeur de l'écran. Utile pour signaler précisément un problème d'affichage sur un appareil.</div>
+      <button id="sa-diag-btn" class="btn pr sm" onclick="toggleDiagAffichage()">🔎 Diagnostiquer l'affichage</button>
+    </div>
+    <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;border:1px solid #eee;">
       <div style="font-size:14px;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:8px;">&#x1F692; Types d'engins</div>
       <div style="font-size:12px;color:#666;margin-bottom:12px;">Définissez le nombre de places et les rôles de chaque type d'engin (VTU, VPI, VL…). Appliqué à tous les engins de ce type.</div>
       <div id="sa-engin-types"></div>
@@ -3987,9 +3992,9 @@ function oM(id){
   const dispApl=iv._numApl||iv.id;
   const dispTransfert=iv._transfertDe?` ↩ transféré de ${CASERNES.find(cas=>cas.id===iv._transfertDe)?.nom||iv._transfertDe}`:'';
   document.getElementById('mi').textContent=dispApl+dispTransfert;
-  const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis de passage'],'modif':['bgr','Modification'],'reclasse':['bgr','Reclasé'],'releve':['binfo','Relève']};
+  const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis de passage'],'modif':['bgr','Modification'],'modif-adresse':['bgr','Adresse corrigée'],'reclasse':['bgr','Reclasé'],'releve':['binfo','Relève'],'info-compl':['binfo','ℹ️ Complément d\u2019info']};
   const[bc,bt]=bm[iv.s]||['bgr','—'];
-  const sdots={'en-attente':'#E24B4A','selectionne':'var(--sel)','en-cours':'var(--amb)','terminee':'var(--grn)','avis-passage':'var(--pur)','modif':'#888','reclasse':'#888','releve':'#0369A1'};
+  const sdots={'en-attente':'#E24B4A','selectionne':'var(--sel)','en-cours':'var(--amb)','terminee':'var(--grn)','avis-passage':'var(--pur)','modif':'#888','modif-adresse':'#888','reclasse':'#888','releve':'#0369A1','info-compl':'#0369A1'};
   const tlHtml=(iv.tl||[]).map(t=>`<div class="tl-item"><div class="tl-dot" style="background:${sdots[t.s]||'#aaa'};"></div><div class="tl-info"><span class="tl-status">${bm[t.s]?bm[t.s][1]:t.s}${t.note?` — ${t.note}`:''}</span> <span class="tl-horo">&#x1F4C5; ${t.h}</span><div class="tl-who">${t.who}</div></div></div>`).join('');
   const reclassHtml=(ag&&iv.s==='en-cours')?`<div class="reclass-box">
     <div class="reclass-title">Reclasser la nature</div>
@@ -4206,7 +4211,8 @@ function oM(id){
         ${(iv._pdfAttestation||iv._autorisationData)?`<button class="btn sm" style="background:#3B6D11;color:#fff;" onclick="viewPdfDocument('${iv.id}','attestation')">&#x1F4CB; Attestation</button>`:''}
         ${!iv._pdfAutorisation&&iv._autorisationData?`<span style="font-size:10px;color:var(--t2);align-self:center;">&#x26A0;&#xFE0F; Générés à la volée</span>`:'<span style="font-size:10px;color:var(--grn);align-self:center;">&#x2705; Sauvegardés</span>'}
       </div>
-    </div>`:''}    <details style="background:var(--bg);border-radius:10px;margin-bottom:8px;" id="tl-details-${iv.id}">
+    </div>`:''}    ${(['en-attente','selectionne','en-cours'].includes(iv.s)&&(hasRight('Interventions')||isAgres()||isChef()||isAdminModeActive()))?`<button class="btn sm" style="width:100%;margin-bottom:8px;background:#0369A1;color:#fff;border-color:#0369A1;" onclick="showComplementModal('${iv.id}')">&#x2139;&#xFE0F; Ajouter un complément d'information</button>`:''}
+    <details style="background:var(--bg);border-radius:10px;margin-bottom:8px;" id="tl-details-${iv.id}">
       <summary style="font-size:11px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;padding:10px 12px;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;">
         Historique des statuts <span style="font-size:10px;background:var(--brd);border-radius:10px;padding:1px 7px;color:var(--t2);font-weight:400;">${(iv.tl||[]).length}</span>
       </summary>
@@ -7376,6 +7382,59 @@ function saSaveBgLogout(){
   showToast(v>0?('Déconnexion auto réglée sur '+v+' min'):'Déconnexion auto désactivée','success');
 }
 
+// ── Outil de diagnostic d'affichage (superadmin) ──
+// Surligne en rouge tout élément qui dépasse la largeur de l'écran, pour
+// identifier précisément la cause d'un débordement horizontal sur un appareil.
+let _diagAffichageActif=false;
+function toggleDiagAffichage(){
+  if(!isSuperAdmin())return;
+  _diagAffichageActif=!_diagAffichageActif;
+  const btn=document.getElementById('sa-diag-btn');
+  if(_diagAffichageActif){
+    _runDiagAffichage();
+    if(btn){btn.textContent='🛑 Arrêter le diagnostic';btn.style.background='#7C2D2D';}
+  } else {
+    _clearDiagAffichage();
+    if(btn){btn.textContent='🔎 Diagnostiquer l\u2019affichage';btn.style.background='';}
+  }
+}
+function _clearDiagAffichage(){
+  document.querySelectorAll('[data-diag-overflow]').forEach(function(el){
+    el.style.outline='';el.removeAttribute('data-diag-overflow');
+  });
+  const banner=document.getElementById('diag-affichage-banner');
+  if(banner)banner.remove();
+}
+function _runDiagAffichage(){
+  _clearDiagAffichage();
+  const docW=document.documentElement.clientWidth;
+  const coupables=[];
+  document.querySelectorAll('body *').forEach(function(el){
+    const r=el.getBoundingClientRect();
+    // On ignore les éléments volontairement défilables (leur débordement est maîtrisé)
+    const st=window.getComputedStyle(el);
+    if(st.overflowX==='auto'||st.overflowX==='scroll'||st.overflowX==='clip'||st.overflowX==='hidden')return;
+    // Élément qui dépasse à droite ou commence hors écran à gauche
+    if(r.right>docW+1||r.left<-1){
+      el.style.outline='2px solid #E24B4A';
+      el.setAttribute('data-diag-overflow','1');
+      const id=el.id?('#'+el.id):'';
+      const cls=(typeof el.className==='string'&&el.className)?('.'+el.className.trim().split(/\s+/).join('.')):'';
+      coupables.push((el.tagName.toLowerCase()+id+cls).slice(0,60)+' ('+Math.round(r.right)+'px)');
+    }
+  });
+  const banner=document.createElement('div');
+  banner.id='diag-affichage-banner';
+  banner.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:99999;background:#1a1a1a;color:#fff;font-size:11px;padding:8px 12px;max-height:35vh;overflow-y:auto;font-family:monospace;box-shadow:0 -2px 12px rgba(0,0,0,.4);';
+  if(coupables.length){
+    banner.innerHTML='<b>Largeur écran : '+docW+'px — '+coupables.length+' élément(s) qui débordent :</b><br>'
+      +coupables.map(function(c){return '• '+c;}).join('<br>');
+  } else {
+    banner.innerHTML='<b>Largeur écran : '+docW+'px — ✅ Aucun débordement détecté sur cet écran.</b>';
+  }
+  document.body.appendChild(banner);
+}
+
 function renderJoursFeries(annee){
   const grid=document.getElementById('sa-feries-grid');if(!grid)return;
   annee=parseInt(annee);
@@ -7607,10 +7666,46 @@ function saveRequerant(id){
   const newReq=document.getElementById('edit-req').value.trim();
   const newTel=document.getElementById('edit-tel').value.trim();
   if(!newReq){showToast('Le nom du requérant est obligatoire.','warn');return;}
+  const notes=[];
+  if((iv.req||'')!==newReq)notes.push('Requérant : '+(iv.req||'—')+' → '+newReq);
+  if((iv.tel||'')!==newTel)notes.push('Téléphone : '+(iv.tel||'—')+' → '+(newTel||'—'));
   if(!iv._reqInit){iv._reqInit=iv.req;iv._telInit=iv.tel||'';}
   iv.req=newReq;iv.tel=newTel;
-  iv.tl.push({s:'modif',h:getH(N()),who:CU.l,note:'Requ\u00e9rant corrig\u00e9 : '+newReq+(newTel?' \u00b7 '+newTel:'')});
-  saveData();cM();
+  iv.tl.push({s:'modif',h:getH(N()),who:CU.l,note:notes.length?notes.join(' ; '):'Requérant corrigé'});
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);cM(); // push immédiat : sinon la correction est écrasée au prochain pull
+  setTimeout(function(){oM(id);},80);
+}
+
+// ────────────────── COMPLÉMENT D'INFORMATION ──────────────────
+// Permet d'ajouter un commentaire libre horodaté à une intervention active
+// (ex. le requérant rappelle avec des précisions). Réservé au droit Interventions.
+function showComplementModal(id){
+  const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
+  if(!(hasRight('Interventions')||isAgres()||isChef()||isAdminModeActive())){showToast('Action réservée aux personnes ayant le droit Interventions.','warn');return;}
+  document.getElementById('mt').textContent='Complément d\u2019information';
+  document.getElementById('mi').textContent=iv.n+' — '+(iv.com||'');
+  document.getElementById('mb').innerHTML=
+    '<div>'
+    +'<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Ajoutez une information transmise après l\u2019enregistrement (ex. le requérant rappelle). Elle sera horodatée et ajoutée à l\u2019historique.</div>'
+    +'<div class="fg"><div class="fgl">Information complémentaire</div>'
+    +'<textarea class="fi" id="compl-info-val" rows="4" placeholder="ex. Le requérant signale que le nid est en hauteur, prévoir une échelle."></textarea></div>'
+    +'<div id="compl-info-err" style="font-size:12px;color:#E24B4A;display:none;margin-bottom:8px;"></div>'
+    +'<div class="brow">'
+    +'<button class="btn pr sm" onclick="saveComplementInfo(\''+id+'\')">&#x1F4BE; Ajouter</button>'
+    +'<button class="btn sm" onclick="oM(\''+id+'\')">Retour</button></div></div>';
+  document.getElementById('mo').style.display='flex';
+}
+function saveComplementInfo(id){
+  const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
+  const txt=(document.getElementById('compl-info-val').value||'').trim();
+  const err=document.getElementById('compl-info-err');
+  if(!txt){err.style.display='block';err.textContent='Veuillez saisir une information.';return;}
+  iv.tl.push({s:'info-compl',h:getH(N()),who:CU.l,note:txt});
+  iv.rappels=(iv.rappels||0)+1;
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);
+  cM();rI();
   setTimeout(function(){oM(id);},80);
 }
 
@@ -8590,9 +8685,15 @@ function saveAdresse(ivId){
   const comp=document.getElementById('edit-addr-comp').value.trim();
   const err=document.getElementById('edit-addr-err');
   if(!addr){err.style.display='block';err.textContent='L’adresse est obligatoire.';return;}
+  const notes=[];
+  if((iv.addr||'')!==addr)notes.push('Adresse : '+(iv.addr||'—')+' → '+addr);
+  if((iv.addrComp||'')!==comp)notes.push('Compl. adresse : '+(iv.addrComp||'—')+' → '+(comp||'—'));
   iv.addr=addr;
   iv.addrComp=comp;
   pushTL(iv,'modif-adresse',CU.l);
+  if(notes.length)iv.tl[iv.tl.length-1].note=notes.join(' ; ');
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true); // push immédiat : sinon la correction est écrasée au prochain pull
   cM();rI();oM(ivId);
 }
 
