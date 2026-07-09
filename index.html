@@ -4772,13 +4772,21 @@ async function saveProfil(){
   if(mdp&&mdp!==mdp2){err.style.display='block';err.textContent='Les mots de passe ne correspondent pas.';return;}
   err.style.display='none';
   if(mdp){
-    const u=USERS.find(x=>x.l===CU.l);
     const hashed=await hashPassword(mdp);
+    const u=USERS.find(x=>x.l===CU.l);
     if(u)u.p=hashed;
     CU.p=hashed;
+    // Si l'utilisateur connecté est le SUPER-ADMIN, mettre aussi à jour son
+    // compte global (GLOBAL_ACCOUNTS) — sinon le nouveau mot de passe ne
+    // s'appliquerait pas à la connexion superadmin.
+    if(isSuperAdmin()){
+      const ga=GLOBAL_ACCOUNTS.find(a=>a.role==='superadmin'&&a.l===CU.l);
+      if(ga)ga.p=hashed;
+    }
   }
   document.getElementById('prof-mdp').value='';document.getElementById('prof-mdp2').value='';
-  saveData();rProfil();showToast('Mot de passe enregistré !','success');
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);rProfil();showToast('Mot de passe enregistré !','success'); // push immédiat
 }
 
 // === MODULE: admin.js (partie 2/2 — gestion utilisateurs) ===
