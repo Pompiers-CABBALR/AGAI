@@ -3491,9 +3491,14 @@ function checkDejaIntervenu(){
     return nm(x.addr)===na && nm(x.n)===nn && x.s!=='annulee';
   });
   if(!memes.length){box.style.display='none';return;}
-  const avisCount=memes.filter(function(x){return x.s==='avis-passage';}).length;
-  let msg='&#x26A0;&#xFE0F; <strong>'+memes.length+' intervention'+(memes.length>1?'s':'')+'</strong> déjà enregistrée'+(memes.length>1?'s':'')+' à cette adresse pour «&nbsp;'+escHtml(nat)+'&nbsp;».';
-  if(avisCount)msg+='<br>&#x1F7E3; dont <strong>'+avisCount+' avis de passage</strong> en attente de rappel.';
+  const avisAttente=memes.filter(function(x){return x._avisEnAttente;});
+  let msg;
+  if(avisAttente.length){
+    // Cas prioritaire : un avis de passage a été laissé ici, on attend le rappel.
+    msg='&#x1F7E3; <strong>Avis de passage en attente</strong> à cette adresse pour «&nbsp;'+escHtml(nat)+'&nbsp;». Il s\u2019agit probablement du rappel du requérant.';
+  } else {
+    msg='&#x26A0;&#xFE0F; <strong>'+memes.length+' intervention'+(memes.length>1?'s':'')+'</strong> d\u00e9j\u00e0 enregistr\u00e9e'+(memes.length>1?'s':'')+' \u00e0 cette adresse pour «&nbsp;'+escHtml(nat)+'&nbsp;».';
+  }
   box.innerHTML=msg;
   box.style.display='block';
 }
@@ -3921,7 +3926,7 @@ function rI(){
   const ti=IVS.filter(iv=>isTdy(iv)&&!iv._isPilip);
   document.getElementById('nb1').textContent=ti.filter(iv=>iv.s==='en-attente').length;
   document.getElementById('nb2s').textContent=ti.filter(iv=>iv.s==='selectionne').length;
-  document.getElementById('nb2').textContent=IVS.filter(iv=>iv.s==='avis-passage'&&!iv._isPilip).length;
+  document.getElementById('nb2').textContent=IVS.filter(iv=>iv._avisEnAttente&&!iv._isPilip&&iv.s!=='annulee').length;
   document.getElementById('nb3').textContent=ti.filter(iv=>iv.s==='en-cours').length;
   const isTermAuj=iv=>iv.s==='terminee'&&iv.tl&&iv.tl.some(t=>t.s==='terminee'&&(t.h||'').startsWith(TDP));
   document.getElementById('nb4').textContent=IVS.filter(iv=>!iv._isPilip&&(isTdy(iv)?iv.s==='terminee':isTermAuj(iv))).length;
@@ -4164,12 +4169,15 @@ function oM(id){
       </div>
     </div>
     ${(()=>{
-      if(!isAdminModeActive())return '';
       const na=nm(iv.addr),nn=nm(iv.n);
       const autres=[].concat(IVS||[],PILP_IVS||[]).filter(x=>x.id!==iv.id&&nm(x.addr)===na&&nm(x.n)===nn&&x.s!=='annulee');
       if(!autres.length)return '';
-      const avisN=autres.filter(x=>x.s==='avis-passage').length;
-      return `<div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#92400E;cursor:pointer;" onclick="showInterventionsLiees('${iv.id}')">&#x26A0;&#xFE0F; <strong>${autres.length}</strong> autre${autres.length>1?'s':''} intervention${autres.length>1?'s':''} à cette adresse pour ce type${avisN?` · <strong>${avisN}</strong> avis de passage`:''} — <u>voir</u></div>`;
+      const avisN=autres.filter(x=>x._avisEnAttente).length;
+      const cliquable=isAdminModeActive();
+      const detail=avisN?` · <strong>${avisN}</strong> avis de passage en attente`:'';
+      const lien=cliquable?' — <u>voir</u>':'';
+      const onclick=cliquable?` onclick="showInterventionsLiees('${iv.id}')" style="cursor:pointer;"`:'';
+      return `<div${onclick} style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#92400E;${cliquable?'cursor:pointer;':''}">&#x26A0;&#xFE0F; <strong>${autres.length}</strong> autre${autres.length>1?'s':''} intervention${autres.length>1?'s':''} à cette adresse pour ce type${detail}${lien}</div>`;
     })()}
     ${iv._appelDetails&&Object.keys(iv._appelDetails).length?`<div class="mr"><div class="ml">Informations de l'appel</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:3px;">${Object.keys(iv._appelDetails).map(k=>`<span style="font-size:13px;"><span style="color:var(--t2);">${escHtml(k)} :</span> <strong>${escHtml(String(iv._appelDetails[k]))}</strong></span>`).join('')}</div></div></div>`:''}
     ${(()=>{const compls=(iv.tl||[]).filter(t=>t.s==='info-compl');return compls.length?`<div class="mr"><div class="ml" style="color:#0369A1;">&#x2139;&#xFE0F; Compléments d'information</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:6px;">${compls.map(t=>`<div style="background:#EFF6FF;border-left:3px solid #0369A1;border-radius:6px;padding:6px 10px;font-size:13px;"><div>${escHtml(t.note||'')}</div><div style="font-size:10px;color:var(--t2);margin-top:2px;">&#x1F4C5; ${escHtml(t.h||'')} · ${escHtml(t.who||'')}</div></div>`).join('')}</div></div></div>`:'';})()}
