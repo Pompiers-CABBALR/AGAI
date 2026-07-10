@@ -3833,7 +3833,7 @@ function renderInterventionRow(iv, ag, tireur) {
       ${iv._sdis ? '<span class="bdg" style="background:#1D4ED8;color:#fff;font-size:10px;font-weight:700;">SDIS</span>' : ''}
       ${iv._echelleToiture ? '<span class="bdg" style="background:#F59E0B;color:#fff;font-size:10px;">Echelle de toit</span>' : ''}
       ${iv._epa ? '<span class="bdg" style="background:#8E44AD;color:#fff;font-size:10px;">EPA</span>' : ''}
-      ${iv.rappels ? `<span class="bdg bp" style="font-size:10px;cursor:pointer;" title="Voir les interventions au même lieu" onclick="event.stopPropagation();showInterventionsLiees('${iv.id}')">${iv.rappels}×</span>` : ''}
+      ${iv.rappels ? `<span class="bdg bp" style="font-size:10px;${isAdminModeActive()?'cursor:pointer;':''}"${isAdminModeActive()?` title="Déjà intervenu ici ?" onclick="event.stopPropagation();showInterventionsLiees('${iv.id}')"`:''}>${iv.rappels}×</span>` : ''}
       ${iv.s === 'terminee' && iv._crValide ? '<span title="Compte rendu validé" style="font-size:12px;">📋✔</span>' : iv.s === 'terminee' && (iv._crTexte || iv._compteRendu) ? '<span title="Compte rendu rédigé" style="font-size:12px;opacity:.6;">📋</span>' : ''}
       ${iv._mailsEnvoyes && iv._mailsEnvoyes.length ? `<span title="Envoyé par mail (${iv._mailsEnvoyes.length}x)" style="font-size:12px;">✉️</span>` : ''}
       ${iv._impressions && iv._impressions.length ? `<span title="Rapport imprimé (${iv._impressions.length}x)" style="font-size:12px;">🖨</span>` : ''}
@@ -4121,7 +4121,7 @@ function oM(id){
     }
   }
   document.getElementById('mb').innerHTML=`
-    <div style="margin-bottom:8px;"><span class="bdg ${bc}">${bt}</span>${iv.rappels?` <span class="bdg bp" style="cursor:pointer;" title="Voir les interventions au même lieu" onclick="showInterventionsLiees('${iv.id}')">${iv.rappels} rappel(s)</span>`:''}</div>
+    <div style="margin-bottom:8px;"><span class="bdg ${bc}">${bt}</span>${iv.rappels?` <span class="bdg bp" style="${isAdminModeActive()?'cursor:pointer;':''}"${isAdminModeActive()?` title="Déjà intervenu ici ?" onclick="showInterventionsLiees('${iv.id}')"`:''}>${iv.rappels} rappel(s)</span>`:''}</div>
     ${iv._sdis?'<div style="background:#DBEAFE;border:1px solid #93C5FD;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;color:#1D4ED8;margin-bottom:10px;text-align:center;">&#x1F691; INTERVENTION SDIS</div>':''}
     ${iv._avisPassage?'<div style="background:#F3EAF8;border:2px solid #9B59B6;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;color:#6C3483;margin-bottom:10px;text-align:center;">🟣 Un avis de passage a été laissé pour cette intervention</div>':''}
     ${iv._echelleToiture?'<div style="background:#FEF3C7;border:2px solid #F59E0B;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:700;color:#92400E;margin-bottom:10px;text-align:center;">&#x26A0;&#xFE0F; INTERVENTION À FAIRE AVEC ÉCHELLE DE TOIT</div>':''}
@@ -4549,7 +4549,7 @@ function oPilp(id){
   const sdots={'en-attente':'#E24B4A','en-cours':'var(--amb)','terminee':'var(--grn)','avis-passage':'var(--pur)'};
   const tlHtml=(iv.tl||[]).map(t=>`<div class="tl-item"><div class="tl-dot" style="background:${sdots[t.s]||'#aaa'};"></div><div class="tl-info"><span class="tl-status">${bm[t.s]?bm[t.s][1]:t.s}</span> <span class="tl-horo">&#x1F4C5; ${t.h}</span><div class="tl-who">${t.who}</div></div></div>`).join('');
   document.getElementById('mb').innerHTML=`
-    <div style="margin-bottom:10px;"><span class="bdg ${bc}">${bt}</span> <span class="bdg bpilp">PILP</span>${iv.rappels?` <span class="bdg bp" style="cursor:pointer;" title="Voir les interventions au même lieu" onclick="showInterventionsLiees('${iv.id}')">${iv.rappels} rappel(s)</span>`:''}</div>
+    <div style="margin-bottom:10px;"><span class="bdg ${bc}">${bt}</span> <span class="bdg bpilp">PILP</span>${iv.rappels?` <span class="bdg bp" style="${isAdminModeActive()?'cursor:pointer;':''}"${isAdminModeActive()?` title="Déjà intervenu ici ?" onclick="showInterventionsLiees('${iv.id}')"`:''}>${iv.rappels} rappel(s)</span>`:''}</div>
     <div class="mr"><div class="ml">Adresse</div><div class="mv2" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">&#x1F4CD; ${iv.addr}, ${iv.com}${iv.addrComp?' · '+iv.addrComp:''}${(isAgres()||isChef()||hasRight('Administration'))&&iv.s!=='terminee'?`<button class="btn sm" style="font-size:10px;padding:2px 7px;" onclick="editAdresse('${iv.id}')">✏️ Corriger</button>`:''}</div></div>
     <div class="mr"><div class="ml">Requérant</div><div class="mv2">${escHtml(iv.req)}${iv.tel?' · '+escHtml(iv.tel):''}</div></div>
     <div class="mr"><div class="ml">Localisation</div><div class="mv2">${escHtml(iv.localisation||'—')}${iv.hauteur?' — '+escHtml(String(iv.hauteur))+' m':''}</div></div>
@@ -7693,17 +7693,17 @@ function saveRequerant(id){
 }
 
 // ────────────────── INTERVENTIONS PASSÉES AU MÊME LIEU ──────────────────
-// Affiche les interventions déjà enregistrées à la même adresse (ou, à défaut,
-// la même commune), pour savoir si on est déjà intervenu à cet endroit.
+// Affiche les interventions déjà enregistrées à la MÊME ADRESSE EXACTE et du
+// MÊME TYPE, pour savoir si on est déjà intervenu ici pour la même chose.
+// Réservé aux administrateurs.
 function showInterventionsLiees(id){
+  if(!isAdminModeActive()){showToast('Consultation réservée aux administrateurs.','warn');return;}
   const iv=IVS.find(function(v){return v.id===id;})||PILP_IVS.find(function(v){return v.id===id;});
   if(!iv)return;
-  const adrRef=nm(iv.addr), comRef=nm(iv.com);
-  // On rassemble toutes les interventions (normales + PILP) sauf celle en cours de consultation.
+  const adrRef=nm(iv.addr), natRef=nm(iv.n);
+  // Même adresse exacte ET même nature d'intervention (hors celle consultée).
   const toutes=[].concat(IVS||[],PILP_IVS||[]).filter(function(x){return x.id!==id;});
-  // Correspondance : même adresse exacte en priorité ; sinon même commune.
-  const memeAdresse=toutes.filter(function(x){return adrRef&&nm(x.addr)===adrRef;});
-  const memeCommune=toutes.filter(function(x){return comRef&&nm(x.com)===comRef&&nm(x.addr)!==adrRef;});
+  const memeLieuType=toutes.filter(function(x){return adrRef&&nm(x.addr)===adrRef&&nm(x.n)===natRef;});
   const fmtLigne=function(x){
     const stLbl={'en-attente':'En attente','selectionne':'Sélectionné','en-cours':'En cours','terminee':'Terminée','avis-passage':'Avis de passage','annulee':'Annulée'}[x.s]||x.s;
     return '<div style="background:#fff;border:1px solid var(--brd);border-radius:8px;padding:8px 10px;margin-bottom:6px;cursor:pointer;" onclick="oM(\''+x.id+'\')">'
@@ -7713,21 +7713,15 @@ function showInterventionsLiees(id){
       +'</div>';
   };
   let html='<div>';
-  if(!memeAdresse.length&&!memeCommune.length){
-    html+='<div style="font-size:13px;color:var(--t2);padding:12px 0;">Aucune autre intervention enregistrée à cette adresse ni dans cette commune.</div>';
+  if(!memeLieuType.length){
+    html+='<div style="font-size:13px;color:var(--t2);padding:12px 0;">Aucune autre intervention du même type à cette adresse.</div>';
   } else {
-    if(memeAdresse.length){
-      html+='<div style="font-size:12px;font-weight:700;color:#0369A1;margin:4px 0 8px;">&#x1F4CD; Même adresse ('+memeAdresse.length+')</div>';
-      html+=memeAdresse.map(fmtLigne).join('');
-    }
-    if(memeCommune.length){
-      html+='<div style="font-size:12px;font-weight:700;color:var(--t2);margin:12px 0 8px;">Même commune ('+memeCommune.length+')</div>';
-      html+=memeCommune.map(fmtLigne).join('');
-    }
+    html+='<div style="font-size:12px;font-weight:700;color:#0369A1;margin:4px 0 8px;">&#x1F4CD; Même adresse et même type ('+memeLieuType.length+')</div>';
+    html+=memeLieuType.map(fmtLigne).join('');
   }
   html+='<div class="brow" style="margin-top:10px;"><button class="btn sm" onclick="oM(\''+id+'\')">Retour</button></div></div>';
-  document.getElementById('mt').textContent='Interventions au même lieu';
-  document.getElementById('mi').textContent=(iv.addr||'')+', '+(iv.com||'');
+  document.getElementById('mt').textContent='Déjà intervenu ici ?';
+  document.getElementById('mi').textContent=(iv.n||'')+' — '+(iv.addr||'')+', '+(iv.com||'');
   document.getElementById('mb').innerHTML=html;
   document.getElementById('mo').style.display='flex';
 }
@@ -7757,7 +7751,6 @@ function saveComplementInfo(id){
   const err=document.getElementById('compl-info-err');
   if(!txt){err.style.display='block';err.textContent='Veuillez saisir une information.';return;}
   iv.tl.push({s:'info-compl',h:getH(N()),who:CU.l,note:txt});
-  iv.rappels=(iv.rappels||0)+1;
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);
   cM();rI();
