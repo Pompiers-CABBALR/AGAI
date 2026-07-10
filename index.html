@@ -3691,9 +3691,12 @@ function enr(){
   const annee=new Date().getFullYear();
   const addrBase=document.getElementById('fa').value.trim(),addrComp=document.getElementById('fa2').value.trim(),addr=addrComp?addrBase+' — '+addrComp:addrBase,com=selC2;
   const pilpDirect=document.getElementById('chk-pilp-direct')&&document.getElementById('chk-pilp-direct').checked;
-  const exIv=IVS.filter(iv=>iv.s==='avis-passage'&&!iv._isPilip&&nm(iv.com)===nm(com));
-  const exPilp=PILP_IVS.filter(iv=>iv.s==='avis-passage'&&nm(iv.com)===nm(com));
-  exIv.forEach(iv=>iv.rappels=(iv.rappels||0)+1);
+  // Avis en attente de rappel pour CETTE adresse et CE type : le requérant rappelle.
+  const _adr=document.getElementById('fa')?document.getElementById('fa').value.trim():'';
+  const exIv=IVS.filter(iv=>iv._avisEnAttente&&!iv._isPilip&&nm(iv.addr)===nm(_adr)&&nm(iv.n)===nm(selNat));
+  const exPilp=PILP_IVS.filter(iv=>iv._avisEnAttente&&nm(iv.addr)===nm(_adr)&&nm(iv.n)===nm(selNat));
+  // Lever l'indicateur "en attente" sur ces interventions (le requérant a rappelé).
+  exIv.concat(exPilp).forEach(iv=>{iv._avisEnAttente=false;iv._avisRappele=true;});
   exPilp.forEach(iv=>iv.rappels=(iv.rappels||0)+1);
   // Numérotation appel (APL) et intervention (INT, seulement quand terminée)
   const numApl=nextAplNum(annee);
@@ -3923,8 +3926,9 @@ function rI(){
   const isTermAuj=iv=>iv.s==='terminee'&&iv.tl&&iv.tl.some(t=>t.s==='terminee'&&(t.h||'').startsWith(TDP));
   document.getElementById('nb4').textContent=IVS.filter(iv=>!iv._isPilip&&(isTdy(iv)?iv.s==='terminee':isTermAuj(iv))).length;
 
-  // Avis de passage — ligne condensée avec accordéon
-  const avis=IVS.filter(iv=>iv.s==='avis-passage'&&!iv._isPilip);
+  // Avis de passage EN ATTENTE DE RAPPEL — interventions terminées où l'équipe a
+  // laissé un avis (requérant absent). Reste affiché jusqu'au rappel du requérant.
+  const avis=IVS.filter(iv=>!iv._isPilip&&iv._avisEnAttente&&iv.s!=='annulee');
   const as=document.getElementById('avsec');document.getElementById('avc').textContent=avis.length;
   if(avis.length){
     as.style.display='block';
@@ -4344,17 +4348,13 @@ function clot(id){
   const h=getH(N());
   const agr2Lbl=iv._agr2?(()=>{const u=USERS.find(u=>u.l===iv._agr2);return u?' + '+fullName(u)+' (2\u00e8me)':' + '+iv._agr2;})():'';
   if(avis){
-    // Avis de passage : requérant absent, intervention EN ATTENTE d'un rappel.
-    // On met le statut à 'avis-passage' pour qu'elle apparaisse dans la bonne section.
+    // Avis de passage : le requérant était absent. L'intervention de CETTE équipe
+    // est TERMINÉE (avec compte rendu), mais on garde le marqueur _avisPassage pour
+    // signaler qu'un avis a été laissé et qu'on attend le rappel du requérant.
     iv._avisPassage=true;
-    iv.s='avis-passage';
-    iv._hFin=getHHMM(N());
-    if(!iv.avisIds)iv.avisIds=[];
-    if(!iv.avisIds.includes(iv.id))iv.avisIds.push(iv.id);
+    iv._avisEnAttente=true; // indicateur "en attente de rappel" (levé quand le requérant rappelle)
     iv.tl.push({s:'avis-passage',h,who:CU.l});
-    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-    saveData(true);cM();rI();rAccueil();rStatsHeader(); // push immédiat : changement de statut partagé
-    return;
+    // On NE retourne PAS : on laisse le flux de clôture normale terminer l'intervention.
   }
   // Clôture normale
   iv.s='terminee';iv._hFin=getHHMM(N());iv.tl.push({s:'terminee',h,who:CU.l+agr2Lbl});
@@ -4382,7 +4382,8 @@ function clot(id){
     iv._pdfAttestation=_buildAutorisationHTML(id,'attestation');
   }
   if(!iv.eng&&selEng)iv.eng=selEng;
-  saveData();cM();rI();rAccueil();rStatsHeader();
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);cM();rI();rAccueil();rStatsHeader(); // push immédiat : clôture d'intervention
 }
 function clotAvis(id){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
