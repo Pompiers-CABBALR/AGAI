@@ -4698,15 +4698,13 @@ function rHist(){
   const normalIvs=cA?IVS.filter(iv=>!['en-attente','selectionne','en-cours'].includes(iv.s)&&!iv._isPilip):IVS.filter(iv=>(isTdy(iv)||iv.s==='annulee')&&!iv._isPilip);
   const pilpIvsH=canSeePILP()?(cA?PILP_IVS:PILP_IVS.filter(iv=>isTdy(iv))):[];
   const pilpMapped=pilpIvsH.map(p=>({...p,n:'[PILP] '+p.n,tl:p.tl,_isPilp:true}));
-  // Tri décroissant par jour (issu de iv.h) puis par heure de DÉBUT d'intervention.
+  // Tri décroissant par jour puis par heure de DÉBUT d'intervention affichée.
+  // Les interventions sans heure de début (ex. annulées) sont classées en fin de
+  // journée (clé 0000), pour ne pas s'intercaler selon leur heure de création.
   const _jour=iv=>(iv.h||'').slice(0,8); // AAAAMMJJ
   const _heureDeb=iv=>{
-    // Heure de début affichée (_hDebut, ex "18h50" ou "1850") ramenée à HHMM ;
-    // à défaut, on retombe sur l'heure contenue dans iv.h (après le "_").
     const hd=(iv._hDebut||'').replace(/[^0-9]/g,'');
-    if(hd)return hd.padStart(4,'0').slice(0,4);
-    const parts=(iv.h||'').split('_');
-    return (parts[1]||'0000').padStart(4,'0').slice(0,4);
+    return hd?hd.padStart(4,'0').slice(0,4):'0000';
   };
   const _sortKey=iv=>_jour(iv)+_heureDeb(iv);
   const ivs=[...normalIvs,...pilpMapped].sort((a,b)=>_sortKey(b).localeCompare(_sortKey(a)));
