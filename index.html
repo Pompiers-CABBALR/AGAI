@@ -505,11 +505,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         <div class="fg">
           <div class="fgl">Adresse <span class="req">*</span></div>
           <div style="position:relative;">
-            <input class="fi" type="text" id="fa" placeholder="Sélectionnez d'abord une commune…" oninput="ce('a');addrAutocomplete(this.value)" autocomplete="off" style="padding-right:30px;"/>
+            <input class="fi" type="text" id="fa" placeholder="Sélectionnez d'abord une commune…" oninput="ce('a');addrAutocomplete(this.value);checkDejaIntervenu()" autocomplete="off" style="padding-right:30px;"/>
             <span id="fa-spinner" style="display:none;position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:14px;">⏳</span>
             <div id="fa-dd" style="display:none;position:absolute;z-index:100;width:100%;background:#fff;border:1px solid var(--brd);border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.1);max-height:200px;overflow-y:auto;margin-top:2px;"></div>
           </div>
           <div class="ferr" id="ea">Champ obligatoire.</div>
+          <div id="deja-intervenu-alert" style="display:none;background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:12px;color:#92400E;"></div>
         </div>
         <div class="fg"><div class="fgl">Complément d'adresse <span style="font-size:10px;color:var(--t2);">(optionnel)</span></div><input class="fi" type="text" id="fa2" placeholder="Bât. B, apt. 12, lieu-dit…"/></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
@@ -1219,7 +1220,7 @@ let CURRENT_CASERNE_ID=null;
 // Chaque rôle : {role:'...', n:nombre}. Modifiable par le superadmin.
 let ENGIN_TYPES=[
   {type:'VTU',roles:[{role:"Chef d\u2019agrès",n:1},{role:'Conducteur',n:1},{role:'Équipier',n:1}]},
-  {type:'VPI',roles:[{role:"Chef d\u2019agrès",en:1},{role:'Conducteur',n:1},{role:"Chef d\u2019équipe",n:1},{role:'Équipier',n:1}]},
+  {type:'VPI',roles:[{role:"Chef d\u2019agrès",n:1},{role:'Conducteur',n:1},{role:"Chef d\u2019équipe",n:1},{role:'Équipier',n:1}]},
   {type:'VL', roles:[{role:"Chef d\u2019agrès",n:1}]},
 ];
 const ENGIN_ROLES_DISPONIBLES=["Chef d\u2019agrès","Conducteur","Chef d\u2019équipe","Équipier"];
@@ -3456,7 +3457,7 @@ function gS(n){
   document.getElementById('sa1').style.background=n>=1?'var(--red)':'var(--brd)';
   document.getElementById('sa2').style.background=n>=2?'var(--red)':'var(--brd)';
   document.getElementById('slbl').innerHTML=n===1?'<span style="color:var(--red);font-weight:600;">Étape 1</span> — Nature':'<span style="color:var(--red);font-weight:600;">Étape 2</span> — Localisation &amp; détails';
-  if(n===2){const h=hoA?getH(hoA):'—';document.getElementById('nr').textContent=selNat;document.getElementById('hr').textContent='&#x1F4C5; '+h;showSM(selNat);}
+  if(n===2){const h=hoA?getH(hoA):'—';document.getElementById('nr').textContent=selNat;document.getElementById('hr').innerHTML='&#x1F4C5; '+escHtml(h);showSM(selNat);}
 }
 function showSM(nat){
   ['g','f','a','n','e'].forEach(k=>document.getElementById('sm-'+k).style.display='none');
@@ -3478,6 +3479,24 @@ function sr(g,el,v){
   if(g==='ta'){document.getElementById('tapb').style.display=(v==='NAC'||v==='Autre')?'':'none';}
 }
 function sz(el,v){document.querySelectorAll('.szo').forEach(o=>o.classList.remove('sel'));el.classList.add('sel');nidSize=v;}
+
+// ── Détection : déjà une intervention (surtout avis de passage) à cette adresse pour le même type ──
+function checkDejaIntervenu(){
+  const box=document.getElementById('deja-intervenu-alert');if(!box)return;
+  const addr=(document.getElementById('fa')?.value||'').trim();
+  const nat=selNat||'';
+  if(!addr||addr.length<4||!nat){box.style.display='none';return;}
+  const na=nm(addr), nn=nm(nat);
+  const memes=[].concat(IVS||[],PILP_IVS||[]).filter(function(x){
+    return nm(x.addr)===na && nm(x.n)===nn && x.s!=='annulee';
+  });
+  if(!memes.length){box.style.display='none';return;}
+  const avisCount=memes.filter(function(x){return x.s==='avis-passage';}).length;
+  let msg='&#x26A0;&#xFE0F; <strong>'+memes.length+' intervention'+(memes.length>1?'s':'')+'</strong> déjà enregistrée'+(memes.length>1?'s':'')+' à cette adresse pour «&nbsp;'+escHtml(nat)+'&nbsp;».';
+  if(avisCount)msg+='<br>&#x1F7E3; dont <strong>'+avisCount+' avis de passage</strong> en attente de rappel.';
+  box.innerHTML=msg;
+  box.style.display='block';
+}
 function cv(){
   const h=parseFloat(document.getElementById('he').value),s=parseFloat(document.getElementById('se').value);
   const b=document.getElementById('vb3');
@@ -4140,6 +4159,14 @@ function oM(id){
         ${iv._agr2?`<span style="color:var(--t2);">&#x1F3AF; 2e&nbsp;<span style="font-family:monospace;font-weight:600;color:var(--tx);">${iv._agr2}</span></span>`:''}
       </div>
     </div>
+    ${(()=>{
+      if(!isAdminModeActive())return '';
+      const na=nm(iv.addr),nn=nm(iv.n);
+      const autres=[].concat(IVS||[],PILP_IVS||[]).filter(x=>x.id!==iv.id&&nm(x.addr)===na&&nm(x.n)===nn&&x.s!=='annulee');
+      if(!autres.length)return '';
+      const avisN=autres.filter(x=>x.s==='avis-passage').length;
+      return `<div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#92400E;cursor:pointer;" onclick="showInterventionsLiees('${iv.id}')">&#x26A0;&#xFE0F; <strong>${autres.length}</strong> autre${autres.length>1?'s':''} intervention${autres.length>1?'s':''} à cette adresse pour ce type${avisN?` · <strong>${avisN}</strong> avis de passage`:''} — <u>voir</u></div>`;
+    })()}
     ${iv._appelDetails&&Object.keys(iv._appelDetails).length?`<div class="mr"><div class="ml">Informations de l'appel</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:3px;">${Object.keys(iv._appelDetails).map(k=>`<span style="font-size:13px;"><span style="color:var(--t2);">${escHtml(k)} :</span> <strong>${escHtml(String(iv._appelDetails[k]))}</strong></span>`).join('')}</div></div></div>`:''}
     ${(()=>{const compls=(iv.tl||[]).filter(t=>t.s==='info-compl');return compls.length?`<div class="mr"><div class="ml" style="color:#0369A1;">&#x2139;&#xFE0F; Compléments d'information</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:6px;">${compls.map(t=>`<div style="background:#EFF6FF;border-left:3px solid #0369A1;border-radius:6px;padding:6px 10px;font-size:13px;"><div>${escHtml(t.note||'')}</div><div style="font-size:10px;color:var(--t2);margin-top:2px;">&#x1F4C5; ${escHtml(t.h||'')} · ${escHtml(t.who||'')}</div></div>`).join('')}</div></div></div>`:'';})()}
     ${iv._transfertDe?`<div class="mr"><div class="ml">Transfert reçu de</div><div class="mv2" style="color:var(--amb);font-weight:500;">&#x1F500; ${CASERNES.find(c=>c.id===iv._transfertDe)?.nom||iv._transfertDe}</div></div>`:''}
@@ -4317,14 +4344,16 @@ function clot(id){
   const h=getH(N());
   const agr2Lbl=iv._agr2?(()=>{const u=USERS.find(u=>u.l===iv._agr2);return u?' + '+fullName(u)+' (2\u00e8me)':' + '+iv._agr2;})():'';
   if(avis){
-    // Marquer l'avis de passage SANS changer le statut principal
+    // Avis de passage : requérant absent, intervention EN ATTENTE d'un rappel.
+    // On met le statut à 'avis-passage' pour qu'elle apparaisse dans la bonne section.
     iv._avisPassage=true;
-    iv.rappels=(iv.rappels||0)+1;
+    iv.s='avis-passage';
+    iv._hFin=getHHMM(N());
     if(!iv.avisIds)iv.avisIds=[];
     if(!iv.avisIds.includes(iv.id))iv.avisIds.push(iv.id);
     iv.tl.push({s:'avis-passage',h,who:CU.l});
-    // L'intervention continue — on ferme juste la modal
-    saveData();cM();rI();rAccueil();rStatsHeader();
+    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+    saveData(true);cM();rI();rAccueil();rStatsHeader(); // push immédiat : changement de statut partagé
     return;
   }
   // Clôture normale
