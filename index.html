@@ -11515,7 +11515,13 @@ async function _jbPush(data){
       merged.CASERNE_DATA[cid].users=myCas.users||remCas.users;
     });
     // Fusionner les données globales
-    merged.GLOBAL_ACCOUNTS=data.GLOBAL_ACCOUNTS;
+    // Pendant une édition locale récente (ex. changement de mot de passe superadmin),
+    // conserver la version locale pour ne pas l'écraser avec la version distante.
+    if(typeof _jbEditLock!=='undefined' && (Date.now()-_jbEditLock < 15000) && typeof GLOBAL_ACCOUNTS!=='undefined' && GLOBAL_ACCOUNTS.length){
+      merged.GLOBAL_ACCOUNTS=GLOBAL_ACCOUNTS.map(a=>({...a}));
+    } else {
+      merged.GLOBAL_ACCOUNTS=data.GLOBAL_ACCOUNTS;
+    }
     merged.NAT=data.NAT;
     merged.COM=data.COM;
     merged.APL_COUNTER=Object.assign({},current.APL_COUNTER||{},data.APL_COUNTER||{});
@@ -12235,6 +12241,12 @@ async function _rcPull(silent){
           Object.assign(data, {v:g.v, CASERNES:g.CASERNES, GLOBAL_ACCOUNTS:g.GLOBAL_ACCOUNTS, NAT:g.NAT, COM:g.COM, ENGIN_TYPES:g.ENGIN_TYPES,
             APL_COUNTER:g.APL_COUNTER, INT_GLOBAL_COUNTER:g.INT_GLOBAL_COUNTER, INT_CAS_COUNTER:g.INT_CAS_COUNTER,
             PILP_COUNTER:g.PILP_COUNTER, DISPOS_UNLOCKED:g.DISPOS_UNLOCKED, DISPO_REQUESTS:g.DISPO_REQUESTS, LOGIN_HISTORY:g.LOGIN_HISTORY});
+          // Si une modification locale récente est en cours (ex. changement de mot de
+          // passe superadmin), on conserve la version locale de GLOBAL_ACCOUNTS pour
+          // ne pas l'écraser avec la version distante avant que le push soit confirmé.
+          if(typeof _jbEditLock!=='undefined' && (Date.now()-_jbEditLock < 15000) && typeof GLOBAL_ACCOUNTS!=='undefined' && GLOBAL_ACCOUNTS.length){
+            data.GLOBAL_ACCOUNTS=GLOBAL_ACCOUNTS.map(a=>({...a}));
+          }
           // Fusion de l'historique de connexion : on combine remote et local par id
           // de session, en gardant l'entrée la plus complète (déconnexion renseignée
           // l'emporte). Évite qu'une connexion d'un autre poste efface une déconnexion.
