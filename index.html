@@ -1219,7 +1219,7 @@ let CURRENT_CASERNE_ID=null;
 // Chaque rôle : {role:'...', n:nombre}. Modifiable par le superadmin.
 let ENGIN_TYPES=[
   {type:'VTU',roles:[{role:"Chef d\u2019agrès",n:1},{role:'Conducteur',n:1},{role:'Équipier',n:1}]},
-  {type:'VPI',roles:[{role:"Chef d\u2019agrès",n:1},{role:'Conducteur',n:1},{role:"Chef d\u2019équipe",n:1},{role:'Équipier',n:1}]},
+  {type:'VPI',roles:[{role:"Chef d\u2019agrès",en:1},{role:'Conducteur',n:1},{role:"Chef d\u2019équipe",n:1},{role:'Équipier',n:1}]},
   {type:'VL', roles:[{role:"Chef d\u2019agrès",n:1}]},
 ];
 const ENGIN_ROLES_DISPONIBLES=["Chef d\u2019agrès","Conducteur","Chef d\u2019équipe","Équipier"];
@@ -3719,7 +3719,8 @@ function enr(){
     tl:[mkTL('en-attente',h,CU.l)]};
   IVS.unshift(newIv);
   if(CD())CD().ivs=IVS;
-  saveData();
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true); // push immédiat : sinon un pull peut écraser le nouvel appel avant sauvegarde
   const cm=document.getElementById('cm');cm.style.display='block';
   cm.innerHTML=`✅ Appel enregistré — <strong>${numApl}</strong>
     <br><span style="font-family:monospace;font-size:11px;">&#x1F4C5; ${h} | ${CU.l}</span>
@@ -7661,7 +7662,8 @@ function confirmerDepart(id){
   const agr2Label=agr2?(function(){const u=USERS.find(function(u){return u.l===agr2;});return u?' + '+fullName(u)+' (2\u00e8me)':' + '+agr2;})():'';
   const persLabel=' ['+eq1.concat(eq2).map(function(e){const u=USERS.find(function(x){return x.l===e.login;});return e.role+': '+(u?fullName(u):e.login);}).join(', ')+']';
   pushTL(iv,'en-cours',CU.l+agr2Label+persLabel);
-  saveData();cM();rI();rStatsHeader();
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);cM();rI();rStatsHeader(); // push immédiat : changement de statut partagé
   setTimeout(function(){oM(id);},80);
 }
 
