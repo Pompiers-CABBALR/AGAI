@@ -4781,11 +4781,11 @@ async function saveProfil(){
     const u=USERS.find(x=>x.l===CU.l);
     if(u)u.p=hashed;
     CU.p=hashed;
-    // Si l'utilisateur connecté est le SUPER-ADMIN, mettre aussi à jour son
-    // compte global (GLOBAL_ACCOUNTS) — sinon le nouveau mot de passe ne
-    // s'appliquerait pas à la connexion superadmin.
-    if(isSuperAdmin()){
-      const ga=GLOBAL_ACCOUNTS.find(a=>a.role==='superadmin'&&a.l===CU.l);
+    // Si l'utilisateur connecté a le rôle superadmin (que le mode SA soit affiché
+    // ou non), mettre aussi à jour son compte global GLOBAL_ACCOUNTS — sinon le
+    // nouveau mot de passe ne s'appliquerait pas à la connexion superadmin.
+    if(GLOBAL_ROLE==='superadmin'){
+      const ga=GLOBAL_ACCOUNTS.find(a=>a.role==='superadmin'&&a.l===CU.l)||GLOBAL_ACCOUNTS.find(a=>a.role==='superadmin');
       if(ga)ga.p=hashed;
     }
   }
