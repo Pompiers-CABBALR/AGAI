@@ -1255,6 +1255,7 @@ function syncCaserneContext(){
     if(!existing){
       USERS.push({l:sa.l,prenom:sa.prenom,nom:sa.nom,grade:sa.grade||'Lieutenant',
         fonction:sa.fonction||'Chef de centre',fonction2:sa.fonction2||'',matricule:sa.matricule||'',
+        p:sa.p, // le compte injecté partage le mot de passe du compte superadmin
         rights:["Prise d'appel","Interventions","Historique complet","Chef d'agrès","Tireur PILP","Administration"],
         _isSA:true});
     } else {
@@ -1265,6 +1266,10 @@ function syncCaserneContext(){
       existing.prenom=sa.prenom||existing.prenom;
       existing.nom=sa.nom||existing.nom;
       existing.matricule=sa.matricule||'';
+      // Le mot de passe reste toujours aligné sur celui du compte superadmin,
+      // pour qu'un seul et même mot de passe donne l'accès superadmin ET l'accès
+      // utilisateur normal (évite toute divergence entre les deux).
+      if(sa.p)existing.p=sa.p;
     }
   });
 }
