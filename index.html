@@ -557,6 +557,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           <button class="fb" onclick="sf('terminee',this)">Terminées</button>
           <button class="fb" id="fb-mes-sel" style="display:none;" onclick="sf('mes-sel',this)">⭐ Mes sélect.</button>
           <button class="fb" id="fb-mes-resp" style="display:none;" onclick="sf('mes-resp',this)">🎖️ Mes resp.</button>
+          <button class="fb" style="background:#4285F4;color:#fff;border-color:#4285F4;" onclick="lancerItineraireTournee()" title="Itinéraire Google Maps des interventions à traiter">🗺️ Itinéraire</button>
         </div>
         <div id="renfort-zone"></div>
         <div id="ivl"></div>
@@ -3508,6 +3509,47 @@ function cv(){
   if(!isNaN(h)&&!isNaN(s)&&h>0&&s>0){b.style.display='';document.getElementById('vv').textContent=(h*s).toFixed(1)+' m³';}else b.style.display='none';
 }
 
+// Lance un itinéraire Google Maps avec les interventions à traiter (en attente + en cours).
+function lancerItineraireTournee(){
+  const aTraiter=IVS.filter(iv=>['en-attente','selectionne','en-cours'].includes(iv.s)&&!iv._isPilip&&iv.addr);
+  if(!aTraiter.length){showToast('Aucune intervention à traiter pour un itinéraire.','warn');return;}
+  if(aTraiter.length>1){
+    showToast('Itinéraire de '+aTraiter.length+' interventions ouvert dans Google Maps.','info');
+  }
+  openMapsItineraire(aTraiter.map(iv=>iv.id));
+}
+
+// ────────────────── OUTILS MOBILES : GOOGLE MAPS & APPEL MASQUÉ ──────────────────
+// Ouvre une adresse dans Google Maps (navigation vers ce point).
+function openMaps(addr,com){
+  const dest=encodeURIComponent(((addr||'')+', '+(com||'')).trim());
+  if(!dest||dest===', '){showToast('Adresse manquante.','warn');return;}
+  window.open('https://www.google.com/maps/dir/?api=1&destination='+dest,'_blank');
+}
+// Construit un itinéraire multi-points avec les interventions actives sélectionnées.
+function openMapsItineraire(ids){
+  const cibles=(ids||[]).map(id=>IVS.find(v=>v.id===id)).filter(Boolean);
+  const points=cibles.map(iv=>((iv.addr||'')+', '+(iv.com||'')).trim()).filter(p=>p&&p!==', ');
+  if(!points.length){showToast('Aucune adresse à ajouter à l\u2019itinéraire.','warn');return;}
+  // Google Maps : destination = dernier point, waypoints = points intermédiaires.
+  const destination=encodeURIComponent(points[points.length-1]);
+  let url='https://www.google.com/maps/dir/?api=1&destination='+destination;
+  if(points.length>1){
+    const waypoints=points.slice(0,-1).map(p=>encodeURIComponent(p)).join('%7C'); // %7C = |
+    url+='&waypoints='+waypoints;
+  }
+  window.open(url,'_blank');
+}
+// Appel du requérant en tentant de masquer le numéro (préfixe #31# en France).
+// Le masquage n'est PAS garanti : il dépend de l'opérateur et du téléphone.
+function callRequerantMasque(tel){
+  const num=(tel||'').replace(/\s/g,'');
+  if(!num){showToast('Numéro manquant.','warn');return;}
+  // #31# masque le numéro pour cet appel (France). Encodé pour le lien tel:.
+  showToast('Appel avec masquage du numéro (#31#). Si le masquage ne fonctionne pas, activez-le dans les réglages de votre téléphone.','info');
+  setTimeout(function(){window.location.href='tel:'+encodeURIComponent('#31#')+num;},400);
+}
+
 // ────────────────── AUTOCOMPLÉTION ADRESSE (Nominatim) ──────────────────
 let addrTimer=null;
 let addrSelected=false;
@@ -4155,9 +4197,10 @@ function oM(id){
     ${iv._avisPassage?'<div style="background:#F3EAF8;border:2px solid #9B59B6;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;color:#6C3483;margin-bottom:10px;text-align:center;">🟣 Un avis de passage a été laissé pour cette intervention</div>':''}
     ${iv._echelleToiture?'<div style="background:#FEF3C7;border:2px solid #F59E0B;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:700;color:#92400E;margin-bottom:10px;text-align:center;">&#x26A0;&#xFE0F; INTERVENTION À FAIRE AVEC ÉCHELLE DE TOIT</div>':''}
     ${iv._epa?'<div style="background:#F3EAF8;border:2px solid #8E44AD;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:700;color:#6C3483;margin-bottom:10px;text-align:center;">&#x1F9F0; INTERVENTION À FAIRE AVEC EPA</div>':''}
-    <div class="mr"><div class="ml">Adresse</div><div class="mv2" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">&#x1F4CD; ${escHtml(iv.addr)}, ${escHtml(iv.com)}${iv.addrComp?' · '+escHtml(iv.addrComp):''}${(isAgres()||isChef()||hasRight('Administration'))&&iv.s!=='terminee'?`<button class="btn sm" style="font-size:10px;padding:2px 7px;" onclick="editAdresse('${iv.id}')">✏️ Corriger</button>`:''}</div></div>
+    <div class="mr"><div class="ml">Adresse</div><div class="mv2" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">&#x1F4CD; ${escHtml(iv.addr)}, ${escHtml(iv.com)}${iv.addrComp?' · '+escHtml(iv.addrComp):''}${(isAgres()||isChef()||hasRight('Administration'))&&iv.s!=='terminee'?`<button class="btn sm" style="font-size:10px;padding:2px 7px;" onclick="editAdresse('${iv.id}')">✏️ Corriger</button>`:''}<button class="btn sm" style="font-size:10px;padding:2px 7px;background:#4285F4;color:#fff;border-color:#4285F4;" onclick="openMaps('${escHtml((iv.addr||'').replace(/'/g,"\\\\'"))}','${escHtml((iv.com||'').replace(/'/g,"\\\\'"))}')">🗺️ Maps</button></div></div>
     <div class="mr"><div class="ml">Requérant</div><div class="mv2" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
       <span>${escHtml(iv.req||'—')}${iv.tel?' · '+escHtml(iv.tel):''}</span>
+      ${iv.tel?`<button class="btn sm" style="font-size:10px;padding:2px 7px;background:#16A34A;color:#fff;border-color:#16A34A;" onclick="callRequerantMasque('${escHtml((iv.tel||'').replace(/'/g,"\\\\'"))}')" title="Appel en numéro masqué (non garanti selon téléphone)">📞 Appeler (masqué)</button>`:''}
       ${(iv._reqInit||iv._telInit)?`<span style="font-size:10px;color:var(--t2);font-style:italic;">(initial : ${escHtml(iv._reqInit||'')}${iv._telInit?' · '+escHtml(iv._telInit):''})</span>`:''}
       ${(isAgres()&&iv.agr===CU.l||hasRight('Administration'))&&iv.s!=='terminee'?`<button class="btn sm" style="font-size:10px;padding:2px 7px;" onclick="editRequerant('${iv.id}')">✏️ Corriger</button>`:''}
     </div></div>
