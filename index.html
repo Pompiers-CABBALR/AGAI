@@ -281,6 +281,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .fg-horaires{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;}
 .fg-horaires>.fg{min-width:0;}
 .fg-horaires .fi{width:100%;min-width:0;box-sizing:border-box;}
+/* Grille de 2 champs (ex. Date + Type) : passe en 1 colonne si trop étroit. */
+.fg-duo{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;}
+.fg-duo>.fg{min-width:0;}
+.fg-duo .fi{width:100%;min-width:0;box-sizing:border-box;}
+/* Sécurité : aucun champ de formulaire ne doit dépasser son conteneur.
+   Les champs natifs iOS (date, time, select) imposent parfois une largeur
+   minimale qui provoque des chevauchements. */
+.fi{max-width:100%;box-sizing:border-box;}
+input.fi[type="date"],input.fi[type="time"]{min-width:0;width:100%;}
 .fgl{font-size:11px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;}
 .req{color:var(--red);}
 .fi{padding:9px 12px;border:1px solid var(--brd);border-radius:10px;font-size:13px;background:#fff;color:var(--t);font-family:inherit;width:100%;}
@@ -917,7 +926,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <!-- Formulaire de saisie (masqué par défaut) -->
       <div class="panel" id="act-form-panel" style="display:none;margin-bottom:14px;">
         <div class="panel-title">📝 Nouvelle activité de service <span id="act-num-preview" style="font-size:11px;font-family:monospace;color:var(--t2);font-weight:400;"></span></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div class="fg-duo">
           <div class="fg"><div class="fgl">Date <span class="req">*</span></div><input class="fi" type="date" id="act-date" onchange="actDateChange()"/></div>
           <div class="fg"><div class="fgl">Type d'activité <span class="req">*</span></div>
             <select class="fi" id="act-type"><option value="">— Choisir —</option></select>
@@ -965,7 +974,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           </div>
           <div class="panel" id="fmpa-form-panel" style="display:none;margin-bottom:14px;">
             <div class="panel-title">🚒 Nouvelle FMPA <span id="fmpa-num-preview" style="font-size:11px;font-family:monospace;color:var(--t2);font-weight:400;"></span></div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div class="fg-duo">
               <div class="fg"><div class="fgl">Date de la manœuvre <span class="req">*</span></div><input class="fi" type="date" id="fmpa-date" onchange="fmpaDateChange()"/></div>
               <div class="fg"><div class="fgl">Thème <span class="req">*</span></div><input class="fi" type="text" id="fmpa-theme" placeholder="Ex : Feu de bâtiment, SAP, Désincarcération..."/></div>
             </div>
@@ -1007,11 +1016,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
               <div class="fg"><div class="fgl">Référence</div><input class="fi" type="text" id="fstag-ref" placeholder="Référence optionnelle"/></div>
             </div>
             <div class="fg"><div class="fgl">Lieu</div><input class="fi" type="text" id="fstag-lieu" placeholder="Ex : Centre de formation, Caserne..."/></div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div class="fg-duo">
               <div class="fg"><div class="fgl">Date début <span class="req">*</span></div><input class="fi" type="date" id="fstag-ddebut" oninput="formCalcDuree('stag')"/></div>
               <div class="fg"><div class="fgl">Date fin <span class="req">*</span></div><input class="fi" type="date" id="fstag-dfin" oninput="formCalcDuree('stag')"/></div>
             </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;">
+            <div class="fg-horaires">
               <div class="fg"><div class="fgl">🌅 Matin — début</div><input class="fi" type="time" id="fstag-hmatin-d" oninput="formCalcDuree('stag')"/></div>
               <div class="fg"><div class="fgl">🌅 Matin — fin</div><input class="fi" type="time" id="fstag-hmatin-f" oninput="formCalcDuree('stag')"/></div>
               <div class="fg"><div class="fgl">🌇 Après-midi — début</div><input class="fi" type="time" id="fstag-haprem-d" oninput="formCalcDuree('stag')"/></div>
@@ -1051,11 +1060,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
               <div class="fg"><div class="fgl">Référence</div><input class="fi" type="text" id="fform-ref" placeholder="Référence optionnelle"/></div>
             </div>
             <div class="fg"><div class="fgl">Lieu</div><input class="fi" type="text" id="fform-lieu" placeholder="Ex : Centre de formation, Caserne..."/></div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div class="fg-duo">
               <div class="fg"><div class="fgl">Date début <span class="req">*</span></div><input class="fi" type="date" id="fform-ddebut" oninput="formCalcDuree('form')"/></div>
               <div class="fg"><div class="fgl">Date fin <span class="req">*</span></div><input class="fi" type="date" id="fform-dfin" oninput="formCalcDuree('form')"/></div>
             </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;">
+            <div class="fg-horaires">
               <div class="fg"><div class="fgl">🌅 Matin — début</div><input class="fi" type="time" id="fform-hmatin-d" oninput="formCalcDuree('form')"/></div>
               <div class="fg"><div class="fgl">🌅 Matin — fin</div><input class="fi" type="time" id="fform-hmatin-f" oninput="formCalcDuree('form')"/></div>
               <div class="fg"><div class="fgl">🌇 Après-midi — début</div><input class="fi" type="time" id="fform-haprem-d" oninput="formCalcDuree('form')"/></div>
