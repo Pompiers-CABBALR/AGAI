@@ -13315,47 +13315,50 @@ function pqBuildMiniGrille(wk){
   const startHour=ASTR_CONFIG.weekStartHour||0;
   const slots=Math.floor(1440/gran);
   const dispoWk=DISPOS[wk]||{};
-  // Agents ayant au moins une dispo ce jour-là
   const agents=sortByGradeThenName(USERS.filter(function(u){
     const d=dispoWk[u.l];if(!d)return false;
     for(let s=0;s<slots;s++){if(d[jourIdx+'_'+s]===true)return true;}
     return false;
   }));
   if(!agents.length)return '<div style="font-size:11px;color:var(--t2);padding:8px;background:#FEF3C7;border-radius:6px;">⚠️ Aucun agent disponible le '+escHtml(jour)+'.</div>';
-  // Bornes de la plage saisie (pour surbrillance)
   const dMin=debut?timeToMin(debut):null;
   const fMin=fin?timeToMin(fin):null;
   const overnight=(dMin!==null&&fMin!==null&&fMin<=dMin);
   const inPlage=function(slotIdx){
-    if(dMin===null||fMin===null)return false;
+    if(dMin===null||fMin===null)return true;
     const slotStart=(startHour*60+slotIdx*gran)%1440;
     if(overnight)return slotStart>=dMin||slotStart<fMin;
     return slotStart>=dMin&&slotStart<fMin;
   };
-  const _lw=64,_cw=13;
+  // Nom abrégé : "Canneson E." (nom + initiale du prénom)
+  const nomAbrege=function(u){
+    const n=(u.nom||'').trim();
+    const p=(u.prenom||'').trim();
+    return n+(p?' '+p.charAt(0).toUpperCase()+'.':'');
+  };
+  const _lw=78,_cw=13;
   const _hLabel=function(si){const t=(startHour*60+si*gran)%1440;return pad(Math.floor(t/60))+'h';};
   let h='<div style="background:#fff;border:1px solid var(--brd);border-radius:8px;padding:8px;margin-bottom:12px;">';
-  h+='<div style="font-size:11px;font-weight:700;color:var(--t2);margin-bottom:6px;">📅 Disponibilités du '+escHtml(jour)+' <span style="font-weight:400;">— vert = dispo · zone encadrée = plage du piquet</span></div>';
+  h+='<div style="font-size:11px;font-weight:700;color:var(--t2);margin-bottom:6px;">📅 Disponibilités du '+escHtml(jour)+' <span style="font-weight:400;">— vert vif = dispo sur la plage du piquet · pâle = hors plage</span></div>';
   h+='<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;">';
   h+='<div style="min-width:'+(_lw+slots*_cw)+'px;">';
-  // En-tête heures (toutes les 2h pour rester lisible)
-  h+='<div style="display:flex;margin-bottom:2px;"><div style="width:'+_lw+'px;flex-shrink:0;"></div>';
+  h+='<div style="display:flex;margin-bottom:3px;"><div style="width:'+_lw+'px;flex-shrink:0;"></div>';
   for(let s=0;s<slots;s++){
     const show=(gran>=60)?(s%2===0):(s%(120/gran)===0);
-    h+='<div style="flex:1 0 '+_cw+'px;text-align:left;font-size:8px;color:var(--t2);overflow:visible;white-space:nowrap;">'+(show?_hLabel(s):'')+'</div>';
+    const dans=inPlage(s);
+    h+='<div style="flex:1 0 '+_cw+'px;text-align:left;font-size:8px;color:'+(dans?'var(--t)':'#C7C7CC')+';font-weight:'+(dans?'600':'400')+';overflow:visible;white-space:nowrap;">'+(show?_hLabel(s):'')+'</div>';
   }
   h+='</div>';
-  // Une ligne par agent
   agents.forEach(function(u){
     const d=dispoWk[u.l]||{};
-    h+='<div style="display:flex;align-items:center;margin-bottom:2px;">';
-    h+='<div style="width:'+_lw+'px;flex-shrink:0;font-size:9px;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="'+escHtml(fullName(u))+'">'+escHtml(fullName(u))+'</div>';
+    h+='<div style="display:flex;align-items:center;margin-bottom:3px;">';
+    h+='<div style="width:'+_lw+'px;flex-shrink:0;font-size:10px;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:4px;" title="'+escHtml(fullName(u))+'">'+escHtml(nomAbrege(u))+'</div>';
     for(let s=0;s<slots;s++){
       const ok=d[jourIdx+'_'+s]===true;
-      const dansPlage=inPlage(s);
-      const bg=ok?'#22C55E':'#E5E7EB';
-      const bord=dansPlage?'border-top:2px solid #111;border-bottom:2px solid #111;':'';
-      h+='<div style="flex:1 0 '+_cw+'px;height:14px;background:'+bg+';'+bord+'box-sizing:border-box;border-left:1px solid #fff;"></div>';
+      const dans=inPlage(s);
+      // Dans la plage : couleurs franches. Hors plage : couleurs atténuées.
+      const bg=ok?(dans?'#22C55E':'#BBF0CD'):(dans?'#D1D5DB':'#F1F2F4');
+      h+='<div style="flex:1 0 '+_cw+'px;height:16px;background:'+bg+';box-sizing:border-box;border-left:1px solid #fff;"></div>';
     }
     h+='</div>';
   });
