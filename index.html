@@ -3,6 +3,11 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=5.0,minimum-scale=1.0,viewport-fit=cover"/>
+<!-- Anti-cache : demande au navigateur de ne pas conserver l'application en cache.
+     GitHub Pages impose ses propres en-têtes, d'où le contrôle de version JS ci-dessous. -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+<meta http-equiv="Pragma" content="no-cache"/>
+<meta http-equiv="Expires" content="0"/>
 <title>AGAI</title>
 <style>
 /*
@@ -6028,6 +6033,28 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
   return h;
 }
 
+// Échelle progressive de couleur pour un pourcentage de disponibilité :
+//   ≤ 25 %  → rouge franc
+//   25→50 % → rouge vers orange
+//   50→75 % → orange vers vert-jaune
+//   ≥ 75 %  → vert franc
+// Le dégradé est continu (interpolation), pas par paliers.
+function pctDispoColor(pct){
+  const p=Math.max(0,Math.min(100,pct||0));
+  const rouge=[226,75,74];    // #E24B4A
+  const orange=[245,158,11];  // #F59E0B
+  const vert=[34,197,94];     // #22C55E
+  const mix=function(a,b,t){
+    return 'rgb('+Math.round(a[0]+(b[0]-a[0])*t)+','
+                 +Math.round(a[1]+(b[1]-a[1])*t)+','
+                 +Math.round(a[2]+(b[2]-a[2])*t)+')';
+  };
+  if(p<=25)return 'rgb(226,75,74)';           // rouge franc
+  if(p>=75)return 'rgb(34,197,94)';           // vert franc
+  if(p<=50)return mix(rouge,orange,(p-25)/25); // 25→50 : rouge → orange
+  return mix(orange,vert,(p-50)/25);           // 50→75 : orange → vert
+}
+
 function rAstrDispo(){
   const mon=getMondayOfWeek(astrDispoWeek);
   const wk=weekKey(mon);
@@ -6538,7 +6565,7 @@ function rAstrPiquets(){
   html+='<div style="font-size:12px;font-weight:600;margin-top:12px;margin-bottom:6px;">Disponibilit&eacute;s</div>';
   html+='<div style="background:var(--bg);border:1px solid var(--brd);border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:10.5px;color:var(--t2);line-height:1.5;">'
     +'<div style="font-weight:600;color:var(--t1);margin-bottom:3px;">L&eacute;gende des indicateurs</div>'
-    +'<div style="display:flex;align-items:center;gap:5px;margin-bottom:2px;"><span style="display:inline-block;width:11px;height:8px;border-radius:3px;background:#22C55E;flex-shrink:0;"></span><b>Dispo</b>&nbsp;: part des heures o&ugrave; l\'agent s\'est d&eacute;clar&eacute; disponible dans la semaine.</div>'
+    +'<div style="display:flex;align-items:center;gap:5px;margin-bottom:2px;flex-wrap:wrap;"><span style="display:inline-block;width:44px;height:8px;border-radius:3px;background:linear-gradient(to right,rgb(226,75,74),rgb(245,158,11),rgb(34,197,94));flex-shrink:0;"></span><b>Dispo</b>&nbsp;: part des heures o&ugrave; l\'agent s\'est d&eacute;clar&eacute; disponible dans la semaine <span style="color:var(--t2);">(rouge &le;&nbsp;25&nbsp;% &rarr; vert &ge;&nbsp;75&nbsp;%)</span>.</div>'
     +'<div style="display:flex;align-items:center;gap:5px;margin-bottom:2px;"><span style="display:inline-block;width:11px;height:8px;border-radius:3px;background:#378ADD;flex-shrink:0;"></span><b>R&eacute;partition</b>&nbsp;: part des heures de piquet de l\'agent sur le total des heures de piquet de la caserne (&eacute;quilibre entre agents).</div>'
     +'<div style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:8px;border-radius:3px;background:#7F77DD;flex-shrink:0;"></span><b>Occupation</b>&nbsp;: part des heures de piquet de l\'agent sur les 168&nbsp;h de la semaine.</div>'
     +'</div>';
@@ -6554,7 +6581,7 @@ function rAstrPiquets(){
       const nb=Object.values(dispos).filter(function(v){return v===true;}).length;
       const total=getSlotsPerDay(eq.granularity)*7;
       const pct=total>0?Math.round(nb/total*100):0;
-      const pctColor=pct>=80?'#22C55E':pct>=40?'#F59E0B':'#E24B4A';
+      const pctColor=pctDispoColor(pct); // échelle progressive : rouge ≤25%, vert ≥75%
       // Nombre de piquets affectés à cet agent cette semaine
       const piquetsSem=PIQUETS[wk]||[];
       const nbPiquet=piquetsSem.filter(function(p){
@@ -6581,7 +6608,7 @@ function rAstrPiquets(){
       const nb=Object.values(dispos).filter(function(v){return v===true;}).length;
       const total=getSlotsPerDay(ASTR_CONFIG.granularity)*7;
       const pct=total>0?Math.round(nb/total*100):0;
-      const pctColor=pct>=80?'#22C55E':pct>=40?'#F59E0B':'#E24B4A';
+      const pctColor=pctDispoColor(pct); // échelle progressive : rouge ≤25%, vert ≥75%
       const nbPiquet=(PIQUETS[wk]||[]).filter(function(p){
         const membres=p.membres&&p.membres.length?p.membres:[
           p.chefAgres?{login:p.chefAgres}:null,
@@ -9745,6 +9772,104 @@ function rStatsHeader(){
 // ══════════════════════════════════════════════════════
 // PERSISTANCE localStorage
 // ══════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════
+// CONTRÔLE DE VERSION — bandeau + rechargement si inactif
+// ══════════════════════════════════════════════════════
+// À INCRÉMENTER À CHAQUE DÉPLOIEMENT D'UNE NOUVELLE VERSION.
+// Fonctionnement :
+//   1. L'app vérifie périodiquement si une version plus récente est en ligne.
+//   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
+//   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
+//      n'est en cours, l'app se recharge d'elle-même.
+// Un appel ou une saisie en cours ne peut donc jamais être interrompu.
+const APP_VERSION='2026.07.16.01';
+const _VER_CHECK_MS=5*60*1000;      // contrôle toutes les 5 minutes
+const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
+let _verNouvelle=null;              // version détectée en ligne
+let _verReloading=false;
+let _verLastActivity=Date.now();
+
+// Toute action de l'utilisateur repousse le rechargement automatique
+['mousedown','keydown','touchstart','scroll'].forEach(function(evt){
+  document.addEventListener(evt,function(){_verLastActivity=Date.now();},{passive:true,capture:true});
+});
+
+// Une saisie est-elle en cours ? (protection contre la perte de données)
+function _saisieEnCours(){
+  const mo=document.getElementById('mo');
+  if(mo&&mo.style.display==='flex')return true;
+  const fa=document.getElementById('fa');
+  if(fa&&fa.value&&fa.value.trim())return true;
+  const panels=['act-form-panel','fmpa-form-panel','fstag-form-panel','fform-form-panel'];
+  for(const id of panels){
+    const p=document.getElementById(id);
+    if(p&&p.style.display!=='none')return true;
+  }
+  const ae=document.activeElement;
+  if(ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA')&&ae.value&&ae.value.trim())return true;
+  // Une étape de prise d'appel est-elle engagée ?
+  if(typeof selNat!=='undefined'&&selNat)return true;
+  return false;
+}
+
+function _verReload(){
+  if(_verReloading)return;
+  _verReloading=true;
+  window.location.replace(window.location.pathname+'?v='+encodeURIComponent(_verNouvelle||Date.now()));
+}
+
+function _showVersionBanner(){
+  if(document.getElementById('ver-banner'))return;
+  const b=document.createElement('div');
+  b.id='ver-banner';
+  b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:99998;background:#0369A1;color:#fff;'
+    +'padding:10px 14px;font-size:13px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;'
+    +'justify-content:center;box-shadow:0 -2px 12px rgba(0,0,0,.25);';
+  b.innerHTML='<span>&#x1F504; Une nouvelle version de l\u2019application est disponible.</span>'
+    +'<button onclick="_verReload()" style="background:#fff;color:#0369A1;border:none;border-radius:8px;'
+    +'padding:6px 14px;font-size:13px;font-weight:700;cursor:pointer;">Recharger maintenant</button>'
+    +'<button onclick="document.getElementById(\'ver-banner\').remove()" style="background:transparent;'
+    +'color:#fff;border:1px solid rgba(255,255,255,.5);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;">Plus tard</button>';
+  document.body.appendChild(b);
+}
+
+async function _checkVersion(){
+  if(_verReloading)return;
+  try{
+    const url=window.location.pathname+'?_v='+Date.now();
+    const r=await fetch(url,{cache:'no-store'});
+    if(!r.ok)return;
+    const txt=await r.text();
+    const m=txt.match(/const APP_VERSION='([^']+)'/);
+    if(!m)return;
+    const distante=m[1];
+    if(distante&&distante!==APP_VERSION){
+      _verNouvelle=distante;
+      _showVersionBanner();          // 1. prévenir tout de suite
+      _tryAutoReloadIfIdle();        // 2. recharger seul si inactif
+    }
+  }catch(e){/* hors ligne : on réessaiera */}
+}
+
+// Recharge automatiquement SI : nouvelle version détectée, aucune saisie en cours,
+// et utilisateur inactif depuis _VER_IDLE_MS.
+function _tryAutoReloadIfIdle(){
+  if(!_verNouvelle||_verReloading)return;
+  const inactif=(Date.now()-_verLastActivity)>=_VER_IDLE_MS;
+  if(inactif&&!_saisieEnCours())_verReload();
+}
+
+function _startVersionCheck(){
+  setInterval(_checkVersion,_VER_CHECK_MS);
+  // Tant qu'une nouvelle version est en attente, retenter le rechargement auto
+  setInterval(_tryAutoReloadIfIdle,30000);
+  document.addEventListener('visibilitychange',function(){
+    if(document.visibilityState==='visible'){_verLastActivity=Date.now();_checkVersion();}
+  });
+  setTimeout(_checkVersion,30000);
+}
+
+
 const STORAGE_KEY='agai_data' // clé partagée entre toutes les versions;
 
 
@@ -13036,6 +13161,8 @@ setTimeout(()=>{ odRestoreHandle(); }, 500);
 loadData();
 // P1 : migration des MDP en clair → hachés PBKDF2 (async, transparent)
 _migratePasswords();
+// Contrôle automatique de version : recharge l'app si une nouvelle version est en ligne
+_startVersionCheck();
 
 // ── Déconnexion automatique à la fermeture de la page ──
 window.addEventListener('pagehide', function(){
