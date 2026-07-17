@@ -5980,11 +5980,26 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
   // mais garde une largeur minimale sur petit écran (défilement horizontal).
   h+='<div class="dispo-scroll" style="overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;">';
   h+='<div style="min-width:'+_totalW+'px;width:100%;">';
-  // En-tête des heures
-  h+='<div style="display:flex;margin-bottom:2px;"><div style="width:'+_lw+'px;flex-shrink:0;"></div>';
+  // En-tête des heures — même présentation que le planning :
+  // ligne 1 = heures de début, ligne 2 = heures de fin (décalées, grisées).
+  const _startH=ASTR_CONFIG.weekStartHour??0;
+  const _hLabel=function(slotIdx){
+    const totalMin=(_startH*60+slotIdx*agGran)%1440;
+    const hh=Math.floor(totalMin/60),mm=totalMin%60;
+    return pad(hh)+'h'+(mm>0?pad(mm):'');
+  };
+  // Ligne 1 : heures de début
+  h+='<div style="display:flex;">'+'<div style="width:'+_lw+'px;flex-shrink:0;"></div>';
   for(let s=0;s<slotsDay0;s++){
     const showLbl=(agGran>=60)||(s%(60/agGran)===0);
-    h+='<div style="flex:1 0 '+_cw+'px;text-align:center;"><div style="writing-mode:vertical-lr;transform:rotate(180deg);font-size:11px;font-weight:500;color:var(--t2);height:34px;display:flex;align-items:center;justify-content:center;">'+(showLbl?slotToLabelDay(0,s,agGran):'')+'</div></div>';
+    h+='<div style="flex:1 0 '+_cw+'px;text-align:center;font-size:10px;font-weight:500;color:var(--t2);white-space:nowrap;overflow:hidden;">'+(showLbl?_hLabel(s):'')+'</div>';
+  }
+  h+='</div>';
+  // Ligne 2 : heures de fin (créneau suivant)
+  h+='<div style="display:flex;margin-bottom:2px;">'+'<div style="width:'+_lw+'px;flex-shrink:0;"></div>';
+  for(let s=0;s<slotsDay0;s++){
+    const showLbl=(agGran>=60)||(s%(60/agGran)===0);
+    h+='<div style="flex:1 0 '+_cw+'px;text-align:center;font-size:9px;font-weight:400;color:var(--t3,#9CA3AF);white-space:nowrap;overflow:hidden;">'+(showLbl?_hLabel(s+1):'')+'</div>';
   }
   h+='</div>';
   for(let d=0;d<7;d++){
