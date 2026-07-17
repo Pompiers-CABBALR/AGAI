@@ -13301,7 +13301,71 @@ const PQ_ROLE_TEXT_COLORS={'Chef d\u2019agr\u00e8s':'var(--blu)','Conducteur':'v
 // Compteur global pour les IDs de lignes dans le formulaire
 let _pqLineId=0;
 
+// ── Mini-grille des disponibilités du jour (aide à la saisie d'un piquet) ──
+// Affiche, pour chaque agent, ses créneaux disponibles sur le jour sélectionné.
+// La plage du piquet en cours de saisie est encadrée pour comparaison visuelle.
+function pqBuildMiniGrille(wk){
+  const jour=document.getElementById('pq-jour')?.value;
+  const debut=document.getElementById('pq-debut')?.value;
+  const fin=document.getElementById('pq-fin')?.value;
+  if(!jour)return '<div style="font-size:11px;color:var(--t2);padding:8px;">Sélectionnez un jour pour voir les disponibilités.</div>';
+  const jourIdx=JOURS_FULL.indexOf(jour);
+  if(jourIdx<0)return '';
+  const gran=ASTR_CONFIG.granularity||60;
+  const startHour=ASTR_CONFIG.weekStartHour||0;
+  const slots=Math.floor(1440/gran);
+  const dispoWk=DISPOS[wk]||{};
+  // Agents ayant au moins une dispo ce jour-là
+  const agents=sortByGradeThenName(USERS.filter(function(u){
+    const d=dispoWk[u.l];if(!d)return false;
+    for(let s=0;s<slots;s++){if(d[jourIdx+'_'+s]===true)return true;}
+    return false;
+  }));
+  if(!agents.length)return '<div style="font-size:11px;color:var(--t2);padding:8px;background:#FEF3C7;border-radius:6px;">⚠️ Aucun agent disponible le '+escHtml(jour)+'.</div>';
+  // Bornes de la plage saisie (pour surbrillance)
+  const dMin=debut?timeToMin(debut):null;
+  const fMin=fin?timeToMin(fin):null;
+  const overnight=(dMin!==null&&fMin!==null&&fMin<=dMin);
+  const inPlage=function(slotIdx){
+    if(dMin===null||fMin===null)return false;
+    const slotStart=(startHour*60+slotIdx*gran)%1440;
+    if(overnight)return slotStart>=dMin||slotStart<fMin;
+    return slotStart>=dMin&&slotStart<fMin;
+  };
+  const _lw=64,_cw=13;
+  const _hLabel=function(si){const t=(startHour*60+si*gran)%1440;return pad(Math.floor(t/60))+'h';};
+  let h='<div style="background:#fff;border:1px solid var(--brd);border-radius:8px;padding:8px;margin-bottom:12px;">';
+  h+='<div style="font-size:11px;font-weight:700;color:var(--t2);margin-bottom:6px;">📅 Disponibilités du '+escHtml(jour)+' <span style="font-weight:400;">— vert = dispo · zone encadrée = plage du piquet</span></div>';
+  h+='<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;">';
+  h+='<div style="min-width:'+(_lw+slots*_cw)+'px;">';
+  // En-tête heures (toutes les 2h pour rester lisible)
+  h+='<div style="display:flex;margin-bottom:2px;"><div style="width:'+_lw+'px;flex-shrink:0;"></div>';
+  for(let s=0;s<slots;s++){
+    const show=(gran>=60)?(s%2===0):(s%(120/gran)===0);
+    h+='<div style="flex:1 0 '+_cw+'px;text-align:left;font-size:8px;color:var(--t2);overflow:visible;white-space:nowrap;">'+(show?_hLabel(s):'')+'</div>';
+  }
+  h+='</div>';
+  // Une ligne par agent
+  agents.forEach(function(u){
+    const d=dispoWk[u.l]||{};
+    h+='<div style="display:flex;align-items:center;margin-bottom:2px;">';
+    h+='<div style="width:'+_lw+'px;flex-shrink:0;font-size:9px;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="'+escHtml(fullName(u))+'">'+escHtml(fullName(u))+'</div>';
+    for(let s=0;s<slots;s++){
+      const ok=d[jourIdx+'_'+s]===true;
+      const dansPlage=inPlage(s);
+      const bg=ok?'#22C55E':'#E5E7EB';
+      const bord=dansPlage?'border-top:2px solid #111;border-bottom:2px solid #111;':'';
+      h+='<div style="flex:1 0 '+_cw+'px;height:14px;background:'+bg+';'+bord+'box-sizing:border-box;border-left:1px solid #fff;"></div>';
+    }
+    h+='</div>';
+  });
+  h+='</div></div></div>';
+  return h;
+}
+
+let _pqCurrentWk=null; // semaine du formulaire piquet en cours (pour la mini-grille)
 function pqBuildForm(wk,engin,jourDefaut,existingP){
+  _pqCurrentWk=wk;
   // Liste des rôles distincts de l'engin selon la config superadmin
   const cfgRoles=getEnginRoles(engin);
   const _normRole=function(s){return (s||'').toLowerCase().replace(/[\u00e8\u00e9\u00ea]/g,'e').replace(/[^a-z]/g,'');};
@@ -13326,6 +13390,8 @@ function pqBuildForm(wk,engin,jourDefaut,existingP){
     +'<div class="fg"><div class="fgl">Fin cr\u00e9neau <span id="pq-fin-hint" style="font-size:10px;color:var(--amb);display:none;">+1j</span></div>'
     +'<input class="fi" type="time" id="pq-fin" value="'+finDef+'" oninput="pqFinHint(this);pqSyncTimes(\'fin\',this.value)"/></div>'
     +'</div>';
+  // Mini-grille des disponibilités du jour (mise à jour par pqRefreshDispos)
+  html+='<div id="pq-mini-grille"></div>';
 
   // Un bloc par rôle
   roles.forEach(function(role){
@@ -13623,16 +13689,20 @@ function pqSyncTimes(type,newVal){
   if(!el)return;
   const oldVal=el.dataset.prev||'';
   el.dataset.prev=newVal;
-  if(!oldVal)return;
-  const agentInputs=document.querySelectorAll(type==='debut'?'[id^="pq-hdebut-"]':'[id^="pq-hfin-"]');
-  agentInputs.forEach(function(inp){
-    if(inp.value===oldVal)inp.value=newVal;
-  });
-  // Rafraîchir les dispos dès que l'heure change
+  if(oldVal){
+    const agentInputs=document.querySelectorAll(type==='debut'?'[id^="pq-hdebut-"]':'[id^="pq-hfin-"]');
+    agentInputs.forEach(function(inp){
+      if(inp.value===oldVal)inp.value=newVal;
+    });
+  }
+  // Rafraîchir les dispos et la mini-grille dès que l'heure change
   pqRefreshDispos();
 }
 
 function pqRefreshDispos(){
+  // Mettre à jour la mini-grille des disponibilités du jour
+  const mg=document.getElementById('pq-mini-grille');
+  if(mg&&_pqCurrentWk)mg.innerHTML=pqBuildMiniGrille(_pqCurrentWk);
   // Reconstruire toutes les listes déroulantes agents avec les dispos du créneau
   const sels=Array.from(document.querySelectorAll('.pq-agent-sel,.pq-sel'));
   const vals={};sels.forEach(function(s){vals[s.id]=s.value;});
