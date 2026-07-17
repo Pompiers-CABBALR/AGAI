@@ -6006,7 +6006,10 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
     }
     h+='</div>';
   }
-  h+='</div></div>';
+  // Fermer : conteneur interne (min-width), conteneur de défilement (.dispo-scroll),
+  // puis le bloc agent lui-même. Sans cette 3e fermeture, les blocs agents
+  // s'imbriquent en cascade les uns dans les autres.
+  h+='</div></div></div>';
   return h;
 }
 
