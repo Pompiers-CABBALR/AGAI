@@ -7,6 +7,20 @@ function gS(n){
   document.getElementById('sa2').style.background=n>=2?'var(--red)':'var(--brd)';
   document.getElementById('slbl').innerHTML=n===1?'<span style="color:var(--red);font-weight:600;">Étape 1</span> — Nature':'<span style="color:var(--red);font-weight:600;">Étape 2</span> — Localisation &amp; détails';
   if(n===2){const h=hoA?getH(hoA):'—';document.getElementById('nr').textContent=selNat;document.getElementById('hr').innerHTML='&#x1F4C5; '+escHtml(h);showSM(selNat);}
+  requestAnimationFrame(syncAppelNatureViewport);
+}
+function syncAppelNatureViewport(){
+  const root=document.documentElement,tab=document.getElementById('tab-appel'),step=document.getElementById('e1');
+  if(!tab||!step)return;
+  const active=tab.classList.contains('active')&&step.style.display!=='none';
+  root.classList.toggle('appel-nature-locked',active);
+  if(!active){step.style.removeProperty('height');step.style.removeProperty('max-height');return;}
+  const viewport=window.visualViewport;
+  const viewportHeight=Math.round(viewport&&viewport.height?viewport.height:window.innerHeight);
+  const top=Math.max(0,Math.round(step.getBoundingClientRect().top));
+  const available=Math.max(150,viewportHeight-top-2);
+  root.style.setProperty('--appel-nature-height',available+'px');
+  step.style.height=available+'px';step.style.maxHeight=available+'px';
 }
 function showSM(nat){
   ['g','f','a','n','e'].forEach(k=>document.getElementById('sm-'+k).style.display='none');

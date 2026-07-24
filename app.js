@@ -40,6 +40,7 @@ function syncViewportMetrics(){
     const viewport=window.visualViewport;
     const height=Math.round(viewport&&viewport.height?viewport.height:window.innerHeight);
     if(height>0)document.documentElement.style.setProperty('--app-height',height+'px');
+    if(typeof syncAppelNatureViewport==='function')requestAnimationFrame(syncAppelNatureViewport);
   });
 }
 syncViewportMetrics();
@@ -2428,6 +2429,7 @@ function showT(id,btn){
   if(id==='formation'){rFormation();}
   // Bandeau stats : visible sur tous les onglets sauf accueil
   rStatsHeader();
+  requestAnimationFrame(syncAppelNatureViewport);
 }
 
 // ────────────────── NATURES ──────────────────
@@ -2472,6 +2474,20 @@ function gS(n){
   document.getElementById('sa2').style.background=n>=2?'var(--red)':'var(--brd)';
   document.getElementById('slbl').innerHTML=n===1?'<span style="color:var(--red);font-weight:600;">Étape 1</span> — Nature':'<span style="color:var(--red);font-weight:600;">Étape 2</span> — Localisation &amp; détails';
   if(n===2){const h=hoA?getH(hoA):'—';document.getElementById('nr').textContent=selNat;document.getElementById('hr').innerHTML='&#x1F4C5; '+escHtml(h);showSM(selNat);}
+  requestAnimationFrame(syncAppelNatureViewport);
+}
+function syncAppelNatureViewport(){
+  const root=document.documentElement,tab=document.getElementById('tab-appel'),step=document.getElementById('e1');
+  if(!tab||!step)return;
+  const active=tab.classList.contains('active')&&step.style.display!=='none';
+  root.classList.toggle('appel-nature-locked',active);
+  if(!active){step.style.removeProperty('height');step.style.removeProperty('max-height');return;}
+  const viewport=window.visualViewport;
+  const viewportHeight=Math.round(viewport&&viewport.height?viewport.height:window.innerHeight);
+  const top=Math.max(0,Math.round(step.getBoundingClientRect().top));
+  const available=Math.max(150,viewportHeight-top-2);
+  root.style.setProperty('--appel-nature-height',available+'px');
+  step.style.height=available+'px';step.style.maxHeight=available+'px';
 }
 function showSM(nat){
   ['g','f','a','n','e'].forEach(k=>document.getElementById('sm-'+k).style.display='none');
@@ -8900,7 +8916,7 @@ function rStatsHeader(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260724-appel-mobile-13';
+const APP_VERSION='20260724-appel-mobile-14';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne

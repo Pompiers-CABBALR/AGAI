@@ -347,6 +347,7 @@ function showT(id,btn){
   if(id==='formation'){rFormation();}
   // Bandeau stats : visible sur tous les onglets sauf accueil
   rStatsHeader();
+  requestAnimationFrame(syncAppelNatureViewport);
 }
 
 // ────────────────── NATURES ──────────────────

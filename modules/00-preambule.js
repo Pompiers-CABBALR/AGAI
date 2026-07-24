@@ -40,6 +40,7 @@ function syncViewportMetrics(){
     const viewport=window.visualViewport;
     const height=Math.round(viewport&&viewport.height?viewport.height:window.innerHeight);
     if(height>0)document.documentElement.style.setProperty('--app-height',height+'px');
+    if(typeof syncAppelNatureViewport==='function')requestAnimationFrame(syncAppelNatureViewport);
   });
 }
 syncViewportMetrics();

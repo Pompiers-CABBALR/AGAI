@@ -555,16 +555,19 @@ button,.btn,.nb,.subtab-btn,.smopt,.fb,.ec,.ivr,[onclick]{
 .appel-erp input{width:20px;height:20px;flex:0 0 auto;accent-color:var(--red);}
 .appel-erp-urgence{display:none;color:var(--rd);font-size:11px;font-weight:700;margin-top:3px;}
 .ivr.urgence{border:2px solid #B91C1C!important;box-shadow:0 0 0 2px rgba(185,28,28,.08);}
-#tab-appel.active{min-height:calc(var(--app-height) - 170px);}
-#e1.appel-nature-step{min-height:calc(var(--app-height) - 245px);display:flex;flex-direction:column;}
-#nl.appel-nature-list{flex:1;max-height:none!important;min-height:260px;}
-.appel-nature-actions{margin-top:auto;}
+#tab-appel.active{min-height:0;}
+#e1.appel-nature-step{height:var(--appel-nature-height,calc(var(--app-height) - 245px));min-height:0;max-height:var(--appel-nature-height,calc(var(--app-height) - 245px));display:flex;flex-direction:column;overflow:hidden;}
+#nl.appel-nature-list{flex:1;max-height:none!important;min-height:0;overflow-y:auto!important;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;}
+.appel-nature-actions{flex:0 0 auto;margin-top:8px;}
+html.appel-nature-locked,html.appel-nature-locked body{height:var(--app-height);overflow:hidden!important;overscroll-behavior:none;}
+html.appel-nature-locked .app{height:var(--app-height);min-height:0;overflow:hidden;}
+html.appel-nature-locked .cnt{overflow:hidden!important;}
 @media(hover:none) and (pointer:coarse), (max-width:767px){
-  #tab-appel.active{display:flex!important;flex-direction:column;min-height:calc(var(--app-height) - 190px);}
-  #e1.appel-nature-step{display:flex;flex:1;min-height:calc(var(--app-height) - 270px);flex-direction:column;}
-  #nl.appel-nature-list{flex:1;min-height:240px;max-height:none!important;overflow-y:auto!important;overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;}
+  #tab-appel.active{display:flex!important;flex-direction:column;min-height:0;}
+  #e1.appel-nature-step{display:flex;flex:0 0 auto;min-height:0;flex-direction:column;}
+  #nl.appel-nature-list{flex:1;min-height:0;max-height:none!important;overflow-y:auto!important;overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;}
   #nl .nature-option{min-height:52px;font-size:16px!important;}
-  .appel-nature-actions{position:sticky;bottom:0;z-index:20;margin-top:8px;padding:8px 0 calc(8px + var(--safe-bottom));background:linear-gradient(to bottom,rgba(242,242,247,.75),#f2f2f7 22%);}
+  .appel-nature-actions{position:static;z-index:20;margin-top:8px;padding:8px 0 calc(8px + var(--safe-bottom));background:#f2f2f7;}
   .appel-nature-actions .btn{width:100%;min-height:54px;font-size:16px;}
   .appel-dispo-grid{grid-template-columns:1fr;}
   .appel-requerant-grid{grid-template-columns:1fr!important;}
