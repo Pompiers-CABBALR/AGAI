@@ -8788,8 +8788,8 @@ function rStatsHeader(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260716_2256';
-const _VER_CHECK_MS=5*60*1000;      // contrôle toutes les 5 minutes
+const APP_VERSION='20260724-responsive-5';
+const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -8806,7 +8806,7 @@ function _saisieEnCours(){
   if(mo&&mo.style.display==='flex')return true;
   const fa=document.getElementById('fa');
   if(fa&&fa.value&&fa.value.trim())return true;
-  const panels=['act-form-panel','fmpa-form-panel','fstag-form-panel','fform-form-panel'];
+  const panels=['act-form-panel','fmpa-form-panel','formstag-form-panel','formform-form-panel'];
   for(const id of panels){
     const p=document.getElementById(id);
     if(p&&p.style.display!=='none')return true;
@@ -8818,37 +8818,68 @@ function _saisieEnCours(){
   return false;
 }
 
-function _verReload(){
+async function _verReload(){
   if(_verReloading)return;
+  if(_saisieEnCours()&&!window.confirm('Une saisie est en cours. Actualiser quand même pour charger la dernière version ?'))return;
   _verReloading=true;
-  window.location.replace(window.location.pathname+'?v='+encodeURIComponent(_verNouvelle||Date.now()));
+  const button=document.getElementById('ver-reload-button');
+  if(button){button.disabled=true;button.textContent='Actualisation…';}
+  try{
+    if('serviceWorker' in navigator){
+      const registration=await navigator.serviceWorker.getRegistration();
+      if(registration)await registration.update();
+    }
+  }catch(e){/* la mise à jour continue même sans service worker */}
+  const url=new URL(window.location.href);
+  url.searchParams.set('appVersion',_verNouvelle||APP_VERSION);
+  url.searchParams.set('_refresh',Date.now());
+  window.location.replace(url.toString());
 }
 
 function _showVersionBanner(){
   if(document.getElementById('ver-banner'))return;
   const b=document.createElement('div');
   b.id='ver-banner';
-  b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:99998;background:#0369A1;color:#fff;'
-    +'padding:10px 14px;font-size:13px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;'
-    +'justify-content:center;box-shadow:0 -2px 12px rgba(0,0,0,.25);';
-  b.innerHTML='<span>&#x1F504; Une nouvelle version de l\u2019application est disponible.</span>'
-    +'<button onclick="_verReload()" style="background:#fff;color:#0369A1;border:none;border-radius:8px;'
-    +'padding:6px 14px;font-size:13px;font-weight:700;cursor:pointer;">Recharger maintenant</button>'
+  b.setAttribute('role','status');
+  b.setAttribute('aria-live','polite');
+  b.style.cssText='position:fixed;left:max(10px,env(safe-area-inset-left));right:max(10px,env(safe-area-inset-right));'
+    +'bottom:max(10px,env(safe-area-inset-bottom));z-index:99998;background:#0369A1;color:#fff;border-radius:12px;'
+    +'padding:11px 14px;font-size:13px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;'
+    +'justify-content:center;box-shadow:0 4px 18px rgba(0,0,0,.3);';
+  b.innerHTML='<span><strong>&#x1F504; Nouvelle version disponible.</strong> Actualisez pour profiter des dernières corrections.</span>'
+    +'<button id="ver-reload-button" type="button" onclick="_verReload()" style="background:#fff;color:#0369A1;border:none;border-radius:8px;'
+    +'padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;">Actualiser maintenant</button>'
     +'<button onclick="document.getElementById(\'ver-banner\').remove()" style="background:transparent;'
-    +'color:#fff;border:1px solid rgba(255,255,255,.5);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;">Plus tard</button>';
+    +'color:#fff;border:1px solid rgba(255,255,255,.6);border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer;">Plus tard</button>';
   document.body.appendChild(b);
+}
+
+async function _fetchRemoteVersion(){
+  // La version modulaire publie ce petit manifeste à côté d'index.html.
+  try{
+    const manifestUrl=new URL('version.json',document.baseURI);
+    manifestUrl.searchParams.set('_',Date.now());
+    const response=await fetch(manifestUrl.toString(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
+    if(response.ok){
+      const manifest=await response.json();
+      if(manifest&&typeof manifest.version==='string')return manifest.version.trim();
+    }
+  }catch(e){/* repli ci-dessous pour le fichier HTML autonome */}
+
+  // Repli : permet au fichier HTML autonome de fonctionner sans version.json.
+  const pageUrl=new URL(window.location.href);
+  pageUrl.searchParams.set('_versionCheck',Date.now());
+  const response=await fetch(pageUrl.toString(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
+  if(!response.ok)return null;
+  const source=await response.text();
+  const match=source.match(/const APP_VERSION='([^']+)'/);
+  return match?match[1].trim():null;
 }
 
 async function _checkVersion(){
   if(_verReloading)return;
   try{
-    const url=window.location.pathname+'?_v='+Date.now();
-    const r=await fetch(url,{cache:'no-store'});
-    if(!r.ok)return;
-    const txt=await r.text();
-    const m=txt.match(/const APP_VERSION='([^']+)'/);
-    if(!m)return;
-    const distante=m[1];
+    const distante=await _fetchRemoteVersion();
     if(distante&&distante!==APP_VERSION){
       _verNouvelle=distante;
       _showVersionBanner();          // 1. prévenir tout de suite
@@ -8872,7 +8903,8 @@ function _startVersionCheck(){
   document.addEventListener('visibilitychange',function(){
     if(document.visibilityState==='visible'){_verLastActivity=Date.now();_checkVersion();}
   });
-  setTimeout(_checkVersion,30000);
+  window.addEventListener('online',_checkVersion);
+  setTimeout(_checkVersion,3000);
 }
 
 
