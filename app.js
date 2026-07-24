@@ -4981,15 +4981,17 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
   const slotsDay0=getSlotsForDay(0,agGran);
   const _lw=48;        // largeur de la colonne "jour" (px)
   const _gridHost=document.getElementById('astr-dispo-grid');
-  const _availableW=Math.max(0,(_gridHost&&_gridHost.clientWidth?_gridHost.clientWidth:0)-_lw-2);
+  const _blockInset=22;
+  const _availableW=Math.max(0,(_gridHost&&_gridHost.clientWidth?_gridHost.clientWidth:0)-_blockInset-_lw-1);
   // En paysage, répartir exactement les 24 créneaux sur la largeur disponible.
   // Sur un écran plus étroit ou avec une granularité fine, conserver 24 px et
   // permettre le défilement horizontal.
-  const _cw=Math.max(24,Math.floor(_availableW/slotsDay0));
+  const _desktopFit=window.matchMedia&&window.matchMedia('(hover:hover) and (pointer:fine)').matches;
+  const _cw=_desktopFit?Math.max(1,_availableW/slotsDay0):Math.max(24,Math.floor(_availableW/slotsDay0));
   const _totalW=_lw+slotsDay0*_cw;
   // Largeur explicite : évite les arrondis Flexbox de Safari qui coupaient le
   // dernier créneau 07h–08h en orientation paysage.
-  h+='<div class="dispo-scroll" style="overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;">';
+  h+='<div class="dispo-scroll" style="overflow-x:'+(_desktopFit?'hidden':'auto')+';-webkit-overflow-scrolling:touch;max-width:100%;">';
   h+='<div style="min-width:'+_totalW+'px;width:'+_totalW+'px;">';
   // En-tête des heures — même présentation que le planning :
   // ligne 1 = heures de début, ligne 2 = heures de fin (décalées, grisées).
@@ -8788,7 +8790,7 @@ function rStatsHeader(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260724-responsive-5';
+const APP_VERSION='20260724-responsive-6';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne

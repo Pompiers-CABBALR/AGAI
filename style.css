@@ -506,6 +506,8 @@ button,.btn,.nb,.subtab-btn,.smopt,.fb,.ec,.ivr,[onclick]{
   .app{height:auto;min-height:100vh;overflow-y:visible;}
   .cnt,.sec.active{overflow-y:visible;}
   .mod{overscroll-behavior-y:auto;}
+  .dispo-scroll{overflow-x:hidden!important;scrollbar-width:none;}
+  .dispo-scroll::-webkit-scrollbar{display:none;}
 }
 @media(hover:none) and (pointer:coarse){
   body{overscroll-behavior-y:none;}
