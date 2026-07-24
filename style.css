@@ -280,7 +280,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .fg-duo .fi{width:100%;min-width:0;box-sizing:border-box;}
 .fgl{font-size:11px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;}
 .req{color:var(--red);}
-.fi{padding:9px 12px;border:1px solid var(--brd);border-radius:10px;font-size:13px;background:#fff;color:var(--t);font-family:inherit;width:100%;}
+.fi{padding:9px 12px;border:1px solid var(--brd);border-radius:10px;font-size:13px;background:#fff;color:var(--t);font-family:inherit;width:100%;min-height:42px;}
 /* Sécurité (placé APRÈS la définition de .fi pour primer) : aucun champ ne doit
    dépasser son conteneur. Sur iOS/WebKit, les champs date/time ont une largeur
    intrinsèque imposée par le sélecteur natif : sans -webkit-appearance:none ils
@@ -288,13 +288,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .fi{max-width:100%;box-sizing:border-box;min-width:0;}
 input.fi[type="date"],input.fi[type="time"]{
   display:block;min-width:0;width:100%;max-width:100%;inline-size:100%;
-  min-height:42px;height:42px;line-height:1.2;
-  -webkit-appearance:auto;appearance:auto;
+  min-height:42px;height:42px;max-height:42px;line-height:20px;
+  padding-top:9px;padding-bottom:9px;
+  -webkit-appearance:none;appearance:none;
   -webkit-min-logical-width:0;
+  flex:none;
 }
 input.fi[type="date"]::-webkit-date-and-time-value,
 input.fi[type="time"]::-webkit-date-and-time-value{
-  min-width:0;text-align:left;
+  display:block;min-width:0;height:22px;line-height:22px;text-align:left;
+}
+input.fi[type="date"]::-webkit-calendar-picker-indicator,
+input.fi[type="time"]::-webkit-calendar-picker-indicator{
+  display:block;opacity:1;margin:0;padding:0;
 }
 select.fi{min-width:0;width:100%;max-width:100%;}
 .fi:focus{outline:none;border-color:var(--red);}
@@ -522,9 +528,16 @@ button,.btn,.nb,.subtab-btn,.smopt,.fb,.ec,.ivr,[onclick]{
    lorsque l'iPhone est tenu en paysage et dépasse 480 px de largeur. */
 @media(max-width:767px), (pointer:coarse) and (max-width:1024px){
   input,select,textarea,.fi,.fta,.lf input,.urow input{font-size:16px!important;}
+  .fi{min-height:48px!important;}
   input.fi[type="date"],input.fi[type="time"]{
-    width:100%!important;max-width:100%!important;min-height:48px;height:48px;
+    width:100%!important;max-width:100%!important;
+    min-height:48px!important;height:48px!important;max-height:48px!important;
+    line-height:24px!important;
     padding:10px 12px!important;
+  }
+  input.fi[type="date"]::-webkit-date-and-time-value,
+  input.fi[type="time"]::-webkit-date-and-time-value{
+    height:26px;line-height:26px;
   }
   #act-form-panel .fg-duo,#fmpa-form-panel .fg-duo,
   #formstag-form-panel .fg-duo,#formform-form-panel .fg-duo{
@@ -551,6 +564,17 @@ button,.btn,.nb,.subtab-btn,.smopt,.fb,.ec,.ivr,[onclick]{
   .fg-duo,.fg-horaires{grid-template-columns:1fr;}
   .smg2{grid-template-columns:1fr;}
   .ivrr{max-width:42%;flex-wrap:wrap;justify-content:flex-end;}
+}
+
+/* Smartphones en portrait, y compris les grands iPhone de 430 px :
+   une seule colonne évite tout chevauchement des contrôles natifs. */
+@media(orientation:portrait) and (pointer:coarse) and (max-width:600px){
+  #act-form-panel .fg-duo,#fmpa-form-panel .fg-duo,
+  #formstag-form-panel .fg-duo,#formform-form-panel .fg-duo,
+  #act-form-panel .fg-horaires,#fmpa-form-panel .fg-horaires,
+  #formstag-form-panel .fg-horaires,#formform-form-panel .fg-horaires{
+    grid-template-columns:minmax(0,1fr);
+  }
 }
 
 @media(max-width:359px){
