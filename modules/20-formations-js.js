@@ -320,7 +320,6 @@ function formVoirDetail(type,id){
   const data=type==='stag'?formStagGetData():formFormGetData();
   const f=data.find(x=>x.id===id);
   if(!f)return;
-  const isAdmin=isAdminModeActive();
   const sortedP=[...(f.participants||[])].sort((la,lb)=>{const ua=USERS.find(x=>x.l===la),ub=USERS.find(x=>x.l===lb);return (ua?ua.nom:la).localeCompare(ub?ub.nom:lb,'fr');});
   const presListe=sortedP.map(l=>{const u=USERS.find(x=>x.l===l);return u?((u.grade?u.grade+' ':'')+u.nom+' '+u.prenom):l;}).join('<br>');
   const mins=formMinsTotal(f);
@@ -337,7 +336,7 @@ function formVoirDetail(type,id){
     <div class="msep"></div>
     <div class="mr"><div class="ml">${type==='stag'?'Stagiaires':'Formateurs'} (${sortedP.length})</div><div class="mv2" style="font-size:12px;line-height:1.8;">${presListe||'—'}</div></div>
     <div class="brow" style="margin-top:12px;">
-      ${isAdmin?`<button class="btn sm danger" onclick="cM();deleteFormEntry('${type}','${id}')">🗑 Supprimer</button>`:''}
+      ${isSuperAdmin()?`<button class="btn sm danger" onclick="cM();deleteFormEntry('${type}','${id}')">🗑 Supprimer</button>`:''}
       <button class="btn sm" onclick="cM()">Fermer</button>
     </div>
   </div>`;
@@ -350,11 +349,11 @@ function deleteFormEntry(type,id){
   const data=type==='stag'?formStagGetData():formFormGetData();
   const idx=data.findIndex(x=>x.id===id);
   if(idx>=0){
-    confirmModal('Supprimer cette formation ?',function(){
+    confirmModal('Supprimer définitivement cette formation ?',async function(){
       // Propager la suppression au serveur, sinon la formation revient au prochain pull
       const recType=(type==='stag')?'formStag':'formForm';
       if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcMarkDeleted==='function'&&CURRENT_CASERNE_ID){
-        try{_rcMarkDeleted(CURRENT_CASERNE_ID,recType,[id]);}catch(e){}
+        try{await _rcMarkDeleted(CURRENT_CASERNE_ID,recType,[id]);}catch(e){}
       }
       data.splice(idx,1);
       if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
@@ -594,6 +593,7 @@ function fmpaVoirDetail(id){
     <div class="brow" style="margin-top:12px;">
 
       ${isAdmin?`<button class="btn sm" onclick="cM();fmpaEditer('${id}')">✏️ Modifier</button>`:''}
+      ${isSuperAdmin()?`<button class="btn sm danger" onclick="cM();deleteFmpa('${id}')">🗑 Supprimer</button>`:''}
     </div>
   </div>`;
   document.getElementById('mo').style.display='flex';

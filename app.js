@@ -8790,7 +8790,7 @@ function rStatsHeader(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260724-responsive-6';
+const APP_VERSION='20260724-responsive-7';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -13267,6 +13267,7 @@ function actVoirDetail(id){
     <div class="brow" style="margin-top:12px;">
       <button class="btn sm" style="background:var(--rd);color:#fff;" onclick="actImprimerRapport('${id}')">🖨 Imprimer rapport</button>
       ${canEdit?`<button class="btn sm" onclick="cM();actEditer('${id}')">✏️ Modifier</button>`:''}
+      ${isSuperAdmin()?`<button class="btn sm danger" onclick="cM();deleteActivite('${id}')">🗑 Supprimer</button>`:''}
     </div>
   </div>`;
   document.getElementById('mo').style.display='flex';
@@ -13423,22 +13424,29 @@ function genRapportActiviteHTML(a){
 
 function deleteActivite(id){
   if(!isSuperAdmin()){showToast('Accès réservé au super-administrateur','warn');return;}
-  confirmModal('Supprimer cette activité de service ?',function(){
+  confirmModal('Supprimer définitivement cette activité de service ?',async function(){
     const data=actGetData();
     const idx=data.findIndex(x=>x.id===id);
-    if(idx>=0){data.splice(idx,1);saveData();rActiviteList();showToast('Activité supprimée','success');}
+    if(idx>=0){
+      if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcMarkDeleted==='function'&&CURRENT_CASERNE_ID){
+        try{await _rcMarkDeleted(CURRENT_CASERNE_ID,'activite',[id]);}catch(e){}
+      }
+      data.splice(idx,1);
+      if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+      saveData(true);rActiviteList();showToast('Activité supprimée','success');
+    }
   });
 }
 
 function deleteFmpa(id){
   if(!isSuperAdmin()){showToast('Accès réservé au super-administrateur','warn');return;}
-  confirmModal('Supprimer cette FMPA ?',function(){
+  confirmModal('Supprimer définitivement cette FMPA ?',async function(){
     const data=fmpaGetData();
     const idx=data.findIndex(x=>x.id===id);
     if(idx>=0){
       // Propager la suppression au serveur AVANT de retirer localement, sinon la FMPA revient au prochain pull
       if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcMarkDeleted==='function'&&CURRENT_CASERNE_ID){
-        try{_rcMarkDeleted(CURRENT_CASERNE_ID,'fmpa',[id]);}catch(e){}
+        try{await _rcMarkDeleted(CURRENT_CASERNE_ID,'fmpa',[id]);}catch(e){}
       }
       data.splice(idx,1);
       if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
@@ -13770,7 +13778,6 @@ function formVoirDetail(type,id){
   const data=type==='stag'?formStagGetData():formFormGetData();
   const f=data.find(x=>x.id===id);
   if(!f)return;
-  const isAdmin=isAdminModeActive();
   const sortedP=[...(f.participants||[])].sort((la,lb)=>{const ua=USERS.find(x=>x.l===la),ub=USERS.find(x=>x.l===lb);return (ua?ua.nom:la).localeCompare(ub?ub.nom:lb,'fr');});
   const presListe=sortedP.map(l=>{const u=USERS.find(x=>x.l===l);return u?((u.grade?u.grade+' ':'')+u.nom+' '+u.prenom):l;}).join('<br>');
   const mins=formMinsTotal(f);
@@ -13787,7 +13794,7 @@ function formVoirDetail(type,id){
     <div class="msep"></div>
     <div class="mr"><div class="ml">${type==='stag'?'Stagiaires':'Formateurs'} (${sortedP.length})</div><div class="mv2" style="font-size:12px;line-height:1.8;">${presListe||'—'}</div></div>
     <div class="brow" style="margin-top:12px;">
-      ${isAdmin?`<button class="btn sm danger" onclick="cM();deleteFormEntry('${type}','${id}')">🗑 Supprimer</button>`:''}
+      ${isSuperAdmin()?`<button class="btn sm danger" onclick="cM();deleteFormEntry('${type}','${id}')">🗑 Supprimer</button>`:''}
       <button class="btn sm" onclick="cM()">Fermer</button>
     </div>
   </div>`;
@@ -13800,11 +13807,11 @@ function deleteFormEntry(type,id){
   const data=type==='stag'?formStagGetData():formFormGetData();
   const idx=data.findIndex(x=>x.id===id);
   if(idx>=0){
-    confirmModal('Supprimer cette formation ?',function(){
+    confirmModal('Supprimer définitivement cette formation ?',async function(){
       // Propager la suppression au serveur, sinon la formation revient au prochain pull
       const recType=(type==='stag')?'formStag':'formForm';
       if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcMarkDeleted==='function'&&CURRENT_CASERNE_ID){
-        try{_rcMarkDeleted(CURRENT_CASERNE_ID,recType,[id]);}catch(e){}
+        try{await _rcMarkDeleted(CURRENT_CASERNE_ID,recType,[id]);}catch(e){}
       }
       data.splice(idx,1);
       if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
@@ -14044,6 +14051,7 @@ function fmpaVoirDetail(id){
     <div class="brow" style="margin-top:12px;">
 
       ${isAdmin?`<button class="btn sm" onclick="cM();fmpaEditer('${id}')">✏️ Modifier</button>`:''}
+      ${isSuperAdmin()?`<button class="btn sm danger" onclick="cM();deleteFmpa('${id}')">🗑 Supprimer</button>`:''}
     </div>
   </div>`;
   document.getElementById('mo').style.display='flex';

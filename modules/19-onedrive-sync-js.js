@@ -1319,6 +1319,7 @@ function actVoirDetail(id){
     <div class="brow" style="margin-top:12px;">
       <button class="btn sm" style="background:var(--rd);color:#fff;" onclick="actImprimerRapport('${id}')">🖨 Imprimer rapport</button>
       ${canEdit?`<button class="btn sm" onclick="cM();actEditer('${id}')">✏️ Modifier</button>`:''}
+      ${isSuperAdmin()?`<button class="btn sm danger" onclick="cM();deleteActivite('${id}')">🗑 Supprimer</button>`:''}
     </div>
   </div>`;
   document.getElementById('mo').style.display='flex';
@@ -1475,22 +1476,29 @@ function genRapportActiviteHTML(a){
 
 function deleteActivite(id){
   if(!isSuperAdmin()){showToast('Accès réservé au super-administrateur','warn');return;}
-  confirmModal('Supprimer cette activité de service ?',function(){
+  confirmModal('Supprimer définitivement cette activité de service ?',async function(){
     const data=actGetData();
     const idx=data.findIndex(x=>x.id===id);
-    if(idx>=0){data.splice(idx,1);saveData();rActiviteList();showToast('Activité supprimée','success');}
+    if(idx>=0){
+      if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcMarkDeleted==='function'&&CURRENT_CASERNE_ID){
+        try{await _rcMarkDeleted(CURRENT_CASERNE_ID,'activite',[id]);}catch(e){}
+      }
+      data.splice(idx,1);
+      if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+      saveData(true);rActiviteList();showToast('Activité supprimée','success');
+    }
   });
 }
 
 function deleteFmpa(id){
   if(!isSuperAdmin()){showToast('Accès réservé au super-administrateur','warn');return;}
-  confirmModal('Supprimer cette FMPA ?',function(){
+  confirmModal('Supprimer définitivement cette FMPA ?',async function(){
     const data=fmpaGetData();
     const idx=data.findIndex(x=>x.id===id);
     if(idx>=0){
       // Propager la suppression au serveur AVANT de retirer localement, sinon la FMPA revient au prochain pull
       if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcMarkDeleted==='function'&&CURRENT_CASERNE_ID){
-        try{_rcMarkDeleted(CURRENT_CASERNE_ID,'fmpa',[id]);}catch(e){}
+        try{await _rcMarkDeleted(CURRENT_CASERNE_ID,'fmpa',[id]);}catch(e){}
       }
       data.splice(idx,1);
       if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
