@@ -54,6 +54,11 @@ afficher leur libellé sur deux lignes. La grille des disponibilités répartit 
 24 créneaux horaires sur la largeur réellement disponible ; le dernier créneau
 07 h–08 h ne doit plus être coupé par Safari.
 
+La règle du menu paysage s’applique désormais indépendamment de la détection
+tactile du navigateur, jusqu’à 1 400 px de largeur. Les formulaires Activités,
+FMPA et Formations intègrent leur bouton « Fermer » dans leur titre ; le bouton
+extérieur est masqué pendant la saisie afin d’éviter une bande vide en haut.
+
 ## Vérification
 
 La variante a été contrôlée sur les points suivants :

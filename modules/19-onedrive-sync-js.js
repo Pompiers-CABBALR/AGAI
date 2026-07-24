@@ -1170,7 +1170,7 @@ function actToggleForm(){
   const btn=document.getElementById('act-new-btn');
   const willOpen=panel.style.display==='none'||panel.style.display==='';
   panel.style.display=willOpen?'block':'none';
-  if(btn)btn.textContent=willOpen?'✕ Annuler':'+ Nouvelle activité';
+  if(btn){btn.style.display=willOpen?'none':'';btn.textContent='+ Nouvelle activité';}
   if(willOpen){
     const now=new Date();
     const today=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
@@ -1187,7 +1187,7 @@ function rActivite(){
   const panel=document.getElementById('act-form-panel');
   if(panel)panel.style.display='none';
   const btn=document.getElementById('act-new-btn');
-  if(btn)btn.textContent='+ Nouvelle activit\u00e9';
+  if(btn){btn.style.display='';btn.textContent='+ Nouvelle activit\u00e9';}
   rActiviteList();
 }
 
@@ -1278,7 +1278,7 @@ function saveActivite(){
   rActiviteList();
   // Fermer le formulaire après sauvegarde
   const fp=document.getElementById('act-form-panel');if(fp)fp.style.display='none';
-  const fb=document.getElementById('act-new-btn');if(fb)fb.textContent='+ Nouvelle activité';
+  const fb=document.getElementById('act-new-btn');if(fb){fb.style.display='';fb.textContent='+ Nouvelle activité';}
   showToast('Activité '+actFmtAn({date,numAnnuel})+' / '+actFmtMois({date,numMensuel})+' enregistrée ✓','success');
 }
 

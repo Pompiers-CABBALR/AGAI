@@ -436,7 +436,7 @@ select.fi{min-width:0;width:100%;max-width:100%;}
 }
 @supports(height:100dvh){:root{--app-height:100dvh;}}
 html,body{width:100%;min-height:var(--app-height);}
-body{min-height:var(--app-height);overscroll-behavior-y:none;}
+body{min-height:var(--app-height);}
 .lw,.app{min-height:var(--app-height);}
 .lw{
   padding-top:max(24px,var(--safe-top));
@@ -498,6 +498,19 @@ button,.btn,.nb,.subtab-btn,.smopt,.fb,.ec,.ivr,[onclick]{
   scrollbar-width:thin;
 }
 
+/* Ordinateurs : laisser le document racine gérer librement la molette et le
+   pavé tactile. Les restrictions anti-rebond restent réservées au tactile. */
+@media(hover:hover) and (pointer:fine){
+  html{overflow-y:auto;scroll-behavior:auto;}
+  body{overflow-y:visible;overscroll-behavior-y:auto;}
+  .app{height:auto;min-height:100vh;overflow-y:visible;}
+  .cnt,.sec.active{overflow-y:visible;}
+  .mod{overscroll-behavior-y:auto;}
+}
+@media(hover:none) and (pointer:coarse){
+  body{overscroll-behavior-y:none;}
+}
+
 /* Safari zoome automatiquement sur les champs inférieurs à 16 px, y compris
    lorsque l'iPhone est tenu en paysage et dépasse 480 px de largeur. */
 @media(max-width:767px), (pointer:coarse) and (max-width:1024px){
@@ -545,7 +558,7 @@ button,.btn,.nb,.subtab-btn,.smopt,.fb,.ec,.ivr,[onclick]{
 
 /* Téléphones et petites tablettes en paysage : chaque menu garde sa propre
    colonne et son libellé peut passer sur deux lignes sans chevaucher le voisin. */
-@media(orientation:landscape) and (pointer:coarse) and (max-width:1180px){
+@media(orientation:landscape) and (max-width:1400px){
   .nav{align-items:stretch;justify-content:stretch;overflow-x:hidden;}
   .nav .nb{
     display:flex;
@@ -573,6 +586,10 @@ button,.btn,.nb,.subtab-btn,.smopt,.fb,.ec,.ivr,[onclick]{
     line-height:1.05;
   }
   #nav-global{font-size:18px!important;}
+}
+.form-panel-close{margin-left:auto;flex:0 0 auto;white-space:nowrap;}
+@media(orientation:landscape) and (max-width:1400px){
+  .form-panel-close{min-height:40px;padding:6px 10px;}
 }
 
 @media(min-width:768px) and (max-width:1199px){

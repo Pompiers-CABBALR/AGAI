@@ -13084,7 +13084,7 @@ function actToggleForm(){
   const btn=document.getElementById('act-new-btn');
   const willOpen=panel.style.display==='none'||panel.style.display==='';
   panel.style.display=willOpen?'block':'none';
-  if(btn)btn.textContent=willOpen?'✕ Annuler':'+ Nouvelle activité';
+  if(btn){btn.style.display=willOpen?'none':'';btn.textContent='+ Nouvelle activité';}
   if(willOpen){
     const now=new Date();
     const today=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
@@ -13101,7 +13101,7 @@ function rActivite(){
   const panel=document.getElementById('act-form-panel');
   if(panel)panel.style.display='none';
   const btn=document.getElementById('act-new-btn');
-  if(btn)btn.textContent='+ Nouvelle activit\u00e9';
+  if(btn){btn.style.display='';btn.textContent='+ Nouvelle activit\u00e9';}
   rActiviteList();
 }
 
@@ -13192,7 +13192,7 @@ function saveActivite(){
   rActiviteList();
   // Fermer le formulaire après sauvegarde
   const fp=document.getElementById('act-form-panel');if(fp)fp.style.display='none';
-  const fb=document.getElementById('act-new-btn');if(fb)fb.textContent='+ Nouvelle activité';
+  const fb=document.getElementById('act-new-btn');if(fb){fb.style.display='';fb.textContent='+ Nouvelle activité';}
   showToast('Activité '+actFmtAn({date,numAnnuel})+' / '+actFmtMois({date,numMensuel})+' enregistrée ✓','success');
 }
 
@@ -13524,7 +13524,7 @@ function formStagToggleForm(){
   const btn=document.getElementById('formstag-new-btn');
   const open=panel.style.display==='none'||!panel.style.display;
   panel.style.display=open?'block':'none';
-  if(btn)btn.textContent=open?'✕ Annuler':'+ Nouvelle formation';
+  if(btn){btn.style.display=open?'none':'';btn.textContent='+ Nouvelle formation';}
   if(open){
     ['fstag-titre','fstag-ref','fstag-lieu','fstag-ddebut','fstag-dfin','fstag-hmatin-d','fstag-hmatin-f','fstag-haprem-d','fstag-haprem-f','fstag-hjour','fstag-htotal'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
     formLoadAgents('fstag-participants',[],'var(--blu)');
@@ -13536,7 +13536,7 @@ function formFormToggleForm(){
   const btn=document.getElementById('formform-new-btn');
   const open=panel.style.display==='none'||!panel.style.display;
   panel.style.display=open?'block':'none';
-  if(btn)btn.textContent=open?'✕ Annuler':'+ Nouvelle formation';
+  if(btn){btn.style.display=open?'none':'';btn.textContent='+ Nouvelle formation';}
   if(open){
     ['fform-titre','fform-ref','fform-lieu','fform-ddebut','fform-dfin','fform-hmatin-d','fform-hmatin-f','fform-haprem-d','fform-haprem-f','fform-hjour','fform-htotal'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
     formLoadAgents('fform-participants',[],'var(--grn)');
@@ -13549,7 +13549,7 @@ function rFormStagiaires(){
   const panel=document.getElementById('formstag-form-panel');
   if(panel)panel.style.display='none';
   const btn=document.getElementById('formstag-new-btn');
-  if(btn)btn.textContent='+ Nouvelle formation';
+  if(btn){btn.style.display='';btn.textContent='+ Nouvelle formation';}
   rFormStagList();
   rFormStagRecap();
 }
@@ -13557,7 +13557,7 @@ function rFormFormateurs(){
   const panel=document.getElementById('formform-form-panel');
   if(panel)panel.style.display='none';
   const btn=document.getElementById('formform-new-btn');
-  if(btn)btn.textContent='+ Nouvelle formation';
+  if(btn){btn.style.display='';btn.textContent='+ Nouvelle formation';}
   rFormFormList();
   rFormFormRecap();
 }
@@ -13875,7 +13875,7 @@ function fmpaToggleForm(){
   const btn=document.getElementById('fmpa-new-btn');
   const willOpen=panel.style.display==='none'||panel.style.display==='';
   panel.style.display=willOpen?'block':'none';
-  if(btn)btn.textContent=willOpen?'✕ Annuler':'+ Nouvelle FMPA';
+  if(btn){btn.style.display=willOpen?'none':'';btn.textContent='+ Nouvelle FMPA';}
   if(willOpen){
     const now=new Date();
     const today=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
@@ -13895,7 +13895,7 @@ function rFmpaInit(){
   const panel=document.getElementById('fmpa-form-panel');
   if(panel)panel.style.display='none';
   const btn=document.getElementById('fmpa-new-btn');
-  if(btn)btn.textContent='+ Nouvelle FMPA';
+  if(btn){btn.style.display='';btn.textContent='+ Nouvelle FMPA';}
   rFmpaList();
 }
 
@@ -13969,7 +13969,7 @@ function saveFmpa(){
   document.querySelectorAll('#fmpa-formateurs input[type=checkbox]').forEach(cb=>cb.checked=false);
   rFmpaList();
   const fp=document.getElementById('fmpa-form-panel');if(fp)fp.style.display='none';
-  const fb=document.getElementById('fmpa-new-btn');if(fb)fb.textContent='+ Nouvelle FMPA';
+  const fb=document.getElementById('fmpa-new-btn');if(fb){fb.style.display='';fb.textContent='+ Nouvelle FMPA';}
   showToast('FMPA '+fmpaFmtAn(entry)+' enregistr\u00e9e \u2713','success');
 }
 
