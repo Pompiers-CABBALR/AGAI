@@ -4979,13 +4979,18 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
   // Grille alignée : largeur de case FIXE (aligne en-tête et cases, évite tout décalage).
   // Enveloppée dans un conteneur à défilement horizontal, comme le planning.
   const slotsDay0=getSlotsForDay(0,agGran);
-  const _cw=28;        // largeur MINIMALE d'une case (px) — sous laquelle on défile
   const _lw=48;        // largeur de la colonne "jour" (px)
+  const _gridHost=document.getElementById('astr-dispo-grid');
+  const _availableW=Math.max(0,(_gridHost&&_gridHost.clientWidth?_gridHost.clientWidth:0)-_lw-2);
+  // En paysage, répartir exactement les 24 créneaux sur la largeur disponible.
+  // Sur un écran plus étroit ou avec une granularité fine, conserver 24 px et
+  // permettre le défilement horizontal.
+  const _cw=Math.max(24,Math.floor(_availableW/slotsDay0));
   const _totalW=_lw+slotsDay0*_cw;
-  // Le conteneur interne s'étire à 100% sur grand écran (cases élargies via flex),
-  // mais garde une largeur minimale sur petit écran (défilement horizontal).
+  // Largeur explicite : évite les arrondis Flexbox de Safari qui coupaient le
+  // dernier créneau 07h–08h en orientation paysage.
   h+='<div class="dispo-scroll" style="overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;">';
-  h+='<div style="min-width:'+_totalW+'px;width:100%;">';
+  h+='<div style="min-width:'+_totalW+'px;width:'+_totalW+'px;">';
   // En-tête des heures — même présentation que le planning :
   // ligne 1 = heures de début, ligne 2 = heures de fin (décalées, grisées).
   const _startH=ASTR_CONFIG.weekStartHour??0;
@@ -4998,14 +5003,14 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
   h+='<div style="display:flex;">'+'<div style="width:'+_lw+'px;flex-shrink:0;"></div>';
   for(let s=0;s<slotsDay0;s++){
     const showLbl=(agGran>=60)||(s%(60/agGran)===0);
-    h+='<div style="flex:1 0 '+_cw+'px;text-align:center;font-size:10px;font-weight:500;color:var(--t2);white-space:nowrap;overflow:hidden;">'+(showLbl?_hLabel(s):'')+'</div>';
+    h+='<div style="flex:0 0 '+_cw+'px;width:'+_cw+'px;text-align:center;font-size:10px;font-weight:500;color:var(--t2);white-space:nowrap;overflow:hidden;">'+(showLbl?_hLabel(s):'')+'</div>';
   }
   h+='</div>';
   // Ligne 2 : heures de fin (créneau suivant)
   h+='<div style="display:flex;margin-bottom:2px;">'+'<div style="width:'+_lw+'px;flex-shrink:0;"></div>';
   for(let s=0;s<slotsDay0;s++){
     const showLbl=(agGran>=60)||(s%(60/agGran)===0);
-    h+='<div style="flex:1 0 '+_cw+'px;text-align:center;font-size:9px;font-weight:400;color:var(--t3,#9CA3AF);white-space:nowrap;overflow:hidden;">'+(showLbl?_hLabel(s+1):'')+'</div>';
+    h+='<div style="flex:0 0 '+_cw+'px;width:'+_cw+'px;text-align:center;font-size:9px;font-weight:400;color:var(--t3,#9CA3AF);white-space:nowrap;overflow:hidden;">'+(showLbl?_hLabel(s+1):'')+'</div>';
   }
   h+='</div>';
   for(let d=0;d<7;d++){
@@ -5019,7 +5024,7 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
       const cursor=canEdit?'pointer':'default';
       const oc=canEdit?'toggleDispoCell(\''+wk+'\',\''+login+'\','+d+','+s+',this,\''+(eq?eq.color:'#22C55E')+'\')':'';
       const dragVal=isDispo?'true':isIndispo?'false':'null';
-      h+='<div style="flex:1 0 '+_cw+'px;box-sizing:border-box;height:28px;background:'+bg+';cursor:'+cursor+';transition:background .1s;border-radius:3px;border:1px solid #fff;user-select:none;"'
+      h+='<div style="flex:0 0 '+_cw+'px;width:'+_cw+'px;box-sizing:border-box;height:28px;background:'+bg+';cursor:'+cursor+';transition:background .1s;border-radius:3px;border:1px solid #fff;user-select:none;"'
         +' title="'+jourLabel(d,true)+' '+slotToLabelDay(d,s,agGran)+'"'
         +' data-wk="'+wk+'" data-login="'+login+'" data-d="'+d+'" data-s="'+s+'" data-val="'+dragVal+'"'
         +(canEdit?' onmousedown="startDispoDrag(this)" onmouseenter="continueDispoDrag(this)"':'')

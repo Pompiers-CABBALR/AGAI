@@ -49,6 +49,11 @@ La mise en page prend en charge :
 Il est recommandé de tester au minimum un iPhone Safari, un smartphone Android
 Chrome, une tablette et un ordinateur avant chaque mise en production.
 
+En orientation paysage, les menus utilisent une colonne par rubrique et peuvent
+afficher leur libellé sur deux lignes. La grille des disponibilités répartit les
+24 créneaux horaires sur la largeur réellement disponible ; le dernier créneau
+07 h–08 h ne doit plus être coupé par Safari.
+
 ## Vérification
 
 La variante a été contrôlée sur les points suivants :
