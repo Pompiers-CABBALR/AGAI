@@ -1131,8 +1131,7 @@ function actCalcDuree(){
     const [hh,mm]=hd.split(':').map(Number), [hh2,mm2]=hf.split(':').map(Number);
     let mins=(hh2*60+mm2)-(hh*60+mm);
     if(mins<0)mins+=24*60;
-    const h=Math.floor(mins/60),m=mins%60;
-    el.value=h+'h'+(m>0?String(m).padStart(2,'0'):'00');
+    el.value=dureeMinutesHHMM(mins);
   } else { el.value=''; }
 }
 
@@ -1234,7 +1233,7 @@ function rActiviteList(){
         return `<div class="hm" onclick="${canSee?`actVoirDetail('${a.id}')`:''}">
           <span style="font-family:monospace;font-size:10px;color:var(--t3);">${a.date.slice(8,10)}/${m}/${y}</span>
           <span style="flex:1;font-size:12px;color:var(--t);">${ico} ${a.type}</span>
-          <span style="font-size:11px;color:var(--t2);">${a.hDebut||''}${a.hFin?' → '+a.hFin:''} ${a.duree?'· '+a.duree:''} · ${nbP}p${pb}</span>
+          <span style="font-size:11px;color:var(--t2);">${a.hDebut||''}${a.hFin?' → '+a.hFin:''} ${(a.duree||a.hDebut&&a.hFin)?'· '+dureeFormatHHMM(a.duree,a.hDebut,a.hFin):''} · ${nbP}p${pb}</span>
           ${!canSee?'<span style="font-size:10px;color:var(--t3);">🔒</span>':''}
           ${canSee?`<button class="btn sm" style="background:var(--rd);color:#fff;font-size:10px;padding:1px 5px;margin-left:4px;" onclick="event.stopPropagation();actImprimerRapport('${a.id}')">🖨</button>`:''}
           ${isAdmin?`<button class="btn sm" style="font-size:10px;padding:1px 5px;" onclick="event.stopPropagation();actEditer('${a.id}')">✏️</button>`:''}
@@ -1308,7 +1307,7 @@ function actVoirDetail(id){
   document.getElementById('mi').textContent=a.type+' · '+a.date;
   document.getElementById('mb').innerHTML=`<div>
     <div class="mr"><div class="ml">Date</div><div class="mv2">${a.date}</div></div>
-    <div class="mr"><div class="ml">Heures</div><div class="mv2">${a.hDebut||'—'} → ${a.hFin||'—'} (${a.duree||'—'})</div></div>
+    <div class="mr"><div class="ml">Heures</div><div class="mv2">${a.hDebut||'—'} → ${a.hFin||'—'} (${dureeFormatHHMM(a.duree,a.hDebut,a.hFin)||'—'})</div></div>
     <div class="mr"><div class="ml">Type</div><div class="mv2">${a.type}</div></div>
     <div class="mr"><div class="ml">Participants (${nbP})</div><div class="mv2" style="font-size:12px;line-height:1.8;">${presListe||'—'}</div></div>
     <div class="msep"></div>
@@ -1342,7 +1341,7 @@ function actEditer(id){
       <div class="fg"><div class="fgl">Heure début</div><input class="fi" type="time" id="aedit-hd" value="${a.hDebut||''}" oninput="aeditCalcDuree()"/></div>
       <div class="fg"><div class="fgl">Heure fin</div><input class="fi" type="time" id="aedit-hf" value="${a.hFin||''}" oninput="aeditCalcDuree()"/></div>
     </div>
-    <div class="fg"><div class="fgl">Durée calculée</div><input class="fi" type="text" id="aedit-duree" value="${a.duree||''}" readonly style="background:#f5f5f7;color:var(--t2);"/></div>
+    <div class="fg"><div class="fgl">Durée calculée</div><input class="fi" type="text" id="aedit-duree" value="${dureeFormatHHMM(a.duree,a.hDebut,a.hFin)}" readonly style="background:#f5f5f7;color:var(--t2);"/></div>
     <div class="fg"><div class="fgl">Participants</div><div style="background:var(--bg);border-radius:10px;padding:8px;border:1px solid var(--brd);max-height:150px;overflow-y:auto;" id="aedit-participants">${agentsOpts}</div></div>
     <div class="fg"><div class="fgl">Compte rendu</div><textarea class="fta" id="aedit-cr" style="min-height:80px;">${a.cr||''}</textarea></div>
     <div class="fg"><div class="fgl">Motif de modification <span class="req">*</span></div><input class="fi" type="text" id="aedit-motif" placeholder="Ex : correction heure de fin..."/></div>
@@ -1354,7 +1353,7 @@ function actEditer(id){
 function aeditCalcDuree(){
   const hd=document.getElementById('aedit-hd')?.value,hf=document.getElementById('aedit-hf')?.value;
   const el=document.getElementById('aedit-duree');if(!el)return;
-  if(hd&&hf){const [h,m]=hd.split(':').map(Number),[h2,m2]=hf.split(':').map(Number);let mins=(h2*60+m2)-(h*60+m);if(mins<0)mins+=1440;el.value=Math.floor(mins/60)+'h'+String(mins%60).padStart(2,'0');}else el.value='';
+  if(hd&&hf)el.value=dureeHHMM(hd,hf)||'';else el.value='';
 }
 function actSaveEdit(id){
   const data=actGetData();

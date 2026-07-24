@@ -29,7 +29,7 @@ function fmpaMinutes(f){
   const [h,m]=f.hDebut.split(':').map(Number),[h2,m2]=f.hFin.split(':').map(Number);
   let mins=(h2*60+m2)-(h*60+m);if(mins<0)mins+=1440;return mins;
 }
-function fmpaMinToStr(mins){return Math.floor(mins/60)+'h'+String(mins%60).padStart(2,'0');}
+function fmpaMinToStr(mins){return dureeMinutesHHMM(mins);}
 
 // ══════════════════════════════════════════════════════
 // FORMATIONS STAGIAIRES & FORMATEURS
@@ -52,7 +52,7 @@ function formSlotMins(hd,hf){
   const mins=(h2*60+m2)-(h*60+m);
   return mins>0?mins:0;
 }
-function formMinsToHStr(mins){return Math.floor(mins/60)+'h'+String(mins%60).padStart(2,'0');}
+function formMinsToHStr(mins){return dureeMinutesHHMM(mins);}
 
 // ── Calcul durée (matin + après-midi, multi-jours) ──
 function formCalcDuree(pfx){
@@ -87,7 +87,7 @@ function formMinsTotal(f){
   const minsAprem=formSlotMins(f.hapremd,f.hapremf);
   return (minsMatin+minsAprem)*nbJ;
 }
-function formMinsToStr(m){return Math.floor(m/60)+'h'+String(m%60).padStart(2,'0');}
+function formMinsToStr(m){return dureeMinutesHHMM(m);}
 
 // ── Chargement participants ──
 function formLoadAgents(containerId, existingList, accentColor){
@@ -330,7 +330,7 @@ function formVoirDetail(type,id){
     <div class="mr"><div class="ml">Période</div><div class="mv2">${f.ddebut}${f.dfin!==f.ddebut?' → '+f.dfin:''}</div></div>
     ${(f.hmatind||f.hmatinf)?`<div class="mr"><div class="ml">Matin</div><div class="mv2">${f.hmatind||'—'} → ${f.hmatinf||'—'}</div></div>`:''}
     ${(f.hapremd||f.hapremf)?`<div class="mr"><div class="ml">Après-midi</div><div class="mv2">${f.hapremd||'—'} → ${f.hapremf||'—'}</div></div>`:''}
-    <div class="mr"><div class="ml">Heures/jour</div><div class="mv2">${f.hjour||'—'}</div></div>
+    <div class="mr"><div class="ml">Heures/jour</div><div class="mv2">${formMinsToStr(formSlotMins(f.hmatind,f.hmatinf)+formSlotMins(f.hapremd,f.hapremf))}</div></div>
     <div class="mr"><div class="ml">Total créneau</div><div class="mv2"><strong>${formMinsToStr(mins)}</strong></div></div>
     ${f.lieu?`<div class="mr"><div class="ml">Lieu</div><div class="mv2">${f.lieu}</div></div>`:''}
     <div class="msep"></div>
@@ -392,7 +392,7 @@ function fmpaCalcDuree(){
   if(hd&&hf){
     const [h,m]=hd.split(':').map(Number),[h2,m2]=hf.split(':').map(Number);
     let mins=(h2*60+m2)-(h*60+m);if(mins<0)mins+=1440;
-    el.value=Math.floor(mins/60)+'h'+String(mins%60).padStart(2,'0');
+    el.value=dureeMinutesHHMM(mins);
   }else el.value='';
 }
 
@@ -513,7 +513,7 @@ function rFmpaList(){
         return `<div class="hm" onclick="fmpaVoirDetail('${f.id}')">
           <span style="font-family:monospace;font-size:10px;color:var(--t3);">${f.date.slice(8,10)}/${m}/${y}</span>
           <span style="flex:1;font-size:12px;color:var(--t);">🚒 ${f.theme}</span>
-          <span style="font-size:11px;color:var(--t2);">${f.hDebut||''}${f.hFin?' → '+f.hFin:''} ${f.duree?'· '+f.duree:''} · ${nbP}s/${nbF}f</span>
+          <span style="font-size:11px;color:var(--t2);">${f.hDebut||''}${f.hFin?' → '+f.hFin:''} ${(f.duree||f.hDebut&&f.hFin)?'· '+dureeFormatHHMM(f.duree,f.hDebut,f.hFin):''} · ${nbP}s/${nbF}f</span>
 
           ${isAdmin?`<button class="btn sm" style="font-size:10px;padding:1px 5px;" onclick="event.stopPropagation();fmpaEditer('${f.id}')">✏️</button>`:''}
           ${isSuperAdmin()?`<button class="btn sm danger" style="font-size:10px;padding:1px 5px;" onclick="event.stopPropagation();deleteFmpa('${f.id}')">🗑</button>`:''}
@@ -584,7 +584,7 @@ function fmpaVoirDetail(id){
   document.getElementById('mb').innerHTML=`<div>
     <div class="mr"><div class="ml">Date</div><div class="mv2">${a.date}</div></div>
     <div class="mr"><div class="ml">Thème</div><div class="mv2">${a.theme}</div></div>
-    <div class="mr"><div class="ml">Heures</div><div class="mv2">${a.hDebut||'—'} → ${a.hFin||'—'} (${a.duree||'—'})</div></div>
+    <div class="mr"><div class="ml">Heures</div><div class="mv2">${a.hDebut||'—'} → ${a.hFin||'—'} (${dureeFormatHHMM(a.duree,a.hDebut,a.hFin)||'—'})</div></div>
     <div class="mr"><div class="ml">Stagiaires (${nbP})</div><div class="mv2" style="font-size:12px;line-height:1.8;">${presListe||'—'}</div></div>
     <div class="mr"><div class="ml">Formateurs (${nbF})</div><div class="mv2" style="font-size:12px;line-height:1.8;">${formListe||'—'}</div></div>
     <div class="msep"></div>
@@ -624,7 +624,7 @@ function fmpaEditer(id){
       <div class="fg"><div class="fgl">Heure début</div><input class="fi" type="time" id="fmedit-hd" value="${a.hDebut||''}" oninput="fmeditCalcDuree()"/></div>
       <div class="fg"><div class="fgl">Heure fin</div><input class="fi" type="time" id="fmedit-hf" value="${a.hFin||''}" oninput="fmeditCalcDuree()"/></div>
     </div>
-    <div class="fg"><div class="fgl">Durée calculée</div><input class="fi" type="text" id="fmedit-duree" value="${a.duree||''}" readonly style="background:#f5f5f7;color:var(--t2);"/></div>
+    <div class="fg"><div class="fgl">Durée calculée</div><input class="fi" type="text" id="fmedit-duree" value="${dureeFormatHHMM(a.duree,a.hDebut,a.hFin)}" readonly style="background:#f5f5f7;color:var(--t2);"/></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
       <div class="fg"><div class="fgl">Stagiaires</div><div style="background:var(--bg);border-radius:10px;padding:8px;border:1px solid var(--brd);max-height:160px;overflow-y:auto;" id="fmedit-participants">${mkParticipantsOpts(a.participants||[])}</div></div>
       <div class="fg"><div class="fgl">Formateurs</div><div style="background:var(--bg);border-radius:10px;padding:8px;border:1px solid var(--brd);max-height:160px;overflow-y:auto;" id="fmedit-formateurs">${mkFormateursOpts(a.formateurs||[])}</div></div>
@@ -638,7 +638,7 @@ function fmpaEditer(id){
 function fmeditCalcDuree(){
   const hd=document.getElementById('fmedit-hd')?.value,hf=document.getElementById('fmedit-hf')?.value;
   const el=document.getElementById('fmedit-duree');if(!el)return;
-  if(hd&&hf){const [h,m]=hd.split(':').map(Number),[h2,m2]=hf.split(':').map(Number);let mins=(h2*60+m2)-(h*60+m);if(mins<0)mins+=1440;el.value=Math.floor(mins/60)+'h'+String(mins%60).padStart(2,'0');}else el.value='';
+  if(hd&&hf)el.value=dureeHHMM(hd,hf)||'';else el.value='';
 }
 function fmpaSaveEdit(id){
   const a=fmpaGetData().find(x=>x.id===id);

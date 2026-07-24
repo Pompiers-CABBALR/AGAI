@@ -575,8 +575,7 @@ function showDispoRequestModal(wk,login){
     // Sélecteur de valeur pour un créneau
     const opts=[
       {v:'true',label:'Dispo',color:'#22C55E'},
-      {v:'false',label:'Indispo',color:'#EF4444'},
-      {v:'null',label:'Non renseign\u00e9',color:'#9CA3AF'}
+      {v:'false',label:'Indispo',color:'#EF4444'}
     ];
     return '<select id="val_'+keyPrefix+'" style="font-size:10px;padding:1px 3px;border:1px solid var(--brd);border-radius:4px;margin-left:4px;" onchange="reqApplyGlobal(this,\''+keyPrefix+'\')">'
       +opts.map(function(o){return '<option value="'+o.v+'"'+(String(curVal)===o.v?' selected':'')+' style="background:'+o.color+';color:#fff;">'+o.label+'</option>';}).join('')
@@ -626,7 +625,6 @@ function showDispoRequestModal(wk,login){
     +'<span style="font-size:11px;font-weight:600;color:#5B21B6;">Appliquer \u00e0 tous les cr\u00e9neaux coch\u00e9s :</span>'
     +'<button type="button" class="btn sm" style="font-size:10px;background:#22C55E;color:#fff;border-color:#22C55E;" onclick="reqApplyAllVal(\'true\')">Dispo</button>'
     +'<button type="button" class="btn sm" style="font-size:10px;background:#EF4444;color:#fff;border-color:#EF4444;" onclick="reqApplyAllVal(\'false\')">Indispo</button>'
-    +'<button type="button" class="btn sm" style="font-size:10px;" onclick="reqApplyAllVal(\'null\')">Non renseign\u00e9</button>'
     +'<button type="button" class="btn sm" style="font-size:10px;margin-left:auto;" onclick="reqSelectAll(true)">Tout s\u00e9lectionner</button>'
     +'</div>'
     +creneauxHtml
@@ -690,7 +688,7 @@ function envoyerDispoRequest(wk,login){
   const slotsDetail=Object.keys(slotsByDay).map(function(d){
     const jourDate=new Date(mon);jourDate.setDate(jourDate.getDate()+parseInt(d));
     const dateStr=JOURS_FULL[d]+' '+jourDate.getDate()+' '+MOIS_FR[jourDate.getMonth()];
-    const valLabels={'true':'Dispo','false':'Indispo','null':'Non renseign\u00e9'};
+    const valLabels={'true':'Dispo','false':'Indispo'};
     const heures=slotsByDay[d].map(function(x){
       const totalMin=(startHour*60+x.s*gran)%1440;
       const h=pad(Math.floor(totalMin/60))+'h'+(totalMin%60?pad(totalMin%60):'');
@@ -737,8 +735,7 @@ function repondreDispoRequest(wk,reqId,reponse){
     (req.slots||[]).forEach(function(s){
       const key=typeof s==='string'?s:s.key;
       const newVal=typeof s==='object'?s.newVal:'true';
-      if(newVal==='null')delete DISPOS[wk][req.login][key];
-      else DISPOS[wk][req.login][key]=newVal==='true';
+      if(newVal==='true'||newVal==='false')DISPOS[wk][req.login][key]=newVal==='true';
     });
     // Sauvegarder les dispos dans la caserne
     if(CD())CD().dispos=DISPOS;
@@ -817,7 +814,7 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
     +((canEdit&&!isMe)?'<div style="margin-left:auto;display:flex;gap:4px;">'
       +'<button class="btn sm" style="font-size:10px;padding:2px 7px;" onclick="setAllDispoFor(\''+wk+'\',\''+login+'\',true,\''+(eq?eq.color:'#22C55E')+'\')">&#x2705; Tout</button>'
       +'<button class="btn sm" style="font-size:10px;padding:2px 7px;" onclick="setAllDispoFor(\''+wk+'\',\''+login+'\',false,\''+(eq?eq.color:'#22C55E')+'\')">&#x274C; Rien</button>'
-      +'<button class="btn sm" style="font-size:10px;padding:2px 7px;color:#E24B4A;" onclick="setAllDispoFor(\''+wk+'\',\''+login+'\',null,\'\')">&#x1F5D1;</button>'
+      +'<button class="btn sm" title="Tout effacer" style="font-size:10px;padding:2px 7px;color:#E24B4A;" onclick="clearAllDispoFor(\''+wk+'\',\''+login+'\',\''+(eq?eq.color:'#888')+'\')">&#x1F5D1;</button>'
       +'</div>':'')
     +'</div>';
   // Grille alignée : largeur de case FIXE (aligne en-tête et cases, évite tout décalage).
@@ -952,7 +949,7 @@ function rAstrDispo(){
   } else if(pastDeadline&&isNextWeek){
     infoEl.innerHTML='<span style="color:#E24B4A;">&#x26A0; Deadline ('+dlLabel+') d\u00e9pass\u00e9e.'+(isResp||isAdmin?' Vous pouvez toujours modifier.':' Contactez votre responsable.')+'</span>';
   } else {
-    infoEl.innerHTML='Cr\u00e9neaux disponibles = vert, indisponibles = rouge. <strong>Deadline\u00a0: '+dlLabel+'.</strong>';
+    infoEl.innerHTML='Non renseignés = gris. Après sélection : disponible = vert, indisponible = rouge. Le gris revient uniquement avec « Tout effacer ». <strong>Deadline\u00a0: '+dlLabel+'.</strong>';
   }
 
   // Panneau demandes de modification en attente (resp/admin seulement)
@@ -1019,7 +1016,7 @@ function rAstrDispo(){
       btnDiv.style.display='flex';
       const btnSave=btnDiv.querySelector('button[onclick="saveDispo()"]');
       if(btnSave)btnSave.disabled=false;
-      // Masquer les boutons "Tout dispo/indispo/Effacer" qui n'ont pas de sens en mode autres
+      // Masquer les commandes globales qui n'ont pas de sens en mode autres
       btnDiv.querySelectorAll('button[onclick^="setAllDispo"],button[onclick="clearDispo()"]').forEach(b=>b.style.display='none');
     }
     const validBannerEl=document.getElementById('dispo-valid-banner');
@@ -1067,7 +1064,7 @@ function rAstrDispo(){
     const btnsAll=btnDiv.querySelectorAll('button[onclick^="setAllDispo"],button[onclick="clearDispo()"]');
     const locked=pastDeadline&&!isAdmin&&!isResp;
     if(btnSave)btnSave.disabled=locked;
-    // Réafficher les boutons tout dispo/indispo/effacer en mode mes/equipe
+    // Réafficher les commandes globales en mode mes/equipe
     btnsAll.forEach(b=>{b.style.display='';b.disabled=locked;});
   }
 }
@@ -1080,20 +1077,19 @@ function toggleDispoCell(wk,login,d,s,el,eqColor){
   if(!DISPOS[wk][login])DISPOS[wk][login]={};
   const key=`${d}_${s}`;
   const cur=DISPOS[wk][login][key];
-  if(cur===true){DISPOS[wk][login][key]=false;el.style.background='#EF4444';}
-  else if(cur===false){delete DISPOS[wk][login][key];el.style.background='#E5E7EB';}
-  else{DISPOS[wk][login][key]=true;el.style.background='#22C55E';}
+  const next=cur===true?false:true;
+  DISPOS[wk][login][key]=next;
+  el.style.background=next?'#22C55E':'#EF4444';
+  el.dataset.val=String(next);
 }
 // ── Drag pour saisie dispo ──
 let _dragActive=false,_dragTargetVal=true,_dispoTouchHandled=0;
 function startDispoDrag(el){
   _jbEditLock=Date.now();
   _dragActive=true;
-  // Cycler la valeur de départ
+  // Gris (jamais renseigné) devient vert ; ensuite alternance vert ↔ rouge.
   const cur=el.dataset.val==='true'?true:el.dataset.val==='false'?false:null;
-  if(cur===true)_dragTargetVal=false;
-  else if(cur===false)_dragTargetVal=null;
-  else _dragTargetVal=true;
+  _dragTargetVal=cur===true?false:true;
   applyDispoDrag(el);
 }
 function continueDispoDrag(el){
@@ -1105,11 +1101,10 @@ function applyDispoDrag(el){
   if(!DISPOS[wk])DISPOS[wk]={};
   if(!DISPOS[wk][login])DISPOS[wk][login]={};
   const key=`${d}_${s}`;
-  if(_dragTargetVal===null)delete DISPOS[wk][login][key];
-  else DISPOS[wk][login][key]=_dragTargetVal;
-  const bg=_dragTargetVal===true?'#22C55E':_dragTargetVal===false?'#EF4444':'#E5E7EB';
+  DISPOS[wk][login][key]=_dragTargetVal;
+  const bg=_dragTargetVal===true?'#22C55E':'#EF4444';
   el.style.background=bg;
-  el.dataset.val=_dragTargetVal===null?'null':String(_dragTargetVal);
+  el.dataset.val=String(_dragTargetVal);
 }
 document.addEventListener('mouseup',()=>{_dragActive=false;});
 
@@ -1143,8 +1138,9 @@ document.addEventListener('touchmove',function(e){
 },{passive:false});
 document.addEventListener('touchend',function(){_dragActive=false;_dispoTouchHandled=Date.now();});
 document.addEventListener('touchcancel',function(){_dragActive=false;});
-function setAllDispoFor(wk,login,val,eqColor){
+function setAllDispoFor(wk,login,val,eqColor,allowClear){
   _jbEditLock=Date.now();
+  if(val!==true&&val!==false&&!(val===null&&allowClear===true)){showToast('Choisissez disponible ou indisponible.','warn');return;}
   // Vérifier les droits avant toute modification
   const isResp=isRespEquipe();
   const isAdmin=hasRight('Administration');
@@ -1175,11 +1171,16 @@ function setAllDispoFor(wk,login,val,eqColor){
   }
   saveData();rAstrDispo();
 }
+function clearAllDispoFor(wk,login,eqColor){
+  confirmModal('Tout effacer et remettre tous les créneaux en gris ?',function(){
+    setAllDispoFor(wk,login,null,eqColor,true);
+  });
+}
 function clearDispo(){
   const mon=getMondayOfWeek(astrDispoWeek);
   const wk=weekKey(mon);
   const eq=getEquipeOfUser(CU.l);
-  setAllDispoFor(wk,CU.l,null,eq?eq.color:'#888');
+  clearAllDispoFor(wk,CU.l,eq?eq.color:'#888');
 }
 function saveDispo(){
   // Marquer l'édition AVANT le push pour protéger les dispos locales pendant la propagation
@@ -2167,6 +2168,27 @@ function dureeHHMM(debut,fin){
   let diff=(fh*60+fm)-(dh*60+dm);
   if(diff<0)diff+=1440;
   return pad(Math.floor(diff/60))+':'+pad(diff%60);
+}
+
+// Format de durée unique dans AGAI, identique à celui des interventions.
+// Accepte également les anciennes valeurs "4h30" pour préserver l'historique.
+function dureeMinutesHHMM(minutes){
+  const total=Math.max(0,Math.round(Number(minutes)||0));
+  return String(Math.floor(total/60)).padStart(2,'0')+':'+String(total%60).padStart(2,'0');
+}
+function dureeValeurMinutes(value){
+  if(typeof value==='number'&&Number.isFinite(value))return Math.max(0,value);
+  const text=String(value||'').trim();
+  let match=text.match(/^(\d+):(\d{1,2})$/);
+  if(match)return Number(match[1])*60+Number(match[2]);
+  match=text.match(/^(\d+)\s*h\s*(\d{0,2})$/i);
+  if(match)return Number(match[1])*60+Number(match[2]||0);
+  return 0;
+}
+function dureeFormatHHMM(value,debut,fin){
+  const calculee=dureeHHMM(debut,fin);
+  if(calculee!==null)return calculee;
+  return value?dureeMinutesHHMM(dureeValeurMinutes(value)):'';
 }
 
 // ── Modale personnel avant départ ──

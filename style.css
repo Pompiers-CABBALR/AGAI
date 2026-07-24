@@ -630,6 +630,37 @@ button,.btn,.nb,.subtab-btn,.smopt,.fb,.ec,.ivr,[onclick]{
   }
   #nav-global{font-size:18px!important;}
 }
+
+/* Ordinateurs : libellés du menu principal et des sous-menus plus lisibles.
+   Cette règle est placée après le mode paysage afin qu'un ordinateur portable
+   ne reçoive pas la présentation compacte réservée aux écrans tactiles. */
+@media(hover:hover) and (pointer:fine) and (min-width:1024px){
+  .nav{justify-content:center;padding-right:24px;padding-left:24px;overflow-x:hidden;}
+  .nav .nb{
+    display:block;
+    flex:0 1 auto;
+    min-width:0;
+    min-height:52px;
+    padding:14px 16px;
+    font-size:15px;
+    font-weight:600;
+    line-height:1.2;
+    white-space:nowrap;
+  }
+  .nav .nb .nb-txt{
+    display:inline;
+    width:auto;
+    font-size:15px;
+    line-height:1.2;
+    white-space:nowrap;
+    overflow-wrap:normal;
+  }
+  .subtab-btn{font-size:15px;font-weight:600;padding:13px 18px;}
+}
+@media(hover:hover) and (pointer:fine) and (min-width:1600px){
+  .nav .nb{padding:15px 22px;font-size:16px;}
+  .nav .nb .nb-txt,.subtab-btn{font-size:16px;}
+}
 .form-panel-close{margin-left:auto;flex:0 0 auto;white-space:nowrap;}
 @media(orientation:landscape) and (max-width:1400px){
   .form-panel-close{min-height:40px;padding:6px 10px;}

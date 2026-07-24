@@ -236,9 +236,7 @@ function rStatsActivites(){
         if(a.hDebut&&a.hFin){
           const [h,m]=a.hDebut.split(':').map(Number),[h2,m2]=a.hFin.split(':').map(Number);
           let d=(h2*60+m2)-(h*60+m);if(d<0)d+=1440;mins+=d;
-        } else if(a.duree){
-          const pt=a.duree.match(/(\d+)h(\d*)/);if(pt)mins+=parseInt(pt[1])*60+(parseInt(pt[2])||0);
-        }
+        } else if(a.duree){mins+=dureeValeurMinutes(a.duree);}
       });
       totBrut+=mins;
       return '<td style="padding:3px 5px;text-align:center;font-size:10px;border-left:1px solid #e0e0e0;'+(mins?'font-weight:700;background:#EAF3DE;':'')+'">'+(mins?minToHHMM(mins):'—')+'</td>';
