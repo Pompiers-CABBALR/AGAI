@@ -762,19 +762,24 @@ function genRapportInterventionHTML(ivId) {
     }
   }
 
-  // Prise en charge animal (page 1 uniquement si intervention sauvetage/capture et données renseignées)
-  let pecPage1Html='';
+  // Prises en charge animales : joindre la page sapeurs-pompiers de chaque
+  // fiche enregistrée au compte rendu, dans l'ordre des animaux.
+  let pecPagesHtml='';
   const isAnimalIv=!iv._isRenfort&&iv.n&&iv.n.toLowerCase().includes('sauvetage et capture d');
-  if(isAnimalIv&&iv._priseEnCharge&&(iv._priseEnCharge.espece||iv._priseEnCharge.commune||iv._priseEnCharge.requerant)){
-    const _pecFull=_buildPriseEnChargeHTML(ivId);
-    if(_pecFull){
-      // Extraire uniquement la 1ère div.page (partie sapeurs-pompiers)
+  const pecRecords=Array.isArray(iv._prisesEnCharge)?iv._prisesEnCharge:(iv._priseEnCharge?[iv._priseEnCharge]:[]);
+  if(isAnimalIv&&pecRecords.length){
+    pecRecords.forEach(function(record,index){
+      const filled=record&&(record.espece||record.commune||record.requerant||record.telephone||record.race||record.identification||record.etat);
+      if(!filled)return;
+      const _pecFull=_buildPriseEnChargeHTML(ivId,index);
+      if(!_pecFull)return;
+      // La première div.page correspond à la partie remplie par les sapeurs-pompiers.
       const _s=_pecFull.indexOf('<div class="page">');
       const _e=_pecFull.indexOf('<div class="page">',_s+1);
       if(_s>=0){
-        pecPage1Html=_e>0?_pecFull.slice(_s,_e):_pecFull.slice(_s,_pecFull.lastIndexOf('</body>'));
+        pecPagesHtml+=_e>0?_pecFull.slice(_s,_e):_pecFull.slice(_s,_pecFull.lastIndexOf('</body>'));
       }
-    }
+    });
   }
 
   return '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Rapport d\u2019intervention</title>'
@@ -816,10 +821,10 @@ function genRapportInterventionHTML(ivId) {
     +rows_html
     +'</table>'
     +(autBody?'<div class="aut-wrap">'+autBody+'</div>':'')
-    +(pecPage1Html&&autBody?'<div style="min-height:60mm;page-break-after:always;break-after:page;"></div>':'')
+    +(pecPagesHtml&&autBody?'<div style="min-height:60mm;page-break-after:always;break-after:page;"></div>':'')
     +'</div>'
-    // Page 2 : prise en charge sapeurs-pompiers — forcer nouvelle page A4
-    +(pecPage1Html?pecPage1Html.replace('<div class="page">','<div class="pec-page">').replace(/<style>[\s\S]*?<\/style>/,''):'')
+    // Pages suivantes : une prise en charge sapeurs-pompiers par animal.
+    +(pecPagesHtml?pecPagesHtml.replace(/<div class="page">/g,'<div class="pec-page">').replace(/<style>[\s\S]*?<\/style>/g,''):'')
     +'</body></html>';
 }
 function voirRapportIntervention(ivId) {
