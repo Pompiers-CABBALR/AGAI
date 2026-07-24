@@ -32,6 +32,53 @@ function retourCaserne(){
 // CONFIGURATION DES TYPES D'ENGINS (superadmin)
 // ══════════════════════════════════════════════════════
 
+function _trimLoginHistoryDeleted(){
+  const entries=Object.entries(LOGIN_HISTORY_DELETED||{}).sort(function(a,b){return String(b[1]).localeCompare(String(a[1]));}).slice(0,2000);
+  LOGIN_HISTORY_DELETED=Object.fromEntries(entries);
+}
+function deleteLoginHistoryEntries(ids){
+  if(!isSuperAdmin()){showToast('Accès réservé au super-administrateur','warn');return;}
+  const unique=[...new Set((ids||[]).filter(Boolean))];
+  if(!unique.length){showToast('Aucune connexion sélectionnée','warn');return;}
+  const deletedAt=new Date().toISOString();
+  unique.forEach(function(id){LOGIN_HISTORY_DELETED[id]=deletedAt;});
+  _trimLoginHistoryDeleted();
+  const before=LOGIN_HISTORY.length;
+  LOGIN_HISTORY=LOGIN_HISTORY.filter(function(entry){return!LOGIN_HISTORY_DELETED[entry.id];});
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);
+  showToast((before-LOGIN_HISTORY.length)+' connexion(s) supprimée(s)','success');
+  renderSuperAdmin();
+}
+function deleteAllLoginHistory(){
+  if(!isSuperAdmin()){showToast('Accès réservé au super-administrateur','warn');return;}
+  if(!LOGIN_HISTORY.length){showToast('L’historique est déjà vide','info');return;}
+  confirmModal('Effacer définitivement la totalité de l’historique des connexions ?',function(){
+    deleteLoginHistoryEntries(LOGIN_HISTORY.map(function(entry){return entry.id;}));
+  });
+}
+function updateLoginHistorySelectionCount(){
+  const selected=[...document.querySelectorAll('.login-history-check:checked')];
+  const btn=document.getElementById('login-history-delete-selected');
+  if(btn){btn.disabled=!selected.length;btn.textContent='🗑️ Supprimer la sélection'+(selected.length?' ('+selected.length+')':'');}
+  document.querySelectorAll('.login-history-group-all').forEach(function(all){
+    const checks=[...all.closest('table').querySelectorAll('.login-history-check')];
+    const selectedGroup=checks.filter(function(box){return box.checked;});
+    all.checked=!!checks.length&&selectedGroup.length===checks.length;
+    all.indeterminate=selectedGroup.length>0&&selectedGroup.length<checks.length;
+  });
+}
+function toggleLoginHistoryGroupSelection(master){
+  master.closest('table').querySelectorAll('.login-history-check').forEach(function(box){box.checked=master.checked;});
+  updateLoginHistorySelectionCount();
+}
+function deleteSelectedLoginHistory(){
+  if(!isSuperAdmin()){showToast('Accès réservé au super-administrateur','warn');return;}
+  const ids=[...document.querySelectorAll('.login-history-check:checked')].map(function(box){return box.dataset.sessionId;}).filter(Boolean);
+  if(!ids.length){showToast('Sélectionnez au moins une connexion','warn');return;}
+  confirmModal('Supprimer définitivement les '+ids.length+' connexion(s) sélectionnée(s) ?',function(){deleteLoginHistoryEntries(ids);});
+}
+
 function renderSuperAdmin(){
   const body=document.getElementById('gv-body');
   // Section gestion des comptes (admins casernes + chef de corps)
@@ -269,7 +316,10 @@ function renderSuperAdmin(){
     <div style="margin-top:20px;background:#fff;border-radius:14px;padding:16px;border:1px solid #eee;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
         <h3 style="font-size:15px;font-weight:700;margin:0;">🔐 Historique des connexions</h3>
-        <button class="btn sm danger" onclick="confirmModal('Effacer tout l\\'historique ?',function(){LOGIN_HISTORY=[];saveData();renderSuperAdmin();})">🗑️ Effacer</button>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <button class="btn sm danger" id="login-history-delete-selected" onclick="deleteSelectedLoginHistory()" disabled>🗑️ Supprimer la sélection</button>
+          <button class="btn sm danger" onclick="deleteAllLoginHistory()">🧹 Tout effacer</button>
+        </div>
       </div>
       ${(()=>{
         if(LOGIN_HISTORY.length===0)return '<div style="font-size:12px;color:#999;text-align:center;padding:20px;">Aucune connexion enregistrée</div>';
@@ -299,19 +349,20 @@ function renderSuperAdmin(){
             <div style="display:none;overflow-x:auto;">
               <table style="width:100%;border-collapse:collapse;font-size:11px;">
                 <thead><tr style="background:#f5f5f7;">
+                  <th style="padding:6px;width:34px;text-align:center;"><input type="checkbox" class="login-history-group-all" onchange="toggleLoginHistoryGroupSelection(this)" aria-label="Sélectionner toutes les connexions de ce compte"/></th>
                   <th style="padding:6px 12px;font-weight:600;text-align:left;">Connexion</th>
                   <th style="padding:6px 12px;font-weight:600;text-align:left;">Déconnexion</th>
                   <th style="padding:6px 12px;font-weight:600;text-align:left;">Statut</th>
                 </tr></thead>
                 <tbody>
-                  ${g.entries.slice(0,50).map(e=>`<tr style="border-top:1px solid #f0f0f0;">
+                  ${g.entries.map(e=>`<tr style="border-top:1px solid #f0f0f0;">
+                    <td style="padding:6px;text-align:center;"><input type="checkbox" class="login-history-check" data-session-id="${escHtml(e.id)}" onchange="updateLoginHistorySelectionCount()" aria-label="Sélectionner cette connexion"/></td>
                     <td style="padding:6px 12px;color:#444;">${fmt(e.hConnexion)}</td>
                     <td style="padding:6px 12px;color:#444;">${e.hDeconnexion?fmt(e.hDeconnexion):'—'}</td>
                     <td style="padding:6px 12px;">${e.actif?'<span style="color:#065F46;font-weight:600;">🟢 En ligne</span>':'<span style="color:#9CA3AF;">Déconnecté</span>'}</td>
                   </tr>`).join('')}
                 </tbody>
               </table>
-              ${g.entries.length>50?`<div style="font-size:11px;color:#999;text-align:center;padding:6px;">50 dernières sur ${g.entries.length}</div>`:''}
             </div>
           </div>`;
         }).join('');

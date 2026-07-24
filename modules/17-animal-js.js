@@ -720,6 +720,7 @@ function _buildDataObject(){
     DISPOS_UNLOCKED:{...DISPOS_UNLOCKED},
     DISPO_REQUESTS:{...DISPO_REQUESTS},
     LOGIN_HISTORY:[...LOGIN_HISTORY],
+    LOGIN_HISTORY_DELETED:{...LOGIN_HISTORY_DELETED},
   };
   Object.keys(CASERNE_DATA).forEach(cid=>{
     const d=CASERNE_DATA[cid];
@@ -819,7 +820,8 @@ function _applyDataObject(data){
   if(data.PILP_COUNTER)Object.assign(PILP_COUNTER,data.PILP_COUNTER);
   if(data.DISPOS_UNLOCKED)Object.assign(DISPOS_UNLOCKED,data.DISPOS_UNLOCKED);
   if(data.DISPO_REQUESTS)Object.assign(DISPO_REQUESTS,data.DISPO_REQUESTS);
-  if(data.LOGIN_HISTORY)LOGIN_HISTORY=data.LOGIN_HISTORY;
+  if(data.LOGIN_HISTORY_DELETED)LOGIN_HISTORY_DELETED={...data.LOGIN_HISTORY_DELETED};
+  if(data.LOGIN_HISTORY)LOGIN_HISTORY=data.LOGIN_HISTORY.filter(function(entry){return!LOGIN_HISTORY_DELETED[entry.id];});
   // Migration fonctions formateur
   const MFF={'EAP 1 (Op\u00e9rateur des Activit\u00e9s Physiques)':'EAP 1','EAP 2 (\u00c9ducateur des Activit\u00e9s Physiques)':'EAP 2','EAP 3 (Conseiller des Activit\u00e9s Physiques)':'EAP 3','ACCPRO (Accompagnateur de Proximit\u00e9)':'ACCPRO','FOR ACC (Formateur Accompagnateur)':'FOR ACC','FPS (Formateur Premier Secours)':'FPS','FFPS (Formateur de formateur de premiers secours)':'FFPS'};
   function migrateUser(u){if(u.fonctionsFormateur&&u.fonctionsFormateur.length){const m=u.fonctionsFormateur.map(f=>MFF[f]||f);u.fonctionsFormateur=[...new Set(m)];}}
@@ -947,7 +949,8 @@ async function _jbPush(data){
     merged.PILP_COUNTER=Object.assign({},current.PILP_COUNTER||{},data.PILP_COUNTER||{});
     merged.DISPO_REQUESTS=Object.assign({},current.DISPO_REQUESTS||{},data.DISPO_REQUESTS||{});
     merged.DISPOS_UNLOCKED=Object.assign({},current.DISPOS_UNLOCKED||{},data.DISPOS_UNLOCKED||{});
-    merged.LOGIN_HISTORY=data.LOGIN_HISTORY||current.LOGIN_HISTORY||[];
+    merged.LOGIN_HISTORY_DELETED=Object.assign({},current.LOGIN_HISTORY_DELETED||{},data.LOGIN_HISTORY_DELETED||{});
+    merged.LOGIN_HISTORY=(data.LOGIN_HISTORY||current.LOGIN_HISTORY||[]).filter(function(entry){return!merged.LOGIN_HISTORY_DELETED[entry.id];});
     merged.v=data.v;
     // Sauvegarder le merge — version allégée pour le PUT (réduit le payload sous
     // la limite JSONBin). On ne touche PAS à `merged` : le cache local garde tout.
@@ -1223,7 +1226,8 @@ function _sbSplitRows(data){
     PILP_COUNTER: data.PILP_COUNTER,
     DISPOS_UNLOCKED: data.DISPOS_UNLOCKED,
     DISPO_REQUESTS: data.DISPO_REQUESTS,
-    LOGIN_HISTORY: data.LOGIN_HISTORY
+    LOGIN_HISTORY: data.LOGIN_HISTORY,
+    LOGIN_HISTORY_DELETED: data.LOGIN_HISTORY_DELETED
   };
   rows.push({ caserne: SB_GLOBAL_ROW, data: globalPayload });
   // Clés globales rangées dans CASERNE_DATA (ex. _cabbalrActif, _global)
@@ -1253,7 +1257,8 @@ function _sbAssembleRows(rows){
         NAT: g.NAT, COM: g.COM, ENGIN_TYPES: g.ENGIN_TYPES, APL_COUNTER: g.APL_COUNTER,
         INT_GLOBAL_COUNTER: g.INT_GLOBAL_COUNTER, INT_CAS_COUNTER: g.INT_CAS_COUNTER,
         PILP_COUNTER: g.PILP_COUNTER, DISPOS_UNLOCKED: g.DISPOS_UNLOCKED,
-        DISPO_REQUESTS: g.DISPO_REQUESTS, LOGIN_HISTORY: g.LOGIN_HISTORY
+        DISPO_REQUESTS: g.DISPO_REQUESTS, LOGIN_HISTORY: g.LOGIN_HISTORY,
+        LOGIN_HISTORY_DELETED: g.LOGIN_HISTORY_DELETED
       });
       if (g._CD_GLOBAL) Object.keys(g._CD_GLOBAL).forEach(k => { data.CASERNE_DATA[k] = g._CD_GLOBAL[k]; });
     } else {
@@ -1540,6 +1545,7 @@ function _rcSplitAll(data){
     APL_COUNTER:data.APL_COUNTER, INT_GLOBAL_COUNTER:data.INT_GLOBAL_COUNTER, INT_CAS_COUNTER:data.INT_CAS_COUNTER,
     PILP_COUNTER:data.PILP_COUNTER, DISPOS_UNLOCKED:data.DISPOS_UNLOCKED, DISPO_REQUESTS:data.DISPO_REQUESTS,
     LOGIN_HISTORY:data.LOGIN_HISTORY,
+    LOGIN_HISTORY_DELETED:data.LOGIN_HISTORY_DELETED,
     _cabbalrActif:(data.CASERNE_DATA&&data.CASERNE_DATA._cabbalrActif),
     _initCabbalr:(data.CASERNE_DATA&&data.CASERNE_DATA._initCabbalr)
   }, deleted:false });
@@ -1604,10 +1610,11 @@ async function _rcMarkDeleted(caserne, type, recordIds){
 // Si fullPush=true, envoie tout (utilisé pour la migration et le 1er chargement).
 // ── Fusionne deux historiques de connexion par id de session ──
 // Garde l'entrée la plus complète : une déconnexion renseignée prime sur "actif".
-function _mergeLoginHistory(localArr, remoteArr){
+function _mergeLoginHistory(localArr, remoteArr, deletedMap){
+  const deleted=deletedMap||LOGIN_HISTORY_DELETED||{};
   const map={};
   const add=function(e){
-    if(!e||!e.id)return;
+    if(!e||!e.id||deleted[e.id])return;
     const ex=map[e.id];
     if(!ex){map[e.id]=e;return;}
     // Priorité à l'entrée qui a une heure de déconnexion
@@ -1712,7 +1719,8 @@ async function _rcPull(silent){
           const g=r.data||{};
           Object.assign(data, {v:g.v, CASERNES:g.CASERNES, GLOBAL_ACCOUNTS:g.GLOBAL_ACCOUNTS, NAT:g.NAT, COM:g.COM, ENGIN_TYPES:g.ENGIN_TYPES,
             APL_COUNTER:g.APL_COUNTER, INT_GLOBAL_COUNTER:g.INT_GLOBAL_COUNTER, INT_CAS_COUNTER:g.INT_CAS_COUNTER,
-            PILP_COUNTER:g.PILP_COUNTER, DISPOS_UNLOCKED:g.DISPOS_UNLOCKED, DISPO_REQUESTS:g.DISPO_REQUESTS, LOGIN_HISTORY:g.LOGIN_HISTORY});
+            PILP_COUNTER:g.PILP_COUNTER, DISPOS_UNLOCKED:g.DISPOS_UNLOCKED, DISPO_REQUESTS:g.DISPO_REQUESTS, LOGIN_HISTORY:g.LOGIN_HISTORY,
+            LOGIN_HISTORY_DELETED:g.LOGIN_HISTORY_DELETED});
           // Si une modification locale récente est en cours (ex. changement de mot de
           // passe superadmin), on conserve la version locale de GLOBAL_ACCOUNTS pour
           // ne pas l'écraser avec la version distante avant que le push soit confirmé.
@@ -1722,7 +1730,8 @@ async function _rcPull(silent){
           // Fusion de l'historique de connexion : on combine remote et local par id
           // de session, en gardant l'entrée la plus complète (déconnexion renseignée
           // l'emporte). Évite qu'une connexion d'un autre poste efface une déconnexion.
-          data.LOGIN_HISTORY=_mergeLoginHistory(typeof LOGIN_HISTORY!=='undefined'?LOGIN_HISTORY:[], g.LOGIN_HISTORY||[]);
+          data.LOGIN_HISTORY_DELETED=Object.assign({},g.LOGIN_HISTORY_DELETED||{},typeof LOGIN_HISTORY_DELETED!=='undefined'?LOGIN_HISTORY_DELETED:{});
+          data.LOGIN_HISTORY=_mergeLoginHistory(typeof LOGIN_HISTORY!=='undefined'?LOGIN_HISTORY:[], g.LOGIN_HISTORY||[],data.LOGIN_HISTORY_DELETED);
           // Clés globales rangées dans CASERNE_DATA (réglages superadmin partagés)
           if(!data.CASERNE_DATA)data.CASERNE_DATA={};
           if(g._cabbalrActif!==undefined)data.CASERNE_DATA._cabbalrActif=g._cabbalrActif;
