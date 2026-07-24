@@ -4044,7 +4044,18 @@ function rHist(){
   // Tri décroissant par jour puis par heure de DÉBUT d'intervention affichée.
   // Les interventions sans heure de début (ex. annulées) sont classées en fin de
   // journée (clé 0000), pour ne pas s'intercaler selon leur heure de création.
-  const _jour=iv=>(iv.h||'').slice(0,8); // AAAAMMJJ
+  const _dateKey=value=>{
+    const digits=String(value||'').replace(/\D/g,'');
+    return digits.length>=8?digits.slice(0,8):'';
+  };
+  const _jour=iv=>{
+    const timeline=Array.isArray(iv.tl)?iv.tl:[];
+    const passages=timeline.filter(function(entry){return entry&&entry.s==='en-cours'&&_dateKey(entry.h);});
+    if(passages.length)return _dateKey(passages[passages.length-1].h);
+    const clotures=timeline.filter(function(entry){return entry&&entry.s==='terminee'&&_dateKey(entry.h);});
+    if(clotures.length)return _dateKey(clotures[clotures.length-1].h);
+    return _dateKey(iv.h)||'00000000';
+  };
   const _heureDeb=iv=>{
     const hd=(iv._hDebut||'').replace(/[^0-9]/g,'');
     return hd?hd.padStart(4,'0').slice(0,4):'0000';
@@ -4066,7 +4077,7 @@ function rHist(){
     return String(b.id||'').localeCompare(String(a.id||''),'fr',{numeric:true});
   });
   const grp={};
-  ivs.forEach(iv=>{const h=iv.h,y=h.slice(0,4),m=h.slice(4,6),d=h.slice(6,8);if(!grp[y])grp[y]={};if(!grp[y][m])grp[y][m]={};if(!grp[y][m][d])grp[y][m][d]=[];grp[y][m][d].push(iv);});
+  ivs.forEach(iv=>{const h=_jour(iv),y=h.slice(0,4),m=h.slice(4,6),d=h.slice(6,8);if(!grp[y])grp[y]={};if(!grp[y][m])grp[y][m]={};if(!grp[y][m][d])grp[y][m][d]=[];grp[y][m][d].push(iv);});
   const MO=['','Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
   const ys=Object.keys(grp).sort((a,b)=>b-a);
   const c=document.getElementById('hc');
@@ -9096,7 +9107,7 @@ function rStatsHeader(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260725-ordre-historique-21';
+const APP_VERSION='20260725-date-reelle-historique-22';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
