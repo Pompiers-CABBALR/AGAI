@@ -2739,6 +2739,7 @@ function saveRequerant(id){
   if((iv.tel||'')!==newTel)notes.push('Téléphone : '+(iv.tel||'—')+' → '+(newTel||'—'));
   if(!iv._reqInit){iv._reqInit=iv.req;iv._telInit=iv.tel||'';}
   iv.req=newReq;iv.tel=newTel;
+  if(Array.isArray(iv.tels)){if(iv.tels.length)iv.tels[0]=newTel;else if(newTel)iv.tels=[newTel];}
   iv.tl.push({s:'modif',h:getH(N()),who:CU.l,note:notes.length?notes.join(' ; '):'Requérant corrigé'});
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);cM(); // push immédiat : sinon la correction est écrasée au prochain pull

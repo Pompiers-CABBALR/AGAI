@@ -350,6 +350,7 @@ function showT(id,btn){
 }
 
 // ────────────────── NATURES ──────────────────
+let _natureLastTapLabel='',_natureLastTapAt=0;
 function rNatures(list){
   const c=document.getElementById('nl');
   if(!list.length){c.innerHTML='<div style="padding:12px;text-align:center;font-size:13px;color:var(--t2);">Aucun résultat</div>';return;}
@@ -362,19 +363,22 @@ function rNatures(list){
     h+=`<div style="font-size:10px;font-weight:600;color:${P?'var(--rd)':'var(--t2)'};text-transform:uppercase;letter-spacing:.05em;padding:6px 8px 2px;">${gr}</div>`;
     g[gr].forEach(n=>{
       const sel=selNat===n.l;
-      h+=`<div style="padding:7px 10px;border-radius:7px;font-size:13px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:8px;color:${sel?'var(--rd)':'var(--t)'};background:${sel?'var(--rl)':''};font-weight:${sel?'500':''};${P?'border-left:2px solid var(--red);padding-left:8px;':''}" onclick="sN('${n.l.replace(/'/g,"\\'")}',this,false)" ondblclick="sN('${n.l.replace(/'/g,"\\'")}',this,true)"><span style="font-size:15px;width:20px;text-align:center;flex-shrink:0;">${n.i}</span>${n.l}${P?'<span style="font-size:10px;background:var(--rl);color:var(--rd);padding:1px 6px;border-radius:10px;margin-left:auto;">Prioritaire</span>':''}</div>`;
+      h+=`<div class="nature-option" style="padding:7px 10px;border-radius:7px;font-size:13px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:8px;color:${sel?'var(--rd)':'var(--t)'};background:${sel?'var(--rl)':''};font-weight:${sel?'500':''};${P?'border-left:2px solid var(--red);padding-left:8px;':''}" onclick="sN('${n.l.replace(/'/g,"\\'")}',this)"><span style="font-size:15px;width:20px;text-align:center;flex-shrink:0;">${n.i}</span>${n.l}${P?'<span style="font-size:10px;background:var(--rl);color:var(--rd);padding:1px 6px;border-radius:10px;margin-left:auto;">Prioritaire</span>':''}</div>`;
     });
   });
   c.innerHTML=h;
 }
 function filtN(q){rNatures(q?NAT.filter(n=>n.l.toLowerCase().includes(q.toLowerCase())):NAT);}
-function sN(label,el,dbl){
+function sN(label,el){
+  const now=Date.now();
+  const doubleTap=_natureLastTapLabel===label&&(now-_natureLastTapAt)<500;
+  _natureLastTapLabel=label;_natureLastTapAt=now;
   if(!hoA)hoA=new Date();selNat=label;
   document.querySelectorAll('#nl [onclick]').forEach(i=>{i.style.background='';i.style.color='var(--t)';i.style.fontWeight='';});
   el.style.background='var(--rl)';el.style.color='var(--rd)';el.style.fontWeight='500';
   document.getElementById('bn').disabled=false;
   document.getElementById('pilp-appel-chk').style.display='none'; // PILP direct désactivé
-  // Double-clic : passer directement à l'étape 2
-  if(dbl)gS(2);
+  // Deux clics ou deux appuis rapprochés : fonctionne aussi sur iPhone et Android.
+  if(doubleTap){_natureLastTapLabel='';_natureLastTapAt=0;gS(2);}
 }
 

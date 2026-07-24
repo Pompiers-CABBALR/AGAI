@@ -9,7 +9,7 @@
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
 <title>AGAI</title>
-<link rel="stylesheet" href="style.css?v=20260724-responsive-12"/>
+<link rel="stylesheet" href="style.css?v=20260724-appel-mobile-13"/>
 </head>
 <body>
 
@@ -80,11 +80,11 @@
     <div id="tab-appel" class="sec">
       <div class="sbar"><div class="sseg done" id="sa1"></div><div class="sseg" id="sa2"></div></div>
       <div style="font-size:12px;color:var(--t2);margin-bottom:10px;" id="slbl"><span style="color:var(--red);font-weight:600;">Étape 1</span> — Nature de l'intervention</div>
-      <div id="e1">
+      <div id="e1" class="appel-nature-step">
         
         <input style="width:100%;margin-bottom:8px;padding:9px 12px;border:1px solid var(--brd);border-radius:10px;font-size:13px;background:#fff;color:var(--t);" type="text" placeholder="Rechercher une nature..." oninput="filtN(this.value)" id="sn"/>
-        <div style="display:flex;flex-direction:column;gap:2px;max-height:220px;overflow-y:auto;border:1px solid var(--brd);border-radius:10px;padding:4px;background:#fff;" id="nl"></div>
-        <div class="brow"><button class="btn pr" onclick="gS(2)" id="bn" disabled>Suivant →</button></div>
+        <div class="appel-nature-list" style="display:flex;flex-direction:column;gap:2px;max-height:220px;overflow-y:auto;border:1px solid var(--brd);border-radius:10px;padding:4px;background:#fff;" id="nl"></div>
+        <div class="brow appel-nature-actions"><button class="btn pr" onclick="gS(2)" id="bn" disabled>Suivant →</button></div>
       </div>
       <div id="e2" style="display:none;">
         <div style="background:var(--bg);border-radius:10px;padding:8px 12px;margin-bottom:8px;font-size:13px;display:flex;align-items:center;justify-content:space-between;color:var(--t2);"><span>Nature : <strong id="nr" style="color:var(--t);">—</strong></span><span style="font-family:monospace;font-size:11px;color:var(--grn);" id="hr">—</span></div>
@@ -111,10 +111,35 @@
           <div id="deja-intervenu-alert" style="display:none;background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:12px;color:#92400E;"></div>
         </div>
         <div class="fg"><div class="fgl">Complément d'adresse <span style="font-size:10px;color:var(--t2);">(optionnel)</span></div><input class="fi" type="text" id="fa2" placeholder="Bât. B, apt. 12, lieu-dit…"/></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div class="appel-requerant-grid">
           <div class="fg"><div class="fgl">Requérant <span class="req">*</span></div><input class="fi" type="text" id="fr" placeholder="Nom" oninput="ce('r')"/><div class="ferr" id="er">Obligatoire.</div></div>
-          <div class="fg"><div class="fgl">Téléphone <span class="req">*</span></div><input class="fi" type="tel" id="ft" placeholder="06 XX…" oninput="ce('t')"/><div class="ferr" id="et">Obligatoire.</div></div>
+          <div class="fg">
+            <div class="fgl">Téléphone(s) <span class="req">*</span></div>
+            <div id="appel-phones">
+              <div class="appel-phone-row"><input class="fi" type="tel" id="ft" data-appel-phone placeholder="06 XX…" oninput="ce('t')"/><button type="button" class="appel-phone-add" onclick="addAppelPhone()" aria-label="Ajouter un numéro" title="Ajouter un numéro">+</button></div>
+            </div>
+            <div class="ferr" id="et">Au moins un numéro est obligatoire.</div>
+          </div>
         </div>
+        <div class="fg">
+          <div class="fgl">Disponibilité du requérant <span style="font-size:10px;color:var(--t2);">(optionnel)</span></div>
+          <select class="fi" id="req-dispo-mode" onchange="toggleReqAvailability()">
+            <option value="">Non précisée</option>
+            <option value="maintenant">Disponible maintenant</option>
+            <option value="avant">Disponible avant</option>
+            <option value="entre">Disponible entre</option>
+            <option value="apres">Disponible après</option>
+          </select>
+          <div id="req-dispo-hours" class="appel-dispo-grid" style="display:none;margin-top:8px;">
+            <div><div class="fgl" id="req-dispo-h1-label">Horaire</div><input class="fi" type="time" id="req-dispo-h1"/></div>
+            <div id="req-dispo-h2-wrap" style="display:none;"><div class="fgl">Jusqu'à</div><input class="fi" type="time" id="req-dispo-h2"/></div>
+          </div>
+          <div class="ferr" id="req-dispo-error">Renseigner l'horaire de disponibilité.</div>
+        </div>
+        <label class="appel-erp">
+          <input type="checkbox" id="chk-erp" onchange="toggleErpUrgence()"/>
+          <span><strong>Établissement recevant du public (ERP)</strong><br><span style="font-size:11px;color:var(--t2);">Cochez si l'adresse est un ERP.</span><span class="appel-erp-urgence" id="erp-urgence-msg">🚨 Intervention automatiquement classée en urgence</span></span>
+        </label>
         <div class="fg"><div class="fgl">Observations</div><textarea class="fta" id="fo" placeholder="Détails..."></textarea></div>
         <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;cursor:pointer;margin-bottom:10px;"><input type="checkbox" id="chk-sdis" style="width:18px;height:18px;accent-color:#1D4ED8;"/><span style="font-size:13px;font-weight:600;color:#1D4ED8;">🚒 Intervention SDIS</span></label>
         <div class="vbann" id="vb2">⚠️ Remplir tous les champs obligatoires.</div>
@@ -700,28 +725,28 @@
   <div class="mod"><div class="mhan"></div><div class="mtit" id="mt">—</div><div class="mid2" id="mi">—</div><div id="mb"></div><button class="mclose" onclick="cM()">Fermer</button></div>
 </div>
 
-<script src="runtime-config.js?v=20260724-responsive-12"></script>
-<script src="modules/00-preambule.js?v=20260724-responsive-12" defer></script>
-<script src="modules/01-config-js.js?v=20260724-responsive-12" defer></script>
-<script src="modules/02-auth-js-partie-1-2-structure-casernes-numerotation.js?v=20260724-responsive-12" defer></script>
-<script src="modules/03-security-js.js?v=20260724-responsive-12" defer></script>
-<script src="modules/04-auth-js-partie-2-2-login-session-droits.js?v=20260724-responsive-12" defer></script>
-<script src="modules/05-admin-js-partie-1-2-vues-globales-superadmin.js?v=20260724-responsive-12" defer></script>
-<script src="modules/06-ui-js-accueil-js.js?v=20260724-responsive-12" defer></script>
-<script src="modules/07-appel-js.js?v=20260724-responsive-12" defer></script>
-<script src="modules/08-interventions-js.js?v=20260724-responsive-12" defer></script>
-<script src="modules/09-pilp-js.js?v=20260724-responsive-12" defer></script>
-<script src="modules/10-historique-js.js?v=20260724-responsive-12" defer></script>
-<script src="modules/11-admin-js-partie-2-2-gestion-utilisateurs.js?v=20260724-responsive-12" defer></script>
-<script src="modules/12-astreintes-js.js?v=20260724-responsive-12" defer></script>
-<script src="modules/13-autorisation-js.js?v=20260724-responsive-12" defer></script>
-<script src="modules/14-stats-js.js?v=20260724-responsive-12" defer></script>
-<script src="modules/15-storage-js.js?v=20260724-responsive-12" defer></script>
-<script src="modules/16-email-js.js?v=20260724-responsive-12" defer></script>
-<script src="modules/17-animal-js.js?v=20260724-responsive-12" defer></script>
-<script src="modules/18-planning-annuel-js.js?v=20260724-responsive-12" defer></script>
-<script src="modules/19-onedrive-sync-js.js?v=20260724-responsive-12" defer></script>
-<script src="modules/20-formations-js.js?v=20260724-responsive-12" defer></script>
-<script src="modules/21-astreinte-tel-js.js?v=20260724-responsive-12" defer></script>
+<script src="runtime-config.js?v=20260724-appel-mobile-13"></script>
+<script src="modules/00-preambule.js?v=20260724-appel-mobile-13" defer></script>
+<script src="modules/01-config-js.js?v=20260724-appel-mobile-13" defer></script>
+<script src="modules/02-auth-js-partie-1-2-structure-casernes-numerotation.js?v=20260724-appel-mobile-13" defer></script>
+<script src="modules/03-security-js.js?v=20260724-appel-mobile-13" defer></script>
+<script src="modules/04-auth-js-partie-2-2-login-session-droits.js?v=20260724-appel-mobile-13" defer></script>
+<script src="modules/05-admin-js-partie-1-2-vues-globales-superadmin.js?v=20260724-appel-mobile-13" defer></script>
+<script src="modules/06-ui-js-accueil-js.js?v=20260724-appel-mobile-13" defer></script>
+<script src="modules/07-appel-js.js?v=20260724-appel-mobile-13" defer></script>
+<script src="modules/08-interventions-js.js?v=20260724-appel-mobile-13" defer></script>
+<script src="modules/09-pilp-js.js?v=20260724-appel-mobile-13" defer></script>
+<script src="modules/10-historique-js.js?v=20260724-appel-mobile-13" defer></script>
+<script src="modules/11-admin-js-partie-2-2-gestion-utilisateurs.js?v=20260724-appel-mobile-13" defer></script>
+<script src="modules/12-astreintes-js.js?v=20260724-appel-mobile-13" defer></script>
+<script src="modules/13-autorisation-js.js?v=20260724-appel-mobile-13" defer></script>
+<script src="modules/14-stats-js.js?v=20260724-appel-mobile-13" defer></script>
+<script src="modules/15-storage-js.js?v=20260724-appel-mobile-13" defer></script>
+<script src="modules/16-email-js.js?v=20260724-appel-mobile-13" defer></script>
+<script src="modules/17-animal-js.js?v=20260724-appel-mobile-13" defer></script>
+<script src="modules/18-planning-annuel-js.js?v=20260724-appel-mobile-13" defer></script>
+<script src="modules/19-onedrive-sync-js.js?v=20260724-appel-mobile-13" defer></script>
+<script src="modules/20-formations-js.js?v=20260724-appel-mobile-13" defer></script>
+<script src="modules/21-astreinte-tel-js.js?v=20260724-appel-mobile-13" defer></script>
 </body>
 </html>

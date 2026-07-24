@@ -2431,6 +2431,7 @@ function showT(id,btn){
 }
 
 // ────────────────── NATURES ──────────────────
+let _natureLastTapLabel='',_natureLastTapAt=0;
 function rNatures(list){
   const c=document.getElementById('nl');
   if(!list.length){c.innerHTML='<div style="padding:12px;text-align:center;font-size:13px;color:var(--t2);">Aucun résultat</div>';return;}
@@ -2443,20 +2444,23 @@ function rNatures(list){
     h+=`<div style="font-size:10px;font-weight:600;color:${P?'var(--rd)':'var(--t2)'};text-transform:uppercase;letter-spacing:.05em;padding:6px 8px 2px;">${gr}</div>`;
     g[gr].forEach(n=>{
       const sel=selNat===n.l;
-      h+=`<div style="padding:7px 10px;border-radius:7px;font-size:13px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:8px;color:${sel?'var(--rd)':'var(--t)'};background:${sel?'var(--rl)':''};font-weight:${sel?'500':''};${P?'border-left:2px solid var(--red);padding-left:8px;':''}" onclick="sN('${n.l.replace(/'/g,"\\'")}',this,false)" ondblclick="sN('${n.l.replace(/'/g,"\\'")}',this,true)"><span style="font-size:15px;width:20px;text-align:center;flex-shrink:0;">${n.i}</span>${n.l}${P?'<span style="font-size:10px;background:var(--rl);color:var(--rd);padding:1px 6px;border-radius:10px;margin-left:auto;">Prioritaire</span>':''}</div>`;
+      h+=`<div class="nature-option" style="padding:7px 10px;border-radius:7px;font-size:13px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:8px;color:${sel?'var(--rd)':'var(--t)'};background:${sel?'var(--rl)':''};font-weight:${sel?'500':''};${P?'border-left:2px solid var(--red);padding-left:8px;':''}" onclick="sN('${n.l.replace(/'/g,"\\'")}',this)"><span style="font-size:15px;width:20px;text-align:center;flex-shrink:0;">${n.i}</span>${n.l}${P?'<span style="font-size:10px;background:var(--rl);color:var(--rd);padding:1px 6px;border-radius:10px;margin-left:auto;">Prioritaire</span>':''}</div>`;
     });
   });
   c.innerHTML=h;
 }
 function filtN(q){rNatures(q?NAT.filter(n=>n.l.toLowerCase().includes(q.toLowerCase())):NAT);}
-function sN(label,el,dbl){
+function sN(label,el){
+  const now=Date.now();
+  const doubleTap=_natureLastTapLabel===label&&(now-_natureLastTapAt)<500;
+  _natureLastTapLabel=label;_natureLastTapAt=now;
   if(!hoA)hoA=new Date();selNat=label;
   document.querySelectorAll('#nl [onclick]').forEach(i=>{i.style.background='';i.style.color='var(--t)';i.style.fontWeight='';});
   el.style.background='var(--rl)';el.style.color='var(--rd)';el.style.fontWeight='500';
   document.getElementById('bn').disabled=false;
   document.getElementById('pilp-appel-chk').style.display='none'; // PILP direct désactivé
-  // Double-clic : passer directement à l'étape 2
-  if(dbl)gS(2);
+  // Deux clics ou deux appuis rapprochés : fonctionne aussi sur iPhone et Android.
+  if(doubleTap){_natureLastTapLabel='';_natureLastTapAt=0;gS(2);}
 }
 
 // === MODULE: appel.js ===
@@ -2554,10 +2558,11 @@ function openMapsItineraire(ids){
 }
 // Appel du requérant en tentant de masquer le numéro (préfixe #31# en France).
 // Le masquage n'est PAS garanti : il dépend de l'opérateur et du téléphone.
-function callRequerantMasque(id){
+function callRequerantMasque(id,index){
   const iv=IVS.find(v=>v.id===id)||PILP_IVS.find(v=>v.id===id);
   if(!iv){showToast('Intervention introuvable.','warn');return;}
-  const num=(iv.tel||'').replace(/\s/g,'');
+  const phones=getInterventionPhones(iv);
+  const num=(phones[Number(index)||0]||'').replace(/\s/g,'');
   if(!num){showToast('Numéro manquant.','warn');return;}
   // #31# masque le numéro pour cet appel (France). Encodé pour le lien tel:.
   showToast('Appel avec masquage du numéro (#31#). Si le masquage ne fonctionne pas, activez-le dans les réglages de votre téléphone.','info');
@@ -2706,7 +2711,54 @@ document.addEventListener('keydown',e=>{
   else if(e.key==='Escape')dd.style.display='none';
 });
 function ce(f){const m={'a':'fa','r':'fr','t':'ft','c':'ci'};const el=document.getElementById(m[f]||f);if(el)el.classList.remove('err');const er=document.getElementById('e'+f);if(er)er.style.display='none';document.getElementById('vb2').style.display='none';}
-function vF(){let ok=true;[['a','ea'],['r','er'],['t','et']].forEach(([id,eid])=>{const el=document.getElementById('f'+id);if(!el.value.trim()){ok=false;el.classList.add('err');document.getElementById(eid).style.display='block';}});if(!selC2){ok=false;document.getElementById('ci').classList.add('err');document.getElementById('ec').style.display='block';}if(!ok)document.getElementById('vb2').style.display='block';return ok;}
+function addAppelPhone(){
+  const box=document.getElementById('appel-phones');if(!box)return;
+  const row=document.createElement('div');row.className='appel-phone-row';
+  const input=document.createElement('input');input.className='fi';input.type='tel';input.placeholder='Autre numéro';input.setAttribute('data-appel-phone','');input.addEventListener('input',()=>ce('t'));
+  const remove=document.createElement('button');remove.type='button';remove.className='appel-phone-remove';remove.textContent='−';remove.title='Supprimer ce numéro';remove.setAttribute('aria-label','Supprimer ce numéro');remove.onclick=()=>row.remove();
+  row.append(input,remove);box.appendChild(row);input.focus();
+}
+function getAppelPhones(){
+  const seen=new Set();
+  return [...document.querySelectorAll('#appel-phones [data-appel-phone]')].map(e=>e.value.trim()).filter(v=>v&&!seen.has(v)&&seen.add(v));
+}
+function resetAppelPhones(){
+  const box=document.getElementById('appel-phones');if(!box)return;
+  box.querySelectorAll('.appel-phone-row').forEach((row,i)=>{if(i>0)row.remove();});
+  const first=document.getElementById('ft');if(first)first.value='';
+}
+function toggleReqAvailability(){
+  const mode=document.getElementById('req-dispo-mode')?.value||'';
+  const hours=document.getElementById('req-dispo-hours'),second=document.getElementById('req-dispo-h2-wrap'),label=document.getElementById('req-dispo-h1-label');
+  if(hours)hours.style.display=['avant','entre','apres'].includes(mode)?'grid':'none';
+  if(second)second.style.display=mode==='entre'?'':'none';
+  if(label)label.textContent=mode==='avant'?'Avant':mode==='apres'?'Après':'À partir de';
+  const err=document.getElementById('req-dispo-error');if(err)err.style.display='none';
+}
+function getReqAvailability(){
+  const mode=document.getElementById('req-dispo-mode')?.value||'';
+  const h1=document.getElementById('req-dispo-h1')?.value||'',h2=document.getElementById('req-dispo-h2')?.value||'';
+  if(!mode)return null;
+  const labels={maintenant:'Disponible maintenant',avant:'Disponible avant '+h1,entre:'Disponible entre '+h1+' et '+h2,apres:'Disponible après '+h1};
+  return{mode,h1,h2,label:labels[mode]||mode};
+}
+function validateReqAvailability(){
+  const mode=document.getElementById('req-dispo-mode')?.value||'';
+  const h1=document.getElementById('req-dispo-h1')?.value||'',h2=document.getElementById('req-dispo-h2')?.value||'';
+  const ok=!['avant','entre','apres'].includes(mode)||(h1&&(mode!=='entre'||(h2&&h2>h1)));
+  const err=document.getElementById('req-dispo-error');
+  if(err){err.textContent=mode==='entre'&&h1&&h2&&h2<=h1?'L’heure de fin doit être après l’heure de début.':"Renseigner l'horaire de disponibilité.";err.style.display=ok?'none':'block';}
+  return!!ok;
+}
+function toggleErpUrgence(){
+  const checked=!!document.getElementById('chk-erp')?.checked;
+  const msg=document.getElementById('erp-urgence-msg');if(msg)msg.style.display=checked?'block':'none';
+}
+function getInterventionPhones(iv){
+  const vals=Array.isArray(iv&&iv.tels)?iv.tels:iv&&iv.tel?[iv.tel]:[];
+  return [...new Set(vals.map(v=>String(v||'').trim()).filter(Boolean))];
+}
+function vF(){let ok=true;[['a','ea'],['r','er'],['t','et']].forEach(([id,eid])=>{const el=document.getElementById('f'+id);if(!el.value.trim()){ok=false;el.classList.add('err');document.getElementById(eid).style.display='block';}});if(!selC2){ok=false;document.getElementById('ci').classList.add('err');document.getElementById('ec').style.display='block';}if(!validateReqAvailability())ok=false;if(!ok)document.getElementById('vb2').style.display='block';return ok;}
 
 // ────────────────── ENREGISTRER APPEL ──────────────────
 // Capture les détails contextuels saisis dans les sous-menus de la prise d'appel.
@@ -2743,6 +2795,9 @@ function _captureAppelDetails(){
     if(se)d['Surface']=se+' m\u00b2';
     if(he&&se&&!isNaN(parseFloat(he))&&!isNaN(parseFloat(se)))d['Volume estim\u00e9']=(parseFloat(he)*parseFloat(se)).toFixed(1)+' m\u00b3';
   }
+  const reqDispo=getReqAvailability();
+  if(reqDispo)d['Disponibilité du requérant']=reqDispo.label;
+  if(document.getElementById('chk-erp')?.checked)d['Établissement recevant du public']='Oui — urgence';
   return Object.keys(d).length?d:null;
 }
 
@@ -2764,6 +2819,9 @@ function enr(){
   const nums=nextIntNum(annee); // Réservé pour quand l'intervention sera terminée
   let det=document.getElementById('fo').value.trim();
   const appelDetails=_captureAppelDetails();
+  const tels=getAppelPhones();
+  const reqDispo=getReqAvailability();
+  const erp=!!document.getElementById('chk-erp')?.checked;
   // Incrémenter compteur appels
   incCallCounter();
 
@@ -2772,8 +2830,8 @@ function enr(){
     const numsInt=nextIntNum(annee);
     const ivBase={id:numsInt.idCas,_numApl:numApl,_numCaserne:numsInt.numCas,_numGlobal:numsInt.numGlobal,
       n:selNat,addr,com,h,op:CU.l,s:'terminee',det,eng:null,
-      req:document.getElementById('fr').value.trim(),tel:document.getElementById('ft').value.trim(),
-      obs:'',agr:CU.l,rappels:exPilp.length,avisIds:[],_lienPilp:true,_appelDetails:appelDetails,
+      req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,
+      obs:'',agr:CU.l,rappels:exPilp.length,avisIds:[],_lienPilp:true,_appelDetails:appelDetails,reqDispo,_erp:erp,_urgence:erp,
       tl:[mkTL('en-attente',h,CU.l),mkTL('terminee',h,CU.l+' → PILP')]};
     IVS.unshift(ivBase);
     if(CD())CD().ivs=IVS;
@@ -2781,7 +2839,7 @@ function enr(){
       id:nextPilpId(annee),ivRef:numsInt.idCas,_numApl:numApl,
       // Pas de _numCaserne/_numGlobal : attribués à la clôture PILP
       n:'Nid de frelons asiatiques — PILP',addr,com,h,
-      req:document.getElementById('fr').value.trim(),tel:document.getElementById('ft').value.trim(),
+      req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,reqDispo,_erp:erp,_urgence:erp,
       localisation:null,hauteur:null,reconnaissanceFaite:false,axeTir:null,obs:det,
       s:'en-attente',agr:CU.l,tireur:null,rappels:exPilp.length,
       avisIds:exPilp.map(iv=>iv.id),tl:[mkTL('en-attente',h,CU.l)]
@@ -2796,8 +2854,8 @@ function enr(){
   }
   // Enregistrement normal — id = numéro APL, numéro INT attribué à la clôture
   const newIv={id:numApl,_numApl:numApl,
-    n:selNat,addr,com,h,op:CU.l,s:'en-attente',det,eng:null,_sdis:document.getElementById('chk-sdis')?.checked||false,
-    req:document.getElementById('fr').value.trim(),tel:document.getElementById('ft').value.trim(),
+    n:selNat,addr,com,h,op:CU.l,s:'en-attente',det,eng:null,_sdis:document.getElementById('chk-sdis')?.checked||false,_erp:erp,_urgence:erp,
+    req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,reqDispo,
     obs:'',agr:null,rappels:exIv.length,avisIds:exIv.map(iv=>iv.id),_appelDetails:appelDetails,
     tl:[mkTL('en-attente',h,CU.l)]};
   IVS.unshift(newIv);
@@ -2846,9 +2904,13 @@ function confirmerAnnulationAppel(ivId){
 }
 function rF(){
   selNat=null;selC2=null;hoA=null;nidSize=null;addrSelected=false;
+  _natureLastTapLabel='';_natureLastTapAt=0;
   document.getElementById('bn').disabled=true;
   document.getElementById('sn').value='';
-  ['fa','fa2','fr','ft','fo'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  ['fa','fa2','fr','fo','req-dispo-h1','req-dispo-h2'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  resetAppelPhones();
+  const reqMode=document.getElementById('req-dispo-mode');if(reqMode)reqMode.value='';
+  toggleReqAvailability();
   document.getElementById('fa').placeholder='Sélectionnez d’abord une commune…';
   document.getElementById('fa-dd').style.display='none';
   ['sm-g','sm-f','sm-a','sm-n','sm-e'].forEach(id=>{const e=document.getElementById(id);if(e)e.style.display='none';});
@@ -2861,6 +2923,8 @@ function rF(){
   const pc=document.getElementById('chk-pilp-direct');if(pc)pc.checked=false;
   const cm=document.getElementById('cm');if(cm)cm.style.display='none';
   const sdis=document.getElementById('chk-sdis');if(sdis)sdis.checked=false;
+  const erp=document.getElementById('chk-erp');if(erp)erp.checked=false;
+  toggleErpUrgence();
 }
 function updateH(){document.getElementById('hv').textContent=hoA?getH(hoA):getH(N());}
 function cpH(){const v=document.getElementById('hv').textContent;if(navigator.clipboard)navigator.clipboard.writeText(v).catch(()=>{});const b=document.querySelector('.cpbtn');if(b){b.textContent='✅';setTimeout(()=>b.textContent='&#x1F4CB; Copier',1500);}}
@@ -2903,7 +2967,7 @@ function renderInterventionRow(iv, ag, tireur) {
           ? ` · <span style="font-size:10px;">${iv._numGlobal ? `<span style="color:#1A6B1A;font-weight:600;">C:${escHtml(String(iv._numGlobal))}</span> ` : ''}${iv._numCaserne ? `<span style="color:#6A0DAD;font-weight:600;">UT:${escHtml(String(iv._numCaserne))}</span> ` : ''}${iv._numMois ? `<span style="color:#C0392B;font-weight:600;">M:${escHtml(String(iv._numMois))}</span>` : ''}${iv._numSDIS ? ` <span style="color:#003399;font-weight:600;">S:${escHtml(String(iv._numSDIS))}</span>` : ''}</span>` : '')
   ) : '';
 
-  return `<div class="ivr ${iv.s}${isPilp ? ' pilp' : ''}${isRenfortUT ? ' renfort-ut' : ''}">
+  return `<div class="ivr ${iv.s}${isPilp ? ' pilp' : ''}${isRenfortUT ? ' renfort-ut' : ''}${iv._urgence ? ' urgence' : ''}">
     ${chkShow ? `<div class="ivr-chk"><input type="checkbox" ${checked ? 'checked' : ''} onchange="${onchg}"/></div>` : ''}
     <div class="ivrl" onclick="${onclick}">
       <div class="ivrh">&#x1F4C5; ${(iv.h || '').slice(0, 8)}${isRenfortUT ? ' <span style="background:#7C3AED;color:#fff;border-radius:4px;padding:0 5px;font-size:9px;font-weight:700;margin-left:4px;">RENFORT UT</span>' : ''}</div>
@@ -2914,6 +2978,7 @@ function renderInterventionRow(iv, ag, tireur) {
       <span class="bdg ${bc}">${bt}</span>
       ${isPilp ? '<span class="bdg bpilp" style="font-size:10px;">PILP</span>' : ''}
       ${isRenfortUT ? '<span class="bdg" style="background:#7C3AED;color:#fff;font-size:10px;">Renfort UT</span>' : ''}
+      ${iv._urgence ? '<span class="bdg" style="background:#B91C1C;color:#fff;font-size:10px;font-weight:700;">🚨 URGENCE ERP</span>' : ''}
       ${iv._sdis ? '<span class="bdg" style="background:#1D4ED8;color:#fff;font-size:10px;font-weight:700;">SDIS</span>' : ''}
       ${iv._echelleToiture ? '<span class="bdg" style="background:#F59E0B;color:#fff;font-size:10px;">Echelle de toit</span>' : ''}
       ${iv._epa ? '<span class="bdg" style="background:#8E44AD;color:#fff;font-size:10px;">EPA</span>' : ''}
@@ -2928,6 +2993,7 @@ function renderInterventionRow(iv, ag, tireur) {
 // Tri : en-attente par date asc, autres par dernière action desc
 function sortedIVS(list){
   return list.sort((a,b)=>{
+    if(!!a._urgence!==!!b._urgence)return a._urgence?-1:1;
     const ORDER={'en-attente':0,'selectionne':1,'en-cours':2,'terminee':3,'avis-passage':4};
     const oa=ORDER[a.s]??5,ob=ORDER[b.s]??5;
     if(oa!==ob)return oa-ob;
@@ -3207,14 +3273,15 @@ function oM(id){
   }
   document.getElementById('mb').innerHTML=`
     <div style="margin-bottom:8px;"><span class="bdg ${bc}">${bt}</span>${iv.rappels?` <span class="bdg bp" style="${isAdminModeActive()?'cursor:pointer;':''}"${isAdminModeActive()?` title="Déjà intervenu ici ?" onclick="showInterventionsLiees('${iv.id}')"`:''}>${iv.rappels} rappel(s)</span>`:''}</div>
+    ${iv._urgence?'<div style="background:#FEE2E2;border:2px solid #B91C1C;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:800;color:#991B1B;margin-bottom:10px;text-align:center;">🚨 URGENCE — ÉTABLISSEMENT RECEVANT DU PUBLIC (ERP)</div>':''}
     ${iv._sdis?'<div style="background:#DBEAFE;border:1px solid #93C5FD;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;color:#1D4ED8;margin-bottom:10px;text-align:center;">&#x1F691; INTERVENTION SDIS</div>':''}
     ${iv._avisPassage?'<div style="background:#F3EAF8;border:2px solid #9B59B6;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;color:#6C3483;margin-bottom:10px;text-align:center;">🟣 Un avis de passage a été laissé pour cette intervention</div>':''}
     ${iv._echelleToiture?'<div style="background:#FEF3C7;border:2px solid #F59E0B;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:700;color:#92400E;margin-bottom:10px;text-align:center;">&#x26A0;&#xFE0F; INTERVENTION À FAIRE AVEC ÉCHELLE DE TOIT</div>':''}
     ${iv._epa?'<div style="background:#F3EAF8;border:2px solid #8E44AD;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:700;color:#6C3483;margin-bottom:10px;text-align:center;">&#x1F9F0; INTERVENTION À FAIRE AVEC EPA</div>':''}
     <div class="mr"><div class="ml">Adresse</div><div class="mv2" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">&#x1F4CD; ${escHtml(iv.addr)}, ${escHtml(iv.com)}${iv.addrComp?' · '+escHtml(iv.addrComp):''}${(isAgres()||isChef()||hasRight('Administration'))&&iv.s!=='terminee'?`<button class="btn sm" style="font-size:10px;padding:2px 7px;" onclick="editAdresse('${iv.id}')">✏️ Corriger</button>`:''}<button class="btn sm" style="font-size:10px;padding:2px 7px;background:#4285F4;color:#fff;border-color:#4285F4;" onclick="openMaps('${iv.id}')">🗺️ Maps</button></div></div>
     <div class="mr"><div class="ml">Requérant</div><div class="mv2" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-      <span>${escHtml(iv.req||'—')}${iv.tel?' · '+escHtml(iv.tel):''}</span>
-      ${iv.tel?`<button class="btn sm" style="font-size:10px;padding:2px 7px;background:#16A34A;color:#fff;border-color:#16A34A;" onclick="callRequerantMasque('${iv.id}')" title="Appel en numéro masqué (non garanti selon téléphone)">📞 Appeler (masqué)</button>`:''}
+      <span>${escHtml(iv.req||'—')}${getInterventionPhones(iv).length?' · '+getInterventionPhones(iv).map(escHtml).join(' · '):''}</span>
+      ${getInterventionPhones(iv).map((phone,index)=>`<button class="btn sm" style="font-size:10px;padding:2px 7px;background:#16A34A;color:#fff;border-color:#16A34A;" onclick="callRequerantMasque('${iv.id}',${index})" title="Appeler ${escHtml(phone)} en numéro masqué (non garanti selon téléphone)">📞 ${escHtml(phone)}</button>`).join('')}
       ${(iv._reqInit||iv._telInit)?`<span style="font-size:10px;color:var(--t2);font-style:italic;">(initial : ${escHtml(iv._reqInit||'')}${iv._telInit?' · '+escHtml(iv._telInit):''})</span>`:''}
       ${(isAgres()&&iv.agr===CU.l||hasRight('Administration'))&&iv.s!=='terminee'?`<button class="btn sm" style="font-size:10px;padding:2px 7px;" onclick="editRequerant('${iv.id}')">✏️ Corriger</button>`:''}
     </div></div>
@@ -6895,6 +6962,7 @@ function saveRequerant(id){
   if((iv.tel||'')!==newTel)notes.push('Téléphone : '+(iv.tel||'—')+' → '+(newTel||'—'));
   if(!iv._reqInit){iv._reqInit=iv.req;iv._telInit=iv.tel||'';}
   iv.req=newReq;iv.tel=newTel;
+  if(Array.isArray(iv.tels)){if(iv.tels.length)iv.tels[0]=newTel;else if(newTel)iv.tels=[newTel];}
   iv.tl.push({s:'modif',h:getH(N()),who:CU.l,note:notes.length?notes.join(' ; '):'Requérant corrigé'});
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);cM(); // push immédiat : sinon la correction est écrasée au prochain pull
@@ -8832,7 +8900,7 @@ function rStatsHeader(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260724-responsive-12';
+const APP_VERSION='20260724-appel-mobile-13';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
