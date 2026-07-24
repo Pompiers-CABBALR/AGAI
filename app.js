@@ -2743,28 +2743,112 @@ function resetAppelPhones(){
   box.querySelectorAll('.appel-phone-row').forEach((row,i)=>{if(i>0)row.remove();});
   const first=document.getElementById('ft');if(first)first.value='';
 }
+function clearAppelAnimalsError(){const err=document.getElementById('appel-animals-error');if(err)err.style.display='none';}
+function toggleAppelAnimalPrecision(select){
+  const row=select&&select.closest('.appel-animal-row'),precision=row&&row.querySelector('[data-appel-animal-precision]');
+  if(precision)precision.style.display=(select.value==='NAC'||select.value==='Autre')?'':'none';
+}
+function renumberAppelAnimals(){
+  document.querySelectorAll('#appel-animals .appel-animal-row').forEach(function(row,index){
+    const title=row.querySelector('.appel-animal-title');if(title)title.textContent='Animal '+(index+1);
+    const remove=row.querySelector('.appel-animal-remove');if(remove)remove.style.display=index===0&&document.querySelectorAll('#appel-animals .appel-animal-row').length===1?'none':'';
+  });
+}
+function addAppelAnimal(){
+  const box=document.getElementById('appel-animals');if(!box)return;
+  const row=document.createElement('div');row.className='appel-animal-row';
+  row.innerHTML='<button type="button" class="appel-animal-remove" aria-label="Supprimer cet animal" title="Supprimer cet animal">×</button>'
+    +'<div class="appel-animal-title"></div><div class="appel-animal-grid">'
+    +'<select class="fi" data-appel-animal-type><option value="">— Type —</option><option>Chien</option><option>Chat</option><option>Équidé</option><option>Bovin</option><option>NAC</option><option>Autre</option></select>'
+    +'<select class="fi" data-appel-animal-situation><option value="">— Situation —</option><option>Blessé</option><option>Piégé</option><option>Agressif</option><option>Divagant VP</option><option>Errant attrapé</option><option>Autre</option></select></div>'
+    +'<input class="fi" data-appel-animal-precision type="text" placeholder="Préciser le type d’animal…" style="display:none;margin-top:6px;"/>';
+  row.querySelector('.appel-animal-remove').onclick=function(){row.remove();renumberAppelAnimals();};
+  const type=row.querySelector('[data-appel-animal-type]');type.onchange=function(){toggleAppelAnimalPrecision(type);clearAppelAnimalsError();};
+  row.querySelector('[data-appel-animal-situation]').onchange=clearAppelAnimalsError;
+  box.appendChild(row);renumberAppelAnimals();type.focus();
+}
+function getAppelAnimals(){
+  return [...document.querySelectorAll('#appel-animals .appel-animal-row')].map(function(row){
+    const type=row.querySelector('[data-appel-animal-type]')?.value||'';
+    const precision=row.querySelector('[data-appel-animal-precision]')?.value.trim()||'';
+    const situation=row.querySelector('[data-appel-animal-situation]')?.value||'';
+    return{type:type,precision:precision,situation:situation};
+  }).filter(a=>a.type||a.precision||a.situation);
+}
+function validateAppelAnimals(){
+  const isAnimal=selNat&&selNat.toLowerCase().includes('sauvetage et capture d');
+  if(!isAnimal){clearAppelAnimalsError();return true;}
+  const rows=[...document.querySelectorAll('#appel-animals .appel-animal-row')];
+  const ok=rows.length>0&&rows.every(row=>!!row.querySelector('[data-appel-animal-type]')?.value);
+  const err=document.getElementById('appel-animals-error');if(err)err.style.display=ok?'none':'block';
+  return ok;
+}
+function resetAppelAnimals(){
+  const box=document.getElementById('appel-animals');if(!box)return;
+  box.querySelectorAll('.appel-animal-row').forEach((row,index)=>{if(index>0)row.remove();});
+  const row=box.querySelector('.appel-animal-row');
+  if(row){row.querySelectorAll('select').forEach(el=>el.value='');const precision=row.querySelector('[data-appel-animal-precision]');if(precision){precision.value='';precision.style.display='none';}}
+  clearAppelAnimalsError();renumberAppelAnimals();
+}
+function clearReqAvailabilityError(){const err=document.getElementById('req-dispo-error');if(err)err.style.display='none';}
+function addReqAvailabilityDay(){
+  const box=document.getElementById('req-dispo-days');if(!box)return;
+  const row=document.createElement('div');row.className='appel-day-row';
+  const input=document.createElement('input');input.className='fi';input.type='date';input.setAttribute('data-req-dispo-day','');input.addEventListener('change',clearReqAvailabilityError);
+  const remove=document.createElement('button');remove.type='button';remove.className='appel-phone-remove';remove.textContent='−';remove.title='Supprimer ce jour';remove.setAttribute('aria-label','Supprimer ce jour');remove.onclick=()=>row.remove();
+  row.append(input,remove);box.appendChild(row);input.focus();
+}
+function getReqAvailabilityDays(){
+  const seen=new Set();
+  return [...document.querySelectorAll('#req-dispo-days [data-req-dispo-day]')].map(e=>e.value).filter(v=>v&&!seen.has(v)&&seen.add(v)).sort();
+}
+function formatReqAvailabilityDay(value){
+  if(!value)return'';
+  const d=new Date(value+'T12:00:00');
+  return isNaN(d.getTime())?value:d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+}
+function resetReqAvailability(){
+  const box=document.getElementById('req-dispo-days');
+  if(box){box.querySelectorAll('.appel-day-row').forEach((row,i)=>{if(i>0)row.remove();});const first=box.querySelector('[data-req-dispo-day]');if(first)first.value='';}
+  const state=document.getElementById('req-dispo-state');if(state)state.value='';
+  const mode=document.getElementById('req-dispo-mode');if(mode)mode.value='journee';
+  ['req-dispo-h1','req-dispo-h2'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  toggleReqAvailability();
+}
 function toggleReqAvailability(){
-  const mode=document.getElementById('req-dispo-mode')?.value||'';
-  const hours=document.getElementById('req-dispo-hours'),second=document.getElementById('req-dispo-h2-wrap'),label=document.getElementById('req-dispo-h1-label');
-  if(hours)hours.style.display=['avant','entre','apres'].includes(mode)?'grid':'none';
+  const state=document.getElementById('req-dispo-state')?.value||'';
+  const mode=document.getElementById('req-dispo-mode')?.value||'journee';
+  const details=document.getElementById('req-dispo-details'),hours=document.getElementById('req-dispo-hours'),second=document.getElementById('req-dispo-h2-wrap'),label=document.getElementById('req-dispo-h1-label'),modeSelect=document.getElementById('req-dispo-mode');
+  if(modeSelect)modeSelect.disabled=!state;
+  if(details)details.style.display=state?'block':'none';
+  if(hours)hours.style.display=state&&['avant','entre','apres'].includes(mode)?'grid':'none';
   if(second)second.style.display=mode==='entre'?'':'none';
   if(label)label.textContent=mode==='avant'?'Avant':mode==='apres'?'Après':'À partir de';
-  const err=document.getElementById('req-dispo-error');if(err)err.style.display='none';
+  clearReqAvailabilityError();
 }
 function getReqAvailability(){
-  const mode=document.getElementById('req-dispo-mode')?.value||'';
+  const state=document.getElementById('req-dispo-state')?.value||'';
+  const mode=document.getElementById('req-dispo-mode')?.value||'journee';
+  const days=getReqAvailabilityDays();
   const h1=document.getElementById('req-dispo-h1')?.value||'',h2=document.getElementById('req-dispo-h2')?.value||'';
-  if(!mode)return null;
-  const labels={maintenant:'Disponible maintenant',avant:'Disponible avant '+h1,entre:'Disponible entre '+h1+' et '+h2,apres:'Disponible après '+h1};
-  return{mode,h1,h2,label:labels[mode]||mode};
+  if(!state)return null;
+  const dayLabels=days.map(formatReqAvailabilityDay);
+  const horaire=mode==='avant'?' avant '+h1:mode==='entre'?' entre '+h1+' et '+h2:mode==='apres'?' après '+h1:' toute la journée';
+  const label=(state==='indisponible'?'Indisponible':'Disponible')+' '+(dayLabels.length>1?'les ':'le ')+dayLabels.join(', ')+horaire;
+  return{state,days,mode,h1,h2,label};
 }
 function validateReqAvailability(){
-  const mode=document.getElementById('req-dispo-mode')?.value||'';
+  const state=document.getElementById('req-dispo-state')?.value||'';
+  if(!state)return true;
+  const days=getReqAvailabilityDays(),mode=document.getElementById('req-dispo-mode')?.value||'journee';
   const h1=document.getElementById('req-dispo-h1')?.value||'',h2=document.getElementById('req-dispo-h2')?.value||'';
-  const ok=!['avant','entre','apres'].includes(mode)||(h1&&(mode!=='entre'||(h2&&h2>h1)));
-  const err=document.getElementById('req-dispo-error');
-  if(err){err.textContent=mode==='entre'&&h1&&h2&&h2<=h1?'L’heure de fin doit être après l’heure de début.':"Renseigner l'horaire de disponibilité.";err.style.display=ok?'none':'block';}
-  return!!ok;
+  let message='';
+  if(!days.length)message='Renseigner au moins un jour.';
+  else if(['avant','entre','apres'].includes(mode)&&!h1)message="Renseigner l'horaire.";
+  else if(mode==='entre'&&!h2)message="Renseigner l'heure de fin.";
+  else if(mode==='entre'&&h2<=h1)message='L’heure de fin doit être après l’heure de début.';
+  const err=document.getElementById('req-dispo-error');if(err){err.textContent=message;err.style.display=message?'block':'none';}
+  return!message;
 }
 function toggleErpUrgence(){
   const checked=!!document.getElementById('chk-erp')?.checked;
@@ -2774,7 +2858,7 @@ function getInterventionPhones(iv){
   const vals=Array.isArray(iv&&iv.tels)?iv.tels:iv&&iv.tel?[iv.tel]:[];
   return [...new Set(vals.map(v=>String(v||'').trim()).filter(Boolean))];
 }
-function vF(){let ok=true;[['a','ea'],['r','er'],['t','et']].forEach(([id,eid])=>{const el=document.getElementById('f'+id);if(!el.value.trim()){ok=false;el.classList.add('err');document.getElementById(eid).style.display='block';}});if(!selC2){ok=false;document.getElementById('ci').classList.add('err');document.getElementById('ec').style.display='block';}if(!validateReqAvailability())ok=false;if(!ok)document.getElementById('vb2').style.display='block';return ok;}
+function vF(){let ok=true;[['a','ea'],['r','er'],['t','et']].forEach(([id,eid])=>{const el=document.getElementById('f'+id);if(!el.value.trim()){ok=false;el.classList.add('err');document.getElementById(eid).style.display='block';}});if(!selC2){ok=false;document.getElementById('ci').classList.add('err');document.getElementById('ec').style.display='block';}if(!validateReqAvailability())ok=false;if(!validateAppelAnimals())ok=false;if(!ok)document.getElementById('vb2').style.display='block';return ok;}
 
 // ────────────────── ENREGISTRER APPEL ──────────────────
 // Capture les détails contextuels saisis dans les sous-menus de la prise d'appel.
@@ -2801,8 +2885,11 @@ function _captureAppelDetails(){
   }
   // Animaux (sm-n) : type + situation
   if(vis('sm-n')){
-    const ta=selOf('ta');if(ta)d['Type d\u2019animal']=(ta==='Autre'||ta==='NAC')?(txt('ta-autre-txt')||ta):ta;
-    const si=selOf('si');if(si)d['Situation de l\u2019animal']=si;
+    const animals=getAppelAnimals();
+    if(animals.length)d['Animaux à prendre en charge']=animals.map(function(a,index){
+      const type=(a.type==='Autre'||a.type==='NAC')&&a.precision?a.type+' ('+a.precision+')':a.type;
+      return(index+1)+'. '+type+(a.situation?' — '+a.situation:'');
+    }).join(' ; ');
   }
   // Inondation (sm-e) : hauteur + surface + volume
   if(vis('sm-e')){
@@ -2838,6 +2925,7 @@ function enr(){
   const tels=getAppelPhones();
   const reqDispo=getReqAvailability();
   const erp=!!document.getElementById('chk-erp')?.checked;
+  const animauxAppel=getAppelAnimals();
   // Incrémenter compteur appels
   incCallCounter();
 
@@ -2870,7 +2958,7 @@ function enr(){
   }
   // Enregistrement normal — id = numéro APL, numéro INT attribué à la clôture
   const newIv={id:numApl,_numApl:numApl,
-    n:selNat,addr,com,h,op:CU.l,s:'en-attente',det,eng:null,_sdis:document.getElementById('chk-sdis')?.checked||false,_erp:erp,_urgence:erp,
+    n:selNat,addr,com,h,op:CU.l,s:'en-attente',det,eng:null,_sdis:document.getElementById('chk-sdis')?.checked||false,_erp:erp,_urgence:erp,_animauxAppel:animauxAppel,
     req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,reqDispo,
     obs:'',agr:null,rappels:exIv.length,avisIds:exIv.map(iv=>iv.id),_appelDetails:appelDetails,
     tl:[mkTL('en-attente',h,CU.l)]};
@@ -2923,10 +3011,10 @@ function rF(){
   _natureLastTapLabel='';_natureLastTapAt=0;
   document.getElementById('bn').disabled=true;
   document.getElementById('sn').value='';
-  ['fa','fa2','fr','fo','req-dispo-h1','req-dispo-h2'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  ['fa','fa2','fr','fo'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   resetAppelPhones();
-  const reqMode=document.getElementById('req-dispo-mode');if(reqMode)reqMode.value='';
-  toggleReqAvailability();
+  resetReqAvailability();
+  resetAppelAnimals();
   document.getElementById('fa').placeholder='Sélectionnez d’abord une commune…';
   document.getElementById('fa-dd').style.display='none';
   ['sm-g','sm-f','sm-a','sm-n','sm-e'].forEach(id=>{const e=document.getElementById(id);if(e)e.style.display='none';});
@@ -3239,8 +3327,9 @@ function oM(id){
       // Bouton prise en charge animal (sauvetage/capture uniquement)
       const _isAnimal=iv.n&&iv.n.toLowerCase().includes('sauvetage et capture d');
       const _showAnimalBtn=_isAnimal&&(_isOwnAgres||chef||isAdminModeActive())&&!iv._isRenfort;
+      const _animalCount=Array.isArray(iv._prisesEnCharge)?iv._prisesEnCharge.length:Array.isArray(iv._animauxAppel)&&iv._animauxAppel.length?iv._animauxAppel.length:(iv._priseEnCharge?1:0);
       const animalBtn=_showAnimalBtn
-        ?`<button class="btn sm" style="width:100%;margin-bottom:10px;background:#E67E22;color:#fff;border-color:#E67E22;" onclick="showPriseEnChargeModal('${iv.id}')">&#x1F43E; Prise en charge animal</button>`
+        ?`<button class="btn sm" style="width:100%;margin-bottom:10px;background:#E67E22;color:#fff;border-color:#E67E22;" onclick="showPriseEnChargeModal('${iv.id}')">&#x1F43E; Prises en charge animaux${_animalCount?' ('+_animalCount+')':''}</button>`
         :'';
       actions=`<div class="clotbox">
         ${renfortCloBtn}
@@ -3422,6 +3511,29 @@ function setAgr2(ivId,login){
 }
 let _modalLocked = false;
 function cM(){if(_modalLocked)return;document.getElementById('mo').style.display='none';}
+
+let _modalScrollY=0;
+function syncModalBackgroundLock(){
+  const mo=document.getElementById('mo'),iframeModal=document.getElementById('iframe-modal');
+  const isOpen=(mo&&getComputedStyle(mo).display!=='none')||(iframeModal&&getComputedStyle(iframeModal).display!=='none');
+  const root=document.documentElement,body=document.body;
+  if(isOpen&&!root.classList.contains('modal-scroll-locked')){
+    _modalScrollY=window.scrollY||window.pageYOffset||0;
+    root.classList.add('modal-scroll-locked');
+    body.style.top=(-_modalScrollY)+'px';
+  }else if(!isOpen&&root.classList.contains('modal-scroll-locked')){
+    root.classList.remove('modal-scroll-locked');
+    body.style.removeProperty('top');
+    window.scrollTo(0,_modalScrollY);
+  }
+}
+requestAnimationFrame(function(){
+  ['mo','iframe-modal'].forEach(function(id){
+    const el=document.getElementById(id);
+    if(el)new MutationObserver(syncModalBackgroundLock).observe(el,{attributes:true,attributeFilter:['style','class']});
+  });
+  syncModalBackgroundLock();
+});
 
 function agresEnCours(){
   // La règle 1 seul en-cours s'applique dès que l'utilisateur est chef d'agrès OU tireur PILP,
@@ -8916,7 +9028,7 @@ function rStatsHeader(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260724-appel-mobile-14';
+const APP_VERSION='20260724-animaux-multiples-16';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -10068,23 +10180,71 @@ function toggleAdminRole(){
 // PRISE EN CHARGE ANIMAL — Formulaire + PDF + Mail
 // ═══════════════════════════════════════════════════════════
 
-function showPriseEnChargeModal(ivId) {
+function getPrisesEnChargeAnimal(iv){
+  if(!iv)return[];
+  if(Array.isArray(iv._prisesEnCharge))return iv._prisesEnCharge;
+  if(iv._priseEnCharge&&Object.keys(iv._priseEnCharge).length){
+    iv._prisesEnCharge=[iv._priseEnCharge];
+    return iv._prisesEnCharge;
+  }
+  const animaux=Array.isArray(iv._animauxAppel)?iv._animauxAppel:[];
+  iv._prisesEnCharge=animaux.map(function(animal,index){
+    const type=animal.type||'';
+    return{ficheId:'AN-'+(index+1),espece:type==='Chien'||type==='Chat'?type:'Autre',race:type&&type!=='Chien'&&type!=='Chat'?(animal.precision||type):'',etat:animal.situation||'',_brouillon:true};
+  });
+  if(!iv._prisesEnCharge.length)iv._prisesEnCharge=[{ficheId:'AN-1',_brouillon:true}];
+  return iv._prisesEnCharge;
+}
+function showPrisesEnChargeManager(ivId){
+  const iv=IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  const fiches=getPrisesEnChargeAnimal(iv);
+  document.getElementById('mt').textContent='Prises en charge des animaux';
+  document.getElementById('mi').textContent=iv.n+' — '+iv.com;
+  document.getElementById('mb').innerHTML='<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Une fiche distincte doit être complétée pour chaque animal.</div>'
+    +'<div style="display:flex;flex-direction:column;gap:8px;">'
+    +fiches.map(function(f,index){
+      const titre=(f.espece||f.race||'Animal')+(f.race&&f.espece!=='Autre'?' — '+f.race:'');
+      return'<div style="border:1px solid var(--brd);border-radius:10px;padding:10px;background:#fff;display:flex;align-items:center;gap:8px;">'
+        +'<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:700;">Fiche '+(index+1)+' — '+escHtml(titre)+'</div>'
+        +'<div style="font-size:11px;color:var(--t2);">'+(f._brouillon?'À compléter':'Enregistrée')+(f.telephone?' · '+escHtml(f.telephone):'')+'</div></div>'
+        +'<button class="btn sm" onclick="showPriseEnChargeModal(\''+ivId+'\','+index+')">✏️ Ouvrir</button>'
+        +(fiches.length>1?'<button class="btn sm danger" onclick="deletePriseEnChargeAnimal(\''+ivId+'\','+index+')">🗑️</button>':'')
+        +'</div>';
+    }).join('')
+    +'</div><button class="btn sm" style="width:100%;margin-top:10px;color:#E67E22;border-color:#E67E22;" onclick="addPriseEnChargeAnimal(\''+ivId+'\')">＋ Nouvelle fiche animal</button>';
+  document.getElementById('mo').style.display='flex';
+}
+function addPriseEnChargeAnimal(ivId){
+  const iv=IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  const fiches=getPrisesEnChargeAnimal(iv),index=fiches.length;
+  fiches.push({ficheId:'AN-'+(index+1),_brouillon:true});saveData();
+  showPriseEnChargeModal(ivId,index);
+}
+function deletePriseEnChargeAnimal(ivId,index){
+  const iv=IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  confirmModal('Supprimer cette fiche de prise en charge ?',function(){
+    const fiches=getPrisesEnChargeAnimal(iv);fiches.splice(index,1);saveData();showPrisesEnChargeManager(ivId);
+  });
+}
+function showPriseEnChargeModal(ivId,ficheIndex) {
   const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  if(ficheIndex===undefined||ficheIndex===null){showPrisesEnChargeManager(ivId);return;}
+  const fiches=getPrisesEnChargeAnimal(iv);
+  ficheIndex=Math.max(0,Number(ficheIndex)||0);
   const cas = CC();
-  const saved = iv._priseEnCharge || {};
+  const saved = fiches[ficheIndex] || {};
   const today = new Date();
   const dateDefault = today.getFullYear()+'-'+pad(today.getMonth()+1)+'-'+pad(today.getDate());
   const heureDefault = pad(today.getHours())+':'+pad(today.getMinutes());
   // Mémoriser la première heure d'ouverture si pas encore renseigné
   if(!saved.heureOuverture) {
     saved.heureOuverture = heureDefault;
-    if(!iv._priseEnCharge) iv._priseEnCharge={};
-    iv._priseEnCharge.heureOuverture = heureDefault;
+    fiches[ficheIndex]=saved;
     saveData();
   }
   const heureInit = saved.heureOuverture || heureDefault;
 
-  document.getElementById('mt').textContent = 'Prise en charge animal';
+  document.getElementById('mt').textContent = 'Prise en charge animal — fiche '+(ficheIndex+1);
   document.getElementById('mi').textContent = iv.n + ' \u2014 ' + iv.com;
   document.getElementById('mb').innerHTML =
     '<div style="max-height:72vh;overflow-y:auto;padding:4px 0;">'
@@ -10094,7 +10254,10 @@ function showPriseEnChargeModal(ivId) {
     + '<div class="fg"><div class="fgl">Date intervention</div><input class="fi" id="pec-date" type="date" value="'+(saved.date||dateDefault)+'"/></div>'
     + '<div class="fg"><div class="fgl">Heure</div><input class="fi" id="pec-heure" type="time" value="'+(saved.heure||heureInit)+'"/></div>'
     + '</div>'
-    + '<div class="fg"><div class="fgl">Nom / Téléphone requérant</div><input class="fi" id="pec-requerant" type="text" value="'+(saved.requerant||iv.req||'')+'" placeholder="Nom — 0600000000"/></div>'
+    + '<div class="pec-two-col" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">'
+    + '<div class="fg"><div class="fgl">Nom du requérant</div><input class="fi" id="pec-requerant" type="text" value="'+escHtml(saved.requerant||iv.req||'')+'" placeholder="Nom"/></div>'
+    + '<div class="fg"><div class="fgl">Numéro de téléphone</div><input class="fi" id="pec-telephone" type="tel" value="'+escHtml(saved.telephone||iv.tel||'')+'" placeholder="06 XX XX XX XX"/></div>'
+    + '</div>'
     + '<div class="fg"><div class="fgl">Adresse intervention</div><input class="fi" id="pec-adresse" type="text" value="'+(saved.adresse||iv.addr||iv.adr||'')+'"/></div>'
     + '<div class="fg"><div class="fgl">Commune</div><input class="fi" id="pec-commune" type="text" value="'+(saved.commune||iv.com||'')+'"/></div>'
 
@@ -10160,10 +10323,10 @@ function showPriseEnChargeModal(ivId) {
 
     // Boutons
     + '<div class="brow" style="margin-top:12px;flex-wrap:wrap;gap:6px;">'
-    + '<button class="btn sm" style="background:#185FA5;color:#fff;" onclick="previewPriseEnCharge(\''+ivId+'\')">&#x1F5A8; Aperçu PDF</button>'
-    + '<button class="btn sm" style="background:#E67E22;color:#fff;" onclick="envoyerPriseEnCharge(\''+ivId+'\')">&#x2709;&#xFE0F; Envoyer</button>'
-    + '<button class="btn sm" onclick="savePriseEnCharge(\''+ivId+'\')">&#x1F4BE; Sauvegarder</button>'
-    + '<button class="btn sm" onclick="cM()">Fermer</button>'
+    + '<button class="btn sm" style="background:#185FA5;color:#fff;" onclick="previewPriseEnCharge(\''+ivId+'\','+ficheIndex+')">&#x1F5A8; Aperçu PDF</button>'
+    + '<button class="btn sm" style="background:#E67E22;color:#fff;" onclick="envoyerPriseEnCharge(\''+ivId+'\','+ficheIndex+')">&#x2709;&#xFE0F; Envoyer</button>'
+    + '<button class="btn sm" onclick="savePriseEnCharge(\''+ivId+'\','+ficheIndex+')">&#x1F4BE; Sauvegarder</button>'
+    + '<button class="btn sm" onclick="showPrisesEnChargeManager(\''+ivId+'\')">← Toutes les fiches</button>'
     + '</div></div>';
 
   document.getElementById('mo').style.display = 'flex';
@@ -10294,15 +10457,21 @@ function pecChipClick(type, val) {
   if(div) div.style.display='none';
 }
 
-function savePriseEnCharge(ivId) {
+function savePriseEnCharge(ivId,ficheIndex) {
   const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  const fiches=getPrisesEnChargeAnimal(iv);
+  ficheIndex=Math.max(0,Number(ficheIndex)||0);
   const statuts = Array.from(document.querySelectorAll('input[name="pec-statut"]:checked')).map(function(c){return c.value;});
   const especeEl = document.querySelector('input[name="pec-espece"]:checked');
   const sexeEl   = document.querySelector('input[name="pec-sexe"]:checked');
-  iv._priseEnCharge = {
+  const savedBefore=fiches[ficheIndex]||{};
+  const fiche = {
+    ficheId:        savedBefore.ficheId||('AN-'+(ficheIndex+1)),
     date:           (document.getElementById('pec-date')||{}).value||'',
     heure:          (document.getElementById('pec-heure')||{}).value||'',
+    heureOuverture: savedBefore.heureOuverture||'',
     requerant:      (document.getElementById('pec-requerant')||{}).value||'',
+    telephone:      (document.getElementById('pec-telephone')||{}).value||'',
     adresse:        (document.getElementById('pec-adresse')||{}).value||'',
     commune:        (document.getElementById('pec-commune')||{}).value||'',
     espece:         especeEl ? especeEl.value : 'Chien',
@@ -10315,18 +10484,24 @@ function savePriseEnCharge(ivId) {
     etat:           (document.getElementById('pec-etat')||{}).value||'',
     fourriere:      !!(document.getElementById('pec-fourriere')||{}).checked,
     veterinaire:    !!(document.getElementById('pec-veterinaire')||{}).checked,
-    vetEmail:       (document.getElementById('pec-vet-email')||{}).value||''
+    vetEmail:       (document.getElementById('pec-vet-email')||{}).value||'',
+    _brouillon:     false
   };
+  fiches[ficheIndex]=fiche;
+  iv._prisesEnCharge=fiches;
+  iv._priseEnCharge=fiche; // compatibilité avec les anciennes éditions et rapports
   saveData();
-  showToast('Formulaire sauvegardé','success');
+  showToast('Fiche animal '+(ficheIndex+1)+' sauvegardée','success');
 }
 
 
-function _buildPriseEnChargeHTML(ivId) {
+function _buildPriseEnChargeHTML(ivId,ficheIndex) {
   const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return '';
   const cas = CC();
   const utNom = cas ? cas.nom.replace(/^UT\s+/i,'').trim() : '';
-  const d = iv._priseEnCharge || {};
+  const fiches=getPrisesEnChargeAnimal(iv);
+  ficheIndex=Math.max(0,Number(ficheIndex)||0);
+  const d = fiches[ficheIndex] || iv._priseEnCharge || {};
   const dateFr = d.date ? d.date.split('-').reverse().join('/') : '';
   const logo = _getLogoSrc();
 
@@ -10393,7 +10568,7 @@ function _buildPriseEnChargeHTML(ivId) {
     +'</tr>'
     // R3 Nom/Tel / Sexe
     +'<tr style="height:14mm;">'
-    +'<td style="'+LB+'">Nom de la personne / Numéro de téléphone :'+(d.requerant?'<br><span style="'+VAL+'">'+d.requerant+'</span>':'')+'</td>'
+    +'<td style="'+LB+'">Nom de la personne / Numéro de téléphone :'+((d.requerant||d.telephone)?'<br><span style="'+VAL+'">'+(d.requerant||'')+(d.telephone?' — '+d.telephone:'')+'</span>':'')+'</td>'
     +'<td style="'+LB+'">Sexe :<br><table style="width:100%;border:none;margin-top:2mm;"><tr>'
     +'<td style="border:none;width:50%;"><span style="'+VAL+'">'+cb(d.sexe==='M')+'</span> <span style="font-size:11pt;">Mâle</span></td>'
     +'<td style="border:none;width:50%;"><span style="'+VAL+'">'+cb(d.sexe==='F')+'</span> <span style="font-size:11pt;">Femelle</span></td>'
@@ -10548,17 +10723,17 @@ function _buildPriseEnChargeHTML(ivId) {
 }
 
 
-function previewPriseEnCharge(ivId) {
-  savePriseEnCharge(ivId);
-  const html = _buildPriseEnChargeHTML(ivId);
+function previewPriseEnCharge(ivId,ficheIndex) {
+  savePriseEnCharge(ivId,ficheIndex);
+  const html = _buildPriseEnChargeHTML(ivId,ficheIndex);
   if(!html){showToast('Remplissez le formulaire','warn');return;}
   openIframeModal(html);
 }
 
-function envoyerPriseEnCharge(ivId) {
-  savePriseEnCharge(ivId);
+function envoyerPriseEnCharge(ivId,ficheIndex) {
+  savePriseEnCharge(ivId,ficheIndex);
   const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
-  const d = iv._priseEnCharge || {};
+  const d = getPrisesEnChargeAnimal(iv)[Math.max(0,Number(ficheIndex)||0)] || {};
   const cas = CC();
   const casData = cas ? (CASERNE_DATA[cas.id]||{}) : {};
 
@@ -10581,7 +10756,7 @@ function envoyerPriseEnCharge(ivId) {
   if(d.fourriere && emailFourriere) tos.push({email: emailFourriere, label: 'la fourrière'});
   if(d.veterinaire && emailVet)     tos.push({email: emailVet,       label: 'le vétérinaire'});
 
-  const html = _buildPriseEnChargeHTML(ivId);
+  const html = _buildPriseEnChargeHTML(ivId,ficheIndex);
   const dateFr = d.date ? d.date.split('-').reverse().join('-') : 'document';
   const subj = 'Attestation de prise en charge animal — ' + (d.commune||iv.com||'') + ' — ' + (d.date?d.date.split('-').reverse().join('/'):'-');
 
@@ -10612,7 +10787,7 @@ function envoyerPriseEnCharge(ivId) {
           to: [{email: to.email}],
           subject: subj,
           textContent: corps,
-          attachment: [{content: pdfB64, name: 'PriseEnCharge_'+dateFr+'.pdf'}]
+          attachment: [{content: pdfB64, name: 'PriseEnCharge_Animal'+(Number(ficheIndex)+1)+'_'+dateFr+'.pdf'}]
       })
       .then(function(r){return r.ok?r.json():r.text().then(function(t){throw new Error(t);});})
       .then(function(){

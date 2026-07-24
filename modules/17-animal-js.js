@@ -3,23 +3,71 @@
 // PRISE EN CHARGE ANIMAL — Formulaire + PDF + Mail
 // ═══════════════════════════════════════════════════════════
 
-function showPriseEnChargeModal(ivId) {
+function getPrisesEnChargeAnimal(iv){
+  if(!iv)return[];
+  if(Array.isArray(iv._prisesEnCharge))return iv._prisesEnCharge;
+  if(iv._priseEnCharge&&Object.keys(iv._priseEnCharge).length){
+    iv._prisesEnCharge=[iv._priseEnCharge];
+    return iv._prisesEnCharge;
+  }
+  const animaux=Array.isArray(iv._animauxAppel)?iv._animauxAppel:[];
+  iv._prisesEnCharge=animaux.map(function(animal,index){
+    const type=animal.type||'';
+    return{ficheId:'AN-'+(index+1),espece:type==='Chien'||type==='Chat'?type:'Autre',race:type&&type!=='Chien'&&type!=='Chat'?(animal.precision||type):'',etat:animal.situation||'',_brouillon:true};
+  });
+  if(!iv._prisesEnCharge.length)iv._prisesEnCharge=[{ficheId:'AN-1',_brouillon:true}];
+  return iv._prisesEnCharge;
+}
+function showPrisesEnChargeManager(ivId){
+  const iv=IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  const fiches=getPrisesEnChargeAnimal(iv);
+  document.getElementById('mt').textContent='Prises en charge des animaux';
+  document.getElementById('mi').textContent=iv.n+' — '+iv.com;
+  document.getElementById('mb').innerHTML='<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Une fiche distincte doit être complétée pour chaque animal.</div>'
+    +'<div style="display:flex;flex-direction:column;gap:8px;">'
+    +fiches.map(function(f,index){
+      const titre=(f.espece||f.race||'Animal')+(f.race&&f.espece!=='Autre'?' — '+f.race:'');
+      return'<div style="border:1px solid var(--brd);border-radius:10px;padding:10px;background:#fff;display:flex;align-items:center;gap:8px;">'
+        +'<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:700;">Fiche '+(index+1)+' — '+escHtml(titre)+'</div>'
+        +'<div style="font-size:11px;color:var(--t2);">'+(f._brouillon?'À compléter':'Enregistrée')+(f.telephone?' · '+escHtml(f.telephone):'')+'</div></div>'
+        +'<button class="btn sm" onclick="showPriseEnChargeModal(\''+ivId+'\','+index+')">✏️ Ouvrir</button>'
+        +(fiches.length>1?'<button class="btn sm danger" onclick="deletePriseEnChargeAnimal(\''+ivId+'\','+index+')">🗑️</button>':'')
+        +'</div>';
+    }).join('')
+    +'</div><button class="btn sm" style="width:100%;margin-top:10px;color:#E67E22;border-color:#E67E22;" onclick="addPriseEnChargeAnimal(\''+ivId+'\')">＋ Nouvelle fiche animal</button>';
+  document.getElementById('mo').style.display='flex';
+}
+function addPriseEnChargeAnimal(ivId){
+  const iv=IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  const fiches=getPrisesEnChargeAnimal(iv),index=fiches.length;
+  fiches.push({ficheId:'AN-'+(index+1),_brouillon:true});saveData();
+  showPriseEnChargeModal(ivId,index);
+}
+function deletePriseEnChargeAnimal(ivId,index){
+  const iv=IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  confirmModal('Supprimer cette fiche de prise en charge ?',function(){
+    const fiches=getPrisesEnChargeAnimal(iv);fiches.splice(index,1);saveData();showPrisesEnChargeManager(ivId);
+  });
+}
+function showPriseEnChargeModal(ivId,ficheIndex) {
   const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  if(ficheIndex===undefined||ficheIndex===null){showPrisesEnChargeManager(ivId);return;}
+  const fiches=getPrisesEnChargeAnimal(iv);
+  ficheIndex=Math.max(0,Number(ficheIndex)||0);
   const cas = CC();
-  const saved = iv._priseEnCharge || {};
+  const saved = fiches[ficheIndex] || {};
   const today = new Date();
   const dateDefault = today.getFullYear()+'-'+pad(today.getMonth()+1)+'-'+pad(today.getDate());
   const heureDefault = pad(today.getHours())+':'+pad(today.getMinutes());
   // Mémoriser la première heure d'ouverture si pas encore renseigné
   if(!saved.heureOuverture) {
     saved.heureOuverture = heureDefault;
-    if(!iv._priseEnCharge) iv._priseEnCharge={};
-    iv._priseEnCharge.heureOuverture = heureDefault;
+    fiches[ficheIndex]=saved;
     saveData();
   }
   const heureInit = saved.heureOuverture || heureDefault;
 
-  document.getElementById('mt').textContent = 'Prise en charge animal';
+  document.getElementById('mt').textContent = 'Prise en charge animal — fiche '+(ficheIndex+1);
   document.getElementById('mi').textContent = iv.n + ' \u2014 ' + iv.com;
   document.getElementById('mb').innerHTML =
     '<div style="max-height:72vh;overflow-y:auto;padding:4px 0;">'
@@ -29,7 +77,10 @@ function showPriseEnChargeModal(ivId) {
     + '<div class="fg"><div class="fgl">Date intervention</div><input class="fi" id="pec-date" type="date" value="'+(saved.date||dateDefault)+'"/></div>'
     + '<div class="fg"><div class="fgl">Heure</div><input class="fi" id="pec-heure" type="time" value="'+(saved.heure||heureInit)+'"/></div>'
     + '</div>'
-    + '<div class="fg"><div class="fgl">Nom / Téléphone requérant</div><input class="fi" id="pec-requerant" type="text" value="'+(saved.requerant||iv.req||'')+'" placeholder="Nom — 0600000000"/></div>'
+    + '<div class="pec-two-col" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">'
+    + '<div class="fg"><div class="fgl">Nom du requérant</div><input class="fi" id="pec-requerant" type="text" value="'+escHtml(saved.requerant||iv.req||'')+'" placeholder="Nom"/></div>'
+    + '<div class="fg"><div class="fgl">Numéro de téléphone</div><input class="fi" id="pec-telephone" type="tel" value="'+escHtml(saved.telephone||iv.tel||'')+'" placeholder="06 XX XX XX XX"/></div>'
+    + '</div>'
     + '<div class="fg"><div class="fgl">Adresse intervention</div><input class="fi" id="pec-adresse" type="text" value="'+(saved.adresse||iv.addr||iv.adr||'')+'"/></div>'
     + '<div class="fg"><div class="fgl">Commune</div><input class="fi" id="pec-commune" type="text" value="'+(saved.commune||iv.com||'')+'"/></div>'
 
@@ -95,10 +146,10 @@ function showPriseEnChargeModal(ivId) {
 
     // Boutons
     + '<div class="brow" style="margin-top:12px;flex-wrap:wrap;gap:6px;">'
-    + '<button class="btn sm" style="background:#185FA5;color:#fff;" onclick="previewPriseEnCharge(\''+ivId+'\')">&#x1F5A8; Aperçu PDF</button>'
-    + '<button class="btn sm" style="background:#E67E22;color:#fff;" onclick="envoyerPriseEnCharge(\''+ivId+'\')">&#x2709;&#xFE0F; Envoyer</button>'
-    + '<button class="btn sm" onclick="savePriseEnCharge(\''+ivId+'\')">&#x1F4BE; Sauvegarder</button>'
-    + '<button class="btn sm" onclick="cM()">Fermer</button>'
+    + '<button class="btn sm" style="background:#185FA5;color:#fff;" onclick="previewPriseEnCharge(\''+ivId+'\','+ficheIndex+')">&#x1F5A8; Aperçu PDF</button>'
+    + '<button class="btn sm" style="background:#E67E22;color:#fff;" onclick="envoyerPriseEnCharge(\''+ivId+'\','+ficheIndex+')">&#x2709;&#xFE0F; Envoyer</button>'
+    + '<button class="btn sm" onclick="savePriseEnCharge(\''+ivId+'\','+ficheIndex+')">&#x1F4BE; Sauvegarder</button>'
+    + '<button class="btn sm" onclick="showPrisesEnChargeManager(\''+ivId+'\')">← Toutes les fiches</button>'
     + '</div></div>';
 
   document.getElementById('mo').style.display = 'flex';
@@ -229,15 +280,21 @@ function pecChipClick(type, val) {
   if(div) div.style.display='none';
 }
 
-function savePriseEnCharge(ivId) {
+function savePriseEnCharge(ivId,ficheIndex) {
   const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  const fiches=getPrisesEnChargeAnimal(iv);
+  ficheIndex=Math.max(0,Number(ficheIndex)||0);
   const statuts = Array.from(document.querySelectorAll('input[name="pec-statut"]:checked')).map(function(c){return c.value;});
   const especeEl = document.querySelector('input[name="pec-espece"]:checked');
   const sexeEl   = document.querySelector('input[name="pec-sexe"]:checked');
-  iv._priseEnCharge = {
+  const savedBefore=fiches[ficheIndex]||{};
+  const fiche = {
+    ficheId:        savedBefore.ficheId||('AN-'+(ficheIndex+1)),
     date:           (document.getElementById('pec-date')||{}).value||'',
     heure:          (document.getElementById('pec-heure')||{}).value||'',
+    heureOuverture: savedBefore.heureOuverture||'',
     requerant:      (document.getElementById('pec-requerant')||{}).value||'',
+    telephone:      (document.getElementById('pec-telephone')||{}).value||'',
     adresse:        (document.getElementById('pec-adresse')||{}).value||'',
     commune:        (document.getElementById('pec-commune')||{}).value||'',
     espece:         especeEl ? especeEl.value : 'Chien',
@@ -250,18 +307,24 @@ function savePriseEnCharge(ivId) {
     etat:           (document.getElementById('pec-etat')||{}).value||'',
     fourriere:      !!(document.getElementById('pec-fourriere')||{}).checked,
     veterinaire:    !!(document.getElementById('pec-veterinaire')||{}).checked,
-    vetEmail:       (document.getElementById('pec-vet-email')||{}).value||''
+    vetEmail:       (document.getElementById('pec-vet-email')||{}).value||'',
+    _brouillon:     false
   };
+  fiches[ficheIndex]=fiche;
+  iv._prisesEnCharge=fiches;
+  iv._priseEnCharge=fiche; // compatibilité avec les anciennes éditions et rapports
   saveData();
-  showToast('Formulaire sauvegardé','success');
+  showToast('Fiche animal '+(ficheIndex+1)+' sauvegardée','success');
 }
 
 
-function _buildPriseEnChargeHTML(ivId) {
+function _buildPriseEnChargeHTML(ivId,ficheIndex) {
   const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return '';
   const cas = CC();
   const utNom = cas ? cas.nom.replace(/^UT\s+/i,'').trim() : '';
-  const d = iv._priseEnCharge || {};
+  const fiches=getPrisesEnChargeAnimal(iv);
+  ficheIndex=Math.max(0,Number(ficheIndex)||0);
+  const d = fiches[ficheIndex] || iv._priseEnCharge || {};
   const dateFr = d.date ? d.date.split('-').reverse().join('/') : '';
   const logo = _getLogoSrc();
 
@@ -328,7 +391,7 @@ function _buildPriseEnChargeHTML(ivId) {
     +'</tr>'
     // R3 Nom/Tel / Sexe
     +'<tr style="height:14mm;">'
-    +'<td style="'+LB+'">Nom de la personne / Numéro de téléphone :'+(d.requerant?'<br><span style="'+VAL+'">'+d.requerant+'</span>':'')+'</td>'
+    +'<td style="'+LB+'">Nom de la personne / Numéro de téléphone :'+((d.requerant||d.telephone)?'<br><span style="'+VAL+'">'+(d.requerant||'')+(d.telephone?' — '+d.telephone:'')+'</span>':'')+'</td>'
     +'<td style="'+LB+'">Sexe :<br><table style="width:100%;border:none;margin-top:2mm;"><tr>'
     +'<td style="border:none;width:50%;"><span style="'+VAL+'">'+cb(d.sexe==='M')+'</span> <span style="font-size:11pt;">Mâle</span></td>'
     +'<td style="border:none;width:50%;"><span style="'+VAL+'">'+cb(d.sexe==='F')+'</span> <span style="font-size:11pt;">Femelle</span></td>'
@@ -483,17 +546,17 @@ function _buildPriseEnChargeHTML(ivId) {
 }
 
 
-function previewPriseEnCharge(ivId) {
-  savePriseEnCharge(ivId);
-  const html = _buildPriseEnChargeHTML(ivId);
+function previewPriseEnCharge(ivId,ficheIndex) {
+  savePriseEnCharge(ivId,ficheIndex);
+  const html = _buildPriseEnChargeHTML(ivId,ficheIndex);
   if(!html){showToast('Remplissez le formulaire','warn');return;}
   openIframeModal(html);
 }
 
-function envoyerPriseEnCharge(ivId) {
-  savePriseEnCharge(ivId);
+function envoyerPriseEnCharge(ivId,ficheIndex) {
+  savePriseEnCharge(ivId,ficheIndex);
   const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
-  const d = iv._priseEnCharge || {};
+  const d = getPrisesEnChargeAnimal(iv)[Math.max(0,Number(ficheIndex)||0)] || {};
   const cas = CC();
   const casData = cas ? (CASERNE_DATA[cas.id]||{}) : {};
 
@@ -516,7 +579,7 @@ function envoyerPriseEnCharge(ivId) {
   if(d.fourriere && emailFourriere) tos.push({email: emailFourriere, label: 'la fourrière'});
   if(d.veterinaire && emailVet)     tos.push({email: emailVet,       label: 'le vétérinaire'});
 
-  const html = _buildPriseEnChargeHTML(ivId);
+  const html = _buildPriseEnChargeHTML(ivId,ficheIndex);
   const dateFr = d.date ? d.date.split('-').reverse().join('-') : 'document';
   const subj = 'Attestation de prise en charge animal — ' + (d.commune||iv.com||'') + ' — ' + (d.date?d.date.split('-').reverse().join('/'):'-');
 
@@ -547,7 +610,7 @@ function envoyerPriseEnCharge(ivId) {
           to: [{email: to.email}],
           subject: subj,
           textContent: corps,
-          attachment: [{content: pdfB64, name: 'PriseEnCharge_'+dateFr+'.pdf'}]
+          attachment: [{content: pdfB64, name: 'PriseEnCharge_Animal'+(Number(ficheIndex)+1)+'_'+dateFr+'.pdf'}]
       })
       .then(function(r){return r.ok?r.json():r.text().then(function(t){throw new Error(t);});})
       .then(function(){

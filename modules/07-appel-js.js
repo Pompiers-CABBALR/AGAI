@@ -276,28 +276,112 @@ function resetAppelPhones(){
   box.querySelectorAll('.appel-phone-row').forEach((row,i)=>{if(i>0)row.remove();});
   const first=document.getElementById('ft');if(first)first.value='';
 }
+function clearAppelAnimalsError(){const err=document.getElementById('appel-animals-error');if(err)err.style.display='none';}
+function toggleAppelAnimalPrecision(select){
+  const row=select&&select.closest('.appel-animal-row'),precision=row&&row.querySelector('[data-appel-animal-precision]');
+  if(precision)precision.style.display=(select.value==='NAC'||select.value==='Autre')?'':'none';
+}
+function renumberAppelAnimals(){
+  document.querySelectorAll('#appel-animals .appel-animal-row').forEach(function(row,index){
+    const title=row.querySelector('.appel-animal-title');if(title)title.textContent='Animal '+(index+1);
+    const remove=row.querySelector('.appel-animal-remove');if(remove)remove.style.display=index===0&&document.querySelectorAll('#appel-animals .appel-animal-row').length===1?'none':'';
+  });
+}
+function addAppelAnimal(){
+  const box=document.getElementById('appel-animals');if(!box)return;
+  const row=document.createElement('div');row.className='appel-animal-row';
+  row.innerHTML='<button type="button" class="appel-animal-remove" aria-label="Supprimer cet animal" title="Supprimer cet animal">×</button>'
+    +'<div class="appel-animal-title"></div><div class="appel-animal-grid">'
+    +'<select class="fi" data-appel-animal-type><option value="">— Type —</option><option>Chien</option><option>Chat</option><option>Équidé</option><option>Bovin</option><option>NAC</option><option>Autre</option></select>'
+    +'<select class="fi" data-appel-animal-situation><option value="">— Situation —</option><option>Blessé</option><option>Piégé</option><option>Agressif</option><option>Divagant VP</option><option>Errant attrapé</option><option>Autre</option></select></div>'
+    +'<input class="fi" data-appel-animal-precision type="text" placeholder="Préciser le type d’animal…" style="display:none;margin-top:6px;"/>';
+  row.querySelector('.appel-animal-remove').onclick=function(){row.remove();renumberAppelAnimals();};
+  const type=row.querySelector('[data-appel-animal-type]');type.onchange=function(){toggleAppelAnimalPrecision(type);clearAppelAnimalsError();};
+  row.querySelector('[data-appel-animal-situation]').onchange=clearAppelAnimalsError;
+  box.appendChild(row);renumberAppelAnimals();type.focus();
+}
+function getAppelAnimals(){
+  return [...document.querySelectorAll('#appel-animals .appel-animal-row')].map(function(row){
+    const type=row.querySelector('[data-appel-animal-type]')?.value||'';
+    const precision=row.querySelector('[data-appel-animal-precision]')?.value.trim()||'';
+    const situation=row.querySelector('[data-appel-animal-situation]')?.value||'';
+    return{type:type,precision:precision,situation:situation};
+  }).filter(a=>a.type||a.precision||a.situation);
+}
+function validateAppelAnimals(){
+  const isAnimal=selNat&&selNat.toLowerCase().includes('sauvetage et capture d');
+  if(!isAnimal){clearAppelAnimalsError();return true;}
+  const rows=[...document.querySelectorAll('#appel-animals .appel-animal-row')];
+  const ok=rows.length>0&&rows.every(row=>!!row.querySelector('[data-appel-animal-type]')?.value);
+  const err=document.getElementById('appel-animals-error');if(err)err.style.display=ok?'none':'block';
+  return ok;
+}
+function resetAppelAnimals(){
+  const box=document.getElementById('appel-animals');if(!box)return;
+  box.querySelectorAll('.appel-animal-row').forEach((row,index)=>{if(index>0)row.remove();});
+  const row=box.querySelector('.appel-animal-row');
+  if(row){row.querySelectorAll('select').forEach(el=>el.value='');const precision=row.querySelector('[data-appel-animal-precision]');if(precision){precision.value='';precision.style.display='none';}}
+  clearAppelAnimalsError();renumberAppelAnimals();
+}
+function clearReqAvailabilityError(){const err=document.getElementById('req-dispo-error');if(err)err.style.display='none';}
+function addReqAvailabilityDay(){
+  const box=document.getElementById('req-dispo-days');if(!box)return;
+  const row=document.createElement('div');row.className='appel-day-row';
+  const input=document.createElement('input');input.className='fi';input.type='date';input.setAttribute('data-req-dispo-day','');input.addEventListener('change',clearReqAvailabilityError);
+  const remove=document.createElement('button');remove.type='button';remove.className='appel-phone-remove';remove.textContent='−';remove.title='Supprimer ce jour';remove.setAttribute('aria-label','Supprimer ce jour');remove.onclick=()=>row.remove();
+  row.append(input,remove);box.appendChild(row);input.focus();
+}
+function getReqAvailabilityDays(){
+  const seen=new Set();
+  return [...document.querySelectorAll('#req-dispo-days [data-req-dispo-day]')].map(e=>e.value).filter(v=>v&&!seen.has(v)&&seen.add(v)).sort();
+}
+function formatReqAvailabilityDay(value){
+  if(!value)return'';
+  const d=new Date(value+'T12:00:00');
+  return isNaN(d.getTime())?value:d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+}
+function resetReqAvailability(){
+  const box=document.getElementById('req-dispo-days');
+  if(box){box.querySelectorAll('.appel-day-row').forEach((row,i)=>{if(i>0)row.remove();});const first=box.querySelector('[data-req-dispo-day]');if(first)first.value='';}
+  const state=document.getElementById('req-dispo-state');if(state)state.value='';
+  const mode=document.getElementById('req-dispo-mode');if(mode)mode.value='journee';
+  ['req-dispo-h1','req-dispo-h2'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  toggleReqAvailability();
+}
 function toggleReqAvailability(){
-  const mode=document.getElementById('req-dispo-mode')?.value||'';
-  const hours=document.getElementById('req-dispo-hours'),second=document.getElementById('req-dispo-h2-wrap'),label=document.getElementById('req-dispo-h1-label');
-  if(hours)hours.style.display=['avant','entre','apres'].includes(mode)?'grid':'none';
+  const state=document.getElementById('req-dispo-state')?.value||'';
+  const mode=document.getElementById('req-dispo-mode')?.value||'journee';
+  const details=document.getElementById('req-dispo-details'),hours=document.getElementById('req-dispo-hours'),second=document.getElementById('req-dispo-h2-wrap'),label=document.getElementById('req-dispo-h1-label'),modeSelect=document.getElementById('req-dispo-mode');
+  if(modeSelect)modeSelect.disabled=!state;
+  if(details)details.style.display=state?'block':'none';
+  if(hours)hours.style.display=state&&['avant','entre','apres'].includes(mode)?'grid':'none';
   if(second)second.style.display=mode==='entre'?'':'none';
   if(label)label.textContent=mode==='avant'?'Avant':mode==='apres'?'Après':'À partir de';
-  const err=document.getElementById('req-dispo-error');if(err)err.style.display='none';
+  clearReqAvailabilityError();
 }
 function getReqAvailability(){
-  const mode=document.getElementById('req-dispo-mode')?.value||'';
+  const state=document.getElementById('req-dispo-state')?.value||'';
+  const mode=document.getElementById('req-dispo-mode')?.value||'journee';
+  const days=getReqAvailabilityDays();
   const h1=document.getElementById('req-dispo-h1')?.value||'',h2=document.getElementById('req-dispo-h2')?.value||'';
-  if(!mode)return null;
-  const labels={maintenant:'Disponible maintenant',avant:'Disponible avant '+h1,entre:'Disponible entre '+h1+' et '+h2,apres:'Disponible après '+h1};
-  return{mode,h1,h2,label:labels[mode]||mode};
+  if(!state)return null;
+  const dayLabels=days.map(formatReqAvailabilityDay);
+  const horaire=mode==='avant'?' avant '+h1:mode==='entre'?' entre '+h1+' et '+h2:mode==='apres'?' après '+h1:' toute la journée';
+  const label=(state==='indisponible'?'Indisponible':'Disponible')+' '+(dayLabels.length>1?'les ':'le ')+dayLabels.join(', ')+horaire;
+  return{state,days,mode,h1,h2,label};
 }
 function validateReqAvailability(){
-  const mode=document.getElementById('req-dispo-mode')?.value||'';
+  const state=document.getElementById('req-dispo-state')?.value||'';
+  if(!state)return true;
+  const days=getReqAvailabilityDays(),mode=document.getElementById('req-dispo-mode')?.value||'journee';
   const h1=document.getElementById('req-dispo-h1')?.value||'',h2=document.getElementById('req-dispo-h2')?.value||'';
-  const ok=!['avant','entre','apres'].includes(mode)||(h1&&(mode!=='entre'||(h2&&h2>h1)));
-  const err=document.getElementById('req-dispo-error');
-  if(err){err.textContent=mode==='entre'&&h1&&h2&&h2<=h1?'L’heure de fin doit être après l’heure de début.':"Renseigner l'horaire de disponibilité.";err.style.display=ok?'none':'block';}
-  return!!ok;
+  let message='';
+  if(!days.length)message='Renseigner au moins un jour.';
+  else if(['avant','entre','apres'].includes(mode)&&!h1)message="Renseigner l'horaire.";
+  else if(mode==='entre'&&!h2)message="Renseigner l'heure de fin.";
+  else if(mode==='entre'&&h2<=h1)message='L’heure de fin doit être après l’heure de début.';
+  const err=document.getElementById('req-dispo-error');if(err){err.textContent=message;err.style.display=message?'block':'none';}
+  return!message;
 }
 function toggleErpUrgence(){
   const checked=!!document.getElementById('chk-erp')?.checked;
@@ -307,7 +391,7 @@ function getInterventionPhones(iv){
   const vals=Array.isArray(iv&&iv.tels)?iv.tels:iv&&iv.tel?[iv.tel]:[];
   return [...new Set(vals.map(v=>String(v||'').trim()).filter(Boolean))];
 }
-function vF(){let ok=true;[['a','ea'],['r','er'],['t','et']].forEach(([id,eid])=>{const el=document.getElementById('f'+id);if(!el.value.trim()){ok=false;el.classList.add('err');document.getElementById(eid).style.display='block';}});if(!selC2){ok=false;document.getElementById('ci').classList.add('err');document.getElementById('ec').style.display='block';}if(!validateReqAvailability())ok=false;if(!ok)document.getElementById('vb2').style.display='block';return ok;}
+function vF(){let ok=true;[['a','ea'],['r','er'],['t','et']].forEach(([id,eid])=>{const el=document.getElementById('f'+id);if(!el.value.trim()){ok=false;el.classList.add('err');document.getElementById(eid).style.display='block';}});if(!selC2){ok=false;document.getElementById('ci').classList.add('err');document.getElementById('ec').style.display='block';}if(!validateReqAvailability())ok=false;if(!validateAppelAnimals())ok=false;if(!ok)document.getElementById('vb2').style.display='block';return ok;}
 
 // ────────────────── ENREGISTRER APPEL ──────────────────
 // Capture les détails contextuels saisis dans les sous-menus de la prise d'appel.
@@ -334,8 +418,11 @@ function _captureAppelDetails(){
   }
   // Animaux (sm-n) : type + situation
   if(vis('sm-n')){
-    const ta=selOf('ta');if(ta)d['Type d\u2019animal']=(ta==='Autre'||ta==='NAC')?(txt('ta-autre-txt')||ta):ta;
-    const si=selOf('si');if(si)d['Situation de l\u2019animal']=si;
+    const animals=getAppelAnimals();
+    if(animals.length)d['Animaux à prendre en charge']=animals.map(function(a,index){
+      const type=(a.type==='Autre'||a.type==='NAC')&&a.precision?a.type+' ('+a.precision+')':a.type;
+      return(index+1)+'. '+type+(a.situation?' — '+a.situation:'');
+    }).join(' ; ');
   }
   // Inondation (sm-e) : hauteur + surface + volume
   if(vis('sm-e')){
@@ -371,6 +458,7 @@ function enr(){
   const tels=getAppelPhones();
   const reqDispo=getReqAvailability();
   const erp=!!document.getElementById('chk-erp')?.checked;
+  const animauxAppel=getAppelAnimals();
   // Incrémenter compteur appels
   incCallCounter();
 
@@ -403,7 +491,7 @@ function enr(){
   }
   // Enregistrement normal — id = numéro APL, numéro INT attribué à la clôture
   const newIv={id:numApl,_numApl:numApl,
-    n:selNat,addr,com,h,op:CU.l,s:'en-attente',det,eng:null,_sdis:document.getElementById('chk-sdis')?.checked||false,_erp:erp,_urgence:erp,
+    n:selNat,addr,com,h,op:CU.l,s:'en-attente',det,eng:null,_sdis:document.getElementById('chk-sdis')?.checked||false,_erp:erp,_urgence:erp,_animauxAppel:animauxAppel,
     req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,reqDispo,
     obs:'',agr:null,rappels:exIv.length,avisIds:exIv.map(iv=>iv.id),_appelDetails:appelDetails,
     tl:[mkTL('en-attente',h,CU.l)]};
@@ -456,10 +544,10 @@ function rF(){
   _natureLastTapLabel='';_natureLastTapAt=0;
   document.getElementById('bn').disabled=true;
   document.getElementById('sn').value='';
-  ['fa','fa2','fr','fo','req-dispo-h1','req-dispo-h2'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  ['fa','fa2','fr','fo'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   resetAppelPhones();
-  const reqMode=document.getElementById('req-dispo-mode');if(reqMode)reqMode.value='';
-  toggleReqAvailability();
+  resetReqAvailability();
+  resetAppelAnimals();
   document.getElementById('fa').placeholder='Sélectionnez d’abord une commune…';
   document.getElementById('fa-dd').style.display='none';
   ['sm-g','sm-f','sm-a','sm-n','sm-e'].forEach(id=>{const e=document.getElementById(id);if(e)e.style.display='none';});

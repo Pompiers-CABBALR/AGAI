@@ -9,7 +9,7 @@
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
 <title>AGAI</title>
-<link rel="stylesheet" href="style.css?v=20260724-appel-mobile-14"/>
+<link rel="stylesheet" href="style.css?v=20260724-animaux-multiples-16"/>
 </head>
 <body>
 
@@ -97,7 +97,23 @@
         <div id="sm-g" style="display:none;"><div class="smbox"><div class="smtit">Localisation du nid</div><div id="lg"><div class="smopt" onclick="sr('lg',this,'Sous terre')">🌍 Sous terre</div><div class="smopt" onclick="sr('lg',this,'Toiture')">🏠 Toiture</div><div class="smopt" onclick="sr('lg',this,'Arbre/Haie')">🌳 Arbre / Haie</div><div class="smopt" onclick="sr('lg',this,'Autre')">📋 Autre</div></div><div id="hgb" style="display:none;margin-top:8px;"><div class="smtit">Hauteur estimée</div><div class="urow"><input type="number" min="0" placeholder="ex. 5" id="hg-val"/><span class="ul2">m</span></div></div><div id="lgab" style="display:none;margin-top:6px;"><input class="fi" type="text" placeholder="Préciser la localisation..." id="lg-autre-txt"/></div></div></div>
         <div id="sm-f" style="display:none;"><div class="smbox"><div class="smtit">Localisation du nid</div><div id="lf"><div class="smopt" onclick="sr('lf',this,'Arbre')">🌳 Arbre</div><div class="smopt" onclick="sr('lf',this,'Toiture')">🏠 Toiture</div><div class="smopt" onclick="sr('lf',this,'Nichoir')">🐦 Nichoir à oiseaux</div><div class="smopt" onclick="sr('lf',this,'Autre')">📋 Autre</div></div><div id="lfab" style="display:none;margin-top:6px;"><input class="fi" type="text" placeholder="Préciser..." id="lf-autre-txt"/></div><div id="hfb" style="display:none;margin-top:8px;"><div class="smtit">Hauteur estimée</div><div class="urow"><input type="number" min="0" placeholder="ex. 8" id="hf-val"/><span class="ul2">m</span></div></div><div style="margin-top:10px;" class="smtit">Taille du nid</div><div class="smg2" style="gap:6px;"><div class="szo" onclick="sz(this,'Petit')"><div class="a">Petit</div><div class="b">pamplemousse</div></div><div class="szo" onclick="sz(this,'Moyen')"><div class="a">Moyen</div><div class="b">ballon</div></div><div class="szo" onclick="sz(this,'Gros')"><div class="a">Gros</div><div class="b">plus grand</div></div><div class="szo" onclick="sz(this,'Inconnu')"><div class="a">Inconnu</div><div class="b">non visible</div></div></div></div></div>
         <div id="sm-a" style="display:none;"><div class="smbox"><div class="smtit">Localisation de l'essaim</div><div id="la"><div class="smopt" onclick="sr('la',this,'Arbre')">🌳 Arbre</div><div class="smopt" onclick="sr('la',this,'Haie')">🌿 Haie</div><div class="smopt" onclick="sr('la',this,'Mur')">🧱 Mur</div><div class="smopt" onclick="sr('la',this,'Autre')">📋 Autre</div></div><div id="laab" style="display:none;margin-top:6px;"><input class="fi" type="text" placeholder="Préciser..." id="la-autre-txt"/></div></div></div>
-        <div id="sm-n" style="display:none;"><div class="smbox"><div class="smtit">Type d'animal</div><div class="smg2" id="ta"><div class="smopt" onclick="sr('ta',this,'Chien')">🐕 Chien</div><div class="smopt" onclick="sr('ta',this,'Chat')">🐈 Chat</div><div class="smopt" onclick="sr('ta',this,'Équidé')">🐴 Équidé</div><div class="smopt" onclick="sr('ta',this,'Bovin')">🐄 Bovin</div><div class="smopt" onclick="sr('ta',this,'NAC')">🦎 NAC</div><div class="smopt" onclick="sr('ta',this,'Autre')">🐾 Autre</div></div><div id="tapb" style="display:none;margin-top:6px;"><input class="fi" type="text" placeholder="Préciser l'animal..." id="ta-autre-txt"/></div><div style="margin-top:10px;" class="smtit">Situation de l'animal</div><div id="si"><div class="smopt" onclick="sr('si',this,'Blessé')">🩹 Blessé</div><div class="smopt" onclick="sr('si',this,'Piégé')">🪤 Piégé</div><div class="smopt" onclick="sr('si',this,'Agressif')">⚠️ Agressif</div><div class="smopt" onclick="sr('si',this,'Divagant VP')">🛣️ Divagant VP</div><div class="smopt" onclick="sr('si',this,'Errant attrapé')">🏠 Errant attrapé</div></div></div></div>
+        <div id="sm-n" style="display:none;">
+          <div class="smbox">
+            <div class="smtit">Animaux à prendre en charge</div>
+            <div id="appel-animals">
+              <div class="appel-animal-row">
+                <div class="appel-animal-title">Animal 1</div>
+                <div class="appel-animal-grid">
+                  <select class="fi" data-appel-animal-type onchange="toggleAppelAnimalPrecision(this);clearAppelAnimalsError()"><option value="">— Type —</option><option>Chien</option><option>Chat</option><option>Équidé</option><option>Bovin</option><option>NAC</option><option>Autre</option></select>
+                  <select class="fi" data-appel-animal-situation onchange="clearAppelAnimalsError()"><option value="">— Situation —</option><option>Blessé</option><option>Piégé</option><option>Agressif</option><option>Divagant VP</option><option>Errant attrapé</option><option>Autre</option></select>
+                </div>
+                <input class="fi" data-appel-animal-precision type="text" placeholder="Préciser le type d’animal…" style="display:none;margin-top:6px;"/>
+              </div>
+            </div>
+            <button type="button" class="btn sm" style="margin-top:8px;color:var(--red);border-color:var(--red);" onclick="addAppelAnimal()">＋ Ajouter un animal</button>
+            <div class="ferr" id="appel-animals-error">Renseigner le type de chaque animal.</div>
+          </div>
+        </div>
         <div id="sm-e" style="display:none;"><div class="smbox"><div class="smtit">Zone inondée</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"><div><div class="smtit">Hauteur (m)</div><div class="urow"><input type="number" id="he" min="0" step="0.1" placeholder="0.4" oninput="cv()"/></div></div><div><div class="smtit">Surface (m²)</div><div class="urow"><input type="number" id="se" min="0" placeholder="25" oninput="cv()"/></div></div></div><div id="vb3" style="display:none;margin-top:8px;padding:7px 10px;background:var(--bl);border-radius:8px;font-size:13px;color:var(--blu);">Volume estimé : <strong id="vv">—</strong></div></div></div>
         <div class="fg"><div class="fgl">Commune <span class="req">*</span></div><div class="cwrap" id="cwr"><div id="cs" style="display:none;" class="csel-disp"><span id="cst"></span><button onclick="rc()">✕</button></div><div id="ciw"><input style="width:100%;padding:9px 12px;border:1px solid var(--brd);border-radius:10px;font-size:13px;background:#fff;color:var(--t);" type="text" id="ci" placeholder="Tapez une commune..." oninput="filtC(this.value)" onfocus="filtC(this.value)" autocomplete="off"/><div class="cdd" id="cdd"></div></div></div><div class="ferr" id="ec">Sélectionner une commune.</div></div>
         <div class="fg">
@@ -123,18 +139,36 @@
         </div>
         <div class="fg">
           <div class="fgl">Disponibilité du requérant <span style="font-size:10px;color:var(--t2);">(optionnel)</span></div>
-          <select class="fi" id="req-dispo-mode" onchange="toggleReqAvailability()">
-            <option value="">Non précisée</option>
-            <option value="maintenant">Disponible maintenant</option>
-            <option value="avant">Disponible avant</option>
-            <option value="entre">Disponible entre</option>
-            <option value="apres">Disponible après</option>
-          </select>
-          <div id="req-dispo-hours" class="appel-dispo-grid" style="display:none;margin-top:8px;">
-            <div><div class="fgl" id="req-dispo-h1-label">Horaire</div><input class="fi" type="time" id="req-dispo-h1"/></div>
-            <div id="req-dispo-h2-wrap" style="display:none;"><div class="fgl">Jusqu'à</div><input class="fi" type="time" id="req-dispo-h2"/></div>
+          <div class="appel-dispo-grid">
+            <div>
+              <div class="fgl">État</div>
+              <select class="fi" id="req-dispo-state" onchange="toggleReqAvailability()">
+                <option value="">Non précisé</option>
+                <option value="disponible">Disponible</option>
+                <option value="indisponible">Indisponible</option>
+              </select>
+            </div>
+            <div>
+              <div class="fgl">Précision horaire</div>
+              <select class="fi" id="req-dispo-mode" onchange="toggleReqAvailability()" disabled>
+                <option value="journee">Toute la journée</option>
+                <option value="avant">Avant une heure</option>
+                <option value="entre">Entre deux heures</option>
+                <option value="apres">Après une heure</option>
+              </select>
+            </div>
           </div>
-          <div class="ferr" id="req-dispo-error">Renseigner l'horaire de disponibilité.</div>
+          <div id="req-dispo-details" style="display:none;margin-top:8px;">
+            <div class="fgl">Jour(s) concerné(s) <span class="req">*</span></div>
+            <div id="req-dispo-days">
+              <div class="appel-day-row"><input class="fi" type="date" data-req-dispo-day onchange="clearReqAvailabilityError()"/><button type="button" class="appel-phone-add" onclick="addReqAvailabilityDay()" aria-label="Ajouter un jour" title="Ajouter un jour">+</button></div>
+            </div>
+          </div>
+          <div id="req-dispo-hours" class="appel-dispo-grid" style="display:none;margin-top:8px;">
+            <div><div class="fgl" id="req-dispo-h1-label">Horaire</div><input class="fi" type="time" id="req-dispo-h1" onchange="clearReqAvailabilityError()"/></div>
+            <div id="req-dispo-h2-wrap" style="display:none;"><div class="fgl">Jusqu'à</div><input class="fi" type="time" id="req-dispo-h2" onchange="clearReqAvailabilityError()"/></div>
+          </div>
+          <div class="ferr" id="req-dispo-error">Renseigner au moins un jour.</div>
         </div>
         <label class="appel-erp">
           <input type="checkbox" id="chk-erp" onchange="toggleErpUrgence()"/>
@@ -725,28 +759,28 @@
   <div class="mod"><div class="mhan"></div><div class="mtit" id="mt">—</div><div class="mid2" id="mi">—</div><div id="mb"></div><button class="mclose" onclick="cM()">Fermer</button></div>
 </div>
 
-<script src="runtime-config.js?v=20260724-appel-mobile-14"></script>
-<script src="modules/00-preambule.js?v=20260724-appel-mobile-14" defer></script>
-<script src="modules/01-config-js.js?v=20260724-appel-mobile-14" defer></script>
-<script src="modules/02-auth-js-partie-1-2-structure-casernes-numerotation.js?v=20260724-appel-mobile-14" defer></script>
-<script src="modules/03-security-js.js?v=20260724-appel-mobile-14" defer></script>
-<script src="modules/04-auth-js-partie-2-2-login-session-droits.js?v=20260724-appel-mobile-14" defer></script>
-<script src="modules/05-admin-js-partie-1-2-vues-globales-superadmin.js?v=20260724-appel-mobile-14" defer></script>
-<script src="modules/06-ui-js-accueil-js.js?v=20260724-appel-mobile-14" defer></script>
-<script src="modules/07-appel-js.js?v=20260724-appel-mobile-14" defer></script>
-<script src="modules/08-interventions-js.js?v=20260724-appel-mobile-14" defer></script>
-<script src="modules/09-pilp-js.js?v=20260724-appel-mobile-14" defer></script>
-<script src="modules/10-historique-js.js?v=20260724-appel-mobile-14" defer></script>
-<script src="modules/11-admin-js-partie-2-2-gestion-utilisateurs.js?v=20260724-appel-mobile-14" defer></script>
-<script src="modules/12-astreintes-js.js?v=20260724-appel-mobile-14" defer></script>
-<script src="modules/13-autorisation-js.js?v=20260724-appel-mobile-14" defer></script>
-<script src="modules/14-stats-js.js?v=20260724-appel-mobile-14" defer></script>
-<script src="modules/15-storage-js.js?v=20260724-appel-mobile-14" defer></script>
-<script src="modules/16-email-js.js?v=20260724-appel-mobile-14" defer></script>
-<script src="modules/17-animal-js.js?v=20260724-appel-mobile-14" defer></script>
-<script src="modules/18-planning-annuel-js.js?v=20260724-appel-mobile-14" defer></script>
-<script src="modules/19-onedrive-sync-js.js?v=20260724-appel-mobile-14" defer></script>
-<script src="modules/20-formations-js.js?v=20260724-appel-mobile-14" defer></script>
-<script src="modules/21-astreinte-tel-js.js?v=20260724-appel-mobile-14" defer></script>
+<script src="runtime-config.js?v=20260724-animaux-multiples-16"></script>
+<script src="modules/00-preambule.js?v=20260724-animaux-multiples-16" defer></script>
+<script src="modules/01-config-js.js?v=20260724-animaux-multiples-16" defer></script>
+<script src="modules/02-auth-js-partie-1-2-structure-casernes-numerotation.js?v=20260724-animaux-multiples-16" defer></script>
+<script src="modules/03-security-js.js?v=20260724-animaux-multiples-16" defer></script>
+<script src="modules/04-auth-js-partie-2-2-login-session-droits.js?v=20260724-animaux-multiples-16" defer></script>
+<script src="modules/05-admin-js-partie-1-2-vues-globales-superadmin.js?v=20260724-animaux-multiples-16" defer></script>
+<script src="modules/06-ui-js-accueil-js.js?v=20260724-animaux-multiples-16" defer></script>
+<script src="modules/07-appel-js.js?v=20260724-animaux-multiples-16" defer></script>
+<script src="modules/08-interventions-js.js?v=20260724-animaux-multiples-16" defer></script>
+<script src="modules/09-pilp-js.js?v=20260724-animaux-multiples-16" defer></script>
+<script src="modules/10-historique-js.js?v=20260724-animaux-multiples-16" defer></script>
+<script src="modules/11-admin-js-partie-2-2-gestion-utilisateurs.js?v=20260724-animaux-multiples-16" defer></script>
+<script src="modules/12-astreintes-js.js?v=20260724-animaux-multiples-16" defer></script>
+<script src="modules/13-autorisation-js.js?v=20260724-animaux-multiples-16" defer></script>
+<script src="modules/14-stats-js.js?v=20260724-animaux-multiples-16" defer></script>
+<script src="modules/15-storage-js.js?v=20260724-animaux-multiples-16" defer></script>
+<script src="modules/16-email-js.js?v=20260724-animaux-multiples-16" defer></script>
+<script src="modules/17-animal-js.js?v=20260724-animaux-multiples-16" defer></script>
+<script src="modules/18-planning-annuel-js.js?v=20260724-animaux-multiples-16" defer></script>
+<script src="modules/19-onedrive-sync-js.js?v=20260724-animaux-multiples-16" defer></script>
+<script src="modules/20-formations-js.js?v=20260724-animaux-multiples-16" defer></script>
+<script src="modules/21-astreinte-tel-js.js?v=20260724-animaux-multiples-16" defer></script>
 </body>
 </html>

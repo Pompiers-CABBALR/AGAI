@@ -496,6 +496,8 @@ body{min-height:var(--app-height);}
   overscroll-behavior-y:contain;
   -webkit-overflow-scrolling:touch;
 }
+html.modal-scroll-locked,html.modal-scroll-locked body{overflow:hidden!important;overscroll-behavior:none!important;}
+html.modal-scroll-locked body{position:fixed;width:100%;left:0;right:0;}
 .fi,.fta,.lf input,.urow input,select,textarea{
   min-inline-size:0;
   max-inline-size:100%;
@@ -547,6 +549,12 @@ button,.btn,.nb,.subtab-btn,.smopt,.fb,.ec,.ivr,[onclick]{
 /* Prise d'appel tactile */
 .appel-phone-row{display:flex;align-items:center;gap:7px;margin-bottom:7px;}
 .appel-phone-row .fi{flex:1;min-width:0;}
+.appel-day-row{display:flex;align-items:center;gap:7px;margin-bottom:7px;}
+.appel-day-row .fi{flex:1;min-width:0;}
+.appel-animal-row{position:relative;background:#fff;border:1px solid var(--brd);border-radius:10px;padding:10px;margin-top:7px;}
+.appel-animal-title{font-size:11px;font-weight:700;color:var(--t2);margin-bottom:6px;}
+.appel-animal-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;}
+.appel-animal-remove{position:absolute;right:7px;top:5px;border:0;background:transparent;color:var(--rd);font-size:18px;cursor:pointer;}
 .appel-phone-add,.appel-phone-remove{width:42px;height:42px;min-width:42px;border:1px solid var(--brd);border-radius:10px;background:#fff;color:var(--red);font-size:22px;font-weight:700;cursor:pointer;}
 .appel-phone-remove{color:var(--t2);font-size:18px;}
 .appel-dispo-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
@@ -571,6 +579,8 @@ html.appel-nature-locked .cnt{overflow:hidden!important;}
   .appel-nature-actions .btn{width:100%;min-height:54px;font-size:16px;}
   .appel-dispo-grid{grid-template-columns:1fr;}
   .appel-requerant-grid{grid-template-columns:1fr!important;}
+  .appel-animal-grid{grid-template-columns:1fr;}
+  .pec-two-col{grid-template-columns:1fr!important;}
 }
 
 /* Safari zoome automatiquement sur les champs inférieurs à 16 px, y compris

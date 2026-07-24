@@ -292,8 +292,9 @@ function oM(id){
       // Bouton prise en charge animal (sauvetage/capture uniquement)
       const _isAnimal=iv.n&&iv.n.toLowerCase().includes('sauvetage et capture d');
       const _showAnimalBtn=_isAnimal&&(_isOwnAgres||chef||isAdminModeActive())&&!iv._isRenfort;
+      const _animalCount=Array.isArray(iv._prisesEnCharge)?iv._prisesEnCharge.length:Array.isArray(iv._animauxAppel)&&iv._animauxAppel.length?iv._animauxAppel.length:(iv._priseEnCharge?1:0);
       const animalBtn=_showAnimalBtn
-        ?`<button class="btn sm" style="width:100%;margin-bottom:10px;background:#E67E22;color:#fff;border-color:#E67E22;" onclick="showPriseEnChargeModal('${iv.id}')">&#x1F43E; Prise en charge animal</button>`
+        ?`<button class="btn sm" style="width:100%;margin-bottom:10px;background:#E67E22;color:#fff;border-color:#E67E22;" onclick="showPriseEnChargeModal('${iv.id}')">&#x1F43E; Prises en charge animaux${_animalCount?' ('+_animalCount+')':''}</button>`
         :'';
       actions=`<div class="clotbox">
         ${renfortCloBtn}
@@ -475,6 +476,29 @@ function setAgr2(ivId,login){
 }
 let _modalLocked = false;
 function cM(){if(_modalLocked)return;document.getElementById('mo').style.display='none';}
+
+let _modalScrollY=0;
+function syncModalBackgroundLock(){
+  const mo=document.getElementById('mo'),iframeModal=document.getElementById('iframe-modal');
+  const isOpen=(mo&&getComputedStyle(mo).display!=='none')||(iframeModal&&getComputedStyle(iframeModal).display!=='none');
+  const root=document.documentElement,body=document.body;
+  if(isOpen&&!root.classList.contains('modal-scroll-locked')){
+    _modalScrollY=window.scrollY||window.pageYOffset||0;
+    root.classList.add('modal-scroll-locked');
+    body.style.top=(-_modalScrollY)+'px';
+  }else if(!isOpen&&root.classList.contains('modal-scroll-locked')){
+    root.classList.remove('modal-scroll-locked');
+    body.style.removeProperty('top');
+    window.scrollTo(0,_modalScrollY);
+  }
+}
+requestAnimationFrame(function(){
+  ['mo','iframe-modal'].forEach(function(id){
+    const el=document.getElementById(id);
+    if(el)new MutationObserver(syncModalBackgroundLock).observe(el,{attributes:true,attributeFilter:['style','class']});
+  });
+  syncModalBackgroundLock();
+});
 
 function agresEnCours(){
   // La règle 1 seul en-cours s'applique dès que l'utilisateur est chef d'agrès OU tireur PILP,
