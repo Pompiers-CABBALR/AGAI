@@ -29,7 +29,7 @@ function rHist(){
       const ds=Object.keys(grp[y][m]).sort((a,b)=>b-a);
       const tm=Object.values(grp[y][m]).reduce((s,d)=>s+d.length,0);
       return `<div class="hsub" onclick="tg('hm${y}${m}','am${y}${m}')">${MO[parseInt(m)]}<span class="bdg bgr" style="margin-left:6px;">${tm}</span><span id="am${y}${m}" style="margin-left:auto;">▼</span></div>
-      <div id="hm${y}${m}">${ds.map(d=>{const ivd=grp[y][m][d];return `<div class="hdl">${d}/${m}/${y} — ${ivd.length} intervention(s)</div>${ivd.map(iv=>`<div class="hm" onclick="${iv._isPilp?`oPilp('${iv.id}')`:`oM('${iv.id}')`}">
+      <div id="hm${y}${m}">${ds.map(d=>{const ivd=grp[y][m][d];return `<div class="hdl">${d}/${m}/${y} — ${ivd.length} intervention(s)</div>${ivd.map(iv=>`<div class="hm${iv._crValide&&iv._impressions&&iv._impressions.length?' report-complete':''}" onclick="${iv._isPilp?`oPilp('${iv.id}')`:`oM('${iv.id}')`}">
   <span style="font-family:monospace;font-size:10px;color:var(--t3);">${iv._numCaserne||iv.id}</span>
   <span style="flex:1;font-size:12px;color:var(--t);${iv.s==='annulee'?'text-decoration:line-through;color:#999;':''}">
     ${iv.n}
@@ -42,9 +42,11 @@ function rHist(){
   </span>
   <span style="font-size:11px;color:var(--t2);text-align:right;">${iv.addr?escHtml(iv.addr)+', ':''}${escHtml(iv.com||'')}${(iv._hDebut||iv._hFin)?`<br><span style="font-size:10px;color:var(--t3);">${iv._hDebut?'🕐 '+escHtml(iv._hDebut):''}${iv._hDebut&&iv._hFin?' → ':''}${iv._hFin?escHtml(iv._hFin):''}</span>`:''}</span>
   <span class="bdg ${iv.s==='terminee'?'bg2':iv.s==='avis-passage'?'bp':iv.s==='annulee'?'bgr':'ba'}" style="font-size:10px;">${iv.s==='terminee'?'✓':iv.s==='avis-passage'?'&#x1F7E3;':iv.s==='annulee'?'✕':'↻'}</span>
-  ${iv.s==='terminee'&&iv._crValide?'<span title="Compte rendu validé" style="font-size:11px;margin-left:3px;">📋✔</span>':iv.s==='terminee'&&(iv._crTexte||iv._compteRendu)?'<span title="Compte rendu en attente de validation" style="font-size:11px;margin-left:3px;opacity:.5;">📋</span>':''}
   ${iv._mailsEnvoyes&&iv._mailsEnvoyes.length?'<span title="Envoyé par mail ('+iv._mailsEnvoyes.length+'x)" style="font-size:11px;margin-left:3px;">✉️</span>':''}
-  ${iv._impressions&&iv._impressions.length?'<span title="Rapport imprimé ('+iv._impressions.length+'x)" style="font-size:11px;margin-left:3px;">🖨</span>':''}
+  <span class="hist-report-flags">
+    ${iv.s==='terminee'&&iv._crValide?'<span class="hist-report-badge validated" title="Le compte rendu est validé">✅ Rapport validé</span>':iv.s==='terminee'&&(iv._crTexte||iv._compteRendu)?'<span class="hist-report-badge pending" title="Compte rendu en attente de validation">📋 Non validé</span>':''}
+    ${iv._impressions&&iv._impressions.length?'<span class="hist-report-badge printed" title="Rapport imprimé '+iv._impressions.length+' fois">🖨️ Rapport imprimé'+(iv._impressions.length>1?' ×'+iv._impressions.length:'')+'</span>':''}
+  </span>
 </div>`).join('')}`;}).join('')}</div>`;
     }).join('')}</div></div>`;
   }).join('');
