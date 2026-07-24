@@ -13,8 +13,22 @@ function rHist(){
     const hd=(iv._hDebut||'').replace(/[^0-9]/g,'');
     return hd?hd.padStart(4,'0').slice(0,4):'0000';
   };
+  const _numeroOrdre=iv=>{
+    const values=[iv._numCaserne,iv._numGlobal,iv._numMois,iv._numRenfort,iv.id];
+    for(const value of values){
+      const matches=String(value||'').match(/\d+/g);
+      if(matches&&matches.length)return parseInt(matches[matches.length-1],10)||0;
+    }
+    return 0;
+  };
   const _sortKey=iv=>_jour(iv)+_heureDeb(iv);
-  const ivs=[...normalIvs,...pilpMapped].sort((a,b)=>_sortKey(b).localeCompare(_sortKey(a)));
+  const ivs=[...normalIvs,...pilpMapped].sort((a,b)=>{
+    const byDateAndTime=_sortKey(b).localeCompare(_sortKey(a));
+    if(byDateAndTime!==0)return byDateAndTime;
+    const byNumber=_numeroOrdre(b)-_numeroOrdre(a);
+    if(byNumber!==0)return byNumber;
+    return String(b.id||'').localeCompare(String(a.id||''),'fr',{numeric:true});
+  });
   const grp={};
   ivs.forEach(iv=>{const h=iv.h,y=h.slice(0,4),m=h.slice(4,6),d=h.slice(6,8);if(!grp[y])grp[y]={};if(!grp[y][m])grp[y][m]={};if(!grp[y][m][d])grp[y][m][d]=[];grp[y][m][d].push(iv);});
   const MO=['','Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];

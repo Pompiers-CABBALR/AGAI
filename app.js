@@ -4049,8 +4049,22 @@ function rHist(){
     const hd=(iv._hDebut||'').replace(/[^0-9]/g,'');
     return hd?hd.padStart(4,'0').slice(0,4):'0000';
   };
+  const _numeroOrdre=iv=>{
+    const values=[iv._numCaserne,iv._numGlobal,iv._numMois,iv._numRenfort,iv.id];
+    for(const value of values){
+      const matches=String(value||'').match(/\d+/g);
+      if(matches&&matches.length)return parseInt(matches[matches.length-1],10)||0;
+    }
+    return 0;
+  };
   const _sortKey=iv=>_jour(iv)+_heureDeb(iv);
-  const ivs=[...normalIvs,...pilpMapped].sort((a,b)=>_sortKey(b).localeCompare(_sortKey(a)));
+  const ivs=[...normalIvs,...pilpMapped].sort((a,b)=>{
+    const byDateAndTime=_sortKey(b).localeCompare(_sortKey(a));
+    if(byDateAndTime!==0)return byDateAndTime;
+    const byNumber=_numeroOrdre(b)-_numeroOrdre(a);
+    if(byNumber!==0)return byNumber;
+    return String(b.id||'').localeCompare(String(a.id||''),'fr',{numeric:true});
+  });
   const grp={};
   ivs.forEach(iv=>{const h=iv.h,y=h.slice(0,4),m=h.slice(4,6),d=h.slice(6,8);if(!grp[y])grp[y]={};if(!grp[y][m])grp[y][m]={};if(!grp[y][m][d])grp[y][m][d]=[];grp[y][m][d].push(iv);});
   const MO=['','Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
@@ -9082,7 +9096,7 @@ function rStatsHeader(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260725-historique-rapports-19';
+const APP_VERSION='20260725-ordre-historique-21';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -9833,6 +9847,7 @@ function showCompteRenduModal(ivId) {
     + '<textarea class="fi" id="cr-texte" rows="7" style="resize:vertical;"'
     + (canWrite?' placeholder="Ex : Nid de guepes sous toiture..."':' readonly')
     + '>' + (iv._crTexte||iv._compteRendu||'') + '</textarea></div>'
+    + '<div id="cr-save-status" style="display:none;background:#ECFDF5;border:1px solid #86EFAC;color:#166534;border-radius:8px;padding:8px 10px;margin-top:8px;font-size:12px;font-weight:600;"></div>'
     + '<div class="brow" style="flex-wrap:wrap;gap:6px;margin-top:12px;">' + btns + '</div>'
     + '</div>';
   document.getElementById('mo').style.display = 'flex';
@@ -9932,10 +9947,13 @@ function saveCompteRendu(ivId, andClot) {
   iv._crDate      = getHHMM(N());
   if(iv._sdis) _sdisSaveFields(iv);
   if(_isFrelonIv(iv)) _frelonSaveFields(iv);
-  saveData();
-  saveData();rI();rHist();
+  saveData(true);rI();rHist();
   if(andClot){cM();clot(ivId);}
-  else{cM();setTimeout(function(){oM(ivId);},80);}
+  else{
+    const status=document.getElementById('cr-save-status');
+    if(status){status.textContent='✅ Compte rendu sauvegardé à '+new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});status.style.display='block';}
+    showToast('Compte rendu sauvegardé — la fenêtre reste ouverte','success');
+  }
 }
 
 

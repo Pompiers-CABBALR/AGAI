@@ -483,6 +483,7 @@ function showCompteRenduModal(ivId) {
     + '<textarea class="fi" id="cr-texte" rows="7" style="resize:vertical;"'
     + (canWrite?' placeholder="Ex : Nid de guepes sous toiture..."':' readonly')
     + '>' + (iv._crTexte||iv._compteRendu||'') + '</textarea></div>'
+    + '<div id="cr-save-status" style="display:none;background:#ECFDF5;border:1px solid #86EFAC;color:#166534;border-radius:8px;padding:8px 10px;margin-top:8px;font-size:12px;font-weight:600;"></div>'
     + '<div class="brow" style="flex-wrap:wrap;gap:6px;margin-top:12px;">' + btns + '</div>'
     + '</div>';
   document.getElementById('mo').style.display = 'flex';
@@ -582,10 +583,13 @@ function saveCompteRendu(ivId, andClot) {
   iv._crDate      = getHHMM(N());
   if(iv._sdis) _sdisSaveFields(iv);
   if(_isFrelonIv(iv)) _frelonSaveFields(iv);
-  saveData();
-  saveData();rI();rHist();
+  saveData(true);rI();rHist();
   if(andClot){cM();clot(ivId);}
-  else{cM();setTimeout(function(){oM(ivId);},80);}
+  else{
+    const status=document.getElementById('cr-save-status');
+    if(status){status.textContent='✅ Compte rendu sauvegardé à '+new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});status.style.display='block';}
+    showToast('Compte rendu sauvegardé — la fenêtre reste ouverte','success');
+  }
 }
 
 
