@@ -30,3 +30,21 @@
  * exactement le contenu à extraire dans le fichier correspondant.
  */
 
+// Hauteur réellement visible : corrige les variations de Safari iOS lorsque
+// la barre d'adresse ou le clavier virtuel apparaît.
+let _viewportFrame=0;
+function syncViewportMetrics(){
+  if(_viewportFrame)cancelAnimationFrame(_viewportFrame);
+  _viewportFrame=requestAnimationFrame(function(){
+    _viewportFrame=0;
+    const viewport=window.visualViewport;
+    const height=Math.round(viewport&&viewport.height?viewport.height:window.innerHeight);
+    if(height>0)document.documentElement.style.setProperty('--app-height',height+'px');
+  });
+}
+syncViewportMetrics();
+window.addEventListener('resize',syncViewportMetrics,{passive:true});
+window.addEventListener('orientationchange',syncViewportMetrics,{passive:true});
+window.addEventListener('pageshow',syncViewportMetrics,{passive:true});
+if(window.visualViewport)window.visualViewport.addEventListener('resize',syncViewportMetrics,{passive:true});
+

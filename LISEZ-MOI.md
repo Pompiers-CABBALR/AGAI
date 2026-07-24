@@ -33,6 +33,22 @@ Cette association organise les droits dans AGAI, mais ne permet pas à Supabase
 d’identifier de manière forte l’utilisateur connecté. Les règles RLS prévues pour
 Supabase Auth ne doivent donc pas être activées dans cette configuration.
 
+## Écrans mobiles
+
+La mise en page prend en charge :
+
+- les zones sûres des iPhone avec encoche ou Dynamic Island ;
+- la barre d’accueil située en bas des iPhone ;
+- la hauteur variable de Safari et l’ouverture du clavier virtuel ;
+- le mode portrait et le mode paysage ;
+- les écrans étroits à partir de 320 px ;
+- les smartphones Android, tablettes et grands écrans ;
+- des champs de 16 px pour empêcher le zoom automatique de Safari ;
+- des boutons tactiles d’au moins 44 px sur les appareils tactiles.
+
+Il est recommandé de tester au minimum un iPhone Safari, un smartphone Android
+Chrome, une tablette et un ordinateur avant chaque mise en production.
+
 ## Vérification
 
 La variante a été contrôlée sur les points suivants :
@@ -42,4 +58,3 @@ La variante a été contrôlée sur les points suivants :
 - ordre et présence de tous les modules dans `index.html` ;
 - absence des anciennes clés privées et mots de passe initiaux ;
 - présence des protections de mot de passe, sauvegarde, rôles et numérotation.
-
