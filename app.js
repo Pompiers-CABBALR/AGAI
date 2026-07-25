@@ -387,7 +387,7 @@ function isAdminModeActive(){return hasRight('Administration')||isSuperAdmin();}
 function isAgres(){return hasRight('Chef d\'agrès');}
 function isChef(){return hasRight('Historique complet');}
 function isTireurPILP(){return hasRight('Tireur PILP');}
-function canSeePILP(){return isAgres()||isTireurPILP()||isChef()||hasRight('Administration');}
+function canSeePILP(){return isTireurPILP();}
 
 function isRespEquipe(){
   if(!CU)return false;
@@ -421,6 +421,9 @@ function applyNavRights(){
   document.getElementById('nav-interv').classList.toggle('hidden',!hasRight('Interventions'));
   const pilpTab=document.getElementById('subtab-btn-pilp');
   if(pilpTab)pilpTab.style.display=canSeePILP()?'':'none';
+  if(pilpTab&&!canSeePILP()&&pilpTab.classList.contains('active')){
+    showSubtab('std',document.getElementById('subtab-btn-std'));
+  }
   const adminTab=document.getElementById('params-btn-admin');
   if(adminTab)adminTab.style.display=hasRight('Administration')?'':'none';
   const syncTab=document.getElementById('params-btn-onedrive');
@@ -464,6 +467,10 @@ function applyNavRights(){
   }
 }
 function showSubtab(sub,btn){
+  if(sub==='pilp'&&!isTireurPILP()){
+    sub='std';
+    btn=document.getElementById('subtab-btn-std');
+  }
   document.querySelectorAll('#interv-subtabs .subtab-btn').forEach(b=>b.classList.remove('active'));
   if(btn)btn.classList.add('active');
   document.getElementById('subtab-std').style.display=sub==='std'?'':'none';
@@ -2149,7 +2156,7 @@ function rAccueil(){
   const moisStr=annee+String(d.getMonth()+1).padStart(2,'0');
   // Exclure les interventions annulées, PILIP et non-terminées des stats
   const ivStats=IVS.filter(iv=>!iv._isPilip&&iv.s==='terminee');
-  const nbAnnee=ivStats.filter(iv=>(iv.h||'').startsWith(annee)).length+PILP_IVS.filter(iv=>(iv.h||'').startsWith(annee)&&iv.s==='terminee').length;
+  const nbAnnee=ivStats.filter(iv=>(iv.h||'').startsWith(annee)).length+(isTireurPILP()?PILP_IVS.filter(iv=>(iv.h||'').startsWith(annee)&&iv.s==='terminee').length:0);
   const nbMois=ivStats.filter(iv=>(iv.h||'').startsWith(moisStr)).length;
   const nbAttente=IVS.filter(iv=>!iv._isPilip&&iv.s==='en-attente').length;
   const nbPilpAtt=PILP_IVS.filter(iv=>iv.s==='en-attente').length;
@@ -2193,6 +2200,7 @@ function rAccueilAstreinte(){
   if(!aNDispos){
     msgs.push({
       type:'warn',
+      scope:'dispo',
       text:'Vous n\u2019avez pas mis de disponibilit\u00e9 pour la semaine en cours.'
     });
   }
@@ -2325,9 +2333,9 @@ function rAccueilAstreinte(){
   }
 
   if(blocActuel){
-    msgs.push({type:'info',text:formatBlocMsg(blocActuel,'actuel')});
+    msgs.push({type:'info',scope:'dispo',text:formatBlocMsg(blocActuel,'actuel')});
   } else if(blocProchain&&aNDispos){
-    msgs.push({type:'info',text:formatBlocMsg(blocProchain,'prochain')});
+    msgs.push({type:'info',scope:'dispo',text:formatBlocMsg(blocProchain,'prochain')});
   }
 
   // ── 2. PIQUETS ─────────────────────────────────────────────
@@ -2374,6 +2382,7 @@ function rAccueilAstreinte(){
     const overnight=timeToMin(m.hFin)<=timeToMin(m.hDebut);
     msgs.push({
       type:'success',
+      scope:'piquet',
       text:'Piquet en cours : '+p.engin+' ('+m.role+')'
         +' de '+m.hDebut+' jusqu\u2019\u00e0 '+(overnight?'demain \u00e0 ':'')+m.hFin+'.'
     });
@@ -2407,26 +2416,41 @@ function rAccueilAstreinte(){
     const finJourLabel=overnight?JOURS_FULL[(jourIdx+1+(timeToMin(m.hDebut)<startH?1:0))%7].toLowerCase()+' \u00e0 ':'';
     msgs.push({
       type:'next',
+      scope:'piquet',
       text:'Prochain piquet : '+p.engin+' ('+m.role+')'
         +' le '+effectifJour.toLowerCase()+' \u00e0 '+m.hDebut
         +' jusqu\u2019\u00e0 '+finJourLabel+m.hFin+'.'
     });
   });
 
-  // ── Rendu ──────────────────────────────────────────────────
-  if(!msgs.length){el.innerHTML='';return;}
-
+  // ── Rendu compact : une carte Disponibilité + une carte Piquet.
+  // Le détail reste accessible en touchant la carte, sans repousser les
+  // informations d'intervention vers le bas de l'écran d'accueil.
   const colors={
     warn:{bg:'#FEF9C3',border:'#F59E0B',icon:'&#x26A0;&#xFE0F;',color:'#713F12'},
     info:{bg:'#EFF6FF',border:'#3B82F6',icon:'&#x1F4C5;',color:'#1E3A5F'},
     success:{bg:'#F0FDF4',border:'#22C55E',icon:'&#x2705;',color:'#14532D'},
     next:{bg:'#F3EAF8',border:'#A855F7',icon:'&#x1F51C;',color:'#4A1D6D'},
   };
-  el.innerHTML=msgs.map(function(m){
-    const c=colors[m.type]||colors.info;
-    return '<div style="background:'+c.bg+';border-left:4px solid '+c.border+';border-radius:8px;padding:10px 14px;margin-bottom:6px;font-size:13px;color:'+c.color+';">'
-      +'<span style="margin-right:6px;">'+c.icon+'</span>'+m.text+'</div>';
-  }).join('');
+  function renderAgendaCard(scope,title,emptyText,defaultType){
+    const items=msgs.filter(function(m){return m.scope===scope;});
+    const first=items[0]||{type:defaultType,text:emptyText};
+    const c=colors[first.type]||colors[defaultType]||colors.info;
+    const details=items.length?items:[first];
+    return '<details class="acc-agenda-card" style="--agenda-bg:'+c.bg+';--agenda-color:'+c.border+';--agenda-text:'+c.color+';">'
+      +'<summary title="'+escHtml(first.text)+'"><span class="acc-agenda-icon">'+c.icon+'</span>'
+      +'<span class="acc-agenda-main"><div class="acc-agenda-title">'+title+'</div>'
+      +'<div class="acc-agenda-summary">'+escHtml(first.text)+'</div></span>'
+      +'<span class="acc-agenda-more">▼</span></summary>'
+      +'<div class="acc-agenda-details">'+details.map(function(m){
+        const mc=colors[m.type]||c;
+        return '<div class="acc-agenda-detail"><span style="margin-right:4px;">'+mc.icon+'</span>'+escHtml(m.text)+'</div>';
+      }).join('')+'</div></details>';
+  }
+  el.innerHTML='<div class="acc-agenda-grid">'
+    +renderAgendaCard('dispo','Disponibilité','Aucune prochaine disponibilité renseignée.','warn')
+    +renderAgendaCard('piquet','Piquet','Aucun piquet prévu dans les prochaines 48 heures.','next')
+    +'</div>';
 }
 
 // ── Toast notification (remplace alert() natif) ──
@@ -3841,6 +3865,10 @@ function sfPilp(f,btn){
 }
 
 function rPilp(){
+  if(!isTireurPILP()){
+    const cont=document.getElementById('pilp-list');if(cont)cont.innerHTML='';
+    return;
+  }
   // Compteurs récapitulatifs PILP
   document.getElementById('pilp-nb1').textContent=PILP_IVS.filter(iv=>iv.s==='en-attente').length;
   document.getElementById('pilp-nb2s').textContent=PILP_IVS.filter(iv=>iv.s==='selectionne').length;
@@ -3902,6 +3930,7 @@ function toggleChkPilp(id,el){
 }
 
 function oPilp(id){
+  if(!isTireurPILP()){showToast('Accès réservé aux tireurs PILP.','warn');return;}
   const iv=PILP_IVS.find(v=>v.id===id);if(!iv)return;
   const ag=isAgres(),tireur=isTireurPILP(),chef=isChef()||hasRight('Administration');
   document.getElementById('mt').textContent=iv.n;
@@ -9178,7 +9207,7 @@ function rStatsHeader(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260725-filtres-mobile-25';
+const APP_VERSION='20260725-accueil-pilp-mobile-26';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne

@@ -15,7 +15,7 @@ function rAccueil(){
   const moisStr=annee+String(d.getMonth()+1).padStart(2,'0');
   // Exclure les interventions annulées, PILIP et non-terminées des stats
   const ivStats=IVS.filter(iv=>!iv._isPilip&&iv.s==='terminee');
-  const nbAnnee=ivStats.filter(iv=>(iv.h||'').startsWith(annee)).length+PILP_IVS.filter(iv=>(iv.h||'').startsWith(annee)&&iv.s==='terminee').length;
+  const nbAnnee=ivStats.filter(iv=>(iv.h||'').startsWith(annee)).length+(isTireurPILP()?PILP_IVS.filter(iv=>(iv.h||'').startsWith(annee)&&iv.s==='terminee').length:0);
   const nbMois=ivStats.filter(iv=>(iv.h||'').startsWith(moisStr)).length;
   const nbAttente=IVS.filter(iv=>!iv._isPilip&&iv.s==='en-attente').length;
   const nbPilpAtt=PILP_IVS.filter(iv=>iv.s==='en-attente').length;
@@ -59,6 +59,7 @@ function rAccueilAstreinte(){
   if(!aNDispos){
     msgs.push({
       type:'warn',
+      scope:'dispo',
       text:'Vous n\u2019avez pas mis de disponibilit\u00e9 pour la semaine en cours.'
     });
   }
@@ -191,9 +192,9 @@ function rAccueilAstreinte(){
   }
 
   if(blocActuel){
-    msgs.push({type:'info',text:formatBlocMsg(blocActuel,'actuel')});
+    msgs.push({type:'info',scope:'dispo',text:formatBlocMsg(blocActuel,'actuel')});
   } else if(blocProchain&&aNDispos){
-    msgs.push({type:'info',text:formatBlocMsg(blocProchain,'prochain')});
+    msgs.push({type:'info',scope:'dispo',text:formatBlocMsg(blocProchain,'prochain')});
   }
 
   // ── 2. PIQUETS ─────────────────────────────────────────────
@@ -240,6 +241,7 @@ function rAccueilAstreinte(){
     const overnight=timeToMin(m.hFin)<=timeToMin(m.hDebut);
     msgs.push({
       type:'success',
+      scope:'piquet',
       text:'Piquet en cours : '+p.engin+' ('+m.role+')'
         +' de '+m.hDebut+' jusqu\u2019\u00e0 '+(overnight?'demain \u00e0 ':'')+m.hFin+'.'
     });
@@ -273,26 +275,41 @@ function rAccueilAstreinte(){
     const finJourLabel=overnight?JOURS_FULL[(jourIdx+1+(timeToMin(m.hDebut)<startH?1:0))%7].toLowerCase()+' \u00e0 ':'';
     msgs.push({
       type:'next',
+      scope:'piquet',
       text:'Prochain piquet : '+p.engin+' ('+m.role+')'
         +' le '+effectifJour.toLowerCase()+' \u00e0 '+m.hDebut
         +' jusqu\u2019\u00e0 '+finJourLabel+m.hFin+'.'
     });
   });
 
-  // ── Rendu ──────────────────────────────────────────────────
-  if(!msgs.length){el.innerHTML='';return;}
-
+  // ── Rendu compact : une carte Disponibilité + une carte Piquet.
+  // Le détail reste accessible en touchant la carte, sans repousser les
+  // informations d'intervention vers le bas de l'écran d'accueil.
   const colors={
     warn:{bg:'#FEF9C3',border:'#F59E0B',icon:'&#x26A0;&#xFE0F;',color:'#713F12'},
     info:{bg:'#EFF6FF',border:'#3B82F6',icon:'&#x1F4C5;',color:'#1E3A5F'},
     success:{bg:'#F0FDF4',border:'#22C55E',icon:'&#x2705;',color:'#14532D'},
     next:{bg:'#F3EAF8',border:'#A855F7',icon:'&#x1F51C;',color:'#4A1D6D'},
   };
-  el.innerHTML=msgs.map(function(m){
-    const c=colors[m.type]||colors.info;
-    return '<div style="background:'+c.bg+';border-left:4px solid '+c.border+';border-radius:8px;padding:10px 14px;margin-bottom:6px;font-size:13px;color:'+c.color+';">'
-      +'<span style="margin-right:6px;">'+c.icon+'</span>'+m.text+'</div>';
-  }).join('');
+  function renderAgendaCard(scope,title,emptyText,defaultType){
+    const items=msgs.filter(function(m){return m.scope===scope;});
+    const first=items[0]||{type:defaultType,text:emptyText};
+    const c=colors[first.type]||colors[defaultType]||colors.info;
+    const details=items.length?items:[first];
+    return '<details class="acc-agenda-card" style="--agenda-bg:'+c.bg+';--agenda-color:'+c.border+';--agenda-text:'+c.color+';">'
+      +'<summary title="'+escHtml(first.text)+'"><span class="acc-agenda-icon">'+c.icon+'</span>'
+      +'<span class="acc-agenda-main"><div class="acc-agenda-title">'+title+'</div>'
+      +'<div class="acc-agenda-summary">'+escHtml(first.text)+'</div></span>'
+      +'<span class="acc-agenda-more">▼</span></summary>'
+      +'<div class="acc-agenda-details">'+details.map(function(m){
+        const mc=colors[m.type]||c;
+        return '<div class="acc-agenda-detail"><span style="margin-right:4px;">'+mc.icon+'</span>'+escHtml(m.text)+'</div>';
+      }).join('')+'</div></details>';
+  }
+  el.innerHTML='<div class="acc-agenda-grid">'
+    +renderAgendaCard('dispo','Disponibilité','Aucune prochaine disponibilité renseignée.','warn')
+    +renderAgendaCard('piquet','Piquet','Aucun piquet prévu dans les prochaines 48 heures.','next')
+    +'</div>';
 }
 
 // ── Toast notification (remplace alert() natif) ──

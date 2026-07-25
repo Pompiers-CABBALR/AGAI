@@ -290,7 +290,7 @@ function isAdminModeActive(){return hasRight('Administration')||isSuperAdmin();}
 function isAgres(){return hasRight('Chef d\'agrès');}
 function isChef(){return hasRight('Historique complet');}
 function isTireurPILP(){return hasRight('Tireur PILP');}
-function canSeePILP(){return isAgres()||isTireurPILP()||isChef()||hasRight('Administration');}
+function canSeePILP(){return isTireurPILP();}
 
 function isRespEquipe(){
   if(!CU)return false;
@@ -324,6 +324,9 @@ function applyNavRights(){
   document.getElementById('nav-interv').classList.toggle('hidden',!hasRight('Interventions'));
   const pilpTab=document.getElementById('subtab-btn-pilp');
   if(pilpTab)pilpTab.style.display=canSeePILP()?'':'none';
+  if(pilpTab&&!canSeePILP()&&pilpTab.classList.contains('active')){
+    showSubtab('std',document.getElementById('subtab-btn-std'));
+  }
   const adminTab=document.getElementById('params-btn-admin');
   if(adminTab)adminTab.style.display=hasRight('Administration')?'':'none';
   const syncTab=document.getElementById('params-btn-onedrive');
@@ -367,6 +370,10 @@ function applyNavRights(){
   }
 }
 function showSubtab(sub,btn){
+  if(sub==='pilp'&&!isTireurPILP()){
+    sub='std';
+    btn=document.getElementById('subtab-btn-std');
+  }
   document.querySelectorAll('#interv-subtabs .subtab-btn').forEach(b=>b.classList.remove('active'));
   if(btn)btn.classList.add('active');
   document.getElementById('subtab-std').style.display=sub==='std'?'':'none';

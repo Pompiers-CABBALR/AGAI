@@ -70,6 +70,10 @@ function sfPilp(f,btn){
 }
 
 function rPilp(){
+  if(!isTireurPILP()){
+    const cont=document.getElementById('pilp-list');if(cont)cont.innerHTML='';
+    return;
+  }
   // Compteurs récapitulatifs PILP
   document.getElementById('pilp-nb1').textContent=PILP_IVS.filter(iv=>iv.s==='en-attente').length;
   document.getElementById('pilp-nb2s').textContent=PILP_IVS.filter(iv=>iv.s==='selectionne').length;
@@ -131,6 +135,7 @@ function toggleChkPilp(id,el){
 }
 
 function oPilp(id){
+  if(!isTireurPILP()){showToast('Accès réservé aux tireurs PILP.','warn');return;}
   const iv=PILP_IVS.find(v=>v.id===id);if(!iv)return;
   const ag=isAgres(),tireur=isTireurPILP(),chef=isChef()||hasRight('Administration');
   document.getElementById('mt').textContent=iv.n;
