@@ -1361,12 +1361,9 @@ function rAstrPiquets(){
     return 's';
   }
 
-  const todayDow=N().getDay();
-  const todayIdx=todayDow===0?6:todayDow-1;
-
   JOURS_FULL.forEach(function(jour,di){
-    const isToday=di===todayIdx;
     const jourDate=new Date(mon);jourDate.setDate(jourDate.getDate()+di);
+    const isToday=getDS(jourDate)===getDS(N());
     const MOIS_PIQUET=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
     const JOUR_BG=['#EEF2FF','#FFF7ED','#ECFDF5','#FFF1F2','#F0F9FF','#FFFBEB','#F5F3FF'];
     const JOUR_FG=['#4338CA','#C2410C','#065F46','#BE123C','#0369A1','#92400E','#6D28D9'];
@@ -1391,10 +1388,10 @@ function rAstrPiquets(){
       +'</colgroup>'
       +'<thead><tr style="background:var(--bg);">'
       +'<th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--t2);border-right:0.5px solid var(--brd);border-bottom:0.5px solid var(--brd);text-align:center;">Engin</th>'
-      +'<th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--t2);border-right:0.5px solid var(--brd);border-bottom:0.5px solid var(--brd);">Matin<br><small>08&ndash;12</small></th>'
-      +'<th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--t2);border-right:0.5px solid var(--brd);border-bottom:0.5px solid var(--brd);">Apr&egrave;s-midi<br><small>12&ndash;18</small></th>'
-      +'<th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--t2);border-right:0.5px solid var(--brd);border-bottom:0.5px solid var(--brd);">Soir<br><small>18&ndash;00</small></th>'
-      +'<th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--t2);border-bottom:0.5px solid var(--brd);border-right:0.5px solid var(--brd);">Nuit<br><small>00&ndash;08</small></th>'
+      +'<th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--t2);border-right:0.5px solid var(--brd);border-bottom:0.5px solid var(--brd);">Matin</th>'
+      +'<th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--t2);border-right:0.5px solid var(--brd);border-bottom:0.5px solid var(--brd);">Apr&egrave;s-midi</th>'
+      +'<th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--t2);border-right:0.5px solid var(--brd);border-bottom:0.5px solid var(--brd);">Soir</th>'
+      +'<th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--t2);border-bottom:0.5px solid var(--brd);border-right:0.5px solid var(--brd);">Nuit</th>'
       +'<th style="padding:5px 8px;font-size:10px;border-bottom:0.5px solid var(--brd);text-align:right;"></th>'
       +'</tr></thead><tbody>';
 
@@ -1746,7 +1743,7 @@ function exportPiquets(){
     // Feuille r\u00e9cap semaine (1 tableau par jour, tous les engins)
     const recapData=[];
     recapData.push(['Fiche des piquets \u00e0 la semaine - '+weekLabel(mon),'','','','','','','','']);
-    recapData.push(['Engin','Matin 08:00-12:00','Cr\u00e9neau','Apr\u00e8s-midi 12:00-18:00','Cr\u00e9neau','Soir 18:00-00:00','Cr\u00e9neau','Nuit 00:00-08:00','Cr\u00e9neau']);
+    recapData.push(['Engin','Matin','Cr\u00e9neau','Apr\u00e8s-midi','Cr\u00e9neau','Soir','Cr\u00e9neau','Nuit','Cr\u00e9neau']);
 
     JOURS_FULL.forEach(function(jour,di){
       const jourDate=new Date(mon);jourDate.setDate(jourDate.getDate()+di);
@@ -1779,7 +1776,7 @@ function exportPiquets(){
       const dateStr=jour+' '+jourDate.getDate()+'/'+pad(jourDate.getMonth()+1);
       const wsData=[];
       wsData.push([dateStr,'','','','','','','','']);
-      wsData.push(['Engin','Matin 08:00-12:00','Cr\u00e9neau','Apr\u00e8s-midi 12:00-18:00','Cr\u00e9neau','Soir 18:00-00:00','Cr\u00e9neau','Nuit 00:00-08:00','Cr\u00e9neau']);
+      wsData.push(['Engin','Matin','Cr\u00e9neau','Apr\u00e8s-midi','Cr\u00e9neau','Soir','Cr\u00e9neau','Nuit','Cr\u00e9neau']);
       engins.forEach(function(engin){
         const pJour=piquetsSem.filter(function(p){return p.engin===engin&&p.jour===jour;});
         const [mN,mC]=trancheData(pJour,'matin');
