@@ -128,6 +128,30 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .acc-agenda-card[open] .acc-agenda-more{transform:rotate(180deg);}
 .acc-agenda-details{border-top:1px solid rgba(0,0,0,.1);padding:8px 9px;font-size:11px;line-height:1.35;}
 .acc-agenda-detail+.acc-agenda-detail{margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,0,0,.08);}
+.astr-landscape-guard{display:none;}
+@media(orientation:portrait) and (pointer:coarse) and (max-width:1024px){
+  #tab-astreintes.active{min-height:calc(var(--app-height) - 155px);}
+  #tab-astreintes.active>.astr-landscape-guard{
+    display:flex;
+    min-height:calc(var(--app-height) - 175px);
+    align-items:center;
+    justify-content:center;
+    padding:20px;
+  }
+  #tab-astreintes.active>:not(.astr-landscape-guard){display:none!important;}
+  .astr-landscape-card{
+    width:min(100%,440px);
+    padding:26px 20px;
+    border:1px solid var(--brd);
+    border-radius:18px;
+    background:#fff;
+    text-align:center;
+    box-shadow:0 8px 28px rgba(0,0,0,.08);
+  }
+  .astr-landscape-icon{font-size:54px;line-height:1;margin-bottom:12px;display:block;}
+  .astr-landscape-title{font-size:18px;font-weight:800;color:var(--t);margin-bottom:8px;}
+  .astr-landscape-text{font-size:13px;line-height:1.45;color:var(--t2);}
+}
 @media(max-width:600px){
   .accueil-date{margin-bottom:8px;}
   .acc-agenda-grid{gap:6px;margin-top:8px;}
