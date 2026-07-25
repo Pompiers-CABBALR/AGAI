@@ -659,6 +659,26 @@ html.appel-nature-locked .cnt{overflow:hidden!important;}
 /* Smartphones en portrait, y compris les grands iPhone de 430 px :
    une seule colonne évite tout chevauchement des contrôles natifs. */
 @media(orientation:portrait) and (pointer:coarse) and (max-width:600px){
+  #intervention-filter-row{
+    display:grid;
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    gap:5px;
+    width:100%;
+    max-width:100%;
+    overflow:visible!important;
+    padding-bottom:0;
+  }
+  #intervention-filter-row .fb{
+    width:100%;
+    min-width:0;
+    min-height:46px;
+    padding:6px 3px;
+    font-size:10px;
+    line-height:1.15;
+    white-space:normal;
+    overflow-wrap:anywhere;
+    flex:none;
+  }
   #act-form-panel .fg-duo,#fmpa-form-panel .fg-duo,
   #formstag-form-panel .fg-duo,#formform-form-panel .fg-duo,
   #act-form-panel .fg-horaires,#fmpa-form-panel .fg-horaires,
