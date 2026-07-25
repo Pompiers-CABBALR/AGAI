@@ -3067,7 +3067,7 @@ function annulerAppel(ivId){
     </div>
   </div>`;
   document.getElementById('cm').style.display='none';
-  document.getElementById('mo').style.display='flex';
+  openModalAtTop('cancel-appel-motif');
 }
 function confirmerAnnulationAppel(ivId){
   const iv=IVS.find(v=>v.id===ivId);
@@ -3185,6 +3185,9 @@ function sortedIVS(list){
     // Pour les autres : date du dernier changement de statut desc
     const la=a.tl&&a.tl.length?a.tl[a.tl.length-1].h:a.h;
     const lb=b.tl&&b.tl.length?b.tl[b.tl.length-1].h:b.h;
+    // Dans le groupe « Terminées », conserver l'ordre chronologique :
+    // la dernière intervention clôturée vient s'ajouter en bas du groupe.
+    if(a.s==='terminee')return la.localeCompare(lb);
     return lb.localeCompare(la); // desc
   });
 }
@@ -3590,7 +3593,29 @@ function setAgr2(ivId,login){
   rI();oM(ivId);
 }
 let _modalLocked = false;
-function cM(){if(_modalLocked)return;document.getElementById('mo').style.display='none';}
+function cM(){
+  if(_modalLocked)return;
+  const mo=document.getElementById('mo'),panel=mo&&mo.querySelector('.mod');
+  if(mo)mo.style.display='none';
+  if(panel)panel.scrollTop=0;
+}
+function openModalAtTop(focusId){
+  const mo=document.getElementById('mo'),panel=mo&&mo.querySelector('.mod');
+  if(!mo)return;
+  mo.style.display='flex';
+  const reset=function(){
+    if(panel)panel.scrollTop=0;
+    const body=document.getElementById('mb');if(body)body.scrollTop=0;
+  };
+  reset();
+  requestAnimationFrame(function(){
+    reset();
+    if(focusId){
+      const field=document.getElementById(focusId);
+      if(field){try{field.focus({preventScroll:true});}catch(err){field.focus();}reset();}
+    }
+  });
+}
 
 let _modalScrollY=0;
 function syncModalBackgroundLock(){
@@ -6552,7 +6577,7 @@ function annulerIV(id){
         <button class="btn pr sm" onclick="cM()">Conserver</button>
       </div>
     </div>`;
-  document.getElementById('mo').style.display='flex';
+  openModalAtTop('cancel-motif');
 }
 function confirmerAnnulation(id){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
@@ -7273,7 +7298,7 @@ function showComplementModal(id){
     +'<div class="brow">'
     +'<button class="btn pr sm" onclick="saveComplementInfo(\''+id+'\')">&#x1F4BE; Ajouter</button>'
     +'<button class="btn sm" onclick="oM(\''+id+'\')">Retour</button></div></div>';
-  document.getElementById('mo').style.display='flex';
+  openModalAtTop('compl-info-val');
 }
 function saveComplementInfo(id){
   const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
@@ -9153,7 +9178,7 @@ function rStatsHeader(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260725-animaux-erp-dispos-23';
+const APP_VERSION='20260725-chrono-modales-pec-24';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -10381,10 +10406,10 @@ function showPriseEnChargeModal(ivId,ficheIndex) {
   document.getElementById('mt').textContent = 'Prise en charge animal — fiche '+(ficheIndex+1);
   document.getElementById('mi').textContent = iv.n + ' \u2014 ' + iv.com;
   document.getElementById('mb').innerHTML =
-    '<div style="max-height:72vh;overflow-y:auto;padding:4px 0;">'
+    '<div class="pec-form-scroll">'
     // Renseignements administratifs
     + '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--t2);margin-bottom:8px;letter-spacing:.04em;">Renseignements administratifs</div>'
-    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">'
+    + '<div class="pec-form-grid">'
     + '<div class="fg"><div class="fgl">Date intervention</div><input class="fi" id="pec-date" type="date" value="'+(saved.date||dateDefault)+'"/></div>'
     + '<div class="fg"><div class="fgl">Heure</div><input class="fi" id="pec-heure" type="time" value="'+(saved.heure||heureInit)+'"/></div>'
     + '</div>'
@@ -10397,21 +10422,21 @@ function showPriseEnChargeModal(ivId,ficheIndex) {
 
     // Description animal
     + '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--t2);margin:10px 0 8px;letter-spacing:.04em;">Description de l\'animal</div>'
-    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">'
+    + '<div class="pec-form-grid">'
     + '<div class="fg"><div class="fgl">Espèce</div>'
-    + '<div style="display:flex;gap:12px;margin-top:4px;">'
+    + '<div class="pec-choice-row" style="margin-top:4px;">'
     + '<label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;"><input type="radio" name="pec-espece" value="Chien" '+((!saved.espece||saved.espece==='Chien')?'checked':'')+' style="accent-color:var(--red);"> Chien</label>'
     + '<label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;"><input type="radio" name="pec-espece" value="Chat" '+(saved.espece==='Chat'?'checked':'')+' style="accent-color:var(--red);"> Chat</label>'
     + '<label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;"><input type="radio" name="pec-espece" value="Autre" '+(saved.espece==='Autre'?'checked':'')+' style="accent-color:var(--red);"> Autre</label>'
     + '</div></div>'
     + '<div class="fg"><div class="fgl">Sexe</div>'
-    + '<div style="display:flex;gap:12px;margin-top:4px;">'
+    + '<div class="pec-choice-row" style="margin-top:4px;">'
     + '<label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;"><input type="radio" name="pec-sexe" value="M" '+(saved.sexe==='M'?'checked':'')+' style="accent-color:var(--red);"> Mâle</label>'
     + '<label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;"><input type="radio" name="pec-sexe" value="F" '+(saved.sexe==='F'?'checked':'')+' style="accent-color:var(--red);"> Femelle</label>'
     + '<label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;"><input type="radio" name="pec-sexe" value="Inconnu" '+(saved.sexe==='Inconnu'||!saved.sexe?'checked':'')+' style="accent-color:var(--red);"> Inconnu</label>'
     + '</div></div>'
     + '</div>'
-    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">'
+    + '<div class="pec-form-grid">'
     + '<div class="fg"><div class="fgl">Race <span id="pec-race-aide-btn" onclick="togglePecAide(\'race\')" style="cursor:pointer;font-size:10px;background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE;border-radius:4px;padding:1px 6px;margin-left:4px;">❓ Aide</span> <span onclick="ouvrirGaleriePec(\'race\')" style="cursor:pointer;font-size:10px;background:#F0FDF4;color:#166534;border:1px solid #86EFAC;border-radius:4px;padding:1px 6px;margin-left:2px;">🖼 Galerie</span></div>'
     + '<input class="fi" id="pec-race" type="text" value="'+(saved.race||'')+'" placeholder="Ex: Labrador, croisé..."/>'
     + '<div id="pec-race-aide" style="display:none;margin-top:4px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:8px;font-size:11px;">'
@@ -10445,7 +10470,7 @@ function showPriseEnChargeModal(ivId,ficheIndex) {
 
     // Destination
     + '<div class="fg"><div class="fgl" style="margin-bottom:6px;">Animal déposé</div>'
-    + '<div style="display:flex;gap:16px;">'
+    + '<div class="pec-choice-row" style="gap:16px;">'
     + '<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;"><input type="checkbox" id="pec-fourriere" '+(saved.fourriere?'checked':'')+' style="accent-color:var(--red);width:15px;height:15px;"> À la fourrière</label>'
     + '<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;"><input type="checkbox" id="pec-veterinaire" '+(saved.veterinaire?'checked':'')+' style="accent-color:var(--red);width:15px;height:15px;"> Chez le vétérinaire</label>'
     + '</div></div>'
@@ -10463,7 +10488,7 @@ function showPriseEnChargeModal(ivId,ficheIndex) {
     + '<button class="btn sm" onclick="showPrisesEnChargeManager(\''+ivId+'\')">← Toutes les fiches</button>'
     + '</div></div>';
 
-  document.getElementById('mo').style.display = 'flex';
+  openModalAtTop();
 
   // Listeners dynamiques
   setTimeout(function(){

@@ -548,7 +548,7 @@ function annulerAppel(ivId){
     </div>
   </div>`;
   document.getElementById('cm').style.display='none';
-  document.getElementById('mo').style.display='flex';
+  openModalAtTop('cancel-appel-motif');
 }
 function confirmerAnnulationAppel(ivId){
   const iv=IVS.find(v=>v.id===ivId);

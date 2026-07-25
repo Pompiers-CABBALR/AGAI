@@ -74,6 +74,9 @@ function sortedIVS(list){
     // Pour les autres : date du dernier changement de statut desc
     const la=a.tl&&a.tl.length?a.tl[a.tl.length-1].h:a.h;
     const lb=b.tl&&b.tl.length?b.tl[b.tl.length-1].h:b.h;
+    // Dans le groupe « Terminées », conserver l'ordre chronologique :
+    // la dernière intervention clôturée vient s'ajouter en bas du groupe.
+    if(a.s==='terminee')return la.localeCompare(lb);
     return lb.localeCompare(la); // desc
   });
 }
@@ -479,7 +482,29 @@ function setAgr2(ivId,login){
   rI();oM(ivId);
 }
 let _modalLocked = false;
-function cM(){if(_modalLocked)return;document.getElementById('mo').style.display='none';}
+function cM(){
+  if(_modalLocked)return;
+  const mo=document.getElementById('mo'),panel=mo&&mo.querySelector('.mod');
+  if(mo)mo.style.display='none';
+  if(panel)panel.scrollTop=0;
+}
+function openModalAtTop(focusId){
+  const mo=document.getElementById('mo'),panel=mo&&mo.querySelector('.mod');
+  if(!mo)return;
+  mo.style.display='flex';
+  const reset=function(){
+    if(panel)panel.scrollTop=0;
+    const body=document.getElementById('mb');if(body)body.scrollTop=0;
+  };
+  reset();
+  requestAnimationFrame(function(){
+    reset();
+    if(focusId){
+      const field=document.getElementById(focusId);
+      if(field){try{field.focus({preventScroll:true});}catch(err){field.focus();}reset();}
+    }
+  });
+}
 
 let _modalScrollY=0;
 function syncModalBackgroundLock(){

@@ -2094,7 +2094,7 @@ function annulerIV(id){
         <button class="btn pr sm" onclick="cM()">Conserver</button>
       </div>
     </div>`;
-  document.getElementById('mo').style.display='flex';
+  openModalAtTop('cancel-motif');
 }
 function confirmerAnnulation(id){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
@@ -2815,7 +2815,7 @@ function showComplementModal(id){
     +'<div class="brow">'
     +'<button class="btn pr sm" onclick="saveComplementInfo(\''+id+'\')">&#x1F4BE; Ajouter</button>'
     +'<button class="btn sm" onclick="oM(\''+id+'\')">Retour</button></div></div>';
-  document.getElementById('mo').style.display='flex';
+  openModalAtTop('compl-info-val');
 }
 function saveComplementInfo(id){
   const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
