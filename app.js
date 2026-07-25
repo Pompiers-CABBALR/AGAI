@@ -6234,26 +6234,38 @@ function exportPiquets(){
     return 'soir';
   }
 
-  function membresNoms(p){
-    const membres=p.membres&&p.membres.length?p.membres:[
+  function getMembresExport(p){
+    return p.membres&&p.membres.length?p.membres:[
       p.chefAgres?{role:'CA',login:p.chefAgres,hDebut:p.debut,hFin:p.fin}:null,
       p.conducteur?{role:'Cond.',login:p.conducteur,hDebut:p.debut,hFin:p.fin}:null,
       p.chefEquipe?{role:'CE',login:p.chefEquipe,hDebut:p.debut,hFin:p.fin}:null,
       p.stagiaire?{role:'\u00c9q.',login:p.stagiaire,hDebut:p.debut,hFin:p.fin}:null,
     ].filter(Boolean);
+  }
+
+  function membresNoms(p){
+    const membres=getMembresExport(p);
     return membres.map(function(m){
       const u=USERS.find(function(x){return x.l===m.login;});
-      if(!u)return m.login||'';
+      const role=m.role?m.role+' : ':'';
       const hInfo=(m.hDebut&&m.hFin&&(m.hDebut!==p.debut||m.hFin!==p.fin))?' ('+m.hDebut+'-'+m.hFin+')':'';
-      return u.nom+' '+u.prenom.charAt(0)+'.'+hInfo;
+      if(!u)return role+(m.login||'')+hInfo;
+      return role+u.nom+' '+u.prenom.charAt(0)+'.'+hInfo;
     }).join('\n');
   }
 
   function trancheData(pJour,tranche){
     const list=pJour.filter(function(p){return getTranche(p)===tranche;});
     if(!list.length)return['',''];
-    const p=list[0];
-    return[membresNoms(p),p.debut+'/'+p.fin];
+    const noms=list.map(function(p,i){
+      const prefix=list.length>1?'Cr\u00e9neau '+(i+1)+'\n':'';
+      const membres=membresNoms(p)||'Aucun agent affect\u00e9';
+      return prefix+membres+(p.note?'\nNote : '+p.note:'');
+    }).join('\n\n');
+    const horaires=list.map(function(p,i){
+      return (list.length>1?'#'+(i+1)+' ':'')+p.debut+'-'+p.fin;
+    }).join('\n');
+    return[noms,horaires];
   }
 
   function doExport(){
@@ -6290,6 +6302,49 @@ function exportPiquets(){
       wsRecap[key].s.alignment={wrapText:true,vertical:'top'};
     }
     XLSX.utils.book_append_sheet(wb,wsRecap,'Semaine');
+
+    // Données exhaustives : une ligne par agent affecté, sans perdre les
+    // créneaux multiples, les rôles, les horaires individuels ni les notes.
+    const detailData=[[
+      'Caserne','Semaine','Date','Jour','Engin','P\u00e9riode',
+      'D\u00e9but piquet','Fin piquet','R\u00f4le','Identifiant',
+      'Agent','D\u00e9but agent','Fin agent','Note'
+    ]];
+    const trancheLabels={matin:'Matin',am:'Apr\u00e8s-midi',soir:'Soir',nuit:'Nuit'};
+    const caserneNom=(CC()&&CC().nom)||CURRENT_CASERNE_ID||'';
+    JOURS_FULL.forEach(function(jour,di){
+      const jourDate=new Date(mon);jourDate.setDate(jourDate.getDate()+di);
+      const dateIso=jourDate.getFullYear()+'-'+pad(jourDate.getMonth()+1)+'-'+pad(jourDate.getDate());
+      piquetsSem.filter(function(p){return p.jour===jour;}).forEach(function(p){
+        const membres=getMembresExport(p);
+        const base=[
+          caserneNom,wk,dateIso,jour,p.engin||'',trancheLabels[getTranche(p)]||'',
+          p.debut||'',p.fin||''
+        ];
+        if(!membres.length){
+          detailData.push(base.concat(['','','','','',p.note||'']));
+          return;
+        }
+        membres.forEach(function(m){
+          const u=USERS.find(function(x){return x.l===m.login;});
+          detailData.push(base.concat([
+            m.role||'',m.login||'',u?fullName(u):m.login||'',
+            m.hDebut||p.debut||'',m.hFin||p.fin||'',p.note||''
+          ]));
+        });
+      });
+    });
+    const wsDetail=XLSX.utils.aoa_to_sheet(detailData);
+    wsDetail['!cols']=[
+      {wch:24},{wch:12},{wch:12},{wch:12},{wch:12},{wch:14},{wch:12},
+      {wch:12},{wch:22},{wch:22},{wch:28},{wch:12},{wch:12},{wch:35}
+    ];
+    for(const key in wsDetail){
+      if(key[0]==='!')continue;
+      if(!wsDetail[key].s)wsDetail[key].s={};
+      wsDetail[key].s.alignment={wrapText:true,vertical:'top'};
+    }
+    XLSX.utils.book_append_sheet(wb,wsDetail,'Donn\u00e9es compl\u00e8tes');
 
     // Un onglet par jour
     JOURS_FULL.forEach(function(jour,di){
@@ -9227,7 +9282,7 @@ function rStatsHeader(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260725-piquets-titres-simples-33';
+const APP_VERSION='20260725-piquets-export-complet-34';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
