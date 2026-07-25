@@ -81,6 +81,14 @@ function lancerItineraireTournee(){
   if(base.length>1)showToast('Itinéraire '+quoi+' ('+base.length+') ouvert dans Google Maps.','info');
   openMapsItineraire(base.map(iv=>iv.id));
 }
+function lancerItinerairePilp(){
+  const cochees=PILP_IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l&&iv.addr);
+  const base=cochees.length?cochees:PILP_IVS.filter(iv=>['en-attente','selectionne','en-cours'].includes(iv.s)&&iv.addr);
+  if(!base.length){showToast('Aucune intervention PILP à traiter pour un itinéraire.','warn');return;}
+  const quoi=cochees.length?'des interventions PILP cochées':'des interventions PILP à traiter';
+  if(base.length>1)showToast('Itinéraire '+quoi+' ('+base.length+') ouvert dans Google Maps.','info');
+  openMapsItineraire(base.map(iv=>iv.id));
+}
 
 // ────────────────── OUTILS MOBILES : GOOGLE MAPS & APPEL MASQUÉ ──────────────────
 // Ouvre une adresse dans Google Maps (navigation vers ce point).
@@ -93,7 +101,7 @@ function openMaps(id){
 }
 // Construit un itinéraire multi-points avec les interventions actives sélectionnées.
 function openMapsItineraire(ids){
-  const cibles=(ids||[]).map(id=>IVS.find(v=>v.id===id)).filter(Boolean);
+  const cibles=(ids||[]).map(id=>IVS.find(v=>v.id===id)||PILP_IVS.find(v=>v.id===id)).filter(Boolean);
   const points=cibles.map(iv=>((iv.addr||'')+', '+(iv.com||'')).trim()).filter(p=>p&&p!==', ');
   if(!points.length){showToast('Aucune adresse à ajouter à l\u2019itinéraire.','warn');return;}
   // Google Maps : destination = dernier point, waypoints = points intermédiaires.

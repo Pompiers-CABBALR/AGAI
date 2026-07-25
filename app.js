@@ -2624,6 +2624,14 @@ function lancerItineraireTournee(){
   if(base.length>1)showToast('Itinéraire '+quoi+' ('+base.length+') ouvert dans Google Maps.','info');
   openMapsItineraire(base.map(iv=>iv.id));
 }
+function lancerItinerairePilp(){
+  const cochees=PILP_IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l&&iv.addr);
+  const base=cochees.length?cochees:PILP_IVS.filter(iv=>['en-attente','selectionne','en-cours'].includes(iv.s)&&iv.addr);
+  if(!base.length){showToast('Aucune intervention PILP à traiter pour un itinéraire.','warn');return;}
+  const quoi=cochees.length?'des interventions PILP cochées':'des interventions PILP à traiter';
+  if(base.length>1)showToast('Itinéraire '+quoi+' ('+base.length+') ouvert dans Google Maps.','info');
+  openMapsItineraire(base.map(iv=>iv.id));
+}
 
 // ────────────────── OUTILS MOBILES : GOOGLE MAPS & APPEL MASQUÉ ──────────────────
 // Ouvre une adresse dans Google Maps (navigation vers ce point).
@@ -2636,7 +2644,7 @@ function openMaps(id){
 }
 // Construit un itinéraire multi-points avec les interventions actives sélectionnées.
 function openMapsItineraire(ids){
-  const cibles=(ids||[]).map(id=>IVS.find(v=>v.id===id)).filter(Boolean);
+  const cibles=(ids||[]).map(id=>IVS.find(v=>v.id===id)||PILP_IVS.find(v=>v.id===id)).filter(Boolean);
   const points=cibles.map(iv=>((iv.addr||'')+', '+(iv.com||'')).trim()).filter(p=>p&&p!==', ');
   if(!points.length){showToast('Aucune adresse à ajouter à l\u2019itinéraire.','warn');return;}
   // Google Maps : destination = dernier point, waypoints = points intermédiaires.
@@ -3896,7 +3904,8 @@ function rPilp(){
   } else pas.style.display='none';
   let list;
   if(fltPilp==='all') list=PILP_IVS.filter(iv=>iv.s!=='avis-passage');
-  else if(fltPilp==='avis-passage') list=PILP_IVS.filter(iv=>iv.s==='avis-passage');
+  else if(fltPilp==='mes-sel') list=PILP_IVS.filter(iv=>(iv.s==='selectionne'||iv.s==='en-cours')&&iv.agr===CU.l);
+  else if(fltPilp==='mes-resp') list=PILP_IVS.filter(iv=>iv.agr===CU.l&&['selectionne','en-cours','terminee'].includes(iv.s));
   else list=PILP_IVS.filter(iv=>iv.s===fltPilp);
   const cont=document.getElementById('pilp-list');
   if(!list.length){cont.innerHTML='<div style="padding:20px;text-align:center;font-size:13px;color:var(--t2);">Aucune intervention PILP.</div>';return;}
@@ -9207,7 +9216,7 @@ function rStatsHeader(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260725-menus-alleges-erp-29';
+const APP_VERSION='20260725-pilp-bandeau-itineraire-30';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne

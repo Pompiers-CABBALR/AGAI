@@ -101,7 +101,8 @@ function rPilp(){
   } else pas.style.display='none';
   let list;
   if(fltPilp==='all') list=PILP_IVS.filter(iv=>iv.s!=='avis-passage');
-  else if(fltPilp==='avis-passage') list=PILP_IVS.filter(iv=>iv.s==='avis-passage');
+  else if(fltPilp==='mes-sel') list=PILP_IVS.filter(iv=>(iv.s==='selectionne'||iv.s==='en-cours')&&iv.agr===CU.l);
+  else if(fltPilp==='mes-resp') list=PILP_IVS.filter(iv=>iv.agr===CU.l&&['selectionne','en-cours','terminee'].includes(iv.s));
   else list=PILP_IVS.filter(iv=>iv.s===fltPilp);
   const cont=document.getElementById('pilp-list');
   if(!list.length){cont.innerHTML='<div style="padding:20px;text-align:center;font-size:13px;color:var(--t2);">Aucune intervention PILP.</div>';return;}
