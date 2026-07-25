@@ -5867,18 +5867,18 @@ function rAstrPiquets(){
     const dlpLabel=JOURS_DL[dlp.dayOfWeek]+' '+dlpDateStr+' \u00e0 '+pad(dlp.hour)+'h'+pad(dlp.minute);
     html+='<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:11px;color:#1D4ED8;">\u23F0 D\u00e9lai de validation\u00a0: '+dlpLabel+'</div>';
   }
-  html+='<div style="display:flex;gap:14px;margin-bottom:10px;font-size:11px;color:var(--t2);">'
-    +'<span><span style="display:inline-block;width:10px;height:10px;background:#B5D4F4;border-radius:2px;margin-right:4px;"></span>Matin</span>'
-    +'<span><span style="display:inline-block;width:10px;height:10px;background:#C0DD97;border-radius:2px;margin-right:4px;"></span>Apr&egrave;s-midi</span>'
-    +'<span><span style="display:inline-block;width:10px;height:10px;background:#FAC775;border-radius:2px;margin-right:4px;"></span>Nuit</span>'
+  html+='<div style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:10px;font-size:11px;color:var(--t2);">'
+    +'<span><span style="display:inline-block;width:10px;height:10px;background:#B5D4F4;border-radius:2px;margin-right:4px;"></span>Matin 08:00&ndash;12:00</span>'
+    +'<span><span style="display:inline-block;width:10px;height:10px;background:#C0DD97;border-radius:2px;margin-right:4px;"></span>Apr&egrave;s-midi 12:00&ndash;18:00</span>'
+    +'<span><span style="display:inline-block;width:10px;height:10px;background:#CECBF6;border-radius:2px;margin-right:4px;"></span>Soir 18:00&ndash;00:00</span>'
+    +'<span><span style="display:inline-block;width:10px;height:10px;background:#FAC775;border-radius:2px;margin-right:4px;"></span>Nuit 00:00&ndash;08:00</span>'
     +'</div>';
 
   function getTranche(p){
-    if(p._tranche)return p._tranche;
-    const d=timeToMin(p.debut),f=timeToMin(p.fin);
-    const overnight=f<=d;
-    if(d>=22*60||overnight||f<=7*60)return 'n';
-    if(d>=5*60&&d<14*60)return 'm';
+    const d=timeToMin(p.debut);
+    if(d<8*60)return 'n';
+    if(d<12*60)return 'm';
+    if(d<18*60)return 'a';
     return 's';
   }
 
@@ -5904,22 +5904,24 @@ function rAstrPiquets(){
     html+='<table style="width:100%;border-collapse:collapse;table-layout:fixed;">'
       +'<colgroup>'
       +'<col style="width:80px"/>'
-      +'<col style="width:calc((100% - 80px - 100px)/3)"/>'
-      +'<col style="width:calc((100% - 80px - 100px)/3)"/>'
-      +'<col style="width:calc((100% - 80px - 100px)/3)"/>'
+      +'<col style="width:calc((100% - 80px - 100px)/4)"/>'
+      +'<col style="width:calc((100% - 80px - 100px)/4)"/>'
+      +'<col style="width:calc((100% - 80px - 100px)/4)"/>'
+      +'<col style="width:calc((100% - 80px - 100px)/4)"/>'
       +'<col style="width:100px"/>'
       +'</colgroup>'
       +'<thead><tr style="background:var(--bg);">'
       +'<th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--t2);border-right:0.5px solid var(--brd);border-bottom:0.5px solid var(--brd);text-align:center;">Engin</th>'
-      +'<th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--t2);border-right:0.5px solid var(--brd);border-bottom:0.5px solid var(--brd);">Matin</th>'
-      +'<th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--t2);border-right:0.5px solid var(--brd);border-bottom:0.5px solid var(--brd);">Apr&egrave;s-midi</th>'
-      +'<th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--t2);border-bottom:0.5px solid var(--brd);border-right:0.5px solid var(--brd);">Nuit</th>'
+      +'<th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--t2);border-right:0.5px solid var(--brd);border-bottom:0.5px solid var(--brd);">Matin<br><small>08&ndash;12</small></th>'
+      +'<th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--t2);border-right:0.5px solid var(--brd);border-bottom:0.5px solid var(--brd);">Apr&egrave;s-midi<br><small>12&ndash;18</small></th>'
+      +'<th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--t2);border-right:0.5px solid var(--brd);border-bottom:0.5px solid var(--brd);">Soir<br><small>18&ndash;00</small></th>'
+      +'<th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--t2);border-bottom:0.5px solid var(--brd);border-right:0.5px solid var(--brd);">Nuit<br><small>00&ndash;08</small></th>'
       +'<th style="padding:5px 8px;font-size:10px;border-bottom:0.5px solid var(--brd);text-align:right;"></th>'
       +'</tr></thead><tbody>';
 
     ASTR_CONFIG.engins.forEach(function(engin){
       const pJour=PIQUETS[wk].filter(function(p){return p.engin===engin&&p.jour===jour;});
-      const tranches={m:[],s:[],n:[]};
+      const tranches={m:[],a:[],s:[],n:[]};
       pJour.forEach(function(p){tranches[getTranche(p)].push(p);});
 
       function cellHtml(list,bg,fg){
@@ -5965,7 +5967,8 @@ function rAstrPiquets(){
       html+='<tr style="border-bottom:0.5px solid var(--brd);">'
         +'<td style="padding:6px 8px;font-size:11px;font-weight:500;text-align:center;background:var(--bg);border-right:0.5px solid var(--brd);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">&#x1F692; '+engin+'</td>'
         +'<td class="pq-drop-cell" data-wk="'+wk+'" data-jour="'+jour+'" data-tr="m" data-engin="'+engin+'" style="padding:6px 8px;border-right:0.5px solid var(--brd);">'+cellHtml(tranches.m,'#E6F1FB','#185FA5','m')+'</td>'
-        +'<td class="pq-drop-cell" data-wk="'+wk+'" data-jour="'+jour+'" data-tr="s" data-engin="'+engin+'" style="padding:6px 8px;border-right:0.5px solid var(--brd);">'+cellHtml(tranches.s,'#EAF3DE','#3B6D11','s')+'</td>'
+        +'<td class="pq-drop-cell" data-wk="'+wk+'" data-jour="'+jour+'" data-tr="a" data-engin="'+engin+'" style="padding:6px 8px;border-right:0.5px solid var(--brd);">'+cellHtml(tranches.a,'#EAF3DE','#3B6D11','a')+'</td>'
+        +'<td class="pq-drop-cell" data-wk="'+wk+'" data-jour="'+jour+'" data-tr="s" data-engin="'+engin+'" style="padding:6px 8px;border-right:0.5px solid var(--brd);">'+cellHtml(tranches.s,'#EEEDFE','#534AB7','s')+'</td>'
         +'<td class="pq-drop-cell" data-wk="'+wk+'" data-jour="'+jour+'" data-tr="n" data-engin="'+engin+'" style="padding:6px 8px;border-right:0.5px solid var(--brd);">'+cellHtml(tranches.n,'#FAEEDA','#854F0B','n')+'</td>'
         +'<td style="padding:4px 6px;text-align:right;vertical-align:middle;white-space:nowrap;">'+addBtn+'</td>'
         +'</tr>';
@@ -6090,8 +6093,18 @@ document.addEventListener('drop',function(e){
   if(_piquetDragData.wk!==wk)return;
   const p=PIQUETS[wk][_piquetDragData.globalIdx];
   if(!p)return;
-  // Changer la tranche (sans modifier les heures) et l'engin
-  p._tranche=tranche;
+  // Changer de tranche applique les horaires de référence de cette période.
+  const tranchesHoraires={m:['08:00','12:00'],a:['12:00','18:00'],s:['18:00','00:00'],n:['00:00','08:00']};
+  const anciennesHeures=[p.debut,p.fin];
+  const nouvellesHeures=tranchesHoraires[tranche];
+  if(nouvellesHeures){
+    p.debut=nouvellesHeures[0];p.fin=nouvellesHeures[1];
+    (p.membres||[]).forEach(function(m){
+      if(m.hDebut===anciennesHeures[0])m.hDebut=p.debut;
+      if(m.hFin===anciennesHeures[1])m.hFin=p.fin;
+    });
+  }
+  delete p._tranche;
   p.jour=jour;
   if(newEngin&&newEngin!==p.engin)p.engin=newEngin;
   _piquetDragData=null;
@@ -6218,11 +6231,10 @@ function exportPiquets(){
 
   function getTranche(p){
     const d=timeToMin(p.debut);
-    const startH=(ASTR_CONFIG.weekStartHour??8)*60;
-    if(d<startH)return 'nuit';
-    if(d<13*60)return 'matin';
-    if(d<19*60)return 'am';
-    return 'nuit';
+    if(d<8*60)return 'nuit';
+    if(d<12*60)return 'matin';
+    if(d<18*60)return 'am';
+    return 'soir';
   }
 
   function membresNoms(p){
@@ -6254,25 +6266,26 @@ function exportPiquets(){
 
     // Feuille r\u00e9cap semaine (1 tableau par jour, tous les engins)
     const recapData=[];
-    recapData.push(['Fiche des piquets \u00e0 la semaine - '+weekLabel(mon),'','','','','','']);
-    recapData.push(['Engin','Matin','Cr\u00e9neau','Apr\u00e8s-midi','Cr\u00e9neau','Nuit','Cr\u00e9neau']);
+    recapData.push(['Fiche des piquets \u00e0 la semaine - '+weekLabel(mon),'','','','','','','','']);
+    recapData.push(['Engin','Matin 08:00-12:00','Cr\u00e9neau','Apr\u00e8s-midi 12:00-18:00','Cr\u00e9neau','Soir 18:00-00:00','Cr\u00e9neau','Nuit 00:00-08:00','Cr\u00e9neau']);
 
     JOURS_FULL.forEach(function(jour,di){
       const jourDate=new Date(mon);jourDate.setDate(jourDate.getDate()+di);
       const dateStr=jour+' '+jourDate.getDate()+' '+MOIS_FR[jourDate.getMonth()]+' '+jourDate.getFullYear();
-      recapData.push([dateStr,'','','','','','']);
+      recapData.push([dateStr,'','','','','','','','']);
       engins.forEach(function(engin){
         const pJour=piquetsSem.filter(function(p){return p.engin===engin&&p.jour===jour;});
         const [mN,mC]=trancheData(pJour,'matin');
         const [aN,aC]=trancheData(pJour,'am');
+        const [sN,sC]=trancheData(pJour,'soir');
         const [nN,nC]=trancheData(pJour,'nuit');
-        recapData.push([engin,mN,mC,aN,aC,nN,nC]);
+        recapData.push([engin,mN,mC,aN,aC,sN,sC,nN,nC]);
       });
-      recapData.push(['','','','','','','']);
+      recapData.push(['','','','','','','','','']);
     });
 
     const wsRecap=XLSX.utils.aoa_to_sheet(recapData);
-    wsRecap['!cols']=[{wch:14},{wch:25},{wch:12},{wch:25},{wch:12},{wch:25},{wch:12}];
+    wsRecap['!cols']=[{wch:14},{wch:25},{wch:12},{wch:25},{wch:12},{wch:25},{wch:12},{wch:25},{wch:12}];
     // Wrapping pour les cellules multi-agents
     for(const key in wsRecap){
       if(key[0]==='!')continue;
@@ -6286,17 +6299,18 @@ function exportPiquets(){
       const jourDate=new Date(mon);jourDate.setDate(jourDate.getDate()+di);
       const dateStr=jour+' '+jourDate.getDate()+'/'+pad(jourDate.getMonth()+1);
       const wsData=[];
-      wsData.push([dateStr,'','','','','','']);
-      wsData.push(['Engin','Matin','Cr\u00e9neau','Apr\u00e8s-midi','Cr\u00e9neau','Nuit','Cr\u00e9neau']);
+      wsData.push([dateStr,'','','','','','','','']);
+      wsData.push(['Engin','Matin 08:00-12:00','Cr\u00e9neau','Apr\u00e8s-midi 12:00-18:00','Cr\u00e9neau','Soir 18:00-00:00','Cr\u00e9neau','Nuit 00:00-08:00','Cr\u00e9neau']);
       engins.forEach(function(engin){
         const pJour=piquetsSem.filter(function(p){return p.engin===engin&&p.jour===jour;});
         const [mN,mC]=trancheData(pJour,'matin');
         const [aN,aC]=trancheData(pJour,'am');
+        const [sN,sC]=trancheData(pJour,'soir');
         const [nN,nC]=trancheData(pJour,'nuit');
-        wsData.push([engin,mN,mC,aN,aC,nN,nC]);
+        wsData.push([engin,mN,mC,aN,aC,sN,sC,nN,nC]);
       });
       const ws=XLSX.utils.aoa_to_sheet(wsData);
-      ws['!cols']=[{wch:14},{wch:25},{wch:12},{wch:25},{wch:12},{wch:25},{wch:12}];
+      ws['!cols']=[{wch:14},{wch:25},{wch:12},{wch:25},{wch:12},{wch:25},{wch:12},{wch:25},{wch:12}];
       XLSX.utils.book_append_sheet(wb,ws,jour.slice(0,3)+'.');
     });
 
@@ -9216,7 +9230,7 @@ function rStatsHeader(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260725-pilp-bandeau-itineraire-30';
+const APP_VERSION='20260725-piquets-quatre-periodes-31';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
