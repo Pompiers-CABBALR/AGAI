@@ -8432,12 +8432,14 @@ function rStats(){
     const moisOpts='<option value="0">Toute l\u2019ann\u00e9e</option>'+ST_MOIS.map(function(m,i){
       return '<option value="'+(i+1)+'"'+(stMois===i+1?' selected':'')+'>'+m+'</option>';
     }).join('');
+    const exportBtn=showPersonnel?'<button id="admin-monthly-export-btn" onclick="openAdminMonthlyExport()" style="margin-left:auto;background:#166534;color:#fff;border:1px solid #166534;border-radius:8px;padding:6px 11px;cursor:pointer;font-size:11px;">&#x1F4E5; Export mensuel Excel</button>':'';
     nav.innerHTML='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
       +'<button onclick="stAnnee--;stMois=0;rStats()" style="background:#f5f5f5;border:1px solid #ccc;border-radius:8px;padding:4px 12px;cursor:pointer;font-size:14px;">&larr;</button>'
       +'<span style="font-size:16px;font-weight:700;min-width:44px;text-align:center;">'+stAnnee+'</span>'
       +'<button onclick="stAnnee++;stMois=0;rStats()" style="background:#f5f5f5;border:1px solid #ccc;border-radius:8px;padding:4px 12px;cursor:pointer;font-size:14px;">&rarr;</button>'
       +'<select onchange="stMois=parseInt(this.value);rStatsContent()" style="padding:4px 8px;border-radius:8px;border:1px solid #ccc;font-size:12px;">'+moisOpts+'</select>'
       +'<div style="display:flex;gap:3px;flex-wrap:wrap;">'+btnHtml+'</div>'
+      +exportBtn
       +'</div>';
   }
   rStatsContent();
@@ -9268,6 +9270,234 @@ function rStatsHeader(){
     +'<span style="font-size:11px;color:var(--t2);">'+it.lbl+'</span></div>').join('');
 }
 
+// ── Export mensuel administrateur : interventions, activités et formations ──
+function openAdminMonthlyExport(){
+  if(!(hasRight('Administration')||isSuperAdmin())){showToast('Accès réservé aux administrateurs','warn');return;}
+  const now=N();
+  const selectedMonth=stMois>0?stMois:now.getMonth()+1;
+  const selectedYear=stAnnee||now.getFullYear();
+  const moisOptions=ST_MOIS.map(function(m,i){
+    return '<option value="'+(i+1)+'"'+(selectedMonth===i+1?' selected':'')+'>'+m+'</option>';
+  }).join('');
+  document.getElementById('mt').textContent='Exporter les registres mensuels';
+  document.getElementById('mi').textContent='Interventions terminées, activités de service et formations';
+  document.getElementById('mb').innerHTML='<div>'
+    +'<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:9px;padding:9px 11px;margin-bottom:12px;font-size:12px;color:#1E40AF;">'
+    +'Le fichier Excel contiendra trois feuilles. Le registre des interventions reprend les 63 colonnes du modèle fourni.</div>'
+    +'<div class="fg-duo">'
+    +'<div class="fg"><div class="fgl">Mois</div><select class="fi" id="admin-export-month">'+moisOptions+'</select></div>'
+    +'<div class="fg"><div class="fgl">Année</div><input class="fi" id="admin-export-year" type="number" min="2000" max="2100" value="'+selectedYear+'"/></div>'
+    +'</div>'
+    +'<div id="admin-export-summary" style="font-size:12px;color:var(--t2);margin:4px 0 12px;"></div>'
+    +'<div class="brow"><button class="btn pr" onclick="exportAdminMonthlyExcel()">&#x1F4E5; Exporter le fichier Excel</button>'
+    +'<button class="btn" onclick="cM()">Annuler</button></div></div>';
+  openModalAtTop('admin-export-month');
+  adminMonthlyExportSummary();
+  ['admin-export-month','admin-export-year'].forEach(function(id){
+    const el=document.getElementById(id);if(el)el.addEventListener('change',adminMonthlyExportSummary);
+  });
+}
+
+function adminMonthlyPeriod(){
+  const month=parseInt(document.getElementById('admin-export-month')?.value||'0',10);
+  const year=parseInt(document.getElementById('admin-export-year')?.value||'0',10);
+  if(month<1||month>12||year<2000||year>2100)return null;
+  const mm=String(month).padStart(2,'0');
+  const prefixDate=year+'-'+mm;
+  const prefixCompact=String(year)+mm;
+  const lastDay=new Date(year,month,0).getDate();
+  return {month,year,mm,prefixDate,prefixCompact,start:prefixDate+'-01',end:prefixDate+'-'+String(lastDay).padStart(2,'0')};
+}
+
+function adminMonthlyData(period){
+  const overlaps=function(start,end){
+    if(!start)return false;
+    const realEnd=end||start;
+    return start<=period.end&&realEnd>=period.start;
+  };
+  const interventions=[].concat(IVS||[],PILP_IVS||[])
+    .filter(function(iv){return iv.s==='terminee'&&(iv.h||'').startsWith(period.prefixCompact);});
+  const activites=(actGetData()||[]).filter(function(a){return (a.date||'').startsWith(period.prefixDate);});
+  const fmpas=(fmpaGetData()||[]).filter(function(f){return (f.date||'').startsWith(period.prefixDate);});
+  const stag=(formStagGetData()||[]).filter(function(f){return overlaps(f.ddebut,f.dfin);});
+  const form=(formFormGetData()||[]).filter(function(f){return overlaps(f.ddebut,f.dfin);});
+  return {interventions,activites,fmpas,stag,form};
+}
+
+function adminMonthlyExportSummary(){
+  const period=adminMonthlyPeriod(),el=document.getElementById('admin-export-summary');
+  if(!period||!el)return;
+  const d=adminMonthlyData(period);
+  el.innerHTML='<strong>'+d.interventions.length+'</strong> intervention(s) terminée(s) · '
+    +'<strong>'+d.activites.length+'</strong> activité(s) · '
+    +'<strong>'+(d.fmpas.length+d.stag.length+d.form.length)+'</strong> formation(s)';
+}
+
+function adminExportDateCompact(h){
+  if(!h||h.length<8)return '';
+  return h.slice(6,8)+'/'+h.slice(4,6)+'/'+h.slice(0,4);
+}
+function adminExportTimeCompact(h){
+  if(!h||h.length<13)return '';
+  return h.slice(9,11)+':'+h.slice(11,13);
+}
+function adminExportUser(login){
+  if(!login)return '';
+  const u=USERS.find(function(x){return x.l===login;});
+  return u?((u.grade?u.grade+' ':'')+u.nom+' '+u.prenom):login;
+}
+function adminExportDuration(value,hd,hf){
+  if(value)return dureeFormatHHMM(value,hd,hf)||value;
+  return hd&&hf?dureeHHMM(hd,hf):'';
+}
+function adminExportInterventionPresents(iv){
+  const seen={},out=[];
+  function add(login,role){
+    if(!login||seen[login]||out.length>=31)return;
+    seen[login]=true;
+    out.push(adminExportUser(login)+(role?' ('+role+')':''));
+  }
+  add(iv.agr,"Chef d'agrès");add(iv._agr2,"Chef d'agrès");
+  (iv._equipage1||[]).forEach(function(e){add(e.login,e.role);});
+  (iv._equipage2||[]).forEach(function(e){add(e.login,e.role);});
+  (iv._releves||[]).forEach(function(r){(r.nouvelEquipage||[]).forEach(function(e){add(e.login,e.role);});});
+  return out;
+}
+function adminExportPeople(logins,role){
+  return (logins||[]).slice(0,31).map(function(login){return adminExportUser(login)+(role?' ('+role+')':'');});
+}
+function adminExportPad31(values){
+  const out=(values||[]).slice(0,31);
+  while(out.length<31)out.push('');
+  return out;
+}
+function adminExportVehicles(iv){
+  const engins=[iv.eng,iv._engin1,iv._engin2].filter(Boolean);
+  const norm=function(v){return String(v).toUpperCase().replace(/[^A-Z0-9]/g,'');};
+  const is=function(pattern){return engins.some(function(e){return pattern.test(norm(e));});};
+  const autres=engins.filter(function(e){return !/^(VTU0?1|VTU0?2|VPI)$/.test(norm(e));});
+  return {
+    vtu1:is(/^VTU0?1$/)?'X':'',
+    vtu2:is(/^VTU0?2$/)?'X':'',
+    vpi:is(/^VPI$/)?'X':'',
+    autres:autres.length?'X':'',
+    precision:autres.join(', '),
+    complement:iv._isRenfort?(iv._caserneSourceNom||iv._caserneSource||'Renfort'):(iv._engin2||'')
+  };
+}
+function adminExportSheet(XLSX,headers,rows,widths){
+  const ws=XLSX.utils.aoa_to_sheet([headers].concat(rows));
+  const lastCol=XLSX.utils.encode_col(headers.length-1);
+  const lastRow=Math.max(1,rows.length+1);
+  ws['!autofilter']={ref:'A1:'+lastCol+lastRow};
+  ws['!freeze']={xSplit:0,ySplit:1,topLeftCell:'A2',activePane:'bottomLeft',state:'frozen'};
+  ws['!rows']=[{hpt:42}].concat(rows.map(function(){return {hpt:30};}));
+  ws['!cols']=headers.map(function(_,i){return {wch:(widths&&widths[i])||16};});
+  const border={top:{style:'thin',color:{rgb:'000000'}},bottom:{style:'thin',color:{rgb:'000000'}},left:{style:'thin',color:{rgb:'000000'}},right:{style:'thin',color:{rgb:'000000'}}};
+  for(let r=0;r<lastRow;r++){
+    for(let c=0;c<headers.length;c++){
+      const addr=XLSX.utils.encode_cell({r,c}),cell=ws[addr];
+      if(!cell)continue;
+      cell.s={
+        font:{name:'Calibri',sz:12,bold:r===0},
+        alignment:{horizontal:r===0?'center':'left',vertical:'center',wrapText:true},
+        border:border
+      };
+    }
+  }
+  return ws;
+}
+
+function exportAdminMonthlyExcel(){
+  if(!(hasRight('Administration')||isSuperAdmin())){showToast('Accès réservé aux administrateurs','warn');return;}
+  const period=adminMonthlyPeriod();
+  if(!period){showToast('Sélectionnez un mois et une année valides','warn');return;}
+  const data=adminMonthlyData(period);
+  const total=data.interventions.length+data.activites.length+data.fmpas.length+data.stag.length+data.form.length;
+  if(!total){showToast('Aucune donnée à exporter pour cette période','warn');return;}
+
+  function doExport(){
+    const XLSX=window.XLSX,wb=XLSX.utils.book_new();
+    const presents=Array.from({length:31},function(_,i){return 'Présent '+(i+1);});
+    const ivHeaders=[
+      'Num mois','Num intervention','Numéro SDIS','Numéro CABBALR','Date','Rapport',
+      'Taux','Heures','Taux_2','Heures_2','KM','Nature','Nom du requérant','Adresse',
+      'Commune','Acquis','Départ','SLL','Dispo','Retour','Fin','Matériels','Consommables',
+      'En complémentarité','V.T.U.1','V.T.U.2','V.P.I','Autres','Autres à préciser',
+      'Compte rendu de mission','Annotation','Rapport établi'
+    ].concat(presents);
+    const ivRows=[...data.interventions].sort(function(a,b){return (a.h||'').localeCompare(b.h||'');}).map(function(iv){
+      const veh=adminExportVehicles(iv);
+      const rapportAuteur=adminExportUser(iv._crAuteur)+(iv._crDateValidation?' · '+iv._crDateValidation:'');
+      return [
+        iv._numMois||'',iv._numCaserne||iv._numApl||iv.id||'',iv._numSDIS||'',iv._numGlobal||'',
+        adminExportDateCompact(iv.h),iv._crValide?'Validé':(iv._crTexte||iv._compteRendu?'Établi':'Non établi'),
+        iv._taux||'',adminExportDuration('',iv._hDebut,iv._hFin),iv._taux2||'',iv._heures2||'',iv._km||'',
+        iv.n||'',iv.req||'',[(iv.addr||''),(iv.addrComp||'')].filter(Boolean).join(' — '),iv.com||'',
+        iv._hAcquis||adminExportTimeCompact(iv.h),iv._hDebut||'',iv._hSll||'',iv._hDispo||'',iv._hFin||'',iv._hOpTerminee||'',
+        iv._materiels||'',iv._consommables||'',veh.complement,veh.vtu1,veh.vtu2,veh.vpi,veh.autres,veh.precision,
+        iv._crTexte||iv._compteRendu||'',iv._annotations||'',rapportAuteur
+      ].concat(adminExportPad31(adminExportInterventionPresents(iv)));
+    });
+    const ivWidths=ivHeaders.map(function(h,i){
+      if(i>=32)return 24;
+      if([11,12,13,29,30].includes(i))return i===29?55:28;
+      if([0,1,2,3].includes(i))return 16;
+      return 13;
+    });
+    XLSX.utils.book_append_sheet(wb,adminExportSheet(XLSX,ivHeaders,ivRows,ivWidths),'Interventions terminées');
+
+    const actHeaders=['Num mois','Num activité','Date','Rapport','Heure début','Heure fin','Heures',"Type d'activité",'Compte rendu de mission','Rapport établi'].concat(presents);
+    const actRows=[...data.activites].sort(function(a,b){return (a.date||'').localeCompare(b.date||'');}).map(function(a){
+      const auteur=adminExportUser(a.auteur)+(a.impressions&&a.impressions.length?' · imprimé '+a.impressions.length+' fois':'');
+      return [a.numMensuel||'',a.numAnnuel||a.id||'',a.date||'',a.impressions&&a.impressions.length?'Imprimé':'Établi',
+        a.hDebut||'',a.hFin||'',adminExportDuration(a.duree,a.hDebut,a.hFin),a.type||'',a.cr||'',auteur]
+        .concat(adminExportPad31(adminExportPeople(a.participants,'')));
+    });
+    const actWidths=actHeaders.map(function(_,i){return i>=10?24:([7,8].includes(i)?(i===8?55:28):16);});
+    XLSX.utils.book_append_sheet(wb,adminExportSheet(XLSX,actHeaders,actRows,actWidths),'Activités de service');
+
+    const formHeaders=['Type','Numéro','Date début','Date fin','Intitulé / Thème','Référence','Lieu',
+      'Matin début','Matin fin','Après-midi début','Après-midi fin','Heure début','Heure fin','Heures','Rapport établi'].concat(presents);
+    const formRows=[];
+    data.fmpas.forEach(function(f){
+      const personnes=adminExportPeople(f.participants,'Stagiaire').concat(adminExportPeople(f.formateurs,'Formateur')).slice(0,31);
+      formRows.push(['FMPA',f.numAnnuel?fmpaNumStr(f):f.id||'',f.date||'',f.date||'',f.theme||'','','',
+        '','','','',f.hDebut||'',f.hFin||'',adminExportDuration(f.duree,f.hDebut,f.hFin),adminExportUser(f.auteur)]
+        .concat(adminExportPad31(personnes)));
+    });
+    data.stag.forEach(function(f){
+      formRows.push(['Formation stagiaire',f.id||'',f.ddebut||'',f.dfin||'',f.titre||'',f.ref||'',f.lieu||'',
+        f.hmatind||'',f.hmatinf||'',f.hapremd||'',f.hapremf||'','','',adminExportDuration(f.htotal,'',''),adminExportUser(f.auteur)]
+        .concat(adminExportPad31(adminExportPeople(f.participants,'Stagiaire'))));
+    });
+    data.form.forEach(function(f){
+      formRows.push(['Formation formateur',f.id||'',f.ddebut||'',f.dfin||'',f.titre||'',f.ref||'',f.lieu||'',
+        f.hmatind||'',f.hmatinf||'',f.hapremd||'',f.hapremf||'','','',adminExportDuration(f.htotal,'',''),adminExportUser(f.auteur)]
+        .concat(adminExportPad31(adminExportPeople(f.participants,'Formateur'))));
+    });
+    formRows.sort(function(a,b){return String(a[2]).localeCompare(String(b[2]));});
+    const formWidths=formHeaders.map(function(_,i){return i>=15?24:([4,5,6].includes(i)?28:16);});
+    XLSX.utils.book_append_sheet(wb,adminExportSheet(XLSX,formHeaders,formRows,formWidths),'Formations');
+
+    const caserne=((CC()&&CC().nom)||CURRENT_CASERNE_ID||'Caserne').replace(/[\\/:*?"<>|]+/g,'-');
+    const fileName='Registre_AGAI_'+caserne+'_'+period.year+'-'+period.mm+'.xlsx';
+    XLSX.writeFile(wb,fileName,{cellStyles:true});
+    cM();
+    showToast('Export mensuel téléchargé : '+fileName,'success');
+  }
+
+  if(window.XLSX){doExport();}
+  else{
+    showToast('Chargement du module Excel...','info');
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload=doExport;
+    s.onerror=function(){showToast('Impossible de charger le module Excel. Vérifiez votre connexion.','error');};
+    document.head.appendChild(s);
+  }
+}
+
 // === MODULE: storage.js ===
 // ══════════════════════════════════════════════════════
 // PERSISTANCE localStorage
@@ -9282,7 +9512,7 @@ function rStatsHeader(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260725-piquets-export-complet-34';
+const APP_VERSION='20260725-export-mensuel-admin-35';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
