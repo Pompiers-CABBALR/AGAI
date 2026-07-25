@@ -8831,7 +8831,7 @@ function calcTauxIntervention(iv){
   const [fh,fm]=iv._hFin.split(':').map(Number);
   let startMin=dh*60+dm;
   let endMin=fh*60+fm;
-  if(endMin<=startMin)endMin+=1440; // overnight
+  if(endMin<startMin)endMin+=1440; // passage à minuit ; égalité = 0 minute
 
   let t100=0,t150=0,t200=0;
 
@@ -8919,7 +8919,7 @@ function calcTauxAgentIV(iv,login){
     const [fh,fm]=p.hFin.split(':').map(Number);
     let startMin=dh*60+dm;
     let endMin=fh*60+fm;
-    if(endMin<=startMin)endMin+=1440;
+    if(endMin<startMin)endMin+=1440;
     let cur=startMin;
     while(cur<endMin){
       const dayOff=Math.floor(cur/1440);
@@ -9364,7 +9364,11 @@ function adminExportInterventionRates(iv){
   const debut=String(iv._hDebut).split(':').map(Number),fin=String(iv._hFin).split(':').map(Number);
   if([yr,mo,da,debut[0],debut[1],fin[0],fin[1]].some(function(n){return !Number.isFinite(n);}))return fallback;
   let startMin=debut[0]*60+debut[1],endMin=fin[0]*60+fin[1];
-  if(endMin<=startMin)endMin+=1440;
+  if(endMin===startMin){
+    const tauxZero=getInterventionTauxConfigFor(new Date(yr,mo,da),debut[0]).valeur;
+    return {taux1:tauxZero+'%',heures1:'00:00',taux2:'',heures2:''};
+  }
+  if(endMin<startMin)endMin+=1440;
   const totals={},ordre=[];
   for(let cur=startMin;cur<endMin;cur++){
     const dayOff=Math.floor(cur/1440),minOfDay=cur%1440,hour=Math.floor(minOfDay/60);
@@ -9556,7 +9560,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260725-export-noms-agents-39';
+const APP_VERSION='20260726-export-duree-zero-taux-41';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
