@@ -8579,7 +8579,7 @@ function rStatsContent(){
 
 // ── Helper taux ──
 function getStatsTaux(){
-  const defaults={actSvc:75,fmpaStag:75,fmpaForm:100,formStag:100,formForm:100,astrTel:9};
+  const defaults={interJour:100,interDimFerie:150,interNuit:200,actSvc:75,fmpaStag:75,fmpaForm:100,formStag:100,formForm:100,astrTel:9};
   const saved=CURRENT_CASERNE_ID&&CASERNE_DATA[CURRENT_CASERNE_ID]&&CASERNE_DATA[CURRENT_CASERNE_ID].statsTaux;
   return Object.assign({},defaults,saved||{});
 }
@@ -8604,6 +8604,11 @@ function showStatsTauxParams(){
   document.getElementById('mi').textContent='';
   document.getElementById('mb').innerHTML=`<div>
     <div style="font-size:12px;color:var(--t2);margin-bottom:12px;">Ces taux s'appliquent au calcul des heures pondérées dans les statistiques Personnel.</div>
+    <div style="font-size:12px;font-weight:700;color:var(--red);margin:4px 0 8px;">🚒 Interventions</div>
+    ${row('Interventions — journée (07h–22h)','interJour',t.interJour??100,'% des heures réelles')}
+    ${row('Interventions — dimanche et jour férié (07h–22h)','interDimFerie',t.interDimFerie??150,'% des heures réelles')}
+    ${row('Interventions — nuit (22h–07h)','interNuit',t.interNuit??200,'% des heures réelles')}
+    <div style="font-size:12px;font-weight:700;color:var(--blu);margin:14px 0 8px;">📋 Activités, formations et astreinte</div>
     ${row('Activités de service','actSvc',t.actSvc??75,'% des heures réelles')}
     ${row('FMPA — participants (stagiaires)','fmpaStag',t.fmpaStag??75,'% des heures réelles')}
     ${row('FMPA — formateurs','fmpaForm',t.fmpaForm??100,'% des heures réelles')}
@@ -8620,7 +8625,7 @@ function showStatsTauxParams(){
 }
 function applyStatsTaux(){
   const get=(id)=>Math.max(0,Math.min(200,parseInt(document.getElementById('taux-'+id)?.value)||0));
-  saveStatsTaux({actSvc:get('actSvc'),fmpaStag:get('fmpaStag'),fmpaForm:get('fmpaForm'),formStag:get('formStag'),formForm:get('formForm'),astrTel:get('astrTel')});
+  saveStatsTaux({interJour:get('interJour'),interDimFerie:get('interDimFerie'),interNuit:get('interNuit'),actSvc:get('actSvc'),fmpaStag:get('fmpaStag'),fmpaForm:get('fmpaForm'),formStag:get('formStag'),formForm:get('formForm'),astrTel:get('astrTel')});
   cM();
   showToast('Taux enregistrés ✓','success');
 }
@@ -8808,15 +8813,19 @@ function getJoursFeries(annee){
 
 // ── Calcule les minutes par taux pour une intervention ──
 // Retourne {t100, t150, t200} en minutes
+function getInterventionTauxConfigFor(currentDate,hour){
+  const t=getStatsTaux();
+  if(hour<7||hour>=22)return {categorie:'nuit',valeur:t.interNuit};
+  const iso=currentDate.getFullYear()+'-'+pad(currentDate.getMonth()+1)+'-'+pad(currentDate.getDate());
+  if(currentDate.getDay()===0||getJoursFeries(currentDate.getFullYear()).has(iso))
+    return {categorie:'dimFerie',valeur:t.interDimFerie};
+  return {categorie:'jour',valeur:t.interJour};
+}
 function calcTauxIntervention(iv){
   if(!iv._hDebut||!iv._hFin||!iv.h)return null;
   // Récupérer la date de l'intervention depuis iv.h (format YYYYMMDD_HHMM)
   const dateStr=iv.h.slice(0,8); // YYYYMMDD
   const yr=parseInt(dateStr.slice(0,4)),mo=parseInt(dateStr.slice(4,6))-1,da=parseInt(dateStr.slice(6,8));
-  const feries=getJoursFeries(yr);
-  const isoDate=yr+'-'+pad(mo+1)+'-'+pad(da);
-  const dateObj=new Date(yr,mo,da);
-  const dow=dateObj.getDay(); // 0=dim, 6=sam
 
   const [dh,dm]=iv._hDebut.split(':').map(Number);
   const [fh,fm]=iv._hFin.split(':').map(Number);
@@ -8836,21 +8845,9 @@ function calcTauxIntervention(iv){
 
     // Calculer la date réelle de cette minute
     const curDate=new Date(yr,mo,da+dayOff);
-    const curDow=curDate.getDay();
-    const curIso=curDate.getFullYear()+'-'+pad(curDate.getMonth()+1)+'-'+pad(curDate.getDate());
-    const ferie=feries.has(curIso)||getJoursFeries(curDate.getFullYear()).has(curIso);
-
-    let taux;
-    if(hOfDay<7||hOfDay>=22){
-      taux=200;
-    } else if(curDow===0||ferie){ // dimanche ou férié, 07h-22h
-      taux=150;
-    } else { // lun-sam 07h-22h
-      taux=100;
-    }
-
-    if(taux===100)t100++;
-    else if(taux===150)t150++;
+    const taux=getInterventionTauxConfigFor(curDate,hOfDay);
+    if(taux.categorie==='jour')t100++;
+    else if(taux.categorie==='dimFerie')t150++;
     else t200++;
 
     cur=next;
@@ -8916,7 +8913,6 @@ function calcTauxAgentIV(iv,login){
   if(!periodes.length)return null;
   const dateStr=iv.h.slice(0,8);
   const yr=parseInt(dateStr.slice(0,4)),mo=parseInt(dateStr.slice(4,6))-1,da=parseInt(dateStr.slice(6,8));
-  const feries=getJoursFeries(yr);
   let t100=0,t150=0,t200=0;
   periodes.forEach(function(p){
     const [dh,dm]=p.hDebut.split(':').map(Number);
@@ -8930,14 +8926,8 @@ function calcTauxAgentIV(iv,login){
       const minOfDay=cur%1440;
       const hOfDay=Math.floor(minOfDay/60);
       const curDate=new Date(yr,mo,da+dayOff);
-      const curDow=curDate.getDay();
-      const curIso=curDate.getFullYear()+'-'+pad(curDate.getMonth()+1)+'-'+pad(curDate.getDate());
-      const ferie=feries.has(curIso)||getJoursFeries(curDate.getFullYear()).has(curIso);
-      let taux;
-      if(hOfDay<7||hOfDay>=22)taux=200;
-      else if(curDow===0||ferie)taux=150;
-      else taux=100;
-      if(taux===100)t100++;else if(taux===150)t150++;else t200++;
+      const taux=getInterventionTauxConfigFor(curDate,hOfDay);
+      if(taux.categorie==='jour')t100++;else if(taux.categorie==='dimFerie')t150++;else t200++;
       cur++;
     }
   });
@@ -9375,15 +9365,12 @@ function adminExportInterventionRates(iv){
   if([yr,mo,da,debut[0],debut[1],fin[0],fin[1]].some(function(n){return !Number.isFinite(n);}))return fallback;
   let startMin=debut[0]*60+debut[1],endMin=fin[0]*60+fin[1];
   if(endMin<=startMin)endMin+=1440;
-  const totals={100:0,150:0,200:0},ordre=[];
+  const totals={},ordre=[];
   for(let cur=startMin;cur<endMin;cur++){
     const dayOff=Math.floor(cur/1440),minOfDay=cur%1440,hour=Math.floor(minOfDay/60);
     const currentDate=new Date(yr,mo,da+dayOff);
-    const iso=currentDate.getFullYear()+'-'+pad(currentDate.getMonth()+1)+'-'+pad(currentDate.getDate());
-    let taux=100;
-    if(hour<7||hour>=22)taux=200;
-    else if(currentDate.getDay()===0||getJoursFeries(currentDate.getFullYear()).has(iso))taux=150;
-    totals[taux]++;
+    const taux=getInterventionTauxConfigFor(currentDate,hour).valeur;
+    totals[taux]=(totals[taux]||0)+1;
     if(!ordre.includes(taux))ordre.push(taux);
   }
   const parts=ordre.filter(function(taux){return totals[taux]>0;}).map(function(taux){
@@ -9569,7 +9556,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260725-taux-configurables-37';
+const APP_VERSION='20260725-taux-interventions-configurables-38';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
