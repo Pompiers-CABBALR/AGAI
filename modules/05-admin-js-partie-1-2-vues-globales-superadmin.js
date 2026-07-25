@@ -278,7 +278,7 @@ function renderSuperAdmin(){
         <button class="btn" style="font-size:12px;" onclick="saAccederChefCorps()">&#x1F396;️ Vue chef de corps</button>
         <button class="btn" style="font-size:12px;" onclick="showReferentiel()">&#x1F4CB; Référentiel</button>
         <button class="btn" style="font-size:12px;" onclick="showAstrTelParams()">📞 Paramètres astreinte tél.</button>
-        <button class="btn" style="font-size:12px;" onclick="showStatsTauxParams()">📊 Taux statistiques</button>
+        <button class="btn" style="font-size:12px;" onclick="showStatsTauxParams()">📊 Taux des heures et exports</button>
         <button class="btn pr" onclick="addCaserne()">+ Nouvelle caserne</button>
         <button class="btn pr" onclick="addSuperAdmin()">+ Super Admin</button>
       </div>

@@ -208,20 +208,21 @@ function astrTelRenderRecap(){
   if(!el)return;
   const y=astrTelAnnee;
   const quota=astrTelGetParams().quota||QUOTA_ASTREINTE_TEL_H;
+  const tauxAstrTel=getStatsTaux().astrTel;
   const agents=[...(USERS||[])].sort((a,b)=>a.nom.localeCompare(b.nom,'fr')||a.prenom.localeCompare(b.prenom,'fr'));
   if(!agents.length){el.innerHTML='<div style="text-align:center;padding:20px;color:var(--t2);">Aucun agent.</div>';return;}
 
   // En-tête quota
   let html=`<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding:10px;background:var(--bg);border-radius:8px;">
     <div style="font-size:13px;">Quota annuel : <strong>${quota}h</strong></div>
-    <div style="font-size:11px;color:var(--t2);">1 jour = 24h · ${Math.round(quota/24)} jours max</div>
+    <div style="font-size:11px;color:var(--t2);">1 jour = 24h · ${Math.round(quota/24)} jours max · Taux pondéré : <strong>${tauxAstrTel} %</strong></div>
   </div>`;
 
   // Tableau récap
   html+='<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">';
   html+='<thead><tr style="background:#f5f5f7;"><th style="padding:6px 8px;text-align:left;">Agent</th>';
   ASTRTEL_MOIS_NOMS.forEach(n=>html+=`<th style="padding:4px 6px;text-align:center;">${n.slice(0,3)}</th>`);
-  html+='<th style="padding:6px 8px;text-align:center;">Total</th><th style="padding:6px 8px;text-align:center;">Restant</th><th style="padding:6px;min-width:80px;">Quota</th></tr></thead><tbody>';
+  html+='<th style="padding:6px 8px;text-align:center;">Total</th><th style="padding:6px 8px;text-align:center;">Pondéré</th><th style="padding:6px 8px;text-align:center;">Restant</th><th style="padding:6px;min-width:80px;">Quota</th></tr></thead><tbody>';
 
   agents.forEach((u,i)=>{
     const bg=i%2===0?'#fff':'#fafafa';
@@ -229,6 +230,7 @@ function astrTelRenderRecap(){
     const restant=Math.max(0,quota-totalAn);
     const pct=Math.min(100,Math.round(totalAn/quota*100));
     const overQuota=totalAn>quota;
+    const pondere=dureeMinutesHHMM(Math.round(totalAn*60*tauxAstrTel/100));
     html+=`<tr style="background:${bg};border-bottom:1px solid var(--brd);">`;
     html+=`<td style="padding:5px 8px;white-space:nowrap;">${u.nom} ${u.prenom}</td>`;
     for(let m=0;m<12;m++){
@@ -236,6 +238,7 @@ function astrTelRenderRecap(){
       html+=`<td style="padding:4px 6px;text-align:center;color:${t>0?'var(--blu)':'var(--t3)'};">${t>0?t+'h':'-'}</td>`;
     }
     html+=`<td style="padding:5px 8px;text-align:center;font-weight:700;color:${overQuota?'#E24B4A':'var(--t)'};">${totalAn}h</td>`;
+    html+=`<td style="padding:5px 8px;text-align:center;font-weight:700;color:var(--blu);">${pondere}</td>`;
     html+=`<td style="padding:5px 8px;text-align:center;color:var(--t2);">${restant}h</td>`;
     html+=`<td style="padding:5px 8px;"><div style="background:#eee;border-radius:4px;height:8px;overflow:hidden;"><div style="width:${pct}%;background:${overQuota?'#E24B4A':'var(--blu)'};height:100%;border-radius:4px;transition:width .3s;"></div></div><div style="font-size:9px;text-align:center;color:var(--t2);margin-top:1px;">${pct}%</div></td>`;
     html+='</tr>';

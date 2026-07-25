@@ -173,20 +173,24 @@ function rStatsContent(){
 
 // ── Helper taux ──
 function getStatsTaux(){
-  if(CURRENT_CASERNE_ID&&CASERNE_DATA[CURRENT_CASERNE_ID]&&CASERNE_DATA[CURRENT_CASERNE_ID].statsTaux)
-    return CASERNE_DATA[CURRENT_CASERNE_ID].statsTaux;
-  return {actSvc:75,fmpaStag:75,fmpaForm:100,formStag:100,formForm:100};
+  const defaults={actSvc:75,fmpaStag:75,fmpaForm:100,formStag:100,formForm:100,astrTel:9};
+  const saved=CURRENT_CASERNE_ID&&CASERNE_DATA[CURRENT_CASERNE_ID]&&CASERNE_DATA[CURRENT_CASERNE_ID].statsTaux;
+  return Object.assign({},defaults,saved||{});
 }
 function saveStatsTaux(t){
-  if(!CURRENT_CASERNE_ID||!CASERNE_DATA[CURRENT_CASERNE_ID])return;
-  CASERNE_DATA[CURRENT_CASERNE_ID].statsTaux=t;saveData();
+  (CASERNES||[]).forEach(function(c){
+    if(!CASERNE_DATA[c.id])initCaserneData(c.id);
+    CASERNE_DATA[c.id].statsTaux=Object.assign({},t);
+  });
+  saveData();
 }
 function showStatsTauxParams(){
+  if(!isSuperAdmin()){showToast('Accès réservé au super-administrateur','warn');return;}
   const t=getStatsTaux();
   const row=(label,id,val,desc)=>`<div class="fg">
     <div class="fgl">${label}</div>
     <div style="display:flex;align-items:center;gap:10px;">
-      <input class="fi" type="number" id="taux-${id}" value="${val}" min="0" max="200" step="5" style="max-width:90px;"/>
+      <input class="fi" type="number" id="taux-${id}" value="${val}" min="0" max="200" step="1" style="max-width:90px;"/>
       <span style="font-size:11px;color:var(--t2);">${desc}</span>
     </div>
   </div>`;
@@ -194,11 +198,12 @@ function showStatsTauxParams(){
   document.getElementById('mi').textContent='';
   document.getElementById('mb').innerHTML=`<div>
     <div style="font-size:12px;color:var(--t2);margin-bottom:12px;">Ces taux s'appliquent au calcul des heures pondérées dans les statistiques Personnel.</div>
-    ${row('Activités de service','actSvc',t.actSvc||75,'% des heures réelles')}
-    ${row('FMPA — participants (stagiaires)','fmpaStag',t.fmpaStag||75,'% des heures réelles')}
-    ${row('FMPA — formateurs','fmpaForm',t.fmpaForm||100,'% des heures réelles')}
-    ${row('Formations — stagiaires','formStag',t.formStag||100,'% des heures réelles')}
-    ${row('Formations — formateurs','formForm',t.formForm||100,'% des heures réelles')}
+    ${row('Activités de service','actSvc',t.actSvc??75,'% des heures réelles')}
+    ${row('FMPA — participants (stagiaires)','fmpaStag',t.fmpaStag??75,'% des heures réelles')}
+    ${row('FMPA — formateurs','fmpaForm',t.fmpaForm??100,'% des heures réelles')}
+    ${row('Formations — stagiaires','formStag',t.formStag??100,'% des heures réelles')}
+    ${row('Formations — formateurs','formForm',t.formForm??100,'% des heures réelles')}
+    ${row('Astreinte téléphonique','astrTel',t.astrTel??9,'% des heures réelles')}
     <div id="taux-err" style="font-size:12px;color:#E24B4A;display:none;margin-bottom:8px;"></div>
     <div class="brow">
       <button class="btn pr" onclick="applyStatsTaux()">💾 Enregistrer</button>
@@ -209,7 +214,7 @@ function showStatsTauxParams(){
 }
 function applyStatsTaux(){
   const get=(id)=>Math.max(0,Math.min(200,parseInt(document.getElementById('taux-'+id)?.value)||0));
-  saveStatsTaux({actSvc:get('actSvc'),fmpaStag:get('fmpaStag'),fmpaForm:get('fmpaForm'),formStag:get('formStag'),formForm:get('formForm')});
+  saveStatsTaux({actSvc:get('actSvc'),fmpaStag:get('fmpaStag'),fmpaForm:get('fmpaForm'),formStag:get('formStag'),formForm:get('formForm'),astrTel:get('astrTel')});
   cM();
   showToast('Taux enregistrés ✓','success');
 }
@@ -217,6 +222,7 @@ function applyStatsTaux(){
 // ── Stats activités de service ──
 function rStatsActivites(){
   const annStr=String(stAnnee);
+  const tauxAct=getStatsTaux().actSvc;
   const agents=[...USERS].sort((a,b)=>a.nom.localeCompare(b.nom,'fr')||a.prenom.localeCompare(b.prenom,'fr'));
   const allData=actGetData();
   const data=allData.filter(a=>a.date&&a.date.startsWith(annStr));
@@ -237,8 +243,8 @@ function rStatsActivites(){
       items.forEach(a=>{
         if(a.hDebut&&a.hFin){
           const [h,m]=a.hDebut.split(':').map(Number),[h2,m2]=a.hFin.split(':').map(Number);
-          let d=(h2*60+m2)-(h*60+m);if(d<0)d+=1440;mins+=d;
-        } else if(a.duree){mins+=dureeValeurMinutes(a.duree);}
+          let d=(h2*60+m2)-(h*60+m);if(d<0)d+=1440;mins+=Math.round(d*tauxAct/100);
+        } else if(a.duree){mins+=Math.round(dureeValeurMinutes(a.duree)*tauxAct/100);}
       });
       totBrut+=mins;
       return '<td style="padding:3px 5px;text-align:center;font-size:10px;border-left:1px solid #e0e0e0;'+(mins?'font-weight:700;background:#EAF3DE;':'')+'">'+(mins?minToHHMM(mins):'—')+'</td>';
@@ -260,7 +266,7 @@ function rStatsActivites(){
     +'</tr>';
 
   return '<div style="background:#fff;border-radius:12px;padding:12px;overflow-x:auto;">'
-    +'<div style="font-size:12px;font-weight:600;margin-bottom:8px;">Heures d\'activités de service par agent — '+stAnnee+(stMois>0?' — '+ST_MOIS_COURT[stMois-1]:'')+'</div>'
+    +'<div style="font-size:12px;font-weight:600;margin-bottom:8px;">Heures pondérées d\'activités de service ('+tauxAct+' %) par agent — '+stAnnee+(stMois>0?' — '+ST_MOIS_COURT[stMois-1]:'')+'</div>'
     +'<table style="width:100%;border-collapse:collapse;font-size:11px;">'
     +'<thead><tr style="background:#f5f5f5;"><th style="padding:5px 8px;text-align:left;min-width:120px;">Agent</th><th style="padding:5px 5px;font-size:10px;">Grade</th>'
     +thMois
@@ -272,6 +278,7 @@ function rStatsActivites(){
 // ── Stats formations ──
 function rStatsFormations(){
   const annStr=String(stAnnee);
+  const tauxFormation=getStatsTaux();
   const agents=[...USERS].sort((a,b)=>a.nom.localeCompare(b.nom,'fr')||a.prenom.localeCompare(b.prenom,'fr'));
   function minToHHMM(m){return pad(Math.floor(m/60))+':'+pad(m%60);}
 
@@ -308,11 +315,11 @@ function rStatsFormations(){
       let mins=0;
       fmpas.forEach(f=>{
         const m=fmpaMinsPour(f);
-        if((f.participants||[]).includes(u.l)){mins+=m;totFmpaStag+=m;}
-        if((f.formateurs||[]).includes(u.l)){mins+=m;totFmpaForm+=m;}
+        if((f.participants||[]).includes(u.l)){const mp=Math.round(m*tauxFormation.fmpaStag/100);mins+=mp;totFmpaStag+=mp;}
+        if((f.formateurs||[]).includes(u.l)){const mp=Math.round(m*tauxFormation.fmpaForm/100);mins+=mp;totFmpaForm+=mp;}
       });
-      stag.forEach(f=>{if((f.participants||[]).includes(u.l)){const m=formMinsTotal(f);mins+=m;totStag+=m;}});
-      form.forEach(f=>{if((f.participants||[]).includes(u.l)){const m=formMinsTotal(f);mins+=m;totForm+=m;}});
+      stag.forEach(f=>{if((f.participants||[]).includes(u.l)){const m=Math.round(formMinsTotal(f)*tauxFormation.formStag/100);mins+=m;totStag+=m;}});
+      form.forEach(f=>{if((f.participants||[]).includes(u.l)){const m=Math.round(formMinsTotal(f)*tauxFormation.formForm/100);mins+=m;totForm+=m;}});
       totBrut+=mins;
       return '<td style="padding:3px 5px;text-align:center;font-size:10px;border-left:1px solid #e0e0e0;'+(mins?'font-weight:700;background:#EAF3DE;':'')+'">'+(mins?minToHHMM(mins):'—')+'</td>';
     }).join('');
@@ -353,7 +360,7 @@ function rStatsFormations(){
     +'</div>';
 
   return '<div style="background:#fff;border-radius:12px;padding:12px;overflow-x:auto;">'
-    +'<div style="font-size:12px;font-weight:600;margin-bottom:6px;">Heures de formations par agent — '+stAnnee+(stMois>0?' — '+ST_MOIS_COURT[stMois-1]:'')+'</div>'
+    +'<div style="font-size:12px;font-weight:600;margin-bottom:6px;">Heures pondérées de formations par agent — '+stAnnee+(stMois>0?' — '+ST_MOIS_COURT[stMois-1]:'')+'</div>'
     +legende
     +'<table style="width:100%;border-collapse:collapse;font-size:11px;">'
     +'<thead><tr style="background:#f5f5f5;"><th style="padding:5px 8px;text-align:left;min-width:120px;">Agent</th><th style="padding:5px 5px;font-size:10px;">Grade</th>'
@@ -944,6 +951,48 @@ function adminExportDuration(value,hd,hf){
   if(value)return dureeFormatHHMM(value,hd,hf)||value;
   return hd&&hf?dureeHHMM(hd,hf):'';
 }
+function adminExportReportType(iv){
+  if(iv&&iv._isRenfort)return 'RENF';
+  if(iv&&iv._sdis)return 'SDIS';
+  return 'INTER';
+}
+function adminExportMinutesHHMM(minutes){
+  const total=Math.max(0,parseInt(minutes,10)||0);
+  return String(Math.floor(total/60)).padStart(2,'0')+':'+String(total%60).padStart(2,'0');
+}
+function adminExportInterventionRates(iv){
+  const fallback={taux1:'',heures1:adminExportDuration('',iv&&iv._hDebut,iv&&iv._hFin),taux2:'',heures2:''};
+  if(!iv||!iv._hDebut||!iv._hFin||!iv.h||iv.h.length<8)return fallback;
+  const dateStr=iv.h.slice(0,8);
+  const yr=parseInt(dateStr.slice(0,4),10),mo=parseInt(dateStr.slice(4,6),10)-1,da=parseInt(dateStr.slice(6,8),10);
+  const debut=String(iv._hDebut).split(':').map(Number),fin=String(iv._hFin).split(':').map(Number);
+  if([yr,mo,da,debut[0],debut[1],fin[0],fin[1]].some(function(n){return !Number.isFinite(n);}))return fallback;
+  let startMin=debut[0]*60+debut[1],endMin=fin[0]*60+fin[1];
+  if(endMin<=startMin)endMin+=1440;
+  const totals={100:0,150:0,200:0},ordre=[];
+  for(let cur=startMin;cur<endMin;cur++){
+    const dayOff=Math.floor(cur/1440),minOfDay=cur%1440,hour=Math.floor(minOfDay/60);
+    const currentDate=new Date(yr,mo,da+dayOff);
+    const iso=currentDate.getFullYear()+'-'+pad(currentDate.getMonth()+1)+'-'+pad(currentDate.getDate());
+    let taux=100;
+    if(hour<7||hour>=22)taux=200;
+    else if(currentDate.getDay()===0||getJoursFeries(currentDate.getFullYear()).has(iso))taux=150;
+    totals[taux]++;
+    if(!ordre.includes(taux))ordre.push(taux);
+  }
+  const parts=ordre.filter(function(taux){return totals[taux]>0;}).map(function(taux){
+    return {taux:taux+'%',heures:adminExportMinutesHHMM(totals[taux])};
+  });
+  if(!parts.length)return fallback;
+  if(parts.length===1)return {taux1:parts[0].taux,heures1:parts[0].heures,taux2:'',heures2:''};
+  if(parts.length===2)return {taux1:parts[0].taux,heures1:parts[0].heures,taux2:parts[1].taux,heures2:parts[1].heures};
+  return {
+    taux1:parts[0].taux,
+    heures1:parts[0].heures,
+    taux2:parts.slice(1).map(function(p){return p.taux;}).join(' + '),
+    heures2:parts.slice(1).map(function(p){return p.heures;}).join(' + ')
+  };
+}
 function adminExportInterventionPresents(iv){
   const seen={},out=[];
   function add(login,role){
@@ -1012,6 +1061,7 @@ function exportAdminMonthlyExcel(){
 
   function doExport(){
     const XLSX=window.XLSX,wb=XLSX.utils.book_new();
+    const exportRates=getStatsTaux();
     const presents=Array.from({length:31},function(_,i){return 'Présent '+(i+1);});
     const ivHeaders=[
       'Num mois','Num intervention','Numéro SDIS','Numéro CABBALR','Date','Rapport',
@@ -1022,11 +1072,12 @@ function exportAdminMonthlyExcel(){
     ].concat(presents);
     const ivRows=[...data.interventions].sort(function(a,b){return (a.h||'').localeCompare(b.h||'');}).map(function(iv){
       const veh=adminExportVehicles(iv);
+      const rates=adminExportInterventionRates(iv);
       const rapportAuteur=adminExportUser(iv._crAuteur)+(iv._crDateValidation?' · '+iv._crDateValidation:'');
       return [
         iv._numMois||'',iv._numCaserne||iv._numApl||iv.id||'',iv._numSDIS||'',iv._numGlobal||'',
-        adminExportDateCompact(iv.h),iv._crValide?'Validé':(iv._crTexte||iv._compteRendu?'Établi':'Non établi'),
-        iv._taux||'',adminExportDuration('',iv._hDebut,iv._hFin),iv._taux2||'',iv._heures2||'',iv._km||'',
+        adminExportDateCompact(iv.h),adminExportReportType(iv),
+        rates.taux1,rates.heures1,rates.taux2,rates.heures2,iv._km||'',
         iv.n||'',iv.req||'',[(iv.addr||''),(iv.addrComp||'')].filter(Boolean).join(' — '),iv.com||'',
         iv._hAcquis||adminExportTimeCompact(iv.h),iv._hDebut||'',iv._hSll||'',iv._hDispo||'',iv._hFin||'',iv._hOpTerminee||'',
         iv._materiels||'',iv._consommables||'',veh.complement,veh.vtu1,veh.vtu2,veh.vpi,veh.autres,veh.precision,
@@ -1041,37 +1092,43 @@ function exportAdminMonthlyExcel(){
     });
     XLSX.utils.book_append_sheet(wb,adminExportSheet(XLSX,ivHeaders,ivRows,ivWidths),'Interventions terminées');
 
-    const actHeaders=['Num mois','Num activité','Date','Rapport','Heure début','Heure fin','Heures',"Type d'activité",'Compte rendu de mission','Rapport établi'].concat(presents);
+    const actHeaders=['Num mois','Num activité','Date','Rapport','Taux','Heure début','Heure fin','Heures',"Type d'activité",'Compte rendu de mission','Rapport établi'].concat(presents);
     const actRows=[...data.activites].sort(function(a,b){return (a.date||'').localeCompare(b.date||'');}).map(function(a){
       const auteur=adminExportUser(a.auteur)+(a.impressions&&a.impressions.length?' · imprimé '+a.impressions.length+' fois':'');
-      return [a.numMensuel||'',a.numAnnuel||a.id||'',a.date||'',a.impressions&&a.impressions.length?'Imprimé':'Établi',
+      return [a.numMensuel||'',a.numAnnuel||a.id||'',a.date||'','AC',exportRates.actSvc+'%',
         a.hDebut||'',a.hFin||'',adminExportDuration(a.duree,a.hDebut,a.hFin),a.type||'',a.cr||'',auteur]
         .concat(adminExportPad31(adminExportPeople(a.participants,'')));
     });
-    const actWidths=actHeaders.map(function(_,i){return i>=10?24:([7,8].includes(i)?(i===8?55:28):16);});
+    const actWidths=actHeaders.map(function(_,i){return i>=11?24:([8,9].includes(i)?(i===9?55:28):16);});
     XLSX.utils.book_append_sheet(wb,adminExportSheet(XLSX,actHeaders,actRows,actWidths),'Activités de service');
 
-    const formHeaders=['Type','Numéro','Date début','Date fin','Intitulé / Thème','Référence','Lieu',
+    const formHeaders=['Type','Numéro','Date début','Date fin','Rapport','Taux','Intitulé / Thème','Référence','Lieu',
       'Matin début','Matin fin','Après-midi début','Après-midi fin','Heure début','Heure fin','Heures','Rapport établi'].concat(presents);
     const formRows=[];
     data.fmpas.forEach(function(f){
-      const personnes=adminExportPeople(f.participants,'Stagiaire').concat(adminExportPeople(f.formateurs,'Formateur')).slice(0,31);
-      formRows.push(['FMPA',f.numAnnuel?fmpaNumStr(f):f.id||'',f.date||'',f.date||'',f.theme||'','','',
-        '','','','',f.hDebut||'',f.hFin||'',adminExportDuration(f.duree,f.hDebut,f.hFin),adminExportUser(f.auteur)]
-        .concat(adminExportPad31(personnes)));
+      const stagiaires=adminExportPeople(f.participants,'Stagiaire');
+      const formateurs=adminExportPeople(f.formateurs,'Formateur');
+      const pushFmpa=function(type,taux,personnes){
+        formRows.push([type,f.numAnnuel?fmpaNumStr(f):f.id||'',f.date||'',f.date||'','FOR',taux+'%',f.theme||'','','',
+          '','','','',f.hDebut||'',f.hFin||'',adminExportDuration(f.duree,f.hDebut,f.hFin),adminExportUser(f.auteur)]
+          .concat(adminExportPad31(personnes)));
+      };
+      if(stagiaires.length)pushFmpa('FMPA stagiaires',exportRates.fmpaStag,stagiaires);
+      if(formateurs.length)pushFmpa('FMPA formateurs',exportRates.fmpaForm,formateurs);
+      if(!stagiaires.length&&!formateurs.length)pushFmpa('FMPA',exportRates.fmpaStag,[]);
     });
     data.stag.forEach(function(f){
-      formRows.push(['Formation stagiaire',f.id||'',f.ddebut||'',f.dfin||'',f.titre||'',f.ref||'',f.lieu||'',
+      formRows.push(['Formation stagiaire',f.id||'',f.ddebut||'',f.dfin||'','FOR',exportRates.formStag+'%',f.titre||'',f.ref||'',f.lieu||'',
         f.hmatind||'',f.hmatinf||'',f.hapremd||'',f.hapremf||'','','',adminExportDuration(f.htotal,'',''),adminExportUser(f.auteur)]
         .concat(adminExportPad31(adminExportPeople(f.participants,'Stagiaire'))));
     });
     data.form.forEach(function(f){
-      formRows.push(['Formation formateur',f.id||'',f.ddebut||'',f.dfin||'',f.titre||'',f.ref||'',f.lieu||'',
+      formRows.push(['Formation formateur',f.id||'',f.ddebut||'',f.dfin||'','FOR',exportRates.formForm+'%',f.titre||'',f.ref||'',f.lieu||'',
         f.hmatind||'',f.hmatinf||'',f.hapremd||'',f.hapremf||'','','',adminExportDuration(f.htotal,'',''),adminExportUser(f.auteur)]
         .concat(adminExportPad31(adminExportPeople(f.participants,'Formateur'))));
     });
     formRows.sort(function(a,b){return String(a[2]).localeCompare(String(b[2]));});
-    const formWidths=formHeaders.map(function(_,i){return i>=15?24:([4,5,6].includes(i)?28:16);});
+    const formWidths=formHeaders.map(function(_,i){return i>=17?24:([6,7,8].includes(i)?28:16);});
     XLSX.utils.book_append_sheet(wb,adminExportSheet(XLSX,formHeaders,formRows,formWidths),'Formations');
 
     const caserne=((CC()&&CC().nom)||CURRENT_CASERNE_ID||'Caserne').replace(/[\\/:*?"<>|]+/g,'-');
