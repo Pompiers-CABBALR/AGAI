@@ -370,6 +370,7 @@ select.fi{min-width:0;width:100%;max-width:100%;}
 .hist-report-badge.validated{background:#DCFCE7;border-color:#86EFAC;color:#166534;}
 .hist-report-badge.printed{background:#DBEAFE;border-color:#93C5FD;color:#1D4ED8;}
 .hist-report-badge.pending{background:#F3F4F6;border-color:#D1D5DB;color:#6B7280;font-weight:600;}
+.hist-num-ut,.hist-num-m{font-size:12px;font-weight:800;line-height:1.1;}
 @media(max-width:700px){
   .hm{flex-wrap:wrap;align-items:flex-start;padding:9px;}
   .hist-report-flags{width:100%;justify-content:flex-start;padding-left:2px;}
