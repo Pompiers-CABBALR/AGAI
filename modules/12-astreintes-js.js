@@ -870,7 +870,6 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
       h+='<div class="dispo-cell" style="flex:0 0 '+_cw+'px;width:'+_cw+'px;box-sizing:border-box;height:28px;background:'+bg+';cursor:'+cursor+';transition:background .1s;border-radius:3px;border:1px solid #fff;user-select:none;"'
         +' title="'+jourLabel(d,true)+' '+slotToLabelDay(d,s,agGran)+'"'
         +' data-wk="'+wk+'" data-login="'+login+'" data-d="'+d+'" data-s="'+s+'" data-val="'+dragVal+'"'
-        +(canEdit?' onmousedown="startDispoDrag(this)" onmouseenter="continueDispoDrag(this)"':'')
         +(oc?' onclick="'+oc+'"':'')+'></div>';
     }
     h+='</div>';
@@ -1082,8 +1081,9 @@ function toggleDispoCell(wk,login,d,s,el,eqColor){
   el.style.background=next?'#22C55E':'#EF4444';
   el.dataset.val=String(next);
 }
-// ── Drag pour saisie dispo ──
+// ── Appui simple et glisser pour la saisie des disponibilités ──
 let _dragActive=false,_dragTargetVal=true,_dispoTouchHandled=0;
+let _dispoGestureCell=null,_dispoGestureX=0,_dispoGestureY=0,_dispoGestureMoved=false;
 function startDispoDrag(el){
   _jbEditLock=Date.now();
   _dragActive=true;
@@ -1106,7 +1106,6 @@ function applyDispoDrag(el){
   el.style.background=bg;
   el.dataset.val=String(_dragTargetVal);
 }
-document.addEventListener('mouseup',()=>{_dragActive=false;});
 
 // ── Support tactile du glisser pour les disponibilités (iPhone + Android) ──
 function _dispoCellAtPoint(x,y){
@@ -1115,31 +1114,52 @@ function _dispoCellAtPoint(x,y){
   if(cell&&cell.dataset&&cell.dataset.wk&&cell.dataset.login&&cell.dataset.d!==undefined&&cell.dataset.s!==undefined)return cell;
   return null;
 }
-function _stopDispoTouchDrag(){
+function _beginDispoGesture(cell,x,y){
+  _dispoGestureCell=cell;
+  _dispoGestureX=x;
+  _dispoGestureY=y;
+  _dispoGestureMoved=false;
   _dragActive=false;
   _dispoTouchHandled=Date.now();
 }
+function _moveDispoGesture(x,y){
+  if(!_dispoGestureCell)return;
+  if(!_dispoGestureMoved&&Math.hypot(x-_dispoGestureX,y-_dispoGestureY)>=7){
+    _dispoGestureMoved=true;
+    startDispoDrag(_dispoGestureCell);
+  }
+  if(_dispoGestureMoved){
+    const cell=_dispoCellAtPoint(x,y);
+    if(cell)continueDispoDrag(cell);
+  }
+}
+function _finishDispoGesture(cancelled){
+  // Un appui sans déplacement modifie exactement le créneau touché.
+  if(_dispoGestureCell&&!_dispoGestureMoved&&!cancelled)startDispoDrag(_dispoGestureCell);
+  _dragActive=false;
+  _dispoTouchHandled=Date.now();
+  _dispoGestureCell=null;
+  _dispoGestureMoved=false;
+}
 
 // Pointer Events : comportement commun aux versions récentes de Safari,
-// Chrome Android, Samsung Internet, Firefox Android et navigateurs assimilés.
+// Chrome Android, Samsung Internet, Firefox Android et aux ordinateurs.
 if(window.PointerEvent){
   document.addEventListener('pointerdown',function(e){
-    if(e.pointerType!=='touch'&&e.pointerType!=='pen')return;
     const cell=e.target&&e.target.closest?e.target.closest('.dispo-cell'):null;
     if(!cell)return;
+    if(e.pointerType==='mouse'&&e.button!==0)return;
     e.preventDefault();
-    _dispoTouchHandled=Date.now();
     try{cell.setPointerCapture(e.pointerId);}catch(err){}
-    startDispoDrag(cell);
+    _beginDispoGesture(cell,e.clientX,e.clientY);
   },{passive:false});
   document.addEventListener('pointermove',function(e){
-    if(!_dragActive||(e.pointerType!=='touch'&&e.pointerType!=='pen'))return;
+    if(!_dispoGestureCell)return;
     e.preventDefault();
-    const cell=_dispoCellAtPoint(e.clientX,e.clientY);
-    if(cell){_dispoTouchHandled=Date.now();continueDispoDrag(cell);}
+    _moveDispoGesture(e.clientX,e.clientY);
   },{passive:false});
-  document.addEventListener('pointerup',_stopDispoTouchDrag,{passive:true});
-  document.addEventListener('pointercancel',_stopDispoTouchDrag,{passive:true});
+  document.addEventListener('pointerup',function(){_finishDispoGesture(false);},{passive:true});
+  document.addEventListener('pointercancel',function(){_finishDispoGesture(true);},{passive:true});
 }else{
   // Repli pour les anciens appareils ne prenant pas en charge Pointer Events.
   document.addEventListener('touchstart',function(e){
@@ -1147,18 +1167,16 @@ if(window.PointerEvent){
     const cell=_dispoCellAtPoint(t.clientX,t.clientY);
     if(!cell)return;
     e.preventDefault();
-    _dispoTouchHandled=Date.now();
-    startDispoDrag(cell);
+    _beginDispoGesture(cell,t.clientX,t.clientY);
   },{passive:false});
   document.addEventListener('touchmove',function(e){
-    if(!_dragActive)return;
+    if(!_dispoGestureCell)return;
     const t=e.touches[0];if(!t)return;
     e.preventDefault();
-    const cell=_dispoCellAtPoint(t.clientX,t.clientY);
-    if(cell){_dispoTouchHandled=Date.now();continueDispoDrag(cell);}
+    _moveDispoGesture(t.clientX,t.clientY);
   },{passive:false});
-  document.addEventListener('touchend',_stopDispoTouchDrag,{passive:true});
-  document.addEventListener('touchcancel',_stopDispoTouchDrag,{passive:true});
+  document.addEventListener('touchend',function(){_finishDispoGesture(false);},{passive:true});
+  document.addEventListener('touchcancel',function(){_finishDispoGesture(true);},{passive:true});
 }
 function setAllDispoFor(wk,login,val,eqColor,allowClear){
   _jbEditLock=Date.now();

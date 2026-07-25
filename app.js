@@ -2796,9 +2796,37 @@ function resetAppelPhones(){
   const first=document.getElementById('ft');if(first)first.value='';
 }
 function clearAppelAnimalsError(){const err=document.getElementById('appel-animals-error');if(err)err.style.display='none';}
-function toggleAppelAnimalPrecision(select){
-  const row=select&&select.closest('.appel-animal-row'),precision=row&&row.querySelector('[data-appel-animal-precision]');
-  if(precision)precision.style.display=(select.value==='NAC'||select.value==='Autre')?'':'none';
+function selectAppelAnimalOption(el,field,value){
+  const row=el&&el.closest('.appel-animal-row');if(!row)return;
+  row.querySelectorAll('[data-animal-field="'+field+'"]').forEach(function(option){option.classList.remove('sel');});
+  el.classList.add('sel');
+  if(field==='type')row.dataset.animalType=value;
+  else row.dataset.animalSituation=value;
+  toggleAppelAnimalPrecision(row);
+  clearAppelAnimalsError();
+}
+function toggleAppelAnimalPrecision(source){
+  const row=source&&source.classList&&source.classList.contains('appel-animal-row')?source:source&&source.closest('.appel-animal-row');
+  const precision=row&&row.querySelector('[data-appel-animal-precision]');
+  if(precision)precision.style.display=(row.dataset.animalType==='NAC'||row.dataset.animalType==='Autre')?'':'none';
+}
+function appelAnimalChoicesHtml(){
+  return '<div class="appel-animal-section"><div class="smtit">Type d’animal</div><div class="appel-animal-options">'
+    +'<button type="button" class="smopt appel-animal-choice" data-animal-field="type" onclick="selectAppelAnimalOption(this,\'type\',\'Chien\')">🐕 Chien</button>'
+    +'<button type="button" class="smopt appel-animal-choice" data-animal-field="type" onclick="selectAppelAnimalOption(this,\'type\',\'Chat\')">🐈 Chat</button>'
+    +'<button type="button" class="smopt appel-animal-choice" data-animal-field="type" onclick="selectAppelAnimalOption(this,\'type\',\'Équidé\')">🐴 Équidé</button>'
+    +'<button type="button" class="smopt appel-animal-choice" data-animal-field="type" onclick="selectAppelAnimalOption(this,\'type\',\'Bovin\')">🐄 Bovin</button>'
+    +'<button type="button" class="smopt appel-animal-choice" data-animal-field="type" onclick="selectAppelAnimalOption(this,\'type\',\'NAC\')">🦎 NAC</button>'
+    +'<button type="button" class="smopt appel-animal-choice" data-animal-field="type" onclick="selectAppelAnimalOption(this,\'type\',\'Autre\')">🐾 Autre</button>'
+    +'</div></div><input class="fi" data-appel-animal-precision type="text" placeholder="Préciser le type d’animal…" style="display:none;margin-top:6px;"/>'
+    +'<div class="appel-animal-section"><div class="smtit">Situation de l’animal</div><div class="appel-animal-options">'
+    +'<button type="button" class="smopt appel-animal-choice" data-animal-field="situation" onclick="selectAppelAnimalOption(this,\'situation\',\'Blessé\')">🩹 Blessé</button>'
+    +'<button type="button" class="smopt appel-animal-choice" data-animal-field="situation" onclick="selectAppelAnimalOption(this,\'situation\',\'Piégé\')">🪤 Piégé</button>'
+    +'<button type="button" class="smopt appel-animal-choice" data-animal-field="situation" onclick="selectAppelAnimalOption(this,\'situation\',\'Agressif\')">⚠️ Agressif</button>'
+    +'<button type="button" class="smopt appel-animal-choice" data-animal-field="situation" onclick="selectAppelAnimalOption(this,\'situation\',\'Divagant VP\')">🛣️ Divagant VP</button>'
+    +'<button type="button" class="smopt appel-animal-choice" data-animal-field="situation" onclick="selectAppelAnimalOption(this,\'situation\',\'Errant attrapé\')">🏠 Errant attrapé</button>'
+    +'<button type="button" class="smopt appel-animal-choice" data-animal-field="situation" onclick="selectAppelAnimalOption(this,\'situation\',\'Autre\')">📋 Autre</button>'
+    +'</div></div>';
 }
 function renumberAppelAnimals(){
   document.querySelectorAll('#appel-animals .appel-animal-row').forEach(function(row,index){
@@ -2810,20 +2838,16 @@ function addAppelAnimal(){
   const box=document.getElementById('appel-animals');if(!box)return;
   const row=document.createElement('div');row.className='appel-animal-row';
   row.innerHTML='<button type="button" class="appel-animal-remove" aria-label="Supprimer cet animal" title="Supprimer cet animal">×</button>'
-    +'<div class="appel-animal-title"></div><div class="appel-animal-grid">'
-    +'<select class="fi" data-appel-animal-type><option value="">— Type —</option><option>Chien</option><option>Chat</option><option>Équidé</option><option>Bovin</option><option>NAC</option><option>Autre</option></select>'
-    +'<select class="fi" data-appel-animal-situation><option value="">— Situation —</option><option>Blessé</option><option>Piégé</option><option>Agressif</option><option>Divagant VP</option><option>Errant attrapé</option><option>Autre</option></select></div>'
-    +'<input class="fi" data-appel-animal-precision type="text" placeholder="Préciser le type d’animal…" style="display:none;margin-top:6px;"/>';
+    +'<div class="appel-animal-title"></div>'+appelAnimalChoicesHtml();
   row.querySelector('.appel-animal-remove').onclick=function(){row.remove();renumberAppelAnimals();};
-  const type=row.querySelector('[data-appel-animal-type]');type.onchange=function(){toggleAppelAnimalPrecision(type);clearAppelAnimalsError();};
-  row.querySelector('[data-appel-animal-situation]').onchange=clearAppelAnimalsError;
-  box.appendChild(row);renumberAppelAnimals();type.focus();
+  box.appendChild(row);renumberAppelAnimals();
+  const firstChoice=row.querySelector('[data-animal-field="type"]');if(firstChoice)firstChoice.focus();
 }
 function getAppelAnimals(){
   return [...document.querySelectorAll('#appel-animals .appel-animal-row')].map(function(row){
-    const type=row.querySelector('[data-appel-animal-type]')?.value||'';
+    const type=row.dataset.animalType||'';
     const precision=row.querySelector('[data-appel-animal-precision]')?.value.trim()||'';
-    const situation=row.querySelector('[data-appel-animal-situation]')?.value||'';
+    const situation=row.dataset.animalSituation||'';
     return{type:type,precision:precision,situation:situation};
   }).filter(a=>a.type||a.precision||a.situation);
 }
@@ -2831,7 +2855,7 @@ function validateAppelAnimals(){
   const isAnimal=selNat&&selNat.toLowerCase().includes('sauvetage et capture d');
   if(!isAnimal){clearAppelAnimalsError();return true;}
   const rows=[...document.querySelectorAll('#appel-animals .appel-animal-row')];
-  const ok=rows.length>0&&rows.every(row=>!!row.querySelector('[data-appel-animal-type]')?.value);
+  const ok=rows.length>0&&rows.every(row=>!!row.dataset.animalType);
   const err=document.getElementById('appel-animals-error');if(err)err.style.display=ok?'none':'block';
   return ok;
 }
@@ -2839,7 +2863,7 @@ function resetAppelAnimals(){
   const box=document.getElementById('appel-animals');if(!box)return;
   box.querySelectorAll('.appel-animal-row').forEach((row,index)=>{if(index>0)row.remove();});
   const row=box.querySelector('.appel-animal-row');
-  if(row){row.querySelectorAll('select').forEach(el=>el.value='');const precision=row.querySelector('[data-appel-animal-precision]');if(precision){precision.value='';precision.style.display='none';}}
+  if(row){delete row.dataset.animalType;delete row.dataset.animalSituation;row.querySelectorAll('.appel-animal-choice.sel').forEach(el=>el.classList.remove('sel'));const precision=row.querySelector('[data-appel-animal-precision]');if(precision){precision.value='';precision.style.display='none';}}
   clearAppelAnimalsError();renumberAppelAnimals();
 }
 function clearReqAvailabilityError(){const err=document.getElementById('req-dispo-error');if(err)err.style.display='none';}
@@ -3149,7 +3173,11 @@ function renderInterventionRow(iv, ag, tireur) {
 // Tri : en-attente par date asc, autres par dernière action desc
 function sortedIVS(list){
   return list.sort((a,b)=>{
-    if(!!a._urgence!==!!b._urgence)return a._urgence?-1:1;
+    // Une urgence ERP n'est prioritaire que tant qu'elle est active.
+    // Une fois terminée, elle rejoint le groupe des interventions terminées.
+    const urgenceActiveA=!!a._urgence&&a.s!=='terminee';
+    const urgenceActiveB=!!b._urgence&&b.s!=='terminee';
+    if(urgenceActiveA!==urgenceActiveB)return urgenceActiveA?-1:1;
     const ORDER={'en-attente':0,'selectionne':1,'en-cours':2,'terminee':3,'avis-passage':4};
     const oa=ORDER[a.s]??5,ob=ORDER[b.s]??5;
     if(oa!==ob)return oa-ob;
@@ -5300,7 +5328,6 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
       h+='<div class="dispo-cell" style="flex:0 0 '+_cw+'px;width:'+_cw+'px;box-sizing:border-box;height:28px;background:'+bg+';cursor:'+cursor+';transition:background .1s;border-radius:3px;border:1px solid #fff;user-select:none;"'
         +' title="'+jourLabel(d,true)+' '+slotToLabelDay(d,s,agGran)+'"'
         +' data-wk="'+wk+'" data-login="'+login+'" data-d="'+d+'" data-s="'+s+'" data-val="'+dragVal+'"'
-        +(canEdit?' onmousedown="startDispoDrag(this)" onmouseenter="continueDispoDrag(this)"':'')
         +(oc?' onclick="'+oc+'"':'')+'></div>';
     }
     h+='</div>';
@@ -5512,8 +5539,9 @@ function toggleDispoCell(wk,login,d,s,el,eqColor){
   el.style.background=next?'#22C55E':'#EF4444';
   el.dataset.val=String(next);
 }
-// ── Drag pour saisie dispo ──
+// ── Appui simple et glisser pour la saisie des disponibilités ──
 let _dragActive=false,_dragTargetVal=true,_dispoTouchHandled=0;
+let _dispoGestureCell=null,_dispoGestureX=0,_dispoGestureY=0,_dispoGestureMoved=false;
 function startDispoDrag(el){
   _jbEditLock=Date.now();
   _dragActive=true;
@@ -5536,7 +5564,6 @@ function applyDispoDrag(el){
   el.style.background=bg;
   el.dataset.val=String(_dragTargetVal);
 }
-document.addEventListener('mouseup',()=>{_dragActive=false;});
 
 // ── Support tactile du glisser pour les disponibilités (iPhone + Android) ──
 function _dispoCellAtPoint(x,y){
@@ -5545,31 +5572,52 @@ function _dispoCellAtPoint(x,y){
   if(cell&&cell.dataset&&cell.dataset.wk&&cell.dataset.login&&cell.dataset.d!==undefined&&cell.dataset.s!==undefined)return cell;
   return null;
 }
-function _stopDispoTouchDrag(){
+function _beginDispoGesture(cell,x,y){
+  _dispoGestureCell=cell;
+  _dispoGestureX=x;
+  _dispoGestureY=y;
+  _dispoGestureMoved=false;
   _dragActive=false;
   _dispoTouchHandled=Date.now();
 }
+function _moveDispoGesture(x,y){
+  if(!_dispoGestureCell)return;
+  if(!_dispoGestureMoved&&Math.hypot(x-_dispoGestureX,y-_dispoGestureY)>=7){
+    _dispoGestureMoved=true;
+    startDispoDrag(_dispoGestureCell);
+  }
+  if(_dispoGestureMoved){
+    const cell=_dispoCellAtPoint(x,y);
+    if(cell)continueDispoDrag(cell);
+  }
+}
+function _finishDispoGesture(cancelled){
+  // Un appui sans déplacement modifie exactement le créneau touché.
+  if(_dispoGestureCell&&!_dispoGestureMoved&&!cancelled)startDispoDrag(_dispoGestureCell);
+  _dragActive=false;
+  _dispoTouchHandled=Date.now();
+  _dispoGestureCell=null;
+  _dispoGestureMoved=false;
+}
 
 // Pointer Events : comportement commun aux versions récentes de Safari,
-// Chrome Android, Samsung Internet, Firefox Android et navigateurs assimilés.
+// Chrome Android, Samsung Internet, Firefox Android et aux ordinateurs.
 if(window.PointerEvent){
   document.addEventListener('pointerdown',function(e){
-    if(e.pointerType!=='touch'&&e.pointerType!=='pen')return;
     const cell=e.target&&e.target.closest?e.target.closest('.dispo-cell'):null;
     if(!cell)return;
+    if(e.pointerType==='mouse'&&e.button!==0)return;
     e.preventDefault();
-    _dispoTouchHandled=Date.now();
     try{cell.setPointerCapture(e.pointerId);}catch(err){}
-    startDispoDrag(cell);
+    _beginDispoGesture(cell,e.clientX,e.clientY);
   },{passive:false});
   document.addEventListener('pointermove',function(e){
-    if(!_dragActive||(e.pointerType!=='touch'&&e.pointerType!=='pen'))return;
+    if(!_dispoGestureCell)return;
     e.preventDefault();
-    const cell=_dispoCellAtPoint(e.clientX,e.clientY);
-    if(cell){_dispoTouchHandled=Date.now();continueDispoDrag(cell);}
+    _moveDispoGesture(e.clientX,e.clientY);
   },{passive:false});
-  document.addEventListener('pointerup',_stopDispoTouchDrag,{passive:true});
-  document.addEventListener('pointercancel',_stopDispoTouchDrag,{passive:true});
+  document.addEventListener('pointerup',function(){_finishDispoGesture(false);},{passive:true});
+  document.addEventListener('pointercancel',function(){_finishDispoGesture(true);},{passive:true});
 }else{
   // Repli pour les anciens appareils ne prenant pas en charge Pointer Events.
   document.addEventListener('touchstart',function(e){
@@ -5577,18 +5625,16 @@ if(window.PointerEvent){
     const cell=_dispoCellAtPoint(t.clientX,t.clientY);
     if(!cell)return;
     e.preventDefault();
-    _dispoTouchHandled=Date.now();
-    startDispoDrag(cell);
+    _beginDispoGesture(cell,t.clientX,t.clientY);
   },{passive:false});
   document.addEventListener('touchmove',function(e){
-    if(!_dragActive)return;
+    if(!_dispoGestureCell)return;
     const t=e.touches[0];if(!t)return;
     e.preventDefault();
-    const cell=_dispoCellAtPoint(t.clientX,t.clientY);
-    if(cell){_dispoTouchHandled=Date.now();continueDispoDrag(cell);}
+    _moveDispoGesture(t.clientX,t.clientY);
   },{passive:false});
-  document.addEventListener('touchend',_stopDispoTouchDrag,{passive:true});
-  document.addEventListener('touchcancel',_stopDispoTouchDrag,{passive:true});
+  document.addEventListener('touchend',function(){_finishDispoGesture(false);},{passive:true});
+  document.addEventListener('touchcancel',function(){_finishDispoGesture(true);},{passive:true});
 }
 function setAllDispoFor(wk,login,val,eqColor,allowClear){
   _jbEditLock=Date.now();
@@ -9107,7 +9153,7 @@ function rStatsHeader(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260725-date-reelle-historique-22';
+const APP_VERSION='20260725-animaux-erp-dispos-23';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne

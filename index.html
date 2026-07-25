@@ -9,7 +9,7 @@
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
 <title>AGAI</title>
-<link rel="stylesheet" href="style.css?v=20260725-date-reelle-historique-22"/>
+<link rel="stylesheet" href="style.css?v=20260725-animaux-erp-dispos-23"/>
 </head>
 <body>
 
@@ -103,11 +103,29 @@
             <div id="appel-animals">
               <div class="appel-animal-row">
                 <div class="appel-animal-title">Animal 1</div>
-                <div class="appel-animal-grid">
-                  <select class="fi" data-appel-animal-type onchange="toggleAppelAnimalPrecision(this);clearAppelAnimalsError()"><option value="">— Type —</option><option>Chien</option><option>Chat</option><option>Équidé</option><option>Bovin</option><option>NAC</option><option>Autre</option></select>
-                  <select class="fi" data-appel-animal-situation onchange="clearAppelAnimalsError()"><option value="">— Situation —</option><option>Blessé</option><option>Piégé</option><option>Agressif</option><option>Divagant VP</option><option>Errant attrapé</option><option>Autre</option></select>
+                <div class="appel-animal-section">
+                  <div class="smtit">Type d'animal</div>
+                  <div class="appel-animal-options">
+                    <button type="button" class="smopt appel-animal-choice" data-animal-field="type" onclick="selectAppelAnimalOption(this,'type','Chien')">🐕 Chien</button>
+                    <button type="button" class="smopt appel-animal-choice" data-animal-field="type" onclick="selectAppelAnimalOption(this,'type','Chat')">🐈 Chat</button>
+                    <button type="button" class="smopt appel-animal-choice" data-animal-field="type" onclick="selectAppelAnimalOption(this,'type','Équidé')">🐴 Équidé</button>
+                    <button type="button" class="smopt appel-animal-choice" data-animal-field="type" onclick="selectAppelAnimalOption(this,'type','Bovin')">🐄 Bovin</button>
+                    <button type="button" class="smopt appel-animal-choice" data-animal-field="type" onclick="selectAppelAnimalOption(this,'type','NAC')">🦎 NAC</button>
+                    <button type="button" class="smopt appel-animal-choice" data-animal-field="type" onclick="selectAppelAnimalOption(this,'type','Autre')">🐾 Autre</button>
+                  </div>
                 </div>
                 <input class="fi" data-appel-animal-precision type="text" placeholder="Préciser le type d’animal…" style="display:none;margin-top:6px;"/>
+                <div class="appel-animal-section">
+                  <div class="smtit">Situation de l'animal</div>
+                  <div class="appel-animal-options">
+                    <button type="button" class="smopt appel-animal-choice" data-animal-field="situation" onclick="selectAppelAnimalOption(this,'situation','Blessé')">🩹 Blessé</button>
+                    <button type="button" class="smopt appel-animal-choice" data-animal-field="situation" onclick="selectAppelAnimalOption(this,'situation','Piégé')">🪤 Piégé</button>
+                    <button type="button" class="smopt appel-animal-choice" data-animal-field="situation" onclick="selectAppelAnimalOption(this,'situation','Agressif')">⚠️ Agressif</button>
+                    <button type="button" class="smopt appel-animal-choice" data-animal-field="situation" onclick="selectAppelAnimalOption(this,'situation','Divagant VP')">🛣️ Divagant VP</button>
+                    <button type="button" class="smopt appel-animal-choice" data-animal-field="situation" onclick="selectAppelAnimalOption(this,'situation','Errant attrapé')">🏠 Errant attrapé</button>
+                    <button type="button" class="smopt appel-animal-choice" data-animal-field="situation" onclick="selectAppelAnimalOption(this,'situation','Autre')">📋 Autre</button>
+                  </div>
+                </div>
               </div>
             </div>
             <button type="button" class="btn sm" style="margin-top:8px;color:var(--red);border-color:var(--red);" onclick="addAppelAnimal()">＋ Ajouter un animal</button>
@@ -759,28 +777,28 @@
   <div class="mod"><div class="mhan"></div><div class="mtit" id="mt">—</div><div class="mid2" id="mi">—</div><div id="mb"></div><button class="mclose" onclick="cM()">Fermer</button></div>
 </div>
 
-<script src="runtime-config.js?v=20260725-date-reelle-historique-22"></script>
-<script src="modules/00-preambule.js?v=20260725-date-reelle-historique-22" defer></script>
-<script src="modules/01-config-js.js?v=20260725-date-reelle-historique-22" defer></script>
-<script src="modules/02-auth-js-partie-1-2-structure-casernes-numerotation.js?v=20260725-date-reelle-historique-22" defer></script>
-<script src="modules/03-security-js.js?v=20260725-date-reelle-historique-22" defer></script>
-<script src="modules/04-auth-js-partie-2-2-login-session-droits.js?v=20260725-date-reelle-historique-22" defer></script>
-<script src="modules/05-admin-js-partie-1-2-vues-globales-superadmin.js?v=20260725-date-reelle-historique-22" defer></script>
-<script src="modules/06-ui-js-accueil-js.js?v=20260725-date-reelle-historique-22" defer></script>
-<script src="modules/07-appel-js.js?v=20260725-date-reelle-historique-22" defer></script>
-<script src="modules/08-interventions-js.js?v=20260725-date-reelle-historique-22" defer></script>
-<script src="modules/09-pilp-js.js?v=20260725-date-reelle-historique-22" defer></script>
-<script src="modules/10-historique-js.js?v=20260725-date-reelle-historique-22" defer></script>
-<script src="modules/11-admin-js-partie-2-2-gestion-utilisateurs.js?v=20260725-date-reelle-historique-22" defer></script>
-<script src="modules/12-astreintes-js.js?v=20260725-date-reelle-historique-22" defer></script>
-<script src="modules/13-autorisation-js.js?v=20260725-date-reelle-historique-22" defer></script>
-<script src="modules/14-stats-js.js?v=20260725-date-reelle-historique-22" defer></script>
-<script src="modules/15-storage-js.js?v=20260725-date-reelle-historique-22" defer></script>
-<script src="modules/16-email-js.js?v=20260725-date-reelle-historique-22" defer></script>
-<script src="modules/17-animal-js.js?v=20260725-date-reelle-historique-22" defer></script>
-<script src="modules/18-planning-annuel-js.js?v=20260725-date-reelle-historique-22" defer></script>
-<script src="modules/19-onedrive-sync-js.js?v=20260725-date-reelle-historique-22" defer></script>
-<script src="modules/20-formations-js.js?v=20260725-date-reelle-historique-22" defer></script>
-<script src="modules/21-astreinte-tel-js.js?v=20260725-date-reelle-historique-22" defer></script>
+<script src="runtime-config.js?v=20260725-animaux-erp-dispos-23"></script>
+<script src="modules/00-preambule.js?v=20260725-animaux-erp-dispos-23" defer></script>
+<script src="modules/01-config-js.js?v=20260725-animaux-erp-dispos-23" defer></script>
+<script src="modules/02-auth-js-partie-1-2-structure-casernes-numerotation.js?v=20260725-animaux-erp-dispos-23" defer></script>
+<script src="modules/03-security-js.js?v=20260725-animaux-erp-dispos-23" defer></script>
+<script src="modules/04-auth-js-partie-2-2-login-session-droits.js?v=20260725-animaux-erp-dispos-23" defer></script>
+<script src="modules/05-admin-js-partie-1-2-vues-globales-superadmin.js?v=20260725-animaux-erp-dispos-23" defer></script>
+<script src="modules/06-ui-js-accueil-js.js?v=20260725-animaux-erp-dispos-23" defer></script>
+<script src="modules/07-appel-js.js?v=20260725-animaux-erp-dispos-23" defer></script>
+<script src="modules/08-interventions-js.js?v=20260725-animaux-erp-dispos-23" defer></script>
+<script src="modules/09-pilp-js.js?v=20260725-animaux-erp-dispos-23" defer></script>
+<script src="modules/10-historique-js.js?v=20260725-animaux-erp-dispos-23" defer></script>
+<script src="modules/11-admin-js-partie-2-2-gestion-utilisateurs.js?v=20260725-animaux-erp-dispos-23" defer></script>
+<script src="modules/12-astreintes-js.js?v=20260725-animaux-erp-dispos-23" defer></script>
+<script src="modules/13-autorisation-js.js?v=20260725-animaux-erp-dispos-23" defer></script>
+<script src="modules/14-stats-js.js?v=20260725-animaux-erp-dispos-23" defer></script>
+<script src="modules/15-storage-js.js?v=20260725-animaux-erp-dispos-23" defer></script>
+<script src="modules/16-email-js.js?v=20260725-animaux-erp-dispos-23" defer></script>
+<script src="modules/17-animal-js.js?v=20260725-animaux-erp-dispos-23" defer></script>
+<script src="modules/18-planning-annuel-js.js?v=20260725-animaux-erp-dispos-23" defer></script>
+<script src="modules/19-onedrive-sync-js.js?v=20260725-animaux-erp-dispos-23" defer></script>
+<script src="modules/20-formations-js.js?v=20260725-animaux-erp-dispos-23" defer></script>
+<script src="modules/21-astreinte-tel-js.js?v=20260725-animaux-erp-dispos-23" defer></script>
 </body>
 </html>

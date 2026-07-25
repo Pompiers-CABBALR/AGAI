@@ -62,7 +62,11 @@ function renderInterventionRow(iv, ag, tireur) {
 // Tri : en-attente par date asc, autres par dernière action desc
 function sortedIVS(list){
   return list.sort((a,b)=>{
-    if(!!a._urgence!==!!b._urgence)return a._urgence?-1:1;
+    // Une urgence ERP n'est prioritaire que tant qu'elle est active.
+    // Une fois terminée, elle rejoint le groupe des interventions terminées.
+    const urgenceActiveA=!!a._urgence&&a.s!=='terminee';
+    const urgenceActiveB=!!b._urgence&&b.s!=='terminee';
+    if(urgenceActiveA!==urgenceActiveB)return urgenceActiveA?-1:1;
     const ORDER={'en-attente':0,'selectionne':1,'en-cours':2,'terminee':3,'avis-passage':4};
     const oa=ORDER[a.s]??5,ob=ORDER[b.s]??5;
     if(oa!==ob)return oa-ob;

@@ -277,9 +277,37 @@ function resetAppelPhones(){
   const first=document.getElementById('ft');if(first)first.value='';
 }
 function clearAppelAnimalsError(){const err=document.getElementById('appel-animals-error');if(err)err.style.display='none';}
-function toggleAppelAnimalPrecision(select){
-  const row=select&&select.closest('.appel-animal-row'),precision=row&&row.querySelector('[data-appel-animal-precision]');
-  if(precision)precision.style.display=(select.value==='NAC'||select.value==='Autre')?'':'none';
+function selectAppelAnimalOption(el,field,value){
+  const row=el&&el.closest('.appel-animal-row');if(!row)return;
+  row.querySelectorAll('[data-animal-field="'+field+'"]').forEach(function(option){option.classList.remove('sel');});
+  el.classList.add('sel');
+  if(field==='type')row.dataset.animalType=value;
+  else row.dataset.animalSituation=value;
+  toggleAppelAnimalPrecision(row);
+  clearAppelAnimalsError();
+}
+function toggleAppelAnimalPrecision(source){
+  const row=source&&source.classList&&source.classList.contains('appel-animal-row')?source:source&&source.closest('.appel-animal-row');
+  const precision=row&&row.querySelector('[data-appel-animal-precision]');
+  if(precision)precision.style.display=(row.dataset.animalType==='NAC'||row.dataset.animalType==='Autre')?'':'none';
+}
+function appelAnimalChoicesHtml(){
+  return '<div class="appel-animal-section"><div class="smtit">Type d’animal</div><div class="appel-animal-options">'
+    +'<button type="button" class="smopt appel-animal-choice" data-animal-field="type" onclick="selectAppelAnimalOption(this,\'type\',\'Chien\')">🐕 Chien</button>'
+    +'<button type="button" class="smopt appel-animal-choice" data-animal-field="type" onclick="selectAppelAnimalOption(this,\'type\',\'Chat\')">🐈 Chat</button>'
+    +'<button type="button" class="smopt appel-animal-choice" data-animal-field="type" onclick="selectAppelAnimalOption(this,\'type\',\'Équidé\')">🐴 Équidé</button>'
+    +'<button type="button" class="smopt appel-animal-choice" data-animal-field="type" onclick="selectAppelAnimalOption(this,\'type\',\'Bovin\')">🐄 Bovin</button>'
+    +'<button type="button" class="smopt appel-animal-choice" data-animal-field="type" onclick="selectAppelAnimalOption(this,\'type\',\'NAC\')">🦎 NAC</button>'
+    +'<button type="button" class="smopt appel-animal-choice" data-animal-field="type" onclick="selectAppelAnimalOption(this,\'type\',\'Autre\')">🐾 Autre</button>'
+    +'</div></div><input class="fi" data-appel-animal-precision type="text" placeholder="Préciser le type d’animal…" style="display:none;margin-top:6px;"/>'
+    +'<div class="appel-animal-section"><div class="smtit">Situation de l’animal</div><div class="appel-animal-options">'
+    +'<button type="button" class="smopt appel-animal-choice" data-animal-field="situation" onclick="selectAppelAnimalOption(this,\'situation\',\'Blessé\')">🩹 Blessé</button>'
+    +'<button type="button" class="smopt appel-animal-choice" data-animal-field="situation" onclick="selectAppelAnimalOption(this,\'situation\',\'Piégé\')">🪤 Piégé</button>'
+    +'<button type="button" class="smopt appel-animal-choice" data-animal-field="situation" onclick="selectAppelAnimalOption(this,\'situation\',\'Agressif\')">⚠️ Agressif</button>'
+    +'<button type="button" class="smopt appel-animal-choice" data-animal-field="situation" onclick="selectAppelAnimalOption(this,\'situation\',\'Divagant VP\')">🛣️ Divagant VP</button>'
+    +'<button type="button" class="smopt appel-animal-choice" data-animal-field="situation" onclick="selectAppelAnimalOption(this,\'situation\',\'Errant attrapé\')">🏠 Errant attrapé</button>'
+    +'<button type="button" class="smopt appel-animal-choice" data-animal-field="situation" onclick="selectAppelAnimalOption(this,\'situation\',\'Autre\')">📋 Autre</button>'
+    +'</div></div>';
 }
 function renumberAppelAnimals(){
   document.querySelectorAll('#appel-animals .appel-animal-row').forEach(function(row,index){
@@ -291,20 +319,16 @@ function addAppelAnimal(){
   const box=document.getElementById('appel-animals');if(!box)return;
   const row=document.createElement('div');row.className='appel-animal-row';
   row.innerHTML='<button type="button" class="appel-animal-remove" aria-label="Supprimer cet animal" title="Supprimer cet animal">×</button>'
-    +'<div class="appel-animal-title"></div><div class="appel-animal-grid">'
-    +'<select class="fi" data-appel-animal-type><option value="">— Type —</option><option>Chien</option><option>Chat</option><option>Équidé</option><option>Bovin</option><option>NAC</option><option>Autre</option></select>'
-    +'<select class="fi" data-appel-animal-situation><option value="">— Situation —</option><option>Blessé</option><option>Piégé</option><option>Agressif</option><option>Divagant VP</option><option>Errant attrapé</option><option>Autre</option></select></div>'
-    +'<input class="fi" data-appel-animal-precision type="text" placeholder="Préciser le type d’animal…" style="display:none;margin-top:6px;"/>';
+    +'<div class="appel-animal-title"></div>'+appelAnimalChoicesHtml();
   row.querySelector('.appel-animal-remove').onclick=function(){row.remove();renumberAppelAnimals();};
-  const type=row.querySelector('[data-appel-animal-type]');type.onchange=function(){toggleAppelAnimalPrecision(type);clearAppelAnimalsError();};
-  row.querySelector('[data-appel-animal-situation]').onchange=clearAppelAnimalsError;
-  box.appendChild(row);renumberAppelAnimals();type.focus();
+  box.appendChild(row);renumberAppelAnimals();
+  const firstChoice=row.querySelector('[data-animal-field="type"]');if(firstChoice)firstChoice.focus();
 }
 function getAppelAnimals(){
   return [...document.querySelectorAll('#appel-animals .appel-animal-row')].map(function(row){
-    const type=row.querySelector('[data-appel-animal-type]')?.value||'';
+    const type=row.dataset.animalType||'';
     const precision=row.querySelector('[data-appel-animal-precision]')?.value.trim()||'';
-    const situation=row.querySelector('[data-appel-animal-situation]')?.value||'';
+    const situation=row.dataset.animalSituation||'';
     return{type:type,precision:precision,situation:situation};
   }).filter(a=>a.type||a.precision||a.situation);
 }
@@ -312,7 +336,7 @@ function validateAppelAnimals(){
   const isAnimal=selNat&&selNat.toLowerCase().includes('sauvetage et capture d');
   if(!isAnimal){clearAppelAnimalsError();return true;}
   const rows=[...document.querySelectorAll('#appel-animals .appel-animal-row')];
-  const ok=rows.length>0&&rows.every(row=>!!row.querySelector('[data-appel-animal-type]')?.value);
+  const ok=rows.length>0&&rows.every(row=>!!row.dataset.animalType);
   const err=document.getElementById('appel-animals-error');if(err)err.style.display=ok?'none':'block';
   return ok;
 }
@@ -320,7 +344,7 @@ function resetAppelAnimals(){
   const box=document.getElementById('appel-animals');if(!box)return;
   box.querySelectorAll('.appel-animal-row').forEach((row,index)=>{if(index>0)row.remove();});
   const row=box.querySelector('.appel-animal-row');
-  if(row){row.querySelectorAll('select').forEach(el=>el.value='');const precision=row.querySelector('[data-appel-animal-precision]');if(precision){precision.value='';precision.style.display='none';}}
+  if(row){delete row.dataset.animalType;delete row.dataset.animalSituation;row.querySelectorAll('.appel-animal-choice.sel').forEach(el=>el.classList.remove('sel'));const precision=row.querySelector('[data-appel-animal-precision]');if(precision){precision.value='';precision.style.display='none';}}
   clearAppelAnimalsError();renumberAppelAnimals();
 }
 function clearReqAvailabilityError(){const err=document.getElementById('req-dispo-error');if(err)err.style.display='none';}
