@@ -9341,7 +9341,7 @@ function adminExportTimeCompact(h){
 function adminExportUser(login){
   if(!login)return '';
   const u=USERS.find(function(x){return x.l===login;});
-  return u?((u.grade?u.grade+' ':'')+u.nom+' '+u.prenom):login;
+  return u?[u.nom||'',u.prenom||''].filter(Boolean).join(' '):login;
 }
 function adminExportDuration(value,hd,hf){
   if(value)return dureeFormatHHMM(value,hd,hf)||value;
@@ -9388,10 +9388,10 @@ function adminExportInterventionRates(iv){
 }
 function adminExportInterventionPresents(iv){
   const seen={},out=[];
-  function add(login,role){
+  function add(login){
     if(!login||seen[login]||out.length>=31)return;
     seen[login]=true;
-    out.push(adminExportUser(login)+(role?' ('+role+')':''));
+    out.push(adminExportUser(login));
   }
   add(iv.agr,"Chef d'agrès");add(iv._agr2,"Chef d'agrès");
   (iv._equipage1||[]).forEach(function(e){add(e.login,e.role);});
@@ -9399,8 +9399,8 @@ function adminExportInterventionPresents(iv){
   (iv._releves||[]).forEach(function(r){(r.nouvelEquipage||[]).forEach(function(e){add(e.login,e.role);});});
   return out;
 }
-function adminExportPeople(logins,role){
-  return (logins||[]).slice(0,31).map(function(login){return adminExportUser(login)+(role?' ('+role+')':'');});
+function adminExportPeople(logins){
+  return (logins||[]).slice(0,31).map(function(login){return adminExportUser(login);});
 }
 function adminExportPad31(values){
   const out=(values||[]).slice(0,31);
@@ -9556,7 +9556,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260725-taux-interventions-configurables-38';
+const APP_VERSION='20260725-export-noms-agents-39';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
