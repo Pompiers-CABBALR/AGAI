@@ -26,7 +26,7 @@ function rStats(){
     const moisOpts='<option value="0">Toute l\u2019ann\u00e9e</option>'+ST_MOIS.map(function(m,i){
       return '<option value="'+(i+1)+'"'+(stMois===i+1?' selected':'')+'>'+m+'</option>';
     }).join('');
-    const exportBtn=showPersonnel?'<button id="admin-monthly-export-btn" onclick="openAdminMonthlyExport()" style="margin-left:auto;background:#166534;color:#fff;border:1px solid #166534;border-radius:8px;padding:6px 11px;cursor:pointer;font-size:11px;">&#x1F4E5; Export mensuel Excel</button>':'';
+    const exportBtn=canUseMonthlyExport()?'<button id="admin-monthly-export-btn" onclick="openAdminMonthlyExport()" style="margin-left:auto;background:#166534;color:#fff;border:1px solid #166534;border-radius:8px;padding:6px 11px;cursor:pointer;font-size:11px;">&#x1F4E5; Export mensuel Excel</button>':'';
     nav.innerHTML='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
       +'<button onclick="stAnnee--;stMois=0;rStats()" style="background:#f5f5f5;border:1px solid #ccc;border-radius:8px;padding:4px 12px;cursor:pointer;font-size:14px;">&larr;</button>'
       +'<span style="font-size:16px;font-weight:700;min-width:44px;text-align:center;">'+stAnnee+'</span>'
@@ -173,7 +173,7 @@ function rStatsContent(){
 
 // ── Helper taux ──
 function getStatsTaux(){
-  const defaults={interJour:100,interDimFerie:150,interNuit:200,actSvc:75,fmpaStag:75,fmpaForm:100,formStag:100,formForm:100,astrTel:9};
+  const defaults={interJour:100,interDimFerie:150,interNuit:200,actSvc:75,fmpaStag:75,fmpaForm:100,formStag:100,formForm:100,astrTel:9,exportAdmins:false};
   const saved=CURRENT_CASERNE_ID&&CASERNE_DATA[CURRENT_CASERNE_ID]&&CASERNE_DATA[CURRENT_CASERNE_ID].statsTaux;
   return Object.assign({},defaults,saved||{});
 }
@@ -209,6 +209,10 @@ function showStatsTauxParams(){
     ${row('Formations — stagiaires','formStag',t.formStag??100,'% des heures réelles')}
     ${row('Formations — formateurs','formForm',t.formForm??100,'% des heures réelles')}
     ${row('Astreinte téléphonique','astrTel',t.astrTel??9,'% des heures réelles')}
+    <label style="display:flex;align-items:flex-start;gap:10px;background:#F0FDF4;border:1px solid #86EFAC;border-radius:9px;padding:10px 12px;margin:12px 0;cursor:pointer;">
+      <input type="checkbox" id="export-admins-visible" ${t.exportAdmins===true?'checked':''} style="width:18px;height:18px;accent-color:#166534;margin-top:1px;"/>
+      <span><strong style="font-size:12px;color:#166534;">Autoriser l’export mensuel aux administrateurs</strong><br><span style="font-size:11px;color:var(--t2);">Désactivé : seul le superadmin voit et utilise le bouton d’export.</span></span>
+    </label>
     <div id="taux-err" style="font-size:12px;color:#E24B4A;display:none;margin-bottom:8px;"></div>
     <div class="brow">
       <button class="btn pr" onclick="applyStatsTaux()">💾 Enregistrer</button>
@@ -219,7 +223,7 @@ function showStatsTauxParams(){
 }
 function applyStatsTaux(){
   const get=(id)=>Math.max(0,Math.min(200,parseInt(document.getElementById('taux-'+id)?.value)||0));
-  saveStatsTaux({interJour:get('interJour'),interDimFerie:get('interDimFerie'),interNuit:get('interNuit'),actSvc:get('actSvc'),fmpaStag:get('fmpaStag'),fmpaForm:get('fmpaForm'),formStag:get('formStag'),formForm:get('formForm'),astrTel:get('astrTel')});
+  saveStatsTaux({interJour:get('interJour'),interDimFerie:get('interDimFerie'),interNuit:get('interNuit'),actSvc:get('actSvc'),fmpaStag:get('fmpaStag'),fmpaForm:get('fmpaForm'),formStag:get('formStag'),formForm:get('formForm'),astrTel:get('astrTel'),exportAdmins:document.getElementById('export-admins-visible')?.checked===true});
   cM();
   showToast('Taux enregistrés ✓','success');
 }
@@ -862,8 +866,11 @@ function rStatsHeader(){
 }
 
 // ── Export mensuel administrateur : interventions, activités et formations ──
+function canUseMonthlyExport(){
+  return isSuperAdmin()||(hasRight('Administration')&&getStatsTaux().exportAdmins===true);
+}
 function openAdminMonthlyExport(){
-  if(!(hasRight('Administration')||isSuperAdmin())){showToast('Accès réservé aux administrateurs','warn');return;}
+  if(!canUseMonthlyExport()){showToast('Export réservé au super-administrateur','warn');return;}
   const now=N();
   const selectedMonth=stMois>0?stMois:now.getMonth()+1;
   const selectedYear=stAnnee||now.getFullYear();
@@ -874,7 +881,7 @@ function openAdminMonthlyExport(){
   document.getElementById('mi').textContent='Interventions terminées, activités de service et formations';
   document.getElementById('mb').innerHTML='<div>'
     +'<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:9px;padding:9px 11px;margin-bottom:12px;font-size:12px;color:#1E40AF;">'
-    +'Le fichier Excel contiendra trois feuilles. Le registre des interventions reprend les 63 colonnes du modèle fourni.</div>'
+    +'Le fichier Excel contiendra un seul onglet « Registre » réunissant les interventions, activités de service et formations dans les 63 colonnes du modèle fourni.</div>'
     +'<div class="fg-duo">'
     +'<div class="fg"><div class="fgl">Mois</div><select class="fi" id="admin-export-month">'+moisOptions+'</select></div>'
     +'<div class="fg"><div class="fgl">Année</div><input class="fi" id="admin-export-year" type="number" min="2000" max="2100" value="'+selectedYear+'"/></div>'
@@ -1005,6 +1012,21 @@ function adminExportPad31(values){
   while(out.length<31)out.push('');
   return out;
 }
+function adminExportDateIso(value){
+  const text=String(value||'');
+  const m=text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m?m[3]+'/'+m[2]+'/'+m[1]:text;
+}
+function adminExportRegisterRow(values,presents){
+  const row=Array(32).fill('');
+  Object.keys(values||{}).forEach(function(index){row[parseInt(index,10)]=values[index];});
+  return row.concat(adminExportPad31(presents));
+}
+function adminExportRegisterDateKey(row){
+  const text=String((row||[])[4]||'');
+  const m=text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  return m?m[3]+m[2]+m[1]:text;
+}
 function adminExportVehicles(iv){
   const engins=[iv.eng,iv._engin1,iv._engin2].filter(Boolean);
   const norm=function(v){return String(v).toUpperCase().replace(/[^A-Z0-9]/g,'');};
@@ -1043,7 +1065,7 @@ function adminExportSheet(XLSX,headers,rows,widths){
 }
 
 function exportAdminMonthlyExcel(){
-  if(!(hasRight('Administration')||isSuperAdmin())){showToast('Accès réservé aux administrateurs','warn');return;}
+  if(!canUseMonthlyExport()){showToast('Export réservé au super-administrateur','warn');return;}
   const period=adminMonthlyPeriod();
   if(!period){showToast('Sélectionnez un mois et une année valides','warn');return;}
   const data=adminMonthlyData(period);
@@ -1081,46 +1103,52 @@ function exportAdminMonthlyExcel(){
       if([0,1,2,3].includes(i))return 16;
       return 13;
     });
-    XLSX.utils.book_append_sheet(wb,adminExportSheet(XLSX,ivHeaders,ivRows,ivWidths),'Interventions terminées');
-
-    const actHeaders=['Num mois','Num activité','Date','Rapport','Taux','Heure début','Heure fin','Heures',"Type d'activité",'Compte rendu de mission','Rapport établi'].concat(presents);
     const actRows=[...data.activites].sort(function(a,b){return (a.date||'').localeCompare(b.date||'');}).map(function(a){
       const auteur=adminExportUser(a.auteur)+(a.impressions&&a.impressions.length?' · imprimé '+a.impressions.length+' fois':'');
-      return [a.numMensuel||'',a.numAnnuel||a.id||'',a.date||'','AC',exportRates.actSvc+'%',
-        a.hDebut||'',a.hFin||'',adminExportDuration(a.duree,a.hDebut,a.hFin),a.type||'',a.cr||'',auteur]
-        .concat(adminExportPad31(adminExportPeople(a.participants,'')));
+      const agents=[a.auteur].concat(a.participants||[]).filter(function(login,index,list){return login&&list.indexOf(login)===index;});
+      return adminExportRegisterRow({
+        0:a.numMensuel||'',1:a.numAnnuel||a.id||'',4:adminExportDateIso(a.date),5:'AC',6:exportRates.actSvc+'%',
+        7:adminExportDuration(a.duree,a.hDebut,a.hFin),11:a.type||'',16:a.hDebut||'',19:a.hFin||'',
+        29:a.cr||'',31:auteur
+      },adminExportPeople(agents));
     });
-    const actWidths=actHeaders.map(function(_,i){return i>=11?24:([8,9].includes(i)?(i===9?55:28):16);});
-    XLSX.utils.book_append_sheet(wb,adminExportSheet(XLSX,actHeaders,actRows,actWidths),'Activités de service');
-
-    const formHeaders=['Type','Numéro','Date début','Date fin','Rapport','Taux','Intitulé / Thème','Référence','Lieu',
-      'Matin début','Matin fin','Après-midi début','Après-midi fin','Heure début','Heure fin','Heures','Rapport établi'].concat(presents);
     const formRows=[];
     data.fmpas.forEach(function(f){
       const stagiaires=adminExportPeople(f.participants,'Stagiaire');
       const formateurs=adminExportPeople(f.formateurs,'Formateur');
       const pushFmpa=function(type,taux,personnes){
-        formRows.push([type,f.numAnnuel?fmpaNumStr(f):f.id||'',f.date||'',f.date||'','FOR',taux+'%',f.theme||'','','',
-          '','','','',f.hDebut||'',f.hFin||'',adminExportDuration(f.duree,f.hDebut,f.hFin),adminExportUser(f.auteur)]
-          .concat(adminExportPad31(personnes)));
+        formRows.push(adminExportRegisterRow({
+          1:f.numAnnuel?fmpaNumStr(f):f.id||'',4:adminExportDateIso(f.date),5:'FOR',6:taux+'%',
+          7:adminExportDuration(f.duree,f.hDebut,f.hFin),11:type+(f.theme?' — '+f.theme:''),
+          16:f.hDebut||'',19:f.hFin||'',31:adminExportUser(f.auteur)
+        },personnes));
       };
       if(stagiaires.length)pushFmpa('FMPA stagiaires',exportRates.fmpaStag,stagiaires);
       if(formateurs.length)pushFmpa('FMPA formateurs',exportRates.fmpaForm,formateurs);
       if(!stagiaires.length&&!formateurs.length)pushFmpa('FMPA',exportRates.fmpaStag,[]);
     });
     data.stag.forEach(function(f){
-      formRows.push(['Formation stagiaire',f.id||'',f.ddebut||'',f.dfin||'','FOR',exportRates.formStag+'%',f.titre||'',f.ref||'',f.lieu||'',
-        f.hmatind||'',f.hmatinf||'',f.hapremd||'',f.hapremf||'','','',adminExportDuration(f.htotal,'',''),adminExportUser(f.auteur)]
-        .concat(adminExportPad31(adminExportPeople(f.participants,'Stagiaire'))));
+      const debut=f.hmatind||f.hapremd||'',fin=f.hapremf||f.hmatinf||'';
+      formRows.push(adminExportRegisterRow({
+        1:f.id||'',4:adminExportDateIso(f.ddebut),5:'FOR',6:exportRates.formStag+'%',
+        7:adminExportDuration(f.htotal,'',''),11:'Formation stagiaire'+(f.titre?' — '+f.titre:''),
+        13:f.lieu||'',16:debut,19:fin,31:adminExportUser(f.auteur)
+      },adminExportPeople(f.participants)));
     });
     data.form.forEach(function(f){
-      formRows.push(['Formation formateur',f.id||'',f.ddebut||'',f.dfin||'','FOR',exportRates.formForm+'%',f.titre||'',f.ref||'',f.lieu||'',
-        f.hmatind||'',f.hmatinf||'',f.hapremd||'',f.hapremf||'','','',adminExportDuration(f.htotal,'',''),adminExportUser(f.auteur)]
-        .concat(adminExportPad31(adminExportPeople(f.participants,'Formateur'))));
+      const debut=f.hmatind||f.hapremd||'',fin=f.hapremf||f.hmatinf||'';
+      formRows.push(adminExportRegisterRow({
+        1:f.id||'',4:adminExportDateIso(f.ddebut),5:'FOR',6:exportRates.formForm+'%',
+        7:adminExportDuration(f.htotal,'',''),11:'Formation formateur'+(f.titre?' — '+f.titre:''),
+        13:f.lieu||'',16:debut,19:fin,31:adminExportUser(f.auteur)
+      },adminExportPeople(f.participants)));
     });
-    formRows.sort(function(a,b){return String(a[2]).localeCompare(String(b[2]));});
-    const formWidths=formHeaders.map(function(_,i){return i>=17?24:([6,7,8].includes(i)?28:16);});
-    XLSX.utils.book_append_sheet(wb,adminExportSheet(XLSX,formHeaders,formRows,formWidths),'Formations');
+    const registreRows=ivRows.concat(actRows,formRows).sort(function(a,b){
+      const byDate=adminExportRegisterDateKey(a).localeCompare(adminExportRegisterDateKey(b));
+      if(byDate)return byDate;
+      return String(a[16]||'').localeCompare(String(b[16]||''));
+    });
+    XLSX.utils.book_append_sheet(wb,adminExportSheet(XLSX,ivHeaders,registreRows,ivWidths),'Registre');
 
     const caserne=((CC()&&CC().nom)||CURRENT_CASERNE_ID||'Caserne').replace(/[\\/:*?"<>|]+/g,'-');
     const fileName='Registre_AGAI_'+caserne+'_'+period.year+'-'+period.mm+'.xlsx';
