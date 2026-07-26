@@ -9589,7 +9589,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260726-astreinte-tel-hhmm-45';
+const APP_VERSION='20260726-astreinte-tel-ligne-46';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -15206,6 +15206,11 @@ function astrTelCommitInput(el){
   });
   if(totalEl)totalEl.textContent=astrTelFormatHeures(astrTelTotalMois(el.dataset.login,astrTelAnnee,astrTelMois));
 }
+function astrTelHighlightRow(el){
+  document.querySelectorAll('.astrtel-agent-row.is-active').forEach(function(row){row.classList.remove('is-active');});
+  const row=el&&el.classList&&el.classList.contains('astrtel-agent-row')?el:(el&&el.closest?el.closest('.astrtel-agent-row'):null);
+  if(row)row.classList.add('is-active');
+}
 // Total heures d'un agent pour un mois
 function astrTelTotalMois(login,y,m){
   return Object.values(astrTelGetMonth(login,y,m)).reduce((s,v)=>s+(parseFloat(v)||0),0);
@@ -15338,7 +15343,7 @@ function astrTelRenderGrid(){
     const totalAn=astrTelTotalAnnee(u.l,y);
     const quota=astrTelGetParams().quota||QUOTA_ASTREINTE_TEL_H;
     const overQuota=totalAn>quota;
-    rows+=`<div style="display:grid;grid-template-columns:160px 50px repeat(${nbJ},${colW}px);gap:1px;margin-bottom:1px;align-items:center;">`;
+    rows+=`<div class="astrtel-agent-row" onclick="astrTelHighlightRow(this)" style="display:grid;grid-template-columns:160px 50px repeat(${nbJ},${colW}px);gap:1px;margin-bottom:1px;align-items:center;">`;
     rows+=`<div style="font-size:11px;padding:2px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${u.nom} ${u.prenom}">${u.nom} ${u.prenom}</div>`;
     rows+=`<div data-astrtel-total="${u.l}" style="text-align:center;font-size:11px;font-weight:700;color:${overQuota?'#E24B4A':'var(--t)'};" title="Total annuel : ${astrTelFormatHeures(totalAn)}">${astrTelFormatHeures(total)}</div>`;
     for(let d=1;d<=nbJ;d++){
@@ -15352,14 +15357,13 @@ function astrTelRenderGrid(){
           <input type="text" inputmode="numeric" pattern="[0-9:]*" maxlength="5" value="${h?astrTelFormatHeures(h):''}"
             data-login="${u.l}" data-day="${d}" data-agent="${agents.indexOf(u)}"
             onchange="astrTelCommitInput(this)"
-            onfocus="this.select();"
+            onfocus="astrTelHighlightRow(this);this.select();"
             onkeydown="astrTelNavKey(event,this,${agents.indexOf(u)},${d},${nbJ},${agents.length})"
-            placeholder="00:00"
             aria-label="${u.nom} ${u.prenom}, ${d} ${ASTRTEL_MOIS_NOMS[m]} : nombre d'heures"
             style="width:100%;border:none;background:transparent;text-align:center;font-size:10px;font-weight:${h>0?'700':'400'};color:${color};padding:3px 1px;outline:none;">
         </div>`;
       } else {
-        rows+=`<div style="background:${bg};border:1px solid ${h>0?'var(--blu)':'var(--brd)'};border-radius:3px;text-align:center;font-size:10px;font-weight:${h>0?'700':'400'};color:${color};padding:4px 1px;">${h>0?h:''}</div>`;
+        rows+=`<div style="background:${bg};border:1px solid ${h>0?'var(--blu)':'var(--brd)'};border-radius:3px;text-align:center;font-size:10px;font-weight:${h>0?'700':'400'};color:${color};padding:4px 1px;">${h>0?astrTelFormatHeures(h):''}</div>`;
       }
     }
     rows+='</div>';

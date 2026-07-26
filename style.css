@@ -840,4 +840,13 @@ html.appel-nature-locked .cnt{overflow:hidden!important;}
   .cnt{max-width:1500px;margin-right:auto;margin-left:auto;}
   .nav{justify-content:center;}
 }
+.astrtel-agent-row{border-radius:4px;transition:outline-color .15s ease,background .15s ease;}
+.astrtel-agent-row.is-active{
+  outline:2px solid rgba(198,56,43,.55);
+  outline-offset:1px;
+}
+.astrtel-agent-row.is-active>div{
+  box-shadow:inset 0 0 0 999px rgba(250,204,21,.13);
+}
+.astrtel-agent-row.is-active>div:first-child{font-weight:700;color:var(--red);}
 
