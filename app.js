@@ -9493,14 +9493,15 @@ function exportAdminMonthlyExcel(){
       const veh=adminExportVehicles(iv);
       const rates=adminExportInterventionRates(iv);
       const rapportAuteur=adminExportUser(iv._crAuteur)+(iv._crDateValidation?' · '+iv._crDateValidation:'');
+      const isSdis=adminExportReportType(iv)==='SDIS';
       return [
         iv._numMois||'',iv._numCaserne||iv._numApl||iv.id||'',iv._numSDIS||'',iv._numGlobal||'',
         adminExportDateCompact(iv.h),adminExportReportType(iv),
         rates.taux1,rates.heures1,rates.taux2,rates.heures2,iv._km||'',
         iv.n||'',iv.req||'',[(iv.addr||''),(iv.addrComp||'')].filter(Boolean).join(' — '),iv.com||'',
-        iv._hAcquis||adminExportTimeCompact(iv.h),iv._hDebut||'',iv._hSll||'',iv._hDispo||'',iv._hFin||'',iv._hOpTerminee||'',
-        iv._materiels||'',iv._consommables||'',veh.complement,veh.vtu1,veh.vtu2,veh.vpi,veh.autres,veh.precision,
-        iv._crTexte||iv._compteRendu||'',iv._annotations||'',rapportAuteur
+        iv._hAcquis||adminExportTimeCompact(iv.h),iv._hDebut||'',isSdis?(iv._hSll||''):'',isSdis?(iv._hDispo||''):'',iv._hFin||'',isSdis?(iv._hOpTerminee||''):'',
+        isSdis?(iv._materiels||''):'',isSdis?(iv._consommables||''):'',isSdis?veh.complement:'',isSdis?veh.vtu1:'',isSdis?veh.vtu2:'',isSdis?veh.vpi:'',isSdis?veh.autres:'',isSdis?veh.precision:'',
+        isSdis?(iv._crTexte||iv._compteRendu||''):'',isSdis?(iv._annotations||''):'',isSdis?rapportAuteur:''
       ].concat(adminExportPad31(adminExportInterventionPresents(iv)));
     });
     const ivWidths=ivHeaders.map(function(h,i){
@@ -9588,7 +9589,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260726-export-registre-unique-42';
+const APP_VERSION='20260726-export-sdis-details-43';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
