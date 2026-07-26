@@ -865,7 +865,7 @@ function rStatsHeader(){
     +'<span style="font-size:11px;color:var(--t2);">'+it.lbl+'</span></div>').join('');
 }
 
-// ── Export mensuel administrateur : interventions, activités et formations ──
+// ── Export mensuel administrateur : interventions, activités, formations et astreintes tél. ──
 function canUseMonthlyExport(){
   return isSuperAdmin()||(hasRight('Administration')&&getStatsTaux().exportAdmins===true);
 }
@@ -878,10 +878,10 @@ function openAdminMonthlyExport(){
     return '<option value="'+(i+1)+'"'+(selectedMonth===i+1?' selected':'')+'>'+m+'</option>';
   }).join('');
   document.getElementById('mt').textContent='Exporter les registres mensuels';
-  document.getElementById('mi').textContent='Interventions terminées, activités de service et formations';
+  document.getElementById('mi').textContent='Interventions terminées, activités de service, formations et astreintes téléphoniques';
   document.getElementById('mb').innerHTML='<div>'
     +'<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:9px;padding:9px 11px;margin-bottom:12px;font-size:12px;color:#1E40AF;">'
-    +'Le fichier Excel contiendra un seul onglet « Registre » réunissant les interventions, activités de service et formations dans les 63 colonnes du modèle fourni.</div>'
+    +'Le fichier Excel contiendra un seul onglet « Registre » réunissant les interventions, activités de service, formations et astreintes téléphoniques dans les 63 colonnes du modèle fourni.</div>'
     +'<div class="fg-duo">'
     +'<div class="fg"><div class="fgl">Mois</div><select class="fi" id="admin-export-month">'+moisOptions+'</select></div>'
     +'<div class="fg"><div class="fgl">Année</div><input class="fi" id="admin-export-year" type="number" min="2000" max="2100" value="'+selectedYear+'"/></div>'
@@ -919,7 +919,10 @@ function adminMonthlyData(period){
   const fmpas=(fmpaGetData()||[]).filter(function(f){return (f.date||'').startsWith(period.prefixDate);});
   const stag=(formStagGetData()||[]).filter(function(f){return overlaps(f.ddebut,f.dfin);});
   const form=(formFormGetData()||[]).filter(function(f){return overlaps(f.ddebut,f.dfin);});
-  return {interventions,activites,fmpas,stag,form};
+  const astreintesTel=(USERS||[]).map(function(u){
+    return {login:u.l,heures:astrTelTotalMois(u.l,period.year,period.month-1)};
+  }).filter(function(a){return a.login&&a.heures>0;});
+  return {interventions,activites,fmpas,stag,form,astreintesTel};
 }
 
 function adminMonthlyExportSummary(){
@@ -928,7 +931,8 @@ function adminMonthlyExportSummary(){
   const d=adminMonthlyData(period);
   el.innerHTML='<strong>'+d.interventions.length+'</strong> intervention(s) terminée(s) · '
     +'<strong>'+d.activites.length+'</strong> activité(s) · '
-    +'<strong>'+(d.fmpas.length+d.stag.length+d.form.length)+'</strong> formation(s)';
+    +'<strong>'+(d.fmpas.length+d.stag.length+d.form.length)+'</strong> formation(s) · '
+    +'<strong>'+d.astreintesTel.length+'</strong> agent(s) en astreinte téléphonique';
 }
 
 function adminExportDateCompact(h){
@@ -1027,6 +1031,46 @@ function adminExportRegisterDateKey(row){
   const m=text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   return m?m[3]+m[2]+m[1]:text;
 }
+function adminExportActivityRegisterRow(a,exportRates){
+  const agents=[a.auteur].concat(a.participants||[]).filter(function(login,index,list){
+    return login&&list.indexOf(login)===index;
+  });
+  return adminExportRegisterRow({
+    4:adminExportDateIso(a.date),5:'AC',6:exportRates.actSvc+'%',
+    7:adminExportDuration(a.duree,a.hDebut,a.hFin),11:a.type||'',
+    16:a.hDebut||'',19:a.hFin||''
+  },adminExportPeople(agents));
+}
+function adminExportFmpaRegisterRows(f,exportRates){
+  const rows=[];
+  const stagiaires=adminExportPeople(f.participants);
+  const formateurs=adminExportPeople(f.formateurs);
+  const push=function(nature,rapport,taux,personnes){
+    rows.push(adminExportRegisterRow({
+      4:adminExportDateIso(f.date),5:rapport,6:taux+'%',
+      7:adminExportDuration(f.duree,f.hDebut,f.hFin),11:nature,
+      16:f.hDebut||'',19:f.hFin||''
+    },personnes));
+  };
+  if(stagiaires.length)push('Manoeuvre mensuel','AC',exportRates.fmpaStag,stagiaires);
+  if(formateurs.length)push('Formateur','FORM',exportRates.fmpaForm,formateurs);
+  if(!stagiaires.length&&!formateurs.length)push('Manoeuvre mensuel','AC',exportRates.fmpaStag,[]);
+  return rows;
+}
+function adminExportFormationRegisterRow(f,nature,rapport,taux){
+  const debut=f.hmatind||f.hapremd||'',fin=f.hapremf||f.hmatinf||'';
+  return adminExportRegisterRow({
+    4:adminExportDateIso(f.ddebut),5:rapport,6:taux+'%',
+    7:adminExportDuration(f.htotal,'',''),11:nature,
+    13:f.lieu||'',16:debut,19:fin
+  },adminExportPeople(f.participants));
+}
+function adminExportAstrTelRegisterRow(a,period,exportRates){
+  return adminExportRegisterRow({
+    4:adminExportDateIso(period.end),5:'AST',6:exportRates.astrTel+'%',
+    7:astrTelFormatHeures(a.heures)
+  },adminExportPeople([a.login]));
+}
 function adminExportVehicles(iv){
   const engins=[iv.eng,iv._engin1,iv._engin2].filter(Boolean);
   const norm=function(v){return String(v).toUpperCase().replace(/[^A-Z0-9]/g,'');};
@@ -1069,7 +1113,7 @@ function exportAdminMonthlyExcel(){
   const period=adminMonthlyPeriod();
   if(!period){showToast('Sélectionnez un mois et une année valides','warn');return;}
   const data=adminMonthlyData(period);
-  const total=data.interventions.length+data.activites.length+data.fmpas.length+data.stag.length+data.form.length;
+  const total=data.interventions.length+data.activites.length+data.fmpas.length+data.stag.length+data.form.length+data.astreintesTel.length;
   if(!total){showToast('Aucune donnée à exporter pour cette période','warn');return;}
 
   function doExport(){
@@ -1093,7 +1137,7 @@ function exportAdminMonthlyExcel(){
         adminExportDateCompact(iv.h),adminExportReportType(iv),
         rates.taux1,rates.heures1,rates.taux2,rates.heures2,iv._km||'',
         iv.n||'',iv.req||'',[(iv.addr||''),(iv.addrComp||'')].filter(Boolean).join(' — '),iv.com||'',
-        iv._hAcquis||adminExportTimeCompact(iv.h),iv._hDebut||'',isSdis?(iv._hSll||''):'',isSdis?(iv._hDispo||''):'',iv._hFin||'',isSdis?(iv._hOpTerminee||''):'',
+        isSdis?(iv._hAcquis||adminExportTimeCompact(iv.h)):'',iv._hDebut||'',isSdis?(iv._hSll||''):'',isSdis?(iv._hDispo||''):'',iv._hFin||'',isSdis?(iv._hOpTerminee||''):'',
         isSdis?(iv._materiels||''):'',isSdis?(iv._consommables||''):'',isSdis?veh.complement:'',isSdis?veh.vtu1:'',isSdis?veh.vtu2:'',isSdis?veh.vpi:'',isSdis?veh.autres:'',isSdis?veh.precision:'',
         isSdis?(iv._crTexte||iv._compteRendu||''):'',isSdis?(iv._annotations||''):'',isSdis?rapportAuteur:''
       ].concat(adminExportPad31(adminExportInterventionPresents(iv)));
@@ -1105,46 +1149,22 @@ function exportAdminMonthlyExcel(){
       return 13;
     });
     const actRows=[...data.activites].sort(function(a,b){return (a.date||'').localeCompare(b.date||'');}).map(function(a){
-      const auteur=adminExportUser(a.auteur)+(a.impressions&&a.impressions.length?' · imprimé '+a.impressions.length+' fois':'');
-      const agents=[a.auteur].concat(a.participants||[]).filter(function(login,index,list){return login&&list.indexOf(login)===index;});
-      return adminExportRegisterRow({
-        0:a.numMensuel||'',1:a.numAnnuel||a.id||'',4:adminExportDateIso(a.date),5:'AC',6:exportRates.actSvc+'%',
-        7:adminExportDuration(a.duree,a.hDebut,a.hFin),11:a.type||'',16:a.hDebut||'',19:a.hFin||'',
-        29:a.cr||'',31:auteur
-      },adminExportPeople(agents));
+      return adminExportActivityRegisterRow(a,exportRates);
     });
     const formRows=[];
     data.fmpas.forEach(function(f){
-      const stagiaires=adminExportPeople(f.participants,'Stagiaire');
-      const formateurs=adminExportPeople(f.formateurs,'Formateur');
-      const pushFmpa=function(type,taux,personnes){
-        formRows.push(adminExportRegisterRow({
-          1:f.numAnnuel?fmpaNumStr(f):f.id||'',4:adminExportDateIso(f.date),5:'FOR',6:taux+'%',
-          7:adminExportDuration(f.duree,f.hDebut,f.hFin),11:type+(f.theme?' — '+f.theme:''),
-          16:f.hDebut||'',19:f.hFin||'',31:adminExportUser(f.auteur)
-        },personnes));
-      };
-      if(stagiaires.length)pushFmpa('FMPA stagiaires',exportRates.fmpaStag,stagiaires);
-      if(formateurs.length)pushFmpa('FMPA formateurs',exportRates.fmpaForm,formateurs);
-      if(!stagiaires.length&&!formateurs.length)pushFmpa('FMPA',exportRates.fmpaStag,[]);
+      formRows.push.apply(formRows,adminExportFmpaRegisterRows(f,exportRates));
     });
     data.stag.forEach(function(f){
-      const debut=f.hmatind||f.hapremd||'',fin=f.hapremf||f.hmatinf||'';
-      formRows.push(adminExportRegisterRow({
-        1:f.id||'',4:adminExportDateIso(f.ddebut),5:'FOR',6:exportRates.formStag+'%',
-        7:adminExportDuration(f.htotal,'',''),11:'Formation stagiaire'+(f.titre?' — '+f.titre:''),
-        13:f.lieu||'',16:debut,19:fin,31:adminExportUser(f.auteur)
-      },adminExportPeople(f.participants)));
+      formRows.push(adminExportFormationRegisterRow(f,'Formation','FOR',exportRates.formStag));
     });
     data.form.forEach(function(f){
-      const debut=f.hmatind||f.hapremd||'',fin=f.hapremf||f.hmatinf||'';
-      formRows.push(adminExportRegisterRow({
-        1:f.id||'',4:adminExportDateIso(f.ddebut),5:'FOR',6:exportRates.formForm+'%',
-        7:adminExportDuration(f.htotal,'',''),11:'Formation formateur'+(f.titre?' — '+f.titre:''),
-        13:f.lieu||'',16:debut,19:fin,31:adminExportUser(f.auteur)
-      },adminExportPeople(f.participants)));
+      formRows.push(adminExportFormationRegisterRow(f,'Formateur','FORM',exportRates.formForm));
     });
-    const registreRows=ivRows.concat(actRows,formRows).sort(function(a,b){
+    const astrTelRows=data.astreintesTel.map(function(a){
+      return adminExportAstrTelRegisterRow(a,period,exportRates);
+    });
+    const registreRows=ivRows.concat(actRows,formRows,astrTelRows).sort(function(a,b){
       const byDate=adminExportRegisterDateKey(a).localeCompare(adminExportRegisterDateKey(b));
       if(byDate)return byDate;
       return String(a[16]||'').localeCompare(String(b[16]||''));
