@@ -9589,7 +9589,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260726-astreinte-tel-mobile-sticky-48';
+const APP_VERSION='20260726-astreinte-tel-mobile-zoom-49';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -15311,10 +15311,12 @@ function astrTelRenderGrid(){
   const moisVerrouille = isMoisPasse && !graceEnd5;
   // Superadmin peut toujours modifier
   const canEdit=(isChefOuAdjoint()||isAdminModeActive())&&(!moisVerrouille||isSuperAdmin());
-  const colW=window.matchMedia&&window.matchMedia('(max-width:767px)').matches?48:36;
+  const mobileGrid=window.matchMedia&&window.matchMedia('(max-width:767px)').matches;
+  const colW=mobileGrid?64:36;
+  const totalW=mobileGrid?64:50;
 
   // En-tête jours
-  let hdr=`<div class="astrtel-header-row" style="display:grid;grid-template-columns:160px 50px repeat(${nbJ},${colW}px);gap:1px;font-size:10px;font-weight:700;color:var(--t2);margin-bottom:2px;align-items:end;">`;
+  let hdr=`<div class="astrtel-header-row" style="display:grid;grid-template-columns:160px ${totalW}px repeat(${nbJ},${colW}px);gap:1px;font-size:10px;font-weight:700;color:var(--t2);margin-bottom:2px;align-items:end;">`;
   hdr+='<div class="astrtel-sticky-agent" style="padding:2px 4px;">Agent</div><div class="astrtel-sticky-total" style="text-align:center;padding:2px;">Total</div>';
   for(let d=1;d<=nbJ;d++){
     const dow=new Date(y,m,d).getDay();
@@ -15350,7 +15352,7 @@ function astrTelRenderGrid(){
     const totalAn=astrTelTotalAnnee(u.l,y);
     const quota=astrTelGetParams().quota||QUOTA_ASTREINTE_TEL_H;
     const overQuota=totalAn>quota;
-    rows+=`<div class="astrtel-agent-row" onclick="astrTelHighlightRow(this)" style="display:grid;grid-template-columns:160px 50px repeat(${nbJ},${colW}px);gap:1px;margin-bottom:1px;align-items:center;">`;
+    rows+=`<div class="astrtel-agent-row" onclick="astrTelHighlightRow(this)" style="display:grid;grid-template-columns:160px ${totalW}px repeat(${nbJ},${colW}px);gap:1px;margin-bottom:1px;align-items:stretch;">`;
     rows+=`<div class="astrtel-sticky-agent" style="font-size:11px;padding:2px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${u.nom} ${u.prenom}">${u.nom} ${u.prenom}</div>`;
     rows+=`<div class="astrtel-sticky-total" data-astrtel-total="${u.l}" style="text-align:center;font-size:11px;font-weight:700;color:${overQuota?'#E24B4A':'var(--t)'};" title="Total annuel : ${astrTelFormatHeures(totalAn)}">${astrTelFormatHeures(total)}</div>`;
     for(let d=1;d<=nbJ;d++){
