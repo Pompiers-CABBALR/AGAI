@@ -24,6 +24,16 @@ function astrTelGetMonth(login,y,m){
   const d=astrTelGetData();
   return d[astrTelKey(login,y,m)]||{};
 }
+function astrTelTotalJour(y,m,day,excludeLogin){
+  return (USERS||[]).reduce(function(total,u){
+    if(!u||!u.l||u.l===excludeLogin)return total;
+    return total+(parseFloat(astrTelGetMonth(u.l,y,m)[day])||0);
+  },0);
+}
+function astrTelFormatHeures(value){
+  const n=Math.round((parseFloat(value)||0)*100)/100;
+  return Number.isInteger(n)?String(n):String(n).replace('.',',');
+}
 function astrTelSetHeure(login,y,m,day,val){
   // Vérifier verrouillage
   const today=new Date();
@@ -31,20 +41,49 @@ function astrTelSetHeure(login,y,m,day,val){
   const isMoisPasse=(y<todayY)||(y===todayY&&m<todayM);
   const isMoisSuivant=(y===todayY&&m===todayM-1)||(y===todayY-1&&m===11&&todayM===0);
   const moisVerrouille=isMoisPasse&&!(isMoisSuivant&&todayD<5);
-  if(moisVerrouille&&!isSuperAdmin()){showToast('Ce mois est verrouillé — modification impossible','warn');return;}
+  if(moisVerrouille&&!isSuperAdmin()){showToast('Ce mois est verrouillé — modification impossible','warn');return null;}
   const d=astrTelGetData();
   const k=astrTelKey(login,y,m);
   if(!d[k])d[k]={};
-  let h=parseInt(val)||0;
+  let h=parseFloat(String(val||'').replace(',','.'))||0;
+  h=Math.round(h*100)/100;
   if(h<0)h=0;
-  if(h>24){h=24;showToast('Maximum 24h par jour','warn');}
+  const autres=astrTelTotalJour(y,m,day,login);
+  const disponible=Math.max(0,Math.round((24-autres)*100)/100);
+  if(h>disponible){
+    h=disponible;
+    showToast('Le total de la journée ne peut pas dépasser 24 h ('+astrTelFormatHeures(autres)+' h déjà attribuées)','warn');
+  }
   if(h>0)d[k][day]=h;
   else delete d[k][day];
+  _jbEditLock=Date.now();
+  if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcPendingDirty!=='undefined'&&typeof _rcId==='function'){
+    _rcPendingDirty.add(_rcId(CURRENT_CASERNE_ID,'config','main'));
+  }
   saveData();
+  return h;
+}
+function astrTelCommitInput(el){
+  if(!el)return;
+  const h=astrTelSetHeure(el.dataset.login,astrTelAnnee,astrTelMois,parseInt(el.dataset.day,10),el.value);
+  if(h===null){el.value=el.defaultValue;return;}
+  el.value=h>0?astrTelFormatHeures(h):'';
+  el.defaultValue=el.value;
+  const cell=el.parentElement;
+  if(cell){
+    cell.style.background=h>0?'var(--bl)':'#fff';
+    cell.style.borderColor=h>0?'var(--blu)':'var(--brd)';
+    el.style.fontWeight=h>0?'700':'400';
+    el.style.color=h>0?'#1e3a5f':'var(--t2)';
+  }
+  const totalEl=Array.from(document.querySelectorAll('[data-astrtel-total]')).find(function(node){
+    return node.dataset.astrtelTotal===el.dataset.login;
+  });
+  if(totalEl)totalEl.textContent=astrTelFormatHeures(astrTelTotalMois(el.dataset.login,astrTelAnnee,astrTelMois))+'h';
 }
 // Total heures d'un agent pour un mois
 function astrTelTotalMois(login,y,m){
-  return Object.values(astrTelGetMonth(login,y,m)).reduce((s,v)=>s+(parseInt(v)||0),0);
+  return Object.values(astrTelGetMonth(login,y,m)).reduce((s,v)=>s+(parseFloat(v)||0),0);
 }
 // Total heures d'un agent pour une année
 function astrTelTotalAnnee(login,y){
@@ -109,16 +148,17 @@ function astrTelNavKey(e, el, agentIdx, day, nbJours, nbAgents){
   } else {
     return; // laisser les autres touches (chiffres, etc.)
   }
-  // Sauvegarder la valeur actuelle avant de naviguer
-  const cur=parseFloat(el.value)||0;
-  if(cur!==parseFloat(el.defaultValue)||''===el.defaultValue){
-    const login=el.dataset.login;
-    const d=parseInt(el.dataset.day);
-    astrTelSetHeure(login,astrTelAnnee,astrTelMois,d,el.value);
-  }
+  // Sauvegarder sans reconstruire toute la grille, pour conserver le focus.
+  astrTelCommitInput(el);
   // Trouver et focuser le prochain input
   const next=document.querySelector(`input[data-agent="${nextAgent}"][data-day="${nextDay}"]`);
-  if(next){next.focus();next.select();}
+  if(next){
+    window.requestAnimationFrame(function(){
+      next.focus({preventScroll:true});
+      next.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
+      next.select();
+    });
+  }
 }
 
 function astrTelRenderGrid(){
@@ -175,7 +215,7 @@ function astrTelRenderGrid(){
     const overQuota=totalAn>quota;
     rows+=`<div style="display:grid;grid-template-columns:160px 50px repeat(${nbJ},${colW}px);gap:1px;margin-bottom:1px;align-items:center;">`;
     rows+=`<div style="font-size:11px;padding:2px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${u.nom} ${u.prenom}">${u.nom} ${u.prenom}</div>`;
-    rows+=`<div style="text-align:center;font-size:11px;font-weight:700;color:${overQuota?'#E24B4A':'var(--t)'};" title="Total annuel : ${totalAn}h">${total}h</div>`;
+    rows+=`<div data-astrtel-total="${u.l}" style="text-align:center;font-size:11px;font-weight:700;color:${overQuota?'#E24B4A':'var(--t)'};" title="Total annuel : ${totalAn}h">${astrTelFormatHeures(total)}h</div>`;
     for(let d=1;d<=nbJ;d++){
       const h=moisData[d]||0;
       const dow=new Date(y,m,d).getDay();
@@ -184,13 +224,14 @@ function astrTelRenderGrid(){
       const color=h>0?'#1e3a5f':'var(--t2)';
       if(canEdit){
         rows+=`<div style="background:${bg};border:1px solid ${h>0?'var(--blu)':'var(--brd)'};border-radius:3px;">
-          <input type="number" value="${h||''}" min="0" max="24" step="1"
+          <input type="text" inputmode="decimal" pattern="[0-9.,]*" maxlength="5" value="${h?astrTelFormatHeures(h):''}"
             data-login="${u.l}" data-day="${d}" data-agent="${agents.indexOf(u)}"
-            onchange="astrTelSetHeure('${u.l}',${y},${m},${d},this.value);astrTelRenderGrid();"
+            onchange="astrTelCommitInput(this)"
             onfocus="this.select();"
             onkeydown="astrTelNavKey(event,this,${agents.indexOf(u)},${d},${nbJ},${agents.length})"
             placeholder="${isWE?'·':''}"
-            style="width:100%;border:none;background:transparent;text-align:center;font-size:10px;font-weight:${h>0?'700':'400'};color:${color};padding:3px 1px;outline:none;-moz-appearance:textfield;">
+            aria-label="${u.nom} ${u.prenom}, ${d} ${ASTRTEL_MOIS_NOMS[m]} : nombre d'heures"
+            style="width:100%;border:none;background:transparent;text-align:center;font-size:10px;font-weight:${h>0?'700':'400'};color:${color};padding:3px 1px;outline:none;">
         </div>`;
       } else {
         rows+=`<div style="background:${bg};border:1px solid ${h>0?'var(--blu)':'var(--brd)'};border-radius:3px;text-align:center;font-size:10px;font-weight:${h>0?'700':'400'};color:${color};padding:4px 1px;">${h>0?h:''}</div>`;

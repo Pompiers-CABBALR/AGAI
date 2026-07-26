@@ -9589,7 +9589,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260726-export-sdis-details-43';
+const APP_VERSION='20260726-astreinte-tel-fiable-44';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -11551,7 +11551,7 @@ function _applyDataObject(data){
         if(src.astrConfig)dst.astrConfig=src.astrConfig;
         if(src.disposValidated)dst.disposValidated=src.disposValidated;
         if(src.piquetsValidated)dst.piquetsValidated=src.piquetsValidated;
-        if(src.astrTelData)dst.astrTelData=src.astrTelData;
+        if(src.astrTelData&&!dispoLocked)dst.astrTelData=src.astrTelData;
         if(src.astrTelParams)dst.astrTelParams=src.astrTelParams;
         if(src.statsTaux)dst.statsTaux=src.statsTaux;
         if(src._initCompteurs!==undefined)dst._initCompteurs=src._initCompteurs;
@@ -12253,7 +12253,10 @@ function _rcSplitCaserne(cid, d){
     planningRotations: d.planningRotations||{},
     disposValidated: d.disposValidated||{},
     piquetsValidated: d.piquetsValidated||{},
-    astrConfig: d.astrConfig||{}
+    astrConfig: d.astrConfig||{},
+    astrTelData: JSON.parse(JSON.stringify(d.astrTelData||{})),
+    astrTelParams: Object.assign({},d.astrTelParams||{}),
+    statsTaux: Object.assign({},d.statsTaux||{})
   };
   rows.push({ id:_rcId(cid,'config','main'), caserne:cid, type:'config', data:cfg, deleted:false });
   return rows;
@@ -12262,7 +12265,8 @@ function _rcSplitCaserne(cid, d){
 // ── Reconstruit l'objet CASERNE_DATA[cid] à partir de lignes records ──
 function _rcAssembleCaserne(rows){
   const out = { users:[], ivs:[], pilpIvs:[], equipes:[], fmpas:[], formStag:[], formForm:[], renforts:[], activites:[],
-                dispos:{}, piquets:{}, planningRotations:{}, disposValidated:{}, piquetsValidated:{}, astrConfig:{} };
+                dispos:{}, piquets:{}, planningRotations:{}, disposValidated:{}, piquetsValidated:{}, astrConfig:{},
+                astrTelData:{}, astrTelParams:{}, statsTaux:{} };
   const listMap = {iv:'ivs', pilp:'pilpIvs', equipe:'equipes', fmpa:'fmpas', formStag:'formStag', formForm:'formForm', renfort:'renforts', activite:'activites'};
   rows.forEach(function(r){
     if(r.deleted) return; // on ignore les enregistrements supprimés à la reconstruction
@@ -12278,6 +12282,9 @@ function _rcAssembleCaserne(rows){
       out.piquets=c.piquets||{}; out.planningRotations=c.planningRotations||{};
       out.disposValidated=c.disposValidated||{}; out.piquetsValidated=c.piquetsValidated||{};
       out.astrConfig=c.astrConfig||{};
+      out.astrTelData=c.astrTelData||{};
+      out.astrTelParams=c.astrTelParams||{};
+      out.statsTaux=c.statsTaux||{};
     }
   });
   return out;
@@ -12492,8 +12499,19 @@ async function _rcPull(silent){
     Object.keys(byCaserne).forEach(function(cid){
       data.CASERNE_DATA[cid] = _rcAssembleCaserne(byCaserne[cid]);
     });
-    // Protéger les modifications locales en cours sur la caserne active (édition < 15s)
+    // Protéger les modifications locales en cours et récupérer les anciennes
+    // heures locales si elles étaient absentes de l'ancien format "records".
     const activeCid = CURRENT_CASERNE_ID;
+    if(activeCid && CASERNE_DATA[activeCid]){
+      const localTel=JSON.parse(JSON.stringify(CASERNE_DATA[activeCid].astrTelData||{}));
+      const remoteTel=(data.CASERNE_DATA[activeCid]&&data.CASERNE_DATA[activeCid].astrTelData)||{};
+      if((Date.now()-_jbEditLock < 15000)||(!Object.keys(remoteTel).length&&Object.keys(localTel).length)){
+        if(!data.CASERNE_DATA[activeCid])data.CASERNE_DATA[activeCid]={};
+        data.CASERNE_DATA[activeCid].astrTelData=localTel;
+        data.CASERNE_DATA[activeCid].astrTelParams=Object.assign({},CASERNE_DATA[activeCid].astrTelParams||{});
+        _rcPendingDirty.add(_rcId(activeCid,'config','main'));
+      }
+    }
     if(activeCid && Date.now()-_jbEditLock < 15000 && CASERNE_DATA[activeCid]){
       // Fusionner les dispos : on garde le remote comme base, et on réapplique
       // les dispos locales par-dessus (priorité au local en cours d'édition).
@@ -15113,6 +15131,16 @@ function astrTelGetMonth(login,y,m){
   const d=astrTelGetData();
   return d[astrTelKey(login,y,m)]||{};
 }
+function astrTelTotalJour(y,m,day,excludeLogin){
+  return (USERS||[]).reduce(function(total,u){
+    if(!u||!u.l||u.l===excludeLogin)return total;
+    return total+(parseFloat(astrTelGetMonth(u.l,y,m)[day])||0);
+  },0);
+}
+function astrTelFormatHeures(value){
+  const n=Math.round((parseFloat(value)||0)*100)/100;
+  return Number.isInteger(n)?String(n):String(n).replace('.',',');
+}
 function astrTelSetHeure(login,y,m,day,val){
   // Vérifier verrouillage
   const today=new Date();
@@ -15120,20 +15148,49 @@ function astrTelSetHeure(login,y,m,day,val){
   const isMoisPasse=(y<todayY)||(y===todayY&&m<todayM);
   const isMoisSuivant=(y===todayY&&m===todayM-1)||(y===todayY-1&&m===11&&todayM===0);
   const moisVerrouille=isMoisPasse&&!(isMoisSuivant&&todayD<5);
-  if(moisVerrouille&&!isSuperAdmin()){showToast('Ce mois est verrouillé — modification impossible','warn');return;}
+  if(moisVerrouille&&!isSuperAdmin()){showToast('Ce mois est verrouillé — modification impossible','warn');return null;}
   const d=astrTelGetData();
   const k=astrTelKey(login,y,m);
   if(!d[k])d[k]={};
-  let h=parseInt(val)||0;
+  let h=parseFloat(String(val||'').replace(',','.'))||0;
+  h=Math.round(h*100)/100;
   if(h<0)h=0;
-  if(h>24){h=24;showToast('Maximum 24h par jour','warn');}
+  const autres=astrTelTotalJour(y,m,day,login);
+  const disponible=Math.max(0,Math.round((24-autres)*100)/100);
+  if(h>disponible){
+    h=disponible;
+    showToast('Le total de la journée ne peut pas dépasser 24 h ('+astrTelFormatHeures(autres)+' h déjà attribuées)','warn');
+  }
   if(h>0)d[k][day]=h;
   else delete d[k][day];
+  _jbEditLock=Date.now();
+  if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcPendingDirty!=='undefined'&&typeof _rcId==='function'){
+    _rcPendingDirty.add(_rcId(CURRENT_CASERNE_ID,'config','main'));
+  }
   saveData();
+  return h;
+}
+function astrTelCommitInput(el){
+  if(!el)return;
+  const h=astrTelSetHeure(el.dataset.login,astrTelAnnee,astrTelMois,parseInt(el.dataset.day,10),el.value);
+  if(h===null){el.value=el.defaultValue;return;}
+  el.value=h>0?astrTelFormatHeures(h):'';
+  el.defaultValue=el.value;
+  const cell=el.parentElement;
+  if(cell){
+    cell.style.background=h>0?'var(--bl)':'#fff';
+    cell.style.borderColor=h>0?'var(--blu)':'var(--brd)';
+    el.style.fontWeight=h>0?'700':'400';
+    el.style.color=h>0?'#1e3a5f':'var(--t2)';
+  }
+  const totalEl=Array.from(document.querySelectorAll('[data-astrtel-total]')).find(function(node){
+    return node.dataset.astrtelTotal===el.dataset.login;
+  });
+  if(totalEl)totalEl.textContent=astrTelFormatHeures(astrTelTotalMois(el.dataset.login,astrTelAnnee,astrTelMois))+'h';
 }
 // Total heures d'un agent pour un mois
 function astrTelTotalMois(login,y,m){
-  return Object.values(astrTelGetMonth(login,y,m)).reduce((s,v)=>s+(parseInt(v)||0),0);
+  return Object.values(astrTelGetMonth(login,y,m)).reduce((s,v)=>s+(parseFloat(v)||0),0);
 }
 // Total heures d'un agent pour une année
 function astrTelTotalAnnee(login,y){
@@ -15198,16 +15255,17 @@ function astrTelNavKey(e, el, agentIdx, day, nbJours, nbAgents){
   } else {
     return; // laisser les autres touches (chiffres, etc.)
   }
-  // Sauvegarder la valeur actuelle avant de naviguer
-  const cur=parseFloat(el.value)||0;
-  if(cur!==parseFloat(el.defaultValue)||''===el.defaultValue){
-    const login=el.dataset.login;
-    const d=parseInt(el.dataset.day);
-    astrTelSetHeure(login,astrTelAnnee,astrTelMois,d,el.value);
-  }
+  // Sauvegarder sans reconstruire toute la grille, pour conserver le focus.
+  astrTelCommitInput(el);
   // Trouver et focuser le prochain input
   const next=document.querySelector(`input[data-agent="${nextAgent}"][data-day="${nextDay}"]`);
-  if(next){next.focus();next.select();}
+  if(next){
+    window.requestAnimationFrame(function(){
+      next.focus({preventScroll:true});
+      next.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
+      next.select();
+    });
+  }
 }
 
 function astrTelRenderGrid(){
@@ -15264,7 +15322,7 @@ function astrTelRenderGrid(){
     const overQuota=totalAn>quota;
     rows+=`<div style="display:grid;grid-template-columns:160px 50px repeat(${nbJ},${colW}px);gap:1px;margin-bottom:1px;align-items:center;">`;
     rows+=`<div style="font-size:11px;padding:2px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${u.nom} ${u.prenom}">${u.nom} ${u.prenom}</div>`;
-    rows+=`<div style="text-align:center;font-size:11px;font-weight:700;color:${overQuota?'#E24B4A':'var(--t)'};" title="Total annuel : ${totalAn}h">${total}h</div>`;
+    rows+=`<div data-astrtel-total="${u.l}" style="text-align:center;font-size:11px;font-weight:700;color:${overQuota?'#E24B4A':'var(--t)'};" title="Total annuel : ${totalAn}h">${astrTelFormatHeures(total)}h</div>`;
     for(let d=1;d<=nbJ;d++){
       const h=moisData[d]||0;
       const dow=new Date(y,m,d).getDay();
@@ -15273,13 +15331,14 @@ function astrTelRenderGrid(){
       const color=h>0?'#1e3a5f':'var(--t2)';
       if(canEdit){
         rows+=`<div style="background:${bg};border:1px solid ${h>0?'var(--blu)':'var(--brd)'};border-radius:3px;">
-          <input type="number" value="${h||''}" min="0" max="24" step="1"
+          <input type="text" inputmode="decimal" pattern="[0-9.,]*" maxlength="5" value="${h?astrTelFormatHeures(h):''}"
             data-login="${u.l}" data-day="${d}" data-agent="${agents.indexOf(u)}"
-            onchange="astrTelSetHeure('${u.l}',${y},${m},${d},this.value);astrTelRenderGrid();"
+            onchange="astrTelCommitInput(this)"
             onfocus="this.select();"
             onkeydown="astrTelNavKey(event,this,${agents.indexOf(u)},${d},${nbJ},${agents.length})"
             placeholder="${isWE?'·':''}"
-            style="width:100%;border:none;background:transparent;text-align:center;font-size:10px;font-weight:${h>0?'700':'400'};color:${color};padding:3px 1px;outline:none;-moz-appearance:textfield;">
+            aria-label="${u.nom} ${u.prenom}, ${d} ${ASTRTEL_MOIS_NOMS[m]} : nombre d'heures"
+            style="width:100%;border:none;background:transparent;text-align:center;font-size:10px;font-weight:${h>0?'700':'400'};color:${color};padding:3px 1px;outline:none;">
         </div>`;
       } else {
         rows+=`<div style="background:${bg};border:1px solid ${h>0?'var(--blu)':'var(--brd)'};border-radius:3px;text-align:center;font-size:10px;font-weight:${h>0?'700':'400'};color:${color};padding:4px 1px;">${h>0?h:''}</div>`;

@@ -804,7 +804,7 @@ function _applyDataObject(data){
         if(src.astrConfig)dst.astrConfig=src.astrConfig;
         if(src.disposValidated)dst.disposValidated=src.disposValidated;
         if(src.piquetsValidated)dst.piquetsValidated=src.piquetsValidated;
-        if(src.astrTelData)dst.astrTelData=src.astrTelData;
+        if(src.astrTelData&&!dispoLocked)dst.astrTelData=src.astrTelData;
         if(src.astrTelParams)dst.astrTelParams=src.astrTelParams;
         if(src.statsTaux)dst.statsTaux=src.statsTaux;
         if(src._initCompteurs!==undefined)dst._initCompteurs=src._initCompteurs;
@@ -1506,7 +1506,10 @@ function _rcSplitCaserne(cid, d){
     planningRotations: d.planningRotations||{},
     disposValidated: d.disposValidated||{},
     piquetsValidated: d.piquetsValidated||{},
-    astrConfig: d.astrConfig||{}
+    astrConfig: d.astrConfig||{},
+    astrTelData: JSON.parse(JSON.stringify(d.astrTelData||{})),
+    astrTelParams: Object.assign({},d.astrTelParams||{}),
+    statsTaux: Object.assign({},d.statsTaux||{})
   };
   rows.push({ id:_rcId(cid,'config','main'), caserne:cid, type:'config', data:cfg, deleted:false });
   return rows;
@@ -1515,7 +1518,8 @@ function _rcSplitCaserne(cid, d){
 // ── Reconstruit l'objet CASERNE_DATA[cid] à partir de lignes records ──
 function _rcAssembleCaserne(rows){
   const out = { users:[], ivs:[], pilpIvs:[], equipes:[], fmpas:[], formStag:[], formForm:[], renforts:[], activites:[],
-                dispos:{}, piquets:{}, planningRotations:{}, disposValidated:{}, piquetsValidated:{}, astrConfig:{} };
+                dispos:{}, piquets:{}, planningRotations:{}, disposValidated:{}, piquetsValidated:{}, astrConfig:{},
+                astrTelData:{}, astrTelParams:{}, statsTaux:{} };
   const listMap = {iv:'ivs', pilp:'pilpIvs', equipe:'equipes', fmpa:'fmpas', formStag:'formStag', formForm:'formForm', renfort:'renforts', activite:'activites'};
   rows.forEach(function(r){
     if(r.deleted) return; // on ignore les enregistrements supprimés à la reconstruction
@@ -1531,6 +1535,9 @@ function _rcAssembleCaserne(rows){
       out.piquets=c.piquets||{}; out.planningRotations=c.planningRotations||{};
       out.disposValidated=c.disposValidated||{}; out.piquetsValidated=c.piquetsValidated||{};
       out.astrConfig=c.astrConfig||{};
+      out.astrTelData=c.astrTelData||{};
+      out.astrTelParams=c.astrTelParams||{};
+      out.statsTaux=c.statsTaux||{};
     }
   });
   return out;
@@ -1745,8 +1752,19 @@ async function _rcPull(silent){
     Object.keys(byCaserne).forEach(function(cid){
       data.CASERNE_DATA[cid] = _rcAssembleCaserne(byCaserne[cid]);
     });
-    // Protéger les modifications locales en cours sur la caserne active (édition < 15s)
+    // Protéger les modifications locales en cours et récupérer les anciennes
+    // heures locales si elles étaient absentes de l'ancien format "records".
     const activeCid = CURRENT_CASERNE_ID;
+    if(activeCid && CASERNE_DATA[activeCid]){
+      const localTel=JSON.parse(JSON.stringify(CASERNE_DATA[activeCid].astrTelData||{}));
+      const remoteTel=(data.CASERNE_DATA[activeCid]&&data.CASERNE_DATA[activeCid].astrTelData)||{};
+      if((Date.now()-_jbEditLock < 15000)||(!Object.keys(remoteTel).length&&Object.keys(localTel).length)){
+        if(!data.CASERNE_DATA[activeCid])data.CASERNE_DATA[activeCid]={};
+        data.CASERNE_DATA[activeCid].astrTelData=localTel;
+        data.CASERNE_DATA[activeCid].astrTelParams=Object.assign({},CASERNE_DATA[activeCid].astrTelParams||{});
+        _rcPendingDirty.add(_rcId(activeCid,'config','main'));
+      }
+    }
     if(activeCid && Date.now()-_jbEditLock < 15000 && CASERNE_DATA[activeCid]){
       // Fusionner les dispos : on garde le remote comme base, et on réapplique
       // les dispos locales par-dessus (priorité au local en cours d'édition).
