@@ -9589,7 +9589,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260726-astreinte-tel-ligne-46';
+const APP_VERSION='20260726-astreinte-tel-feries-47';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -15299,6 +15299,7 @@ function astrTelRenderGrid(){
   const agents=[...(USERS||[])].sort((a,b)=>a.nom.localeCompare(b.nom,'fr')||a.prenom.localeCompare(b.prenom,'fr'));
   const today=new Date();
   const todayY=today.getFullYear(),todayM=today.getMonth(),todayD=today.getDate();
+  const joursFeries=getJoursFeries(y);
 
   // Calcul du verrouillage :
   // - Mois en cours ou futur → éditable
@@ -15318,10 +15319,16 @@ function astrTelRenderGrid(){
   for(let d=1;d<=nbJ;d++){
     const dow=new Date(y,m,d).getDay();
     const isWE=dow===0||dow===6;
+    const iso=y+'-'+pad(m+1)+'-'+pad(d);
+    const isFerie=joursFeries.has(iso);
     const isToday=y===todayY&&m===todayM&&d===todayD;
-    hdr+=`<div style="text-align:center;padding:1px 0;${isWE?'color:var(--red);':''}${isToday?'font-weight:900;text-decoration:underline;':''}">${d}<br><span style="font-weight:400;">${ASTRTEL_JOURS_SEMAINE[dow][0]}</span></div>`;
+    hdr+=`<div${isFerie?' title="Jour férié"':''} style="text-align:center;padding:1px 0;border-radius:3px;${isFerie?'color:#7E22CE;background:#F3E8FF;':isWE?'color:var(--red);':''}${isToday?'font-weight:900;text-decoration:underline;':''}">${d}<br><span style="font-weight:400;">${ASTRTEL_JOURS_SEMAINE[dow][0]}</span></div>`;
   }
   hdr+='</div>';
+  const legend='<div style="display:flex;justify-content:flex-end;gap:12px;margin:0 2px 7px;font-size:10px;color:var(--t2);">'
+    +'<span><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#fdf0f0;border:1px solid #F5C2C2;vertical-align:-1px;margin-right:4px;"></i>Week-end</span>'
+    +'<span><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#F3E8FF;border:1px solid #C084FC;vertical-align:-1px;margin-right:4px;"></i>Jour férié</span>'
+    +'</div>';
 
   // Bandeau verrouillage
   let lockBanner='';
@@ -15350,10 +15357,13 @@ function astrTelRenderGrid(){
       const h=moisData[d]||0;
       const dow=new Date(y,m,d).getDay();
       const isWE=dow===0||dow===6;
-      const bg=h>0?'var(--bl)':isWE?'#fdf0f0':'#fff';
+      const iso=y+'-'+pad(m+1)+'-'+pad(d);
+      const isFerie=joursFeries.has(iso);
+      const bg=h>0?'var(--bl)':isFerie?'#F3E8FF':isWE?'#fdf0f0':'#fff';
+      const borderColor=h>0?'var(--blu)':isFerie?'#C084FC':'var(--brd)';
       const color=h>0?'#1e3a5f':'var(--t2)';
       if(canEdit){
-        rows+=`<div style="background:${bg};border:1px solid ${h>0?'var(--blu)':'var(--brd)'};border-radius:3px;">
+        rows+=`<div${isFerie?' title="Jour férié"':''} style="background:${bg};border:1px solid ${borderColor};border-radius:3px;">
           <input type="text" inputmode="numeric" pattern="[0-9:]*" maxlength="5" value="${h?astrTelFormatHeures(h):''}"
             data-login="${u.l}" data-day="${d}" data-agent="${agents.indexOf(u)}"
             onchange="astrTelCommitInput(this)"
@@ -15363,14 +15373,14 @@ function astrTelRenderGrid(){
             style="width:100%;border:none;background:transparent;text-align:center;font-size:10px;font-weight:${h>0?'700':'400'};color:${color};padding:3px 1px;outline:none;">
         </div>`;
       } else {
-        rows+=`<div style="background:${bg};border:1px solid ${h>0?'var(--blu)':'var(--brd)'};border-radius:3px;text-align:center;font-size:10px;font-weight:${h>0?'700':'400'};color:${color};padding:4px 1px;">${h>0?astrTelFormatHeures(h):''}</div>`;
+        rows+=`<div${isFerie?' title="Jour férié"':''} style="background:${bg};border:1px solid ${borderColor};border-radius:3px;text-align:center;font-size:10px;font-weight:${h>0?'700':'400'};color:${color};padding:4px 1px;">${h>0?astrTelFormatHeures(h):''}</div>`;
       }
     }
     rows+='</div>';
   });
 
   if(!agents.length)rows='<div style="text-align:center;padding:20px;color:var(--t2);font-size:13px;">Aucun agent disponible.</div>';
-  grid.innerHTML=lockBanner+hdr+rows;
+  grid.innerHTML=lockBanner+legend+hdr+rows;
 }
 
 function astrTelRenderRecap(){
