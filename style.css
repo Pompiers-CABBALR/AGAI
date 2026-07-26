@@ -846,4 +846,32 @@ html.appel-nature-locked .cnt{overflow:hidden!important;}
   outline-offset:1px;
 }
 .astrtel-agent-row.is-active>div:first-child{font-weight:700;color:var(--red);}
+.astrtel-header-row{
+  position:sticky;
+  top:0;
+  z-index:20;
+  background:#fff;
+  padding-top:3px;
+  padding-bottom:3px;
+}
+.astrtel-sticky-agent,.astrtel-sticky-total{
+  position:sticky;
+  z-index:12;
+  background:#fff;
+}
+.astrtel-sticky-agent{left:0;}
+.astrtel-sticky-total{left:160px;}
+.astrtel-header-row .astrtel-sticky-agent,
+.astrtel-header-row .astrtel-sticky-total{z-index:30;}
+@media(max-width:767px){
+  #astrtel-grid-scroll{
+    max-height:max(280px,65dvh);
+    overflow:auto!important;
+    overscroll-behavior:contain;
+    -webkit-overflow-scrolling:touch;
+  }
+  .astrtel-header-row{box-shadow:0 2px 4px rgba(15,23,42,.12);}
+  .astrtel-sticky-agent{box-shadow:2px 0 4px rgba(15,23,42,.08);}
+  .astrtel-sticky-total{box-shadow:2px 0 4px rgba(15,23,42,.06);}
+}
 
