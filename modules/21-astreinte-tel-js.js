@@ -30,9 +30,23 @@ function astrTelTotalJour(y,m,day,excludeLogin){
     return total+(parseFloat(astrTelGetMonth(u.l,y,m)[day])||0);
   },0);
 }
+function astrTelParseHeures(value){
+  if(value===null||value===undefined||String(value).trim()==='')return 0;
+  if(typeof value==='number')return Number.isFinite(value)?Math.max(0,value):null;
+  const text=String(value).trim();
+  const hhmm=text.match(/^(\d{1,4}):(\d{1,2})$/);
+  if(hhmm){
+    const heures=parseInt(hhmm[1],10),minutes=parseInt(hhmm[2],10);
+    if(minutes>59)return null;
+    return heures+(minutes/60);
+  }
+  if(/^\d+(?:[.,]\d+)?$/.test(text))return parseFloat(text.replace(',','.'));
+  return null;
+}
 function astrTelFormatHeures(value){
-  const n=Math.round((parseFloat(value)||0)*100)/100;
-  return Number.isInteger(n)?String(n):String(n).replace('.',',');
+  const totalMinutes=Math.max(0,Math.round((parseFloat(value)||0)*60));
+  const heures=Math.floor(totalMinutes/60),minutes=totalMinutes%60;
+  return String(heures).padStart(2,'0')+':'+String(minutes).padStart(2,'0');
 }
 function astrTelSetHeure(login,y,m,day,val){
   // Vérifier verrouillage
@@ -45,14 +59,18 @@ function astrTelSetHeure(login,y,m,day,val){
   const d=astrTelGetData();
   const k=astrTelKey(login,y,m);
   if(!d[k])d[k]={};
-  let h=parseFloat(String(val||'').replace(',','.'))||0;
-  h=Math.round(h*100)/100;
+  let h=astrTelParseHeures(val);
+  if(h===null){
+    showToast('Saisissez les heures au format HH:MM (exemple : 08:30)','warn');
+    return parseFloat(d[k][day])||0;
+  }
+  h=Math.round(h*60)/60;
   if(h<0)h=0;
   const autres=astrTelTotalJour(y,m,day,login);
-  const disponible=Math.max(0,Math.round((24-autres)*100)/100);
+  const disponible=Math.max(0,Math.round((24-autres)*60)/60);
   if(h>disponible){
     h=disponible;
-    showToast('Le total de la journée ne peut pas dépasser 24 h ('+astrTelFormatHeures(autres)+' h déjà attribuées)','warn');
+    showToast('Le total de la journée ne peut pas dépasser 24:00 ('+astrTelFormatHeures(autres)+' déjà attribuées)','warn');
   }
   if(h>0)d[k][day]=h;
   else delete d[k][day];
@@ -79,7 +97,7 @@ function astrTelCommitInput(el){
   const totalEl=Array.from(document.querySelectorAll('[data-astrtel-total]')).find(function(node){
     return node.dataset.astrtelTotal===el.dataset.login;
   });
-  if(totalEl)totalEl.textContent=astrTelFormatHeures(astrTelTotalMois(el.dataset.login,astrTelAnnee,astrTelMois))+'h';
+  if(totalEl)totalEl.textContent=astrTelFormatHeures(astrTelTotalMois(el.dataset.login,astrTelAnnee,astrTelMois));
 }
 // Total heures d'un agent pour un mois
 function astrTelTotalMois(login,y,m){
@@ -215,7 +233,7 @@ function astrTelRenderGrid(){
     const overQuota=totalAn>quota;
     rows+=`<div style="display:grid;grid-template-columns:160px 50px repeat(${nbJ},${colW}px);gap:1px;margin-bottom:1px;align-items:center;">`;
     rows+=`<div style="font-size:11px;padding:2px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${u.nom} ${u.prenom}">${u.nom} ${u.prenom}</div>`;
-    rows+=`<div data-astrtel-total="${u.l}" style="text-align:center;font-size:11px;font-weight:700;color:${overQuota?'#E24B4A':'var(--t)'};" title="Total annuel : ${totalAn}h">${astrTelFormatHeures(total)}h</div>`;
+    rows+=`<div data-astrtel-total="${u.l}" style="text-align:center;font-size:11px;font-weight:700;color:${overQuota?'#E24B4A':'var(--t)'};" title="Total annuel : ${astrTelFormatHeures(totalAn)}">${astrTelFormatHeures(total)}</div>`;
     for(let d=1;d<=nbJ;d++){
       const h=moisData[d]||0;
       const dow=new Date(y,m,d).getDay();
@@ -224,12 +242,12 @@ function astrTelRenderGrid(){
       const color=h>0?'#1e3a5f':'var(--t2)';
       if(canEdit){
         rows+=`<div style="background:${bg};border:1px solid ${h>0?'var(--blu)':'var(--brd)'};border-radius:3px;">
-          <input type="text" inputmode="decimal" pattern="[0-9.,]*" maxlength="5" value="${h?astrTelFormatHeures(h):''}"
+          <input type="text" inputmode="numeric" pattern="[0-9:]*" maxlength="5" value="${h?astrTelFormatHeures(h):''}"
             data-login="${u.l}" data-day="${d}" data-agent="${agents.indexOf(u)}"
             onchange="astrTelCommitInput(this)"
             onfocus="this.select();"
             onkeydown="astrTelNavKey(event,this,${agents.indexOf(u)},${d},${nbJ},${agents.length})"
-            placeholder="${isWE?'·':''}"
+            placeholder="00:00"
             aria-label="${u.nom} ${u.prenom}, ${d} ${ASTRTEL_MOIS_NOMS[m]} : nombre d'heures"
             style="width:100%;border:none;background:transparent;text-align:center;font-size:10px;font-weight:${h>0?'700':'400'};color:${color};padding:3px 1px;outline:none;">
         </div>`;
@@ -255,8 +273,8 @@ function astrTelRenderRecap(){
 
   // En-tête quota
   let html=`<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding:10px;background:var(--bg);border-radius:8px;">
-    <div style="font-size:13px;">Quota annuel : <strong>${quota}h</strong></div>
-    <div style="font-size:11px;color:var(--t2);">1 jour = 24h · ${Math.round(quota/24)} jours max · Taux pondéré : <strong>${tauxAstrTel} %</strong></div>
+    <div style="font-size:13px;">Quota annuel : <strong>${astrTelFormatHeures(quota)}</strong></div>
+    <div style="font-size:11px;color:var(--t2);">1 jour = 24:00 · ${Math.round(quota/24)} jours max · Taux pondéré : <strong>${tauxAstrTel} %</strong></div>
   </div>`;
 
   // Tableau récap
@@ -276,11 +294,11 @@ function astrTelRenderRecap(){
     html+=`<td style="padding:5px 8px;white-space:nowrap;">${u.nom} ${u.prenom}</td>`;
     for(let m=0;m<12;m++){
       const t=astrTelTotalMois(u.l,y,m);
-      html+=`<td style="padding:4px 6px;text-align:center;color:${t>0?'var(--blu)':'var(--t3)'};">${t>0?t+'h':'-'}</td>`;
+      html+=`<td style="padding:4px 6px;text-align:center;color:${t>0?'var(--blu)':'var(--t3)'};">${t>0?astrTelFormatHeures(t):'-'}</td>`;
     }
-    html+=`<td style="padding:5px 8px;text-align:center;font-weight:700;color:${overQuota?'#E24B4A':'var(--t)'};">${totalAn}h</td>`;
+    html+=`<td style="padding:5px 8px;text-align:center;font-weight:700;color:${overQuota?'#E24B4A':'var(--t)'};">${astrTelFormatHeures(totalAn)}</td>`;
     html+=`<td style="padding:5px 8px;text-align:center;font-weight:700;color:var(--blu);">${pondere}</td>`;
-    html+=`<td style="padding:5px 8px;text-align:center;color:var(--t2);">${restant}h</td>`;
+    html+=`<td style="padding:5px 8px;text-align:center;color:var(--t2);">${astrTelFormatHeures(restant)}</td>`;
     html+=`<td style="padding:5px 8px;"><div style="background:#eee;border-radius:4px;height:8px;overflow:hidden;"><div style="width:${pct}%;background:${overQuota?'#E24B4A':'var(--blu)'};height:100%;border-radius:4px;transition:width .3s;"></div></div><div style="font-size:9px;text-align:center;color:var(--t2);margin-top:1px;">${pct}%</div></td>`;
     html+='</tr>';
   });
