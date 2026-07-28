@@ -43,6 +43,17 @@ function _createSession(){
   SESSION_EXPIRY=Date.now()+SESSION_DURATION_MS;
   // Enregistrer la connexion
   if(CU){
+    const nowIso=new Date().toISOString();
+    // Un compte ne conserve qu'une seule session active. Une nouvelle connexion
+    // ferme les anciennes sessions restées ouvertes (onglet fermé brutalement,
+    // téléphone éteint ou absence d'événement de déconnexion).
+    LOGIN_HISTORY.forEach(function(previous){
+      if(previous.login===CU.l&&previous.actif&&!previous.hDeconnexion){
+        previous.hDeconnexion=nowIso;
+        previous.actif=false;
+        previous.fermetureAuto='Remplacée par une nouvelle connexion';
+      }
+    });
     const entry={
       id:SESSION_TOKEN,
       login:CU.l,
@@ -50,7 +61,7 @@ function _createSession(){
       nom:CU.nom,
       caserneId:CURRENT_CASERNE_ID||'',
       caserne:CC()?.nom||'Global',
-      hConnexion:new Date().toISOString(),
+      hConnexion:nowIso,
       hDeconnexion:null,
       actif:true
     };

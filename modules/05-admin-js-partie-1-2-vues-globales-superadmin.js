@@ -79,6 +79,113 @@ function deleteSelectedLoginHistory(){
   confirmModal('Supprimer définitivement les '+ids.length+' connexion(s) sélectionnée(s) ?',function(){deleteLoginHistoryEntries(ids);});
 }
 
+function normalizeLoginHistorySessions(){
+  let changed=false;
+  const now=Date.now();
+  const byLogin={};
+  LOGIN_HISTORY.forEach(function(entry){
+    if(!entry)return;
+    if(entry.hDeconnexion&&entry.actif){entry.actif=false;changed=true;}
+    const key=entry.login||'';
+    if(!byLogin[key])byLogin[key]=[];
+    byLogin[key].push(entry);
+  });
+  Object.values(byLogin).forEach(function(entries){
+    entries.sort(function(a,b){return String(b.hConnexion||'').localeCompare(String(a.hConnexion||''));});
+    entries.forEach(function(entry,index){
+      if(!entry.actif||entry.hDeconnexion)return;
+      const started=new Date(entry.hConnexion||0).getTime();
+      if(index>0){
+        entry.actif=false;
+        entry.hDeconnexion=entries[0].hConnexion||new Date().toISOString();
+        entry.fermetureAuto='Remplacée par une connexion plus récente';
+        changed=true;
+      }else if(!Number.isFinite(started)||now-started>=SESSION_DURATION_MS){
+        entry.actif=false;
+        entry.hDeconnexion=Number.isFinite(started)?new Date(started+SESSION_DURATION_MS).toISOString():new Date().toISOString();
+        entry.fermetureAuto='Session expirée automatiquement';
+        changed=true;
+      }
+    });
+  });
+  return changed;
+}
+
+function isLoginHistorySessionActive(entry){
+  if(!entry||!entry.actif||entry.hDeconnexion)return false;
+  const started=new Date(entry.hConnexion||0).getTime();
+  return Number.isFinite(started)&&Date.now()-started<SESSION_DURATION_MS;
+}
+
+function renderLoginHistoryAccount(group,colour){
+  group.entries.sort(function(a,b){return String(b.hConnexion||'').localeCompare(String(a.hConnexion||''));});
+  const fmt=function(value){
+    const date=new Date(value);
+    return Number.isNaN(date.getTime())?'—':date.toLocaleDateString('fr-FR')+' '+date.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+  };
+  const latest=group.entries[0];
+  const active=isLoginHistorySessionActive(latest);
+  return '<div style="border:1px solid #eee;border-radius:10px;margin:8px 10px;overflow:hidden;background:#fff;">'
+    +'<div style="background:#fafafa;padding:9px 12px;display:flex;align-items:center;gap:10px;cursor:pointer;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'block\':\'none\'">'
+    +'<div style="flex:1;"><span style="font-weight:600;font-size:13px;">'+escHtml(group.prenom||'')+' '+escHtml(group.nom||'')+'</span>'
+    +'<span style="font-family:monospace;font-size:11px;color:#999;margin-left:8px;">'+escHtml(group.login||'')+'</span></div>'
+    +(active?'<span style="background:#ECFDF5;color:#065F46;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">🟢 Connecté</span>':'<span style="background:#F3F4F6;color:#6B7280;padding:2px 8px;border-radius:10px;font-size:11px;">Déconnecté</span>')
+    +'<span style="font-size:11px;color:#999;">'+group.entries.length+' connexion(s)</span><span style="color:#aaa;">▼</span></div>'
+    +'<div style="display:none;overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:11px;">'
+    +'<thead><tr style="background:#f5f5f7;"><th style="padding:6px;width:34px;text-align:center;"><input type="checkbox" class="login-history-group-all" onchange="toggleLoginHistoryGroupSelection(this)" aria-label="Sélectionner toutes les connexions de ce compte"/></th>'
+    +'<th style="padding:6px 12px;font-weight:600;text-align:left;">Connexion</th><th style="padding:6px 12px;font-weight:600;text-align:left;">Déconnexion</th><th style="padding:6px 12px;font-weight:600;text-align:left;">Statut</th></tr></thead><tbody>'
+    +group.entries.map(function(entry){
+      const online=isLoginHistorySessionActive(entry);
+      const closure=entry.fermetureAuto?' title="'+escHtml(entry.fermetureAuto)+'"':'';
+      return '<tr style="border-top:1px solid #f0f0f0;"><td style="padding:6px;text-align:center;"><input type="checkbox" class="login-history-check" data-session-id="'+escHtml(entry.id)+'" onchange="updateLoginHistorySelectionCount()" aria-label="Sélectionner cette connexion"/></td>'
+        +'<td style="padding:6px 12px;color:#444;">'+fmt(entry.hConnexion)+'</td><td style="padding:6px 12px;color:#444;"'+closure+'>'+(entry.hDeconnexion?fmt(entry.hDeconnexion):'—')+'</td>'
+        +'<td style="padding:6px 12px;">'+(online?'<span style="color:#065F46;font-weight:600;">🟢 En ligne</span>':'<span style="color:#9CA3AF;">Déconnecté</span>')+'</td></tr>';
+    }).join('')
+    +'</tbody></table></div></div>';
+}
+
+function renderLoginHistoryByCaserne(){
+  if(!LOGIN_HISTORY.length)return '<div style="font-size:12px;color:#999;text-align:center;padding:20px;">Aucune connexion enregistrée</div>';
+  const normalized=normalizeLoginHistorySessions();
+  if(normalized)window.setTimeout(function(){saveData();},0);
+  const caserneGroups={};
+  LOGIN_HISTORY.forEach(function(entry){
+    const caserneId=entry.caserneId||'_GLOBAL';
+    if(!caserneGroups[caserneId]){
+      const known=CASERNES.find(function(c){return c.id===caserneId;});
+      caserneGroups[caserneId]={
+        id:caserneId,
+        name:entry.caserne||(known&&known.nom)||(caserneId==='_GLOBAL'?'Comptes globaux':'Caserne non renseignée'),
+        colour:(known&&known.couleur)||'#64748B',
+        entries:[],
+        accounts:{}
+      };
+    }
+    const caserne=caserneGroups[caserneId];
+    caserne.entries.push(entry);
+    const login=entry.login||'Compte inconnu';
+    if(!caserne.accounts[login])caserne.accounts[login]={login:login,prenom:entry.prenom,nom:entry.nom,entries:[]};
+    caserne.accounts[login].entries.push(entry);
+  });
+  return Object.values(caserneGroups).sort(function(a,b){return a.name.localeCompare(b.name,'fr');}).map(function(caserne){
+    const accounts=Object.values(caserne.accounts).sort(function(a,b){
+      return ((a.nom||'')+' '+(a.prenom||'')).localeCompare((b.nom||'')+' '+(b.prenom||''),'fr');
+    });
+    const activeCount=accounts.filter(function(account){
+      account.entries.sort(function(a,b){return String(b.hConnexion||'').localeCompare(String(a.hConnexion||''));});
+      return isLoginHistorySessionActive(account.entries[0]);
+    }).length;
+    return '<div style="border:1px solid '+caserne.colour+'55;border-radius:12px;margin-bottom:12px;overflow:hidden;">'
+      +'<div style="background:'+caserne.colour+'12;padding:11px 14px;display:flex;align-items:center;gap:10px;cursor:pointer;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'block\':\'none\'">'
+      +'<span style="width:10px;height:10px;border-radius:50%;background:'+caserne.colour+';"></span><strong style="font-size:13px;color:'+caserne.colour+';">'+escHtml(caserne.name)+'</strong>'
+      +'<span style="font-size:11px;color:#64748B;">'+accounts.length+' compte(s) · '+caserne.entries.length+' connexion(s)</span>'
+      +(activeCount?'<span style="margin-left:auto;background:#ECFDF5;color:#065F46;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">🟢 '+activeCount+' en ligne</span>':'<span style="margin-left:auto;font-size:11px;color:#94A3B8;">Aucune session en ligne</span>')
+      +'<span style="color:#94A3B8;">▼</span></div><div>'
+      +accounts.map(function(account){return renderLoginHistoryAccount(account,caserne.colour);}).join('')
+      +'</div></div>';
+  }).join('');
+}
+
 function renderSuperAdmin(){
   const body=document.getElementById('gv-body');
   // Section gestion des comptes (admins casernes + chef de corps)
@@ -321,52 +428,7 @@ function renderSuperAdmin(){
           <button class="btn sm danger" onclick="deleteAllLoginHistory()">🧹 Tout effacer</button>
         </div>
       </div>
-      ${(()=>{
-        if(LOGIN_HISTORY.length===0)return '<div style="font-size:12px;color:#999;text-align:center;padding:20px;">Aucune connexion enregistrée</div>';
-        // Grouper par login
-        const groups={};
-        LOGIN_HISTORY.forEach(e=>{
-          if(!groups[e.login])groups[e.login]={login:e.login,prenom:e.prenom,nom:e.nom,caserneId:e.caserneId,caserne:e.caserne,entries:[]};
-          groups[e.login].entries.push(e);
-        });
-        const fmt=d=>{const dt=new Date(d);return dt.toLocaleDateString('fr-FR')+' '+dt.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});};
-        return Object.values(groups).map(g=>{
-          const cas=CASERNES.find(c=>c.id===g.caserneId);
-          const couleur=cas?.couleur||'#666';
-          const actif=g.entries.some(e=>e.actif);
-          const lastConn=g.entries[0];
-          return `<div style="border:1px solid #eee;border-radius:10px;margin-bottom:10px;overflow:hidden;">
-            <div style="background:#f8f8f8;padding:10px 14px;display:flex;align-items:center;gap:10px;cursor:pointer;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">
-              <div style="flex:1;">
-                <span style="font-weight:600;font-size:13px;">${g.prenom} ${g.nom}</span>
-                <span style="font-family:monospace;font-size:11px;color:#999;margin-left:8px;">${g.login}</span>
-              </div>
-              <span style="background:${couleur}22;color:${couleur};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">${g.caserne||'—'}</span>
-              ${actif?'<span style="background:#ECFDF5;color:#065F46;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">🟢 Connecté</span>':'<span style="background:#F3F4F6;color:#6B7280;padding:2px 8px;border-radius:10px;font-size:11px;">Déconnecté</span>'}
-              <span style="font-size:11px;color:#999;">${g.entries.length} connexion(s)</span>
-              <span style="color:#aaa;">▼</span>
-            </div>
-            <div style="display:none;overflow-x:auto;">
-              <table style="width:100%;border-collapse:collapse;font-size:11px;">
-                <thead><tr style="background:#f5f5f7;">
-                  <th style="padding:6px;width:34px;text-align:center;"><input type="checkbox" class="login-history-group-all" onchange="toggleLoginHistoryGroupSelection(this)" aria-label="Sélectionner toutes les connexions de ce compte"/></th>
-                  <th style="padding:6px 12px;font-weight:600;text-align:left;">Connexion</th>
-                  <th style="padding:6px 12px;font-weight:600;text-align:left;">Déconnexion</th>
-                  <th style="padding:6px 12px;font-weight:600;text-align:left;">Statut</th>
-                </tr></thead>
-                <tbody>
-                  ${g.entries.map(e=>`<tr style="border-top:1px solid #f0f0f0;">
-                    <td style="padding:6px;text-align:center;"><input type="checkbox" class="login-history-check" data-session-id="${escHtml(e.id)}" onchange="updateLoginHistorySelectionCount()" aria-label="Sélectionner cette connexion"/></td>
-                    <td style="padding:6px 12px;color:#444;">${fmt(e.hConnexion)}</td>
-                    <td style="padding:6px 12px;color:#444;">${e.hDeconnexion?fmt(e.hDeconnexion):'—'}</td>
-                    <td style="padding:6px 12px;">${e.actif?'<span style="color:#065F46;font-weight:600;">🟢 En ligne</span>':'<span style="color:#9CA3AF;">Déconnecté</span>'}</td>
-                  </tr>`).join('')}
-                </tbody>
-              </table>
-            </div>
-          </div>`;
-        }).join('');
-      })()}
+      ${renderLoginHistoryByCaserne()}
     </div>
     <div style="margin-top:20px;background:#FEF2F2;border-radius:14px;padding:16px;border:1px solid #FECACA;">
       <h3 style="font-size:15px;font-weight:700;margin-bottom:4px;color:#C0392B;">⚠️ Zone dangereuse — Gestion des interventions</h3>

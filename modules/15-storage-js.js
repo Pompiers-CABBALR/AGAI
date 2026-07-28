@@ -12,7 +12,7 @@
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260726-export-acquis-sdis-51';
+const APP_VERSION='20260728-connexions-casernes-52';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -79,6 +79,7 @@ function _showVersionBanner(){
 }
 
 async function _fetchRemoteVersion(){
+  let manifestVersion=null;
   // La version modulaire publie ce petit manifeste à côté d'index.html.
   try{
     const manifestUrl=new URL('version.json',document.baseURI);
@@ -86,18 +87,23 @@ async function _fetchRemoteVersion(){
     const response=await fetch(manifestUrl.toString(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
     if(response.ok){
       const manifest=await response.json();
-      if(manifest&&typeof manifest.version==='string')return manifest.version.trim();
+      if(manifest&&typeof manifest.version==='string')manifestVersion=manifest.version.trim();
     }
-  }catch(e){/* repli ci-dessous pour le fichier HTML autonome */}
+  }catch(e){/* le contrôle du fichier HTML continue ci-dessous */}
 
-  // Repli : permet au fichier HTML autonome de fonctionner sans version.json.
-  const pageUrl=new URL(window.location.href);
-  pageUrl.searchParams.set('_versionCheck',Date.now());
-  const response=await fetch(pageUrl.toString(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
-  if(!response.ok)return null;
-  const source=await response.text();
-  const match=source.match(/const APP_VERSION='([^']+)'/);
-  return match?match[1].trim():null;
+  // Toujours contrôler aussi le fichier HTML autonome. Ainsi, un ancien
+  // version.json resté sur le serveur ne masque pas une nouvelle page chargée.
+  try{
+    const pageUrl=new URL(window.location.href);
+    pageUrl.searchParams.set('_versionCheck',Date.now());
+    const response=await fetch(pageUrl.toString(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
+    if(response.ok){
+      const source=await response.text();
+      const match=source.match(/const APP_VERSION='([^']+)'/);
+      if(match&&match[1])return match[1].trim();
+    }
+  }catch(e){/* la version du manifeste reste utilisable */}
+  return manifestVersion;
 }
 
 async function _checkVersion(){
