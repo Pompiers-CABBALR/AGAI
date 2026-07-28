@@ -470,21 +470,100 @@ function genAutorisationDocx(ivId) {
   }
 }
 
+let editCommuneSelected=null,editAddrSelected=false,editAddrTimer=null;
+function editFiltCommune(q){
+  const dd=document.getElementById('edit-com-dd');if(!dd)return;
+  const nq=nm(q);
+  let list=q.trim()?COM.filter(c=>nm(comNom(c)).startsWith(nq)):[];
+  if(!list.length&&q.trim())list=COM.filter(c=>nm(comNom(c)).includes(nq));
+  if(!q.trim())list=COM.slice(0,30);
+  if(!list.length){dd.style.display='none';return;}
+  dd.innerHTML=list.slice(0,20).map(c=>{
+    const nom=comNom(c),sec=comSec(c);
+    return `<div class="co" data-edit-commune="${escHtml(nom)}" onpointerdown="editSelectCommune(this.dataset.editCommune,event)">${escHtml(nom)}${sec?`<span style="font-size:10px;color:var(--t2);margin-left:6px;">${escHtml(sec)}</span>`:''}</div>`;
+  }).join('');
+  dd.style.display='block';
+}
+function editSelectCommune(commune,event){
+  if(event){event.preventDefault();event.stopPropagation();}
+  const changed=editCommuneSelected&&nm(editCommuneSelected)!==nm(commune);
+  editCommuneSelected=commune;
+  const input=document.getElementById('edit-com-val'),dd=document.getElementById('edit-com-dd');
+  if(input)input.value=commune;if(dd)dd.style.display='none';
+  const iw=document.getElementById('edit-com-input-wrap'),selected=document.getElementById('edit-com-selected');
+  if(iw)iw.style.display='none';if(selected)selected.style.display='flex';
+  const label=document.getElementById('edit-com-selected-label');if(label)label.textContent=commune;
+  const err=document.getElementById('edit-addr-err');if(err)err.style.display='none';
+  const addr=document.getElementById('edit-addr-val');
+  if(addr){addr.disabled=false;addr.placeholder='ex. 12 rue des Lilas';if(changed)addr.value='';}
+  editAddrSelected=!changed&&!!(addr&&addr.value.trim());
+}
+function editResetCommune(){
+  editCommuneSelected=null;editAddrSelected=false;
+  const input=document.getElementById('edit-com-val'),dd=document.getElementById('edit-com-dd');
+  if(input)input.value='';if(dd)dd.style.display='none';
+  const iw=document.getElementById('edit-com-input-wrap'),selected=document.getElementById('edit-com-selected');
+  if(iw)iw.style.display='';if(selected)selected.style.display='none';
+  const addr=document.getElementById('edit-addr-val'),addrDd=document.getElementById('edit-addr-dd');
+  if(addr){addr.value='';addr.disabled=true;addr.placeholder='Sélectionnez d’abord une commune…';}
+  if(addrDd)addrDd.style.display='none';
+  setTimeout(()=>input&&input.focus(),0);
+}
+function editAddrAutocomplete(q){
+  const dd=document.getElementById('edit-addr-dd'),spinner=document.getElementById('edit-addr-spinner');
+  if(!dd||!spinner)return;
+  editAddrSelected=false;
+  if(!editCommuneSelected||!q||q.trim().length<3){dd.style.display='none';return;}
+  clearTimeout(editAddrTimer);
+  editAddrTimer=setTimeout(async()=>{
+    spinner.style.display='inline';
+    try{
+      const query=encodeURIComponent(q+', '+editCommuneSelected+', France');
+      const resp=await fetch(`https://nominatim.openstreetmap.org/search?q=${query}&format=json&addressdetails=1&limit=6&countrycodes=fr`,{headers:{'Accept-Language':'fr','User-Agent':'AGAI-pompiers/1.0'}});
+      const data=await resp.json();
+      const numero=extractNumero(q),roads=new Set(),options=[];
+      data.forEach(r=>{
+        const a=r.address||{},road=a.road||a.pedestrian||a.footway||a.street||'';
+        if(!road||roads.has(road))return;roads.add(road);
+        const suggestion=numero+road;
+        options.push(`<div class="addr-opt" data-edit-addr="${escHtml(suggestion)}" onpointerdown="editSelectAddress(this.dataset.editAddr,event)" style="cursor:pointer;padding:10px 12px;border-bottom:1px solid var(--brd);"><div style="font-weight:500;font-size:13px;">${escHtml(suggestion)}</div><div style="font-size:10px;color:var(--t2);margin-top:2px;">${escHtml(r.display_name||'')}</div></div>`);
+      });
+      dd.innerHTML=options.length?options.join(''):'<div class="addr-opt"><div class="addr-sub">Aucun résultat — saisie manuelle possible</div></div>';
+      dd.style.display='block';
+    }catch(e){
+      dd.innerHTML='<div class="addr-opt"><div class="addr-sub">⚠️ Service indisponible — saisie manuelle</div></div>';dd.style.display='block';
+    }
+    spinner.style.display='none';
+  },400);
+}
+function editSelectAddress(address,event){
+  if(event){event.preventDefault();event.stopPropagation();}
+  const input=document.getElementById('edit-addr-val'),dd=document.getElementById('edit-addr-dd');
+  if(input)input.value=address;if(dd)dd.style.display='none';
+  editAddrSelected=true;
+  setTimeout(()=>{if(input){input.focus();input.setSelectionRange(input.value.length,input.value.length);}},50);
+}
 function editAdresse(ivId){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
-  const communeOptions=(COM||[]).map(c=>typeof c==='string'?c:c.nom).filter(Boolean).sort((a,b)=>a.localeCompare(b,'fr')).map(c=>`<option value="${escHtml(c)}"></option>`).join('');
+  editCommuneSelected=iv.com||null;editAddrSelected=!!iv.addr;
   document.getElementById('mt').textContent='Corriger l’adresse et la commune';
   document.getElementById('mi').textContent=iv.id;
   document.getElementById('mb').innerHTML=`
     <div>
-      <div class="fg"><div class="fgl">Commune</div>
-        <input class="fi" type="text" id="edit-com-val" value="${escHtml(iv.com||'')}" list="edit-communes-list" placeholder="Saisir ou choisir une commune" autocomplete="off"/>
-        <datalist id="edit-communes-list">${communeOptions}</datalist>
+      <div class="fg"><div class="fgl">Commune <span class="req">*</span></div>
+        <div class="cwrap" id="edit-com-wrap">
+          <div id="edit-com-selected" class="csel-disp" style="display:${editCommuneSelected?'flex':'none'};"><span id="edit-com-selected-label">${escHtml(iv.com||'')}</span><button type="button" onclick="editResetCommune()">✕</button></div>
+          <div id="edit-com-input-wrap" style="display:${editCommuneSelected?'none':''};position:relative;"><input class="fi" type="text" id="edit-com-val" value="${escHtml(iv.com||'')}" placeholder="Tapez une commune…" oninput="editFiltCommune(this.value)" onfocus="editFiltCommune(this.value)" autocomplete="off"/><div class="cdd" id="edit-com-dd"></div></div>
+        </div>
       </div>
-      <div class="fg"><div class="fgl">Adresse</div>
-        <input class="fi" type="text" id="edit-addr-val" value="${escHtml(iv.addr||'')}" placeholder="ex. 12 rue des Lilas"/>
+      <div class="fg"><div class="fgl">Adresse <span class="req">*</span></div>
+        <div style="position:relative;">
+          <input class="fi" type="text" id="edit-addr-val" value="${escHtml(iv.addr||'')}" placeholder="${editCommuneSelected?'ex. 12 rue des Lilas':'Sélectionnez d’abord une commune…'}" oninput="editAddrAutocomplete(this.value)" autocomplete="off" style="padding-right:30px;" ${editCommuneSelected?'':'disabled'}/>
+          <span id="edit-addr-spinner" style="display:none;position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:14px;">⏳</span>
+          <div id="edit-addr-dd" style="display:none;position:absolute;z-index:100;width:100%;background:#fff;border:1px solid var(--brd);border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.1);max-height:200px;overflow-y:auto;margin-top:2px;"></div>
+        </div>
       </div>
-      <div class="fg"><div class="fgl">Complement d’adresse</div>
+      <div class="fg"><div class="fgl">Complément d’adresse</div>
         <input class="fi" type="text" id="edit-addr-comp" value="${escHtml(iv.addrComp||'')}" placeholder="Bât. B, apt. 12…"/>
       </div>
       <div id="edit-addr-err" style="font-size:12px;color:#E24B4A;display:none;margin-bottom:8px;"></div>
@@ -497,7 +576,7 @@ function editAdresse(ivId){
 }
 function saveAdresse(ivId){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
-  const commune=document.getElementById('edit-com-val').value.trim();
+  const commune=String(editCommuneSelected||'').trim();
   const addr=document.getElementById('edit-addr-val').value.trim();
   const comp=document.getElementById('edit-addr-comp').value.trim();
   const err=document.getElementById('edit-addr-err');
