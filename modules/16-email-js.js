@@ -463,7 +463,7 @@ function interventionStartCorrectionHTML(iv){
 
 function showCompteRenduModal(ivId) {
   const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
-  const isOwn       = iv.agr===CU.l||iv._agr2===CU.l;
+  const isOwn       = isInterventionReportChef(iv,CU.l);
   const isSuperAdmin= isAdminModeActive();
   const isValidated = !!iv._crValide;
   const canWrite    = (!isValidated && (isOwn||hasRight('Administration'))) || isSuperAdmin;
@@ -595,16 +595,34 @@ function _sdisValidateHeures(iv){
   const hNow=getHHMM(N()).slice(0,5);
   const v=id=>(document.getElementById(id)||{}).value||'';
   const hSll=v('cr-hsll'), hDispo=v('cr-hdispo'), hOpt=v('cr-hopterminee');
-  // Départ < Retour
-  if(hDep&&hRet&&hDep>=hRet){showToast('L\'heure de départ doit être avant l\'heure de retour','warn');return false;}
-  // SLL et Dispo : entre départ et retour
-  if(hSll&&hDep&&hSll<hDep){showToast('Heure SLL doit être ≥ heure de départ ('+hDep+')','warn');return false;}
-  if(hSll&&hRet&&hSll>hRet){showToast('Heure SLL doit être ≤ heure de retour ('+hRet+')','warn');return false;}
-  if(hDispo&&hDep&&hDispo<hDep){showToast('Heure dispo doit être ≥ heure de départ ('+hDep+')','warn');return false;}
-  if(hDispo&&hRet&&hDispo>hRet){showToast('Heure dispo doit être ≤ heure de retour ('+hRet+')','warn');return false;}
-  // Opération terminée : ≥ retour et ≤ maintenant
-  if(hOpt&&hRet&&hOpt<hRet){showToast('Heure opération terminée doit être ≥ heure de retour ('+hRet+')','warn');return false;}
-  if(hOpt&&hOpt>hNow){showToast('Heure opération terminée ne peut pas dépasser l\'heure actuelle ('+hNow+')','warn');return false;}
+  const elapsed=function(from,to){
+    const fromMinutes=hhmmToMinutes(from),toMinutes=hhmmToMinutes(to);
+    if(fromMinutes===null||toMinutes===null)return null;
+    return (toMinutes-fromMinutes+1440)%1440;
+  };
+  if((hDep&&hhmmToMinutes(hDep)===null)||(hRet&&hhmmToMinutes(hRet)===null)){
+    showToast('Les heures de départ et de retour doivent être au format HH:MM.','warn');return false;
+  }
+  // Une durée nulle est autorisée. Une heure de retour plus petite que l'heure
+  // de départ signifie que l'intervention s'est terminée après minuit.
+  const duration=hDep&&hRet?elapsed(hDep,hRet):null;
+  const checkInside=function(value,label){
+    if(!value||!hDep||!hRet)return true;
+    const offset=elapsed(hDep,value);
+    const inside=duration===0?offset===0:offset<=duration;
+    if(!inside)showToast(label+' doit être comprise entre le départ ('+hDep+') et le retour ('+hRet+').','warn');
+    return inside;
+  };
+  if(!checkInside(hSll,'Heure SLL'))return false;
+  if(!checkInside(hDispo,'Heure disponible'))return false;
+  // L'opération terminée peut elle aussi se situer après minuit.
+  if(hOpt&&hRet){
+    const afterReturn=elapsed(hRet,hOpt);
+    const untilNow=elapsed(hRet,hNow);
+    if(afterReturn>untilNow){
+      showToast('L’heure d’opération terminée doit être comprise entre le retour ('+hRet+') et maintenant ('+hNow+').','warn');return false;
+    }
+  }
   return true;
 }
 function _sdisSaveFields(iv){
@@ -624,6 +642,9 @@ function _sdisSaveFields(iv){
 }
 function validerCompteRendu(ivId) {
   const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  if(!isInterventionReportChef(iv,CU.l)&&!hasAdministrativeAccount()){
+    showToast('Validation réservée au chef d’agrès de l’intervention ou à un administrateur.','warn');return;
+  }
   const texte = (document.getElementById('cr-texte')||{}).value||'';
   if(!texte.trim()){showToast('Saisissez un compte rendu avant de valider','warn');return;}
   if(iv._sdis&&!_sdisValidateHeures(iv))return;
@@ -645,7 +666,7 @@ function validerCompteRendu(ivId) {
 
 function saveCompteRendu(ivId, andClot) {
   const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
-  const isOwn       = iv.agr===CU.l||iv._agr2===CU.l;
+  const isOwn       = isInterventionReportChef(iv,CU.l);
   const isSuperAdmin= isAdminModeActive();
   if(iv._crValide && !isSuperAdmin){showToast('Compte rendu verrouill\u00e9','warn');return;}
   if(!isOwn&&!isSuperAdmin){showToast('Non autoris\u00e9','warn');return;}

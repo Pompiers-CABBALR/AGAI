@@ -62,6 +62,18 @@ function interventionAddressLabel(iv){
   return [iv&&iv.addr,iv&&iv.com].filter(Boolean).join(', ');
 }
 
+function isInterventionReportChef(iv,login){
+  if(!iv||!login)return false;
+  if(iv.agr===login||iv._agr2===login)return true;
+  return [iv._equipage1,iv._equipage2].some(function(equipage){
+    return Array.isArray(equipage)&&equipage.some(function(member){
+      if(!member||member.login!==login)return false;
+      const role=String(member.role||'').toLowerCase();
+      return role==='ca'||role.includes('chef d')&&role.includes('agr');
+    });
+  });
+}
+
 const _pendingNextInterventionStarts={};
 
 // === P8 : Fonction de rendu dédiée (évite XSS + facilite les tests) ===
@@ -516,8 +528,8 @@ function oM(id){
     }).join('')}</div></div></div>`:''}
     ${iv._isRenfort?`<div class="mr"><div class="ml" style="color:#7C3AED;">&#x1F692; Mode Renfort UT</div><div class="mv2" style="font-size:12px;background:#F5F3FF;border-radius:8px;padding:8px 12px;border:1px solid #DDD6FE;"><span style="font-weight:600;color:#7C3AED;">Renfort pour ${iv._caserneSourceNom||iv._caserneSource||''}</span><br><span style="font-size:11px;color:var(--t2);">Votre caserne est intervenue en renfort sur cette intervention.</span></div></div>`:''}
     ${iv.det?`<div class="mr"><div class="ml">Détails</div><div class="mv2">${escHtml(iv.det)}</div></div>`:''}
-    ${iv.s==='terminee'&&(iv._crTexte||iv._compteRendu)&&(iv.agr===CU.l||iv._agr2===CU.l||(iv._equipage1||[]).some(function(e){return e.login===CU.l;})||(iv._equipage2||[]).some(function(e){return e.login===CU.l;})||hasAdministrativeAccount())?`<div class="mr"><div class="ml" style="color:#0F766E;">&#x1F4CB; Compte rendu${iv._crValide?' &#x1F512;':''}</div><div class="mv2" style="white-space:pre-wrap;font-size:12px;background:#F0FDFA;border-radius:8px;padding:8px 10px;border:1px solid #99F6E4;">${iv._crTexte||iv._compteRendu}</div></div>`:''}
-    ${iv.s==='terminee'&&(iv.agr===CU.l||iv._agr2===CU.l||hasAdministrativeAccount())?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 2px 0;">
+    ${iv.s==='terminee'&&(iv._crTexte||iv._compteRendu)&&(isInterventionReportChef(iv,CU.l)||(iv._equipage1||[]).some(function(e){return e.login===CU.l;})||(iv._equipage2||[]).some(function(e){return e.login===CU.l;})||hasAdministrativeAccount())?`<div class="mr"><div class="ml" style="color:#0F766E;">&#x1F4CB; Compte rendu${iv._crValide?' &#x1F512;':''}</div><div class="mv2" style="white-space:pre-wrap;font-size:12px;background:#F0FDFA;border-radius:8px;padding:8px 10px;border:1px solid #99F6E4;">${iv._crTexte||iv._compteRendu}</div></div>`:''}
+    ${iv.s==='terminee'&&(isInterventionReportChef(iv,CU.l)||hasAdministrativeAccount())?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 2px 0;">
       <button class="btn sm" style="background:#0F766E;color:#fff;border-color:#0F766E;" onclick="showCompteRenduModal('${iv.id}')">${iv._crValide?'&#x1F512; Voir':iv._crTexte||iv._compteRendu?'&#x270F;&#xFE0F; Modifier':'&#x1F4CB; Rédiger le compte rendu'}</button>
       <button class="btn sm" style="background:#C0392B;color:#fff;" onclick="voirRapportIntervention('${iv.id}')">&#x1F5A8; Rapport PDF</button>
     </div>`:``}    <div class="msep"></div>
