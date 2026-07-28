@@ -8846,10 +8846,15 @@ function genAutorisationDocx(ivId) {
 
 function editAdresse(ivId){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
-  document.getElementById('mt').textContent='Corriger l’adresse';
+  const communeOptions=(COM||[]).map(c=>typeof c==='string'?c:c.nom).filter(Boolean).sort((a,b)=>a.localeCompare(b,'fr')).map(c=>`<option value="${escHtml(c)}"></option>`).join('');
+  document.getElementById('mt').textContent='Corriger l’adresse et la commune';
   document.getElementById('mi').textContent=iv.id;
   document.getElementById('mb').innerHTML=`
     <div>
+      <div class="fg"><div class="fgl">Commune</div>
+        <input class="fi" type="text" id="edit-com-val" value="${escHtml(iv.com||'')}" list="edit-communes-list" placeholder="Saisir ou choisir une commune" autocomplete="off"/>
+        <datalist id="edit-communes-list">${communeOptions}</datalist>
+      </div>
       <div class="fg"><div class="fgl">Adresse</div>
         <input class="fi" type="text" id="edit-addr-val" value="${escHtml(iv.addr||'')}" placeholder="ex. 12 rue des Lilas"/>
       </div>
@@ -8866,13 +8871,16 @@ function editAdresse(ivId){
 }
 function saveAdresse(ivId){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  const commune=document.getElementById('edit-com-val').value.trim();
   const addr=document.getElementById('edit-addr-val').value.trim();
   const comp=document.getElementById('edit-addr-comp').value.trim();
   const err=document.getElementById('edit-addr-err');
-  if(!addr){err.style.display='block';err.textContent='L’adresse est obligatoire.';return;}
+  if(!commune||!addr){err.style.display='block';err.textContent='La commune et l’adresse sont obligatoires.';return;}
   const notes=[];
+  if((iv.com||'')!==commune)notes.push('Commune : '+(iv.com||'—')+' → '+commune);
   if((iv.addr||'')!==addr)notes.push('Adresse : '+(iv.addr||'—')+' → '+addr);
   if((iv.addrComp||'')!==comp)notes.push('Compl. adresse : '+(iv.addrComp||'—')+' → '+(comp||'—'));
+  iv.com=commune;
   iv.addr=addr;
   iv.addrComp=comp;
   pushTL(iv,'modif-adresse',CU.l);
@@ -10131,7 +10139,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260728-historique-frais-administratifs-61';
+const APP_VERSION='20260728-correction-commune-62';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
