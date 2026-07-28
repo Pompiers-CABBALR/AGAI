@@ -43,6 +43,69 @@ function sr(g,el,v){
 }
 function sz(el,v){document.querySelectorAll('.szo').forEach(o=>o.classList.remove('sel'));el.classList.add('sel');nidSize=v;}
 
+function findHistoricalAccountByLogin(login){
+  if(!login)return null;
+  const current=(USERS||[]).find(function(user){return user.l===login;});
+  if(current)return current;
+  const global=(GLOBAL_ACCOUNTS||[]).find(function(user){return user.l===login;});
+  if(global)return global;
+  for(const data of Object.values(CASERNE_DATA||{})){
+    const found=data&&Array.isArray(data.users)?data.users.find(function(user){return user.l===login;}):null;
+    if(found)return found;
+  }
+  return null;
+}
+
+function getHistoricalInterventionChiefs(iv){
+  const chiefs=[];
+  const seen=new Set();
+  const add=function(login,embedded){
+    if(!login||seen.has(login))return;
+    seen.add(login);
+    const account=findHistoricalAccountByLogin(login);
+    const name=account?fullName(account):embedded&&((embedded.nom||'')+' '+(embedded.prenom||'')).trim();
+    chiefs.push(name||login);
+  };
+  add(iv&&iv.agr,null);
+  add(iv&&iv._agr2,null);
+  [iv&&iv._equipage1,iv&&iv._equipage2].forEach(function(equipage){
+    (Array.isArray(equipage)?equipage:[]).forEach(function(member){
+      const role=String(member&&member.role||'').toLowerCase();
+      if(role==='ca'||role.includes('chef d')&&role.includes('agr'))add(member.login,member);
+    });
+  });
+  return chiefs;
+}
+
+function getHistoricalInterventionWhen(iv){
+  const timeline=Array.isArray(iv&&iv.tl)?iv.tl:[];
+  const departure=timeline.find(function(entry){return entry&&entry.s==='en-cours'&&entry.h;});
+  const stamp=String(departure&&departure.h||iv&&iv.h||'');
+  const digits=stamp.replace(/\D/g,'');
+  let date='Date non renseignée';
+  let stampTime='';
+  if(digits.length>=8)date=digits.slice(6,8)+'/'+digits.slice(4,6)+'/'+digits.slice(0,4);
+  if(digits.length>=12)stampTime=digits.slice(8,10)+':'+digits.slice(10,12);
+  const start=iv&&iv._hDebut||stampTime;
+  const end=iv&&iv._hFin||'';
+  return date+(start?' · '+start+(end?' → '+end:''):'');
+}
+
+function renderPreviousInterventionDetails(interventions){
+  const statusLabels={'en-attente':'En attente','selectionne':'Sélectionnée','en-cours':'En cours','terminee':'Terminée','avis-passage':'Avis de passage'};
+  return interventions.slice().sort(function(a,b){
+    return String(b.h||'').localeCompare(String(a.h||''));
+  }).map(function(iv){
+    const chiefs=getHistoricalInterventionChiefs(iv);
+    return '<div style="background:rgba(255,255,255,.72);border:1px solid #FCD34D;border-radius:7px;padding:7px 9px;margin-top:6px;">'
+      +'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">'
+      +'<strong style="font-size:11px;">&#x1F4C5; '+escHtml(getHistoricalInterventionWhen(iv))+'</strong>'
+      +'<span style="font-size:10px;background:#FFF7ED;color:#9A3412;border-radius:8px;padding:1px 6px;">'+escHtml(statusLabels[iv.s]||iv.s||'—')+'</span></div>'
+      +'<div style="font-size:11px;margin-top:3px;">&#x1F9D1;&#x200D;&#x1F692; Chef'+(chiefs.length>1?'s':'')+' d’agrès : <strong>'+escHtml(chiefs.length?chiefs.join(' · '):'Non renseigné')+'</strong></div>'
+      +'</div>';
+  }).join('');
+}
+
 // ── Détection : déjà une intervention (surtout avis de passage) à cette adresse pour le même type ──
 function checkDejaIntervenu(){
   const box=document.getElementById('deja-intervenu-alert');if(!box)return;
@@ -62,7 +125,7 @@ function checkDejaIntervenu(){
   } else {
     msg='&#x26A0;&#xFE0F; <strong>'+memes.length+' intervention'+(memes.length>1?'s':'')+'</strong> d\u00e9j\u00e0 enregistr\u00e9e'+(memes.length>1?'s':'')+' \u00e0 cette adresse pour «&nbsp;'+escHtml(nat)+'&nbsp;».';
   }
-  box.innerHTML=msg;
+  box.innerHTML=msg+'<div style="max-height:190px;overflow-y:auto;margin-top:6px;padding-right:2px;">'+renderPreviousInterventionDetails(memes)+'</div>';
   box.style.display='block';
 }
 function cv(){
