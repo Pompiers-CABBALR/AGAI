@@ -173,9 +173,17 @@ function rStatsContent(){
 
 // ── Helper taux ──
 function getStatsTaux(){
-  const defaults={interJour:100,interDimFerie:150,interNuit:200,actSvc:75,fmpaStag:75,fmpaForm:100,formStag:100,formForm:100,astrTel:9,exportAdmins:false,exportRoundQuarter:true};
+  const defaults={interJour:100,interDimFerie:150,interNuit:200,sdisJour:100,sdisDimFerie:150,sdisNuit:200,renfJour:100,renfDimFerie:150,renfNuit:200,actSvc:75,fmpaStag:75,fmpaForm:100,formRate:100,formStag:100,formForm:100,fraisAdmin:100,astrTel:5,exportAdmins:false,exportRoundQuarter:true,rateSchemaVersion:2};
   const saved=CURRENT_CASERNE_ID&&CASERNE_DATA[CURRENT_CASERNE_ID]&&CASERNE_DATA[CURRENT_CASERNE_ID].statsTaux;
-  return Object.assign({},defaults,saved||{});
+  const out=Object.assign({},defaults,saved||{});
+  if(saved){
+    if(saved.sdisJour===undefined){out.sdisJour=out.interJour;out.sdisDimFerie=out.interDimFerie;out.sdisNuit=out.interNuit;}
+    if(saved.renfJour===undefined){out.renfJour=out.interJour;out.renfDimFerie=out.interDimFerie;out.renfNuit=out.interNuit;}
+    if(saved.formRate===undefined)out.formRate=saved.formForm??saved.fmpaForm??100;
+    if(saved.fraisAdmin===undefined)out.fraisAdmin=100;
+    if(saved.rateSchemaVersion!==2)out.astrTel=5;
+  }
+  return out;
 }
 function saveStatsTaux(t){
   (CASERNES||[]).forEach(function(c){
@@ -208,7 +216,7 @@ function showStatsTauxParams(){
     ${row('FMPA — formateurs','fmpaForm',t.fmpaForm??100,'% des heures réelles')}
     ${row('Formations — stagiaires','formStag',t.formStag??100,'% des heures réelles')}
     ${row('Formations — formateurs','formForm',t.formForm??100,'% des heures réelles')}
-    ${row('Astreinte téléphonique','astrTel',t.astrTel??9,'% des heures réelles')}
+    ${row('Astreinte téléphonique','astrTel',t.astrTel??5,'% des heures réelles')}
     <label style="display:flex;align-items:flex-start;gap:10px;background:#F0FDF4;border:1px solid #86EFAC;border-radius:9px;padding:10px 12px;margin:12px 0;cursor:pointer;">
       <input type="checkbox" id="export-admins-visible" ${t.exportAdmins===true?'checked':''} style="width:18px;height:18px;accent-color:#166534;margin-top:1px;"/>
       <span><strong style="font-size:12px;color:#166534;">Autoriser l’export mensuel aux administrateurs</strong><br><span style="font-size:11px;color:var(--t2);">Désactivé : seul le superadmin voit et utilise le bouton d’export.</span></span>
@@ -227,7 +235,8 @@ function showStatsTauxParams(){
 }
 function applyStatsTaux(){
   const get=(id)=>Math.max(0,Math.min(200,parseInt(document.getElementById('taux-'+id)?.value)||0));
-  saveStatsTaux({interJour:get('interJour'),interDimFerie:get('interDimFerie'),interNuit:get('interNuit'),actSvc:get('actSvc'),fmpaStag:get('fmpaStag'),fmpaForm:get('fmpaForm'),formStag:get('formStag'),formForm:get('formForm'),astrTel:get('astrTel'),exportAdmins:document.getElementById('export-admins-visible')?.checked===true,exportRoundQuarter:document.getElementById('export-round-quarter')?.checked!==false});
+  const next=Object.assign({},getStatsTaux(),{interJour:get('interJour'),interDimFerie:get('interDimFerie'),interNuit:get('interNuit'),actSvc:get('actSvc'),fmpaStag:get('fmpaStag'),fmpaForm:get('fmpaForm'),formStag:get('formStag'),formForm:get('formForm'),formRate:get('formForm'),astrTel:get('astrTel'),exportAdmins:document.getElementById('export-admins-visible')?.checked===true,exportRoundQuarter:document.getElementById('export-round-quarter')?.checked!==false,rateSchemaVersion:2});
+  saveStatsTaux(next);
   cM();
   showToast('Taux enregistrés ✓','success');
 }
@@ -415,13 +424,14 @@ function getJoursFeries(annee){
 
 // ── Calcule les minutes par taux pour une intervention ──
 // Retourne {t100, t150, t200} en minutes
-function getInterventionTauxConfigFor(currentDate,hour){
+function getInterventionTauxConfigFor(currentDate,hour,reportType){
   const t=getStatsTaux();
-  if(hour<7||hour>=22)return {categorie:'nuit',valeur:t.interNuit};
+  const prefix=reportType==='SDIS'?'sdis':reportType==='RENF'?'renf':'inter';
+  if(hour<7||hour>=22)return {categorie:'nuit',valeur:t[prefix+'Nuit']};
   const iso=currentDate.getFullYear()+'-'+pad(currentDate.getMonth()+1)+'-'+pad(currentDate.getDate());
   if(currentDate.getDay()===0||getJoursFeries(currentDate.getFullYear()).has(iso))
-    return {categorie:'dimFerie',valeur:t.interDimFerie};
-  return {categorie:'jour',valeur:t.interJour};
+    return {categorie:'dimFerie',valeur:t[prefix+'DimFerie']};
+  return {categorie:'jour',valeur:t[prefix+'Jour']};
 }
 function calcTauxIntervention(iv){
   if(!iv._hDebut||!iv._hFin||!iv.h)return null;
@@ -447,7 +457,7 @@ function calcTauxIntervention(iv){
 
     // Calculer la date réelle de cette minute
     const curDate=new Date(yr,mo,da+dayOff);
-    const taux=getInterventionTauxConfigFor(curDate,hOfDay);
+    const taux=getInterventionTauxConfigFor(curDate,hOfDay,adminExportReportType(iv));
     if(taux.categorie==='jour')t100++;
     else if(taux.categorie==='dimFerie')t150++;
     else t200++;
@@ -528,7 +538,7 @@ function calcTauxAgentIV(iv,login){
       const minOfDay=cur%1440;
       const hOfDay=Math.floor(minOfDay/60);
       const curDate=new Date(yr,mo,da+dayOff);
-      const taux=getInterventionTauxConfigFor(curDate,hOfDay);
+      const taux=getInterventionTauxConfigFor(curDate,hOfDay,adminExportReportType(iv));
       if(taux.categorie==='jour')t100++;else if(taux.categorie==='dimFerie')t150++;else t200++;
       cur++;
     }
@@ -957,9 +967,9 @@ function adminExportDuration(value,hd,hf){
   return hd&&hf?dureeHHMM(hd,hf):'';
 }
 function adminExportReportType(iv){
-  if(iv&&iv._isRenfort)return 'RENF';
-  if(iv&&iv._sdis)return 'SDIS';
-  return 'INTER';
+  if(iv&&iv._isRenfort)return reportTypeCode('renf');
+  if(iv&&iv._sdis)return reportTypeCode('sdis');
+  return reportTypeCode('inter');
 }
 function adminExportMinutesHHMM(minutes){
   const total=Math.max(0,parseInt(minutes,10)||0);
@@ -990,7 +1000,7 @@ function adminExportInterventionRates(iv){
   if([yr,mo,da,debut[0],debut[1],fin[0],fin[1]].some(function(n){return !Number.isFinite(n);}))return fallback;
   let startMin=debut[0]*60+debut[1],endMin=fin[0]*60+fin[1];
   if(endMin===startMin){
-    const tauxZero=getInterventionTauxConfigFor(new Date(yr,mo,da),debut[0]).valeur;
+    const tauxZero=getInterventionTauxConfigFor(new Date(yr,mo,da),debut[0],adminExportReportType(iv)).valeur;
     return {taux1:tauxZero+'%',heures1:'00:00',taux2:'',heures2:''};
   }
   if(endMin<startMin)endMin+=1440;
@@ -998,7 +1008,7 @@ function adminExportInterventionRates(iv){
   for(let cur=startMin;cur<endMin;cur++){
     const dayOff=Math.floor(cur/1440),minOfDay=cur%1440,hour=Math.floor(minOfDay/60);
     const currentDate=new Date(yr,mo,da+dayOff);
-    const taux=getInterventionTauxConfigFor(currentDate,hour).valeur;
+    const taux=getInterventionTauxConfigFor(currentDate,hour,adminExportReportType(iv)).valeur;
     totals[taux]=(totals[taux]||0)+1;
     if(!ordre.includes(taux))ordre.push(taux);
   }
@@ -1051,16 +1061,26 @@ function adminExportRegisterDateKey(row){
   const m=text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   return m?m[3]+m[2]+m[1]:text;
 }
-function adminExportIsFraisAdministratifs(a){
-  return /^frais administratifs\b/i.test(String(a&&a.type||'').trim());
+function adminExportActivityCategory(a){
+  if(a&&a.categorie)return a.categorie;
+  const def=ACT_TYPES.find(t=>t.l===String(a&&a.type||''));
+  if(def&&def.cat)return def.cat;
+  return defaultActivityCategory(a&&a.type);
+}
+function adminExportActivityReportType(a){
+  const category=adminExportActivityCategory(a);
+  if(category==='Frais administratifs')return reportTypeCode('fa');
+  if(category==='D\u00e9placements')return reportTypeCode('depl');
+  return reportTypeCode('ac');
 }
 function adminExportActivityRegisterRow(a,exportRates){
   const agents=[a.auteur].concat(a.participants||[]).filter(function(login,index,list){
     return login&&list.indexOf(login)===index;
   });
-  const isFraisAdmin=adminExportIsFraisAdministratifs(a);
+  const reportType=adminExportActivityReportType(a);
+  const rate=reportType===reportTypeCode('fa')?exportRates.fraisAdmin:reportType===reportTypeCode('depl')?'':exportRates.actSvc;
   return adminExportRegisterRow({
-    4:adminExportDateIso(a.date),5:isFraisAdmin?'FA':'AC',6:(isFraisAdmin?100:exportRates.actSvc)+'%',
+    4:adminExportDateIso(a.date),5:reportType,6:rate===''?'':rate+'%',
     7:adminExportDuration(a.duree,a.hDebut,a.hFin),11:a.type||'',
     16:a.hDebut||'',19:a.hFin||''
   },adminExportPeople(agents));
@@ -1076,9 +1096,9 @@ function adminExportFmpaRegisterRows(f,exportRates){
       16:f.hDebut||'',19:f.hFin||''
     },personnes));
   };
-  if(stagiaires.length)push('Manoeuvre mensuel','AC',exportRates.fmpaStag,stagiaires);
-  if(formateurs.length)push('Formateur','FORM',exportRates.fmpaForm,formateurs);
-  if(!stagiaires.length&&!formateurs.length)push('Manoeuvre mensuel','AC',exportRates.fmpaStag,[]);
+  if(stagiaires.length)push('Manoeuvre mensuel',reportTypeCode('ac'),exportRates.actSvc,stagiaires);
+  if(formateurs.length)push('Formateur',reportTypeCode('form'),exportRates.formRate,formateurs);
+  if(!stagiaires.length&&!formateurs.length)push('Manoeuvre mensuel',reportTypeCode('ac'),exportRates.actSvc,[]);
   return rows;
 }
 function adminExportFormationRegisterRow(f,nature,rapport,taux){
@@ -1091,7 +1111,7 @@ function adminExportFormationRegisterRow(f,nature,rapport,taux){
 }
 function adminExportAstrTelRegisterRow(a,period,exportRates){
   return adminExportRegisterRow({
-    4:adminExportDateIso(period.end),5:'AST',6:exportRates.astrTel+'%',
+    4:adminExportDateIso(period.end),5:reportTypeCode('ast'),6:exportRates.astrTel+'%',
     7:astrTelFormatHeures(a.heures)
   },adminExportPeople([a.login]));
 }
@@ -1180,10 +1200,10 @@ function exportAdminMonthlyExcel(){
       formRows.push.apply(formRows,adminExportFmpaRegisterRows(f,exportRates));
     });
     data.stag.forEach(function(f){
-      formRows.push(adminExportFormationRegisterRow(f,'Formation','FOR',exportRates.formStag));
+      formRows.push(adminExportFormationRegisterRow(f,'Formation',reportTypeCode('for'),exportRates.formStag));
     });
     data.form.forEach(function(f){
-      formRows.push(adminExportFormationRegisterRow(f,'Formateur','FORM',exportRates.formForm));
+      formRows.push(adminExportFormationRegisterRow(f,'Formateur',reportTypeCode('form'),exportRates.formRate));
     });
     const astrTelRows=data.astreintesTel.map(function(a){
       return adminExportAstrTelRegisterRow(a,period,exportRates);

@@ -712,6 +712,7 @@ function _buildDataObject(){
     CASERNE_DATA:{},
     NAT:JSON.parse(JSON.stringify(NAT)),
     ACT_TYPES:JSON.parse(JSON.stringify(ACT_TYPES)),
+    REPORT_TYPES:JSON.parse(JSON.stringify(REPORT_TYPES)),
     COM:JSON.parse(JSON.stringify(COM)),
     ENGIN_TYPES:JSON.parse(JSON.stringify(ENGIN_TYPES)),
     APL_COUNTER:{...APL_COUNTER},
@@ -814,6 +815,8 @@ function _applyDataObject(data){
   }
   if(data.NAT&&data.NAT.length){NAT.length=0;data.NAT.forEach(n=>NAT.push(n));}
   if(data.ACT_TYPES&&data.ACT_TYPES.length){ACT_TYPES.length=0;data.ACT_TYPES.forEach(a=>ACT_TYPES.push(a));}
+  ACT_TYPES.forEach(a=>{if(!a.cat)a.cat=defaultActivityCategory(a.l);});
+  if(data.REPORT_TYPES&&data.REPORT_TYPES.length){REPORT_TYPES.length=0;data.REPORT_TYPES.forEach(r=>REPORT_TYPES.push(r));}
   if(data.ENGIN_TYPES&&data.ENGIN_TYPES.length){ENGIN_TYPES.length=0;data.ENGIN_TYPES.forEach(t=>ENGIN_TYPES.push(t));}
   if(data.COM&&data.COM.length){COM.length=0;data.COM.forEach(c=>COM.push(c));}
   if(data.APL_COUNTER)Object.assign(APL_COUNTER,data.APL_COUNTER);
@@ -945,6 +948,7 @@ async function _jbPush(data){
     }
     merged.NAT=data.NAT;
     merged.ACT_TYPES=data.ACT_TYPES;
+    merged.REPORT_TYPES=data.REPORT_TYPES;
     merged.COM=data.COM;
     merged.APL_COUNTER=Object.assign({},current.APL_COUNTER||{},data.APL_COUNTER||{});
     merged.INT_GLOBAL_COUNTER=Object.assign({},current.INT_GLOBAL_COUNTER||{},data.INT_GLOBAL_COUNTER||{});
@@ -1222,6 +1226,7 @@ function _sbSplitRows(data){
     GLOBAL_ACCOUNTS: data.GLOBAL_ACCOUNTS,
     NAT: data.NAT,
     ACT_TYPES: data.ACT_TYPES,
+    REPORT_TYPES: data.REPORT_TYPES,
     COM: data.COM,
     ENGIN_TYPES: data.ENGIN_TYPES,
     APL_COUNTER: data.APL_COUNTER,
@@ -1258,7 +1263,7 @@ function _sbAssembleRows(rows){
       const g = r.data || {};
       Object.assign(data, {
         v: g.v, CASERNES: g.CASERNES, GLOBAL_ACCOUNTS: g.GLOBAL_ACCOUNTS,
-        NAT: g.NAT, ACT_TYPES: g.ACT_TYPES, COM: g.COM, ENGIN_TYPES: g.ENGIN_TYPES, APL_COUNTER: g.APL_COUNTER,
+        NAT: g.NAT, ACT_TYPES: g.ACT_TYPES, REPORT_TYPES: g.REPORT_TYPES, COM: g.COM, ENGIN_TYPES: g.ENGIN_TYPES, APL_COUNTER: g.APL_COUNTER,
         INT_GLOBAL_COUNTER: g.INT_GLOBAL_COUNTER, INT_CAS_COUNTER: g.INT_CAS_COUNTER,
         PILP_COUNTER: g.PILP_COUNTER, DISPOS_UNLOCKED: g.DISPOS_UNLOCKED,
         DISPO_REQUESTS: g.DISPO_REQUESTS, LOGIN_HISTORY: g.LOGIN_HISTORY,
@@ -1552,7 +1557,7 @@ function _rcSplitAll(data){
   let rows = [];
   // Ligne globale unique (compteurs, comptes, NAT/COM, etc.) — type 'global'
   rows.push({ id:'_GLOBAL'+RC_SEP+'global'+RC_SEP+'main', caserne:'_GLOBAL', type:'global', data:{
-    v:data.v, CASERNES:data.CASERNES, GLOBAL_ACCOUNTS:data.GLOBAL_ACCOUNTS, NAT:data.NAT, ACT_TYPES:data.ACT_TYPES, COM:data.COM, ENGIN_TYPES:data.ENGIN_TYPES,
+    v:data.v, CASERNES:data.CASERNES, GLOBAL_ACCOUNTS:data.GLOBAL_ACCOUNTS, NAT:data.NAT, ACT_TYPES:data.ACT_TYPES, REPORT_TYPES:data.REPORT_TYPES, COM:data.COM, ENGIN_TYPES:data.ENGIN_TYPES,
     APL_COUNTER:data.APL_COUNTER, INT_GLOBAL_COUNTER:data.INT_GLOBAL_COUNTER, INT_CAS_COUNTER:data.INT_CAS_COUNTER,
     PILP_COUNTER:data.PILP_COUNTER, DISPOS_UNLOCKED:data.DISPOS_UNLOCKED, DISPO_REQUESTS:data.DISPO_REQUESTS,
     LOGIN_HISTORY:data.LOGIN_HISTORY,
@@ -1728,7 +1733,7 @@ async function _rcPull(silent){
       if(r.caserne==='_GLOBAL'){
         if(r.type==='global' && !r.deleted){
           const g=r.data||{};
-          Object.assign(data, {v:g.v, CASERNES:g.CASERNES, GLOBAL_ACCOUNTS:g.GLOBAL_ACCOUNTS, NAT:g.NAT, ACT_TYPES:g.ACT_TYPES, COM:g.COM, ENGIN_TYPES:g.ENGIN_TYPES,
+          Object.assign(data, {v:g.v, CASERNES:g.CASERNES, GLOBAL_ACCOUNTS:g.GLOBAL_ACCOUNTS, NAT:g.NAT, ACT_TYPES:g.ACT_TYPES, REPORT_TYPES:g.REPORT_TYPES, COM:g.COM, ENGIN_TYPES:g.ENGIN_TYPES,
             APL_COUNTER:g.APL_COUNTER, INT_GLOBAL_COUNTER:g.INT_GLOBAL_COUNTER, INT_CAS_COUNTER:g.INT_CAS_COUNTER,
             PILP_COUNTER:g.PILP_COUNTER, DISPOS_UNLOCKED:g.DISPOS_UNLOCKED, DISPO_REQUESTS:g.DISPO_REQUESTS, LOGIN_HISTORY:g.LOGIN_HISTORY,
             LOGIN_HISTORY_DELETED:g.LOGIN_HISTORY_DELETED});

@@ -31,18 +31,37 @@ let NAT=[
   {l:"Chute d'arbre",i:"&#x1F332;",g:"Opérations diverses"},{l:"Congère de neige",i:"❄️",g:"Opérations diverses"},{l:"Bâchage",i:"&#x1F3E0;",g:"Opérations diverses"},{l:"Nettoyage de la chaussée",i:"&#x1F6E3;️",g:"Opérations diverses"},{l:"Recherche d'objets",i:"&#x1F50D;",g:"Opérations diverses"},{l:"Reconnaissance diverse",i:"&#x1F4CB;",g:"Opérations diverses"},{l:"Autre",i:"&#x1F4CB;",g:"Opérations diverses"},
 ];
 let ACT_TYPES=[
-  {l:'Activit\u00e9 de service',i:'\uD83D\uDCCB'},
-  {l:'R\u00e9union',i:'\uD83D\uDC65'},
-  {l:'C\u00e9r\u00e9monie',i:'\uD83C\uDF96\uFE0F'},
-  {l:'Contr\u00f4le des poteaux d\u2019incendie',i:'\uD83D\uDEA7'},
-  {l:'D\u00e9placement divers',i:'\uD83D\uDE90'},
-  {l:'D\u00e9placement vers le garage',i:'\uD83C\uDFDB\uFE0F'},
-  {l:'Entretien casernement, v\u00e9hicules',i:'\uD83D\uDD27'},
-  {l:'Plein des v\u00e9hicules',i:'\u26FD'},
-  {l:'Frais administratifs \u2014 Chef de centre',i:'\uD83D\uDDC2\uFE0F'},
-  {l:'Frais administratifs \u2014 Adjoint au chef de centre',i:'\uD83D\uDDC2\uFE0F'},
-  {l:'Frais administratifs \u2014 Chef de corps',i:'\uD83D\uDDC2\uFE0F'},
-  {l:'Frais administratifs \u2014 Responsable des formations',i:'\uD83C\uDF93'},
+  {l:'Activit\u00e9 de service',i:'\uD83D\uDCCB',cat:'Activit\u00e9s de service'},
+  {l:'R\u00e9union',i:'\uD83D\uDC65',cat:'Activit\u00e9s de service'},
+  {l:'C\u00e9r\u00e9monie',i:'\uD83C\uDF96\uFE0F',cat:'Activit\u00e9s de service'},
+  {l:'Contr\u00f4le des poteaux d\u2019incendie',i:'\uD83D\uDEA7',cat:'Activit\u00e9s de service'},
+  {l:'D\u00e9placement divers',i:'\uD83D\uDE90',cat:'D\u00e9placements'},
+  {l:'D\u00e9placement vers le garage',i:'\uD83C\uDFDB\uFE0F',cat:'D\u00e9placements'},
+  {l:'Entretien casernement, v\u00e9hicules',i:'\uD83D\uDD27',cat:'Logistique et entretien'},
+  {l:'Plein des v\u00e9hicules',i:'\u26FD',cat:'Logistique et entretien'},
+  {l:'Frais administratifs \u2014 Chef de centre',i:'\uD83D\uDDC2\uFE0F',cat:'Frais administratifs'},
+  {l:'Frais administratifs \u2014 Adjoint au chef de centre',i:'\uD83D\uDDC2\uFE0F',cat:'Frais administratifs'},
+  {l:'Frais administratifs \u2014 Chef de corps',i:'\uD83D\uDDC2\uFE0F',cat:'Frais administratifs'},
+  {l:'Frais administratifs \u2014 Responsable des formations',i:'\uD83C\uDF93',cat:'Frais administratifs'},
+];
+const ACT_CATEGORIES=['Activit\u00e9s de service','D\u00e9placements','Logistique et entretien','Frais administratifs'];
+function defaultActivityCategory(label){
+  const text=String(label||'').trim();
+  if(/^frais administratifs\b/i.test(text))return 'Frais administratifs';
+  if(/^d\u00e9placement\b/i.test(text))return 'D\u00e9placements';
+  if(/^(entretien|plein des v\u00e9hicules)/i.test(text))return 'Logistique et entretien';
+  return 'Activit\u00e9s de service';
+}
+let REPORT_TYPES=[
+  {k:'inter',l:'Rapport d\u2019intervention intercommunale',code:'INTER'},
+  {k:'sdis',l:'Rapport d\u2019intervention SDIS',code:'SDIS'},
+  {k:'ac',l:'Rapport d\u2019activit\u00e9 de service',code:'AC'},
+  {k:'depl',l:'Rapport pour frais de d\u00e9placement',code:'DEPL'},
+  {k:'for',l:'Rapport pour formation',code:'FOR'},
+  {k:'form',l:'Rapport pour formateur',code:'FORM'},
+  {k:'fa',l:'Rapport pour frais administratifs',code:'FA'},
+  {k:'ast',l:'Rapport d\u2019astreinte',code:'AST'},
+  {k:'renf',l:'Rapport renfort intercommunale',code:'RENF'}
 ];
 const ACT_ICON_LIBRARY=[
   {i:'\uD83D\uDCCB',l:'Activit\u00e9 de service'},

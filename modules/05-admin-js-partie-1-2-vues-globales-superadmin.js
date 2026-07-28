@@ -385,7 +385,7 @@ function renderSuperAdmin(){
         <button class="btn" style="font-size:12px;" onclick="saAccederChefCorps()">&#x1F396;️ Vue chef de corps</button>
         <button class="btn" style="font-size:12px;" onclick="showReferentiel()">&#x1F4CB; Référentiel</button>
         <button class="btn" style="font-size:12px;" onclick="showAstrTelParams()">📞 Paramètres astreinte tél.</button>
-        <button class="btn" style="font-size:12px;" onclick="showStatsTauxParams()">📊 Taux des heures et exports</button>
+        <button class="btn" style="font-size:12px;" onclick="showReferentiel('taux')">📊 Référentiels rapports et taux</button>
         <button class="btn pr" onclick="addCaserne()">+ Nouvelle caserne</button>
         <button class="btn pr" onclick="addSuperAdmin()">+ Super Admin</button>
       </div>
@@ -1147,20 +1147,23 @@ async function saveAdminCaserne(cid){
   saveData();cM();renderSuperAdmin();
 }
 // ── Référentiel Communes + Natures ──
-function showReferentiel(){
+function showReferentiel(initialTab){
   const body=document.getElementById('gv-body');
   body.innerHTML=`
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
       <button class="btn sm" onclick="renderSuperAdmin()">← Retour</button>
       <h2 style="font-size:16px;font-weight:700;">&#x1F4CB; Référentiel</h2>
-      <div style="display:flex;gap:6px;margin-left:auto;">
+      <div style="display:flex;gap:6px;margin-left:auto;flex-wrap:wrap;">
         <button id="ref-btn-communes" class="btn pr" onclick="showRefTab('communes',this)">&#x1F5FA;️ Communes</button>
         <button id="ref-btn-natures" class="btn" onclick="showRefTab('natures',this)">&#x1F3F7;️ Natures</button>
         <button id="ref-btn-activites" class="btn" onclick="showRefTab('activites',this)">📋 Activités de service</button>
+        <button id="ref-btn-rapports" class="btn" onclick="showRefTab('rapports',this)">📄 Rapports</button>
+        <button id="ref-btn-taux" class="btn" onclick="showRefTab('taux',this)">📊 Taux</button>
       </div>
     </div>
     <div id="ref-body"></div>`;
-  showRefTab('communes',document.getElementById('ref-btn-communes'));
+  const tab=initialTab||'communes';
+  showRefTab(tab,document.getElementById('ref-btn-'+tab));
 }
 function showRefTab(tab,btn){
   document.querySelectorAll('[id^="ref-btn-"]').forEach(b=>{b.className='btn';});
@@ -1168,6 +1171,8 @@ function showRefTab(tab,btn){
   if(tab==='communes')renderRefCommunes();
   else if(tab==='natures')renderRefNatures();
   else if(tab==='activites')renderRefActivites();
+  else if(tab==='rapports')renderRefRapports();
+  else if(tab==='taux')renderRefTaux();
 }
 function renderRefCommunes(){
   const coms=COM.map(c=>typeof c==='string'?{nom:c,secteur:''}:c);
@@ -1263,10 +1268,15 @@ function actIconOptions(selected){
   if(selected&&!icons.some(x=>x.i===selected))icons.unshift({i:selected,l:'Ic\u00f4ne personnalis\u00e9e'});
   return icons.map(x=>`<option value="${escHtml(x.i)}"${x.i===selected?' selected':''}>${x.i} ${escHtml(x.l)}</option>`).join('');
 }
+function actCategoryOptions(selected){
+  const value=selected||'Activit\u00e9s de service';
+  return ACT_CATEGORIES.map(cat=>`<option value="${escHtml(cat)}"${cat===value?' selected':''}>${escHtml(cat)}</option>`).join('');
+}
 function renderRefActivites(){
   const rows=ACT_TYPES.map((a,i)=>`<tr style="border-bottom:1px solid #f0f0f0;">
     <td style="padding:5px 8px;"><select class="fi" style="width:190px;font-size:12px;" onchange="updateActType(${i},'i',this.value)">${actIconOptions(a.i)}</select></td>
     <td style="padding:5px 8px;"><input type="text" value="${a.l.replace(/"/g,'&quot;')}" style="width:100%;padding:3px 7px;border:1px solid var(--brd);border-radius:5px;font-size:12px;font-weight:500;" onchange="updateActType(${i},'l',this.value)"/></td>
+    <td style="padding:5px 8px;"><select class="fi" style="width:190px;font-size:12px;" onchange="updateActType(${i},'cat',this.value)">${actCategoryOptions(a.cat)}</select></td>
     <td style="padding:5px 6px;text-align:center;"><button class="btn sm" style="font-size:10px;color:#E24B4A;" onclick="delActType(${i})">&#x2715;</button></td>
   </tr>`).join('');
   document.getElementById('ref-body').innerHTML=`
@@ -1276,6 +1286,7 @@ function renderRefActivites(){
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
           <select id="new-act-ico" class="fi" style="width:190px;">${actIconOptions('\uD83D\uDCCB')}</select>
           <input type="text" id="new-act-nom" placeholder="Libell\u00e9 de l\u2019activit\u00e9" class="fi" style="width:240px;"/>
+          <select id="new-act-cat" class="fi" style="width:190px;">${actCategoryOptions('Activit\u00e9s de service')}</select>
           <button class="btn pr sm" onclick="addActType()">+ Ajouter</button>
         </div>
       </div>
@@ -1283,6 +1294,7 @@ function renderRefActivites(){
         <thead><tr style="background:#f5f5f5;">
           <th style="padding:6px 10px;width:190px;text-align:left;">Ic\u00f4ne</th>
           <th style="padding:6px 10px;text-align:left;">Libell\u00e9</th>
+          <th style="padding:6px 10px;width:190px;text-align:left;">Cat\u00e9gorie</th>
           <th style="padding:6px 10px;width:36px;"></th>
         </tr></thead><tbody>${rows}</tbody>
       </table></div>
@@ -1293,15 +1305,17 @@ function updateActType(index,field,value){
   const next=String(value||'').trim();
   if(field==='l'){if(!next){renderRefActivites();return;}item.l=next;}
   else if(field==='i')item.i=next||'\uD83D\uDCCB';
+  else if(field==='cat')item.cat=ACT_CATEGORIES.includes(next)?next:'Activit\u00e9s de service';
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);
 }
 function addActType(){
   const l=document.getElementById('new-act-nom').value.trim();
   const i=document.getElementById('new-act-ico').value||'\uD83D\uDCCB';
+  const cat=document.getElementById('new-act-cat').value||'Activit\u00e9s de service';
   if(!l)return;
   if(ACT_TYPES.find(a=>a.l.toLocaleLowerCase('fr')===l.toLocaleLowerCase('fr'))){showToast('Cette activit\u00e9 existe d\u00e9j\u00e0.','info');return;}
-  ACT_TYPES.push({l,i});
+  ACT_TYPES.push({l,i,cat});
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);
   document.getElementById('new-act-nom').value='';
@@ -1313,6 +1327,89 @@ function delActType(i){confirmModal('Supprimer cette activit\u00e9 ?',function()
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);renderRefActivites();
 });}
+
+function reportTypeCode(key){
+  const item=REPORT_TYPES.find(r=>r.k===key);
+  return item?item.code:String(key||'').toUpperCase();
+}
+function renderRefRapports(){
+  const rows=REPORT_TYPES.map((r,i)=>`<tr style="border-bottom:1px solid #f0f0f0;">
+    <td style="padding:7px 8px;"><input class="fi" value="${escHtml(r.l)}" onchange="updateReportTypeLabel(${i},this.value)" style="width:100%;"/></td>
+    <td style="padding:7px 8px;width:150px;"><span style="display:inline-block;min-width:70px;text-align:center;font-family:monospace;font-weight:700;background:#F3F4F6;border:1px solid var(--brd);border-radius:7px;padding:6px 10px;">${escHtml(r.code)}</span></td>
+  </tr>`).join('');
+  document.getElementById('ref-body').innerHTML=`<div style="background:#fff;border-radius:12px;padding:16px;">
+    <div style="font-size:13px;font-weight:700;margin-bottom:4px;">R\u00e9f\u00e9rentiel des rapports</div>
+    <div style="font-size:11px;color:var(--t2);margin-bottom:12px;">Les libell\u00e9s sont modifiables. Les codes restent fixes afin de garantir la coh\u00e9rence des exports.</div>
+    <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">
+      <thead><tr style="background:#f5f5f5;"><th style="padding:7px 8px;text-align:left;">Rapports</th><th style="padding:7px 8px;text-align:left;width:150px;">Types_Rapports</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+  </div>`;
+}
+function updateReportTypeLabel(index,value){
+  const item=REPORT_TYPES[index],next=String(value||'').trim();
+  if(!item||!next){renderRefRapports();return;}
+  item.l=next;
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);
+}
+function reportRateDefinitions(){
+  return [
+    {label:'Taux de base',id:'sdisJour',code:'SDIS',def:100},
+    {label:'Heures de nuits',id:'sdisNuit',code:'SDIS',def:200},
+    {label:'Dimanches/jours f\u00e9ri\u00e9s',id:'sdisDimFerie',code:'SDIS',def:150},
+    {label:'Taux de base',id:'interJour',code:'INTER',def:100},
+    {label:'Heures de nuits',id:'interNuit',code:'INTER',def:200},
+    {label:'Dimanches/jours f\u00e9ri\u00e9s',id:'interDimFerie',code:'INTER',def:150},
+    {label:'Taux de base',id:'renfJour',code:'RENF',def:100},
+    {label:'Heures de nuits',id:'renfNuit',code:'RENF',def:200},
+    {label:'Dimanches/jours f\u00e9ri\u00e9s',id:'renfDimFerie',code:'RENF',def:150},
+    {label:'Activit\u00e9s de service',id:'actSvc',code:'AC',def:75},
+    {label:'Formateurs',id:'formRate',code:'FORM',def:100},
+    {label:'Formations',id:'formStag',code:'FOR',def:100},
+    {label:'Frais administratifs',id:'fraisAdmin',code:'FA',def:100},
+    {label:'Astreintes t\u00e9l\u00e9phoniques',id:'astrTel',code:'AST',def:5}
+  ];
+}
+function renderRefTaux(){
+  const t=getStatsTaux();
+  const rows=reportRateDefinitions().map(r=>`<tr style="border-bottom:1px solid #f0f0f0;">
+    <td style="padding:6px 8px;">${escHtml(r.label)}</td>
+    <td style="padding:6px 8px;width:130px;"><div style="display:flex;align-items:center;gap:5px;"><input class="fi" type="number" id="ref-rate-${r.id}" value="${t[r.id]??r.def}" min="0" max="200" step="1" style="width:80px;"/><span>%</span></div></td>
+    <td style="padding:6px 8px;width:150px;font-family:monospace;font-weight:700;">${escHtml(r.code)}</td>
+  </tr>`).join('');
+  document.getElementById('ref-body').innerHTML=`<div style="background:#fff;border-radius:12px;padding:16px;">
+    <div style="font-size:13px;font-weight:700;margin-bottom:4px;">R\u00e9f\u00e9rentiel des taux</div>
+    <div style="font-size:11px;color:var(--t2);margin-bottom:12px;">Les taux enregistr\u00e9s s\u2019appliquent \u00e0 toutes les casernes et aux exports mensuels.</div>
+    <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">
+      <thead><tr style="background:#f5f5f5;"><th style="padding:7px 8px;text-align:left;">D\u00e9signation</th><th style="padding:7px 8px;text-align:left;width:130px;">Taux</th><th style="padding:7px 8px;text-align:left;width:150px;">Types_Rapports</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+    <label style="display:flex;align-items:flex-start;gap:10px;background:#F0FDF4;border:1px solid #86EFAC;border-radius:9px;padding:10px 12px;margin:14px 0 8px;cursor:pointer;">
+      <input type="checkbox" id="ref-export-admins" ${t.exportAdmins===true?'checked':''} style="width:18px;height:18px;accent-color:#166534;margin-top:1px;"/>
+      <span><strong style="font-size:12px;color:#166534;">Autoriser l\u2019export mensuel aux administrateurs</strong></span>
+    </label>
+    <label style="display:flex;align-items:flex-start;gap:10px;background:#EFF6FF;border:1px solid #93C5FD;border-radius:9px;padding:10px 12px;margin:8px 0 14px;cursor:pointer;">
+      <input type="checkbox" id="ref-export-round" ${t.exportRoundQuarter!==false?'checked':''} style="width:18px;height:18px;accent-color:#1D4ED8;margin-top:1px;"/>
+      <span><strong style="font-size:12px;color:#1D4ED8;">Arrondir les interventions non SDIS au quart d\u2019heure sup\u00e9rieur</strong></span>
+    </label>
+    <button class="btn pr" onclick="saveReportRatesFromRef()">\uD83D\uDCBE Enregistrer les taux</button>
+  </div>`;
+}
+function saveReportRatesFromRef(){
+  const current=getStatsTaux(),next=Object.assign({},current);
+  reportRateDefinitions().forEach(r=>{
+    const value=parseInt(document.getElementById('ref-rate-'+r.id)?.value,10);
+    next[r.id]=Math.max(0,Math.min(200,Number.isFinite(value)?value:r.def));
+  });
+  next.fmpaStag=next.actSvc;
+  next.fmpaForm=next.formRate;
+  next.formForm=next.formRate;
+  next.exportAdmins=document.getElementById('ref-export-admins')?.checked===true;
+  next.exportRoundQuarter=document.getElementById('ref-export-round')?.checked!==false;
+  saveStatsTaux(next);
+  renderRefTaux();showToast('R\u00e9f\u00e9rentiel des taux enregistr\u00e9 \u2713','success');
+}
 
 // Ajouter un autre superadmin
 function addSuperAdmin(){

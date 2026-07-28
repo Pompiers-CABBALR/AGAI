@@ -1261,7 +1261,8 @@ function saveActivite(){
   const dureeEl=document.getElementById('act-duree')?.value||'';
   const {numAnnuel,numMensuel}=actNextNums(date);
   const id='ACT_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
-  const entry={id,date,type,hDebut:hd,hFin:hf,duree:dureeEl,cr,participants,
+  const typeDef=ACT_TYPES.find(t=>t.l===type);
+  const entry={id,date,type,categorie:typeDef?.cat||'Activit\u00e9s de service',hDebut:hd,hFin:hf,duree:dureeEl,cr,participants,
     numAnnuel,numMensuel,
     auteur:CU?CU.l:'',auteurNom:CU?(CU.prenom+' '+CU.nom):'',
     ts:Date.now(), historique:[], impressions:[]};
@@ -1378,7 +1379,8 @@ function actSaveEdit(id){
   if(!a.historique)a.historique=[];
   const now=new Date();
   a.historique.push({date:now.toLocaleDateString('fr-FR')+' '+now.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}),auteur:CU?CU.l:'',auteurNom:CU?(CU.prenom+' '+CU.nom):'',champs:(champs.length?champs.join(', '):'(aucun champ modifié)')+' — '+motif});
-  a.type=newType;a.hDebut=newHd;a.hFin=newHf;a.duree=newDuree;a.cr=newCr;a.participants=newPart;
+  const newTypeDef=ACT_TYPES.find(t=>t.l===newType);
+  a.type=newType;a.categorie=newTypeDef?.cat||'Activit\u00e9s de service';a.hDebut=newHd;a.hFin=newHf;a.duree=newDuree;a.cr=newCr;a.participants=newPart;
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);cM();rActiviteList();showToast('Activité modifiée ✓','success'); // push immédiat
 }
