@@ -173,7 +173,7 @@ function rStatsContent(){
 
 // ── Helper taux ──
 function getStatsTaux(){
-  const defaults={interJour:100,interDimFerie:150,interNuit:200,actSvc:75,fmpaStag:75,fmpaForm:100,formStag:100,formForm:100,astrTel:9,exportAdmins:false};
+  const defaults={interJour:100,interDimFerie:150,interNuit:200,actSvc:75,fmpaStag:75,fmpaForm:100,formStag:100,formForm:100,astrTel:9,exportAdmins:false,exportRoundQuarter:true};
   const saved=CURRENT_CASERNE_ID&&CASERNE_DATA[CURRENT_CASERNE_ID]&&CASERNE_DATA[CURRENT_CASERNE_ID].statsTaux;
   return Object.assign({},defaults,saved||{});
 }
@@ -213,6 +213,10 @@ function showStatsTauxParams(){
       <input type="checkbox" id="export-admins-visible" ${t.exportAdmins===true?'checked':''} style="width:18px;height:18px;accent-color:#166534;margin-top:1px;"/>
       <span><strong style="font-size:12px;color:#166534;">Autoriser l’export mensuel aux administrateurs</strong><br><span style="font-size:11px;color:var(--t2);">Désactivé : seul le superadmin voit et utilise le bouton d’export.</span></span>
     </label>
+    <label style="display:flex;align-items:flex-start;gap:10px;background:#EFF6FF;border:1px solid #93C5FD;border-radius:9px;padding:10px 12px;margin:12px 0;cursor:pointer;">
+      <input type="checkbox" id="export-round-quarter" ${t.exportRoundQuarter!==false?'checked':''} style="width:18px;height:18px;accent-color:#1D4ED8;margin-top:1px;"/>
+      <span><strong style="font-size:12px;color:#1D4ED8;">Arrondir les heures d’intervention au quart d’heure supérieur</strong><br><span style="font-size:11px;color:var(--t2);">Appliqué uniquement aux colonnes HEURES et HEURES_2 de l’export : 00, 15, 30 ou 45 minutes.</span></span>
+    </label>
     <div id="taux-err" style="font-size:12px;color:#E24B4A;display:none;margin-bottom:8px;"></div>
     <div class="brow">
       <button class="btn pr" onclick="applyStatsTaux()">💾 Enregistrer</button>
@@ -223,7 +227,7 @@ function showStatsTauxParams(){
 }
 function applyStatsTaux(){
   const get=(id)=>Math.max(0,Math.min(200,parseInt(document.getElementById('taux-'+id)?.value)||0));
-  saveStatsTaux({interJour:get('interJour'),interDimFerie:get('interDimFerie'),interNuit:get('interNuit'),actSvc:get('actSvc'),fmpaStag:get('fmpaStag'),fmpaForm:get('fmpaForm'),formStag:get('formStag'),formForm:get('formForm'),astrTel:get('astrTel'),exportAdmins:document.getElementById('export-admins-visible')?.checked===true});
+  saveStatsTaux({interJour:get('interJour'),interDimFerie:get('interDimFerie'),interNuit:get('interNuit'),actSvc:get('actSvc'),fmpaStag:get('fmpaStag'),fmpaForm:get('fmpaForm'),formStag:get('formStag'),formForm:get('formForm'),astrTel:get('astrTel'),exportAdmins:document.getElementById('export-admins-visible')?.checked===true,exportRoundQuarter:document.getElementById('export-round-quarter')?.checked!==false});
   cM();
   showToast('Taux enregistrés ✓','success');
 }
@@ -961,8 +965,24 @@ function adminExportMinutesHHMM(minutes){
   const total=Math.max(0,parseInt(minutes,10)||0);
   return String(Math.floor(total/60)).padStart(2,'0')+':'+String(total%60).padStart(2,'0');
 }
+function adminExportRoundMinutesQuarter(minutes){
+  const total=Math.max(0,parseInt(minutes,10)||0);
+  if(total===0)return 0;
+  return Math.ceil(total/15)*15;
+}
+function adminExportFormatInterventionMinutes(minutes){
+  const enabled=getStatsTaux().exportRoundQuarter!==false;
+  return adminExportMinutesHHMM(enabled?adminExportRoundMinutesQuarter(minutes):minutes);
+}
+function adminExportRoundDurationQuarter(value){
+  if(getStatsTaux().exportRoundQuarter===false||!value)return value||'';
+  const match=String(value).match(/^(\d+):(\d{2})$/);
+  if(!match)return value;
+  return adminExportMinutesHHMM(adminExportRoundMinutesQuarter(Number(match[1])*60+Number(match[2])));
+}
 function adminExportInterventionRates(iv){
-  const fallback={taux1:'',heures1:adminExportDuration('',iv&&iv._hDebut,iv&&iv._hFin),taux2:'',heures2:''};
+  const fallbackDuration=adminExportDuration('',iv&&iv._hDebut,iv&&iv._hFin);
+  const fallback={taux1:'',heures1:adminExportRoundDurationQuarter(fallbackDuration),taux2:'',heures2:''};
   if(!iv||!iv._hDebut||!iv._hFin||!iv.h||iv.h.length<8)return fallback;
   const dateStr=iv.h.slice(0,8);
   const yr=parseInt(dateStr.slice(0,4),10),mo=parseInt(dateStr.slice(4,6),10)-1,da=parseInt(dateStr.slice(6,8),10);
@@ -983,7 +1003,7 @@ function adminExportInterventionRates(iv){
     if(!ordre.includes(taux))ordre.push(taux);
   }
   const parts=ordre.filter(function(taux){return totals[taux]>0;}).map(function(taux){
-    return {taux:taux+'%',heures:adminExportMinutesHHMM(totals[taux])};
+    return {taux:taux+'%',heures:adminExportFormatInterventionMinutes(totals[taux])};
   });
   if(!parts.length)return fallback;
   if(parts.length===1)return {taux1:parts[0].taux,heures1:parts[0].heures,taux2:'',heures2:''};
