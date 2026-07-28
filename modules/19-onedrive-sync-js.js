@@ -1104,6 +1104,9 @@ function activityIsFraisAdministratifs(a){
   const category=a&&a.categorie?a.categorie:defaultActivityCategory(a&&a.type);
   return isAdminExpenseCategory(category)||defaultActivityCategory(a&&a.type)===ADMIN_EXPENSE_CATEGORY;
 }
+function activityVisibleInHistory(a){
+  return !activityIsFraisAdministratifs(a)||canAccessFraisAdministratifs();
+}
 function actTypesForCurrentUser(){
   return ACT_TYPES.filter(t=>!isAdminExpenseCategory(t.cat||defaultActivityCategory(t.l))||canAccessFraisAdministratifs());
 }
@@ -1200,7 +1203,7 @@ function rActivite(){
 // ── Contrôle d'accès activité ──
 function actCanSeeDetail(a){
   if(!CU)return false;
-  if(activityIsFraisAdministratifs(a)&&!canAccessFraisAdministratifs())return false;
+  if(activityIsFraisAdministratifs(a))return canAccessFraisAdministratifs();
   if(isAdminModeActive())return true;
   return (a.participants||[]).includes(CU.l);
 }
@@ -1209,7 +1212,7 @@ function actCanSeeDetail(a){
 function rActiviteList(){
   const list=document.getElementById('act-list');
   if(!list)return;
-  const data=actGetData().filter(a=>!activityIsFraisAdministratifs(a)||canAccessFraisAdministratifs());
+  const data=actGetData().filter(activityVisibleInHistory);
   const isAdmin=isAdminModeActive();
   const sorted=[...data].sort((a,b)=>b.date.localeCompare(a.date)||b.ts-a.ts);
   if(!sorted.length){list.innerHTML='<div style="text-align:center;padding:20px;color:var(--t2);font-size:13px;">Aucune activité enregistrée.</div>';return;}
