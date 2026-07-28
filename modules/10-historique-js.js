@@ -85,7 +85,7 @@ function rProfil(){
   const ini=(CU.prenom||'?')[0].toUpperCase()+(CU.nom||'?')[0].toUpperCase();
   document.getElementById('prof-avatar').textContent=ini;
   document.getElementById('prof-name').textContent=(CU.prenom||'')+' '+(CU.nom||'');
-  document.getElementById('prof-grade-lbl').textContent='Grade : '+(CU.grade||'—');
+  document.getElementById('prof-grade-lbl').textContent='Grade : '+(CU.grade||'—')+(isResponsableFormation(CU)?' · Responsable formation':'');
   // Champs affichés en lecture seule
   const prenomInp=document.getElementById('prof-prenom');
   if(prenomInp)prenomInp.value=CU.prenom||'';

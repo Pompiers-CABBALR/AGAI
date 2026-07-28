@@ -815,7 +815,22 @@ function _applyDataObject(data){
   }
   if(data.NAT&&data.NAT.length){NAT.length=0;data.NAT.forEach(n=>NAT.push(n));}
   if(data.ACT_TYPES&&data.ACT_TYPES.length){ACT_TYPES.length=0;data.ACT_TYPES.forEach(a=>ACT_TYPES.push(a));}
-  ACT_TYPES.forEach(a=>{if(!a.cat)a.cat=defaultActivityCategory(a.l);});
+  const normalizedActTypes=[],normalizedActLabels=new Set();
+  ACT_TYPES.forEach(a=>{
+    a.l=normalizeAdminExpenseType(a.l);
+    a.cat=isAdminExpenseCategory(a.cat)||defaultActivityCategory(a.l)===ADMIN_EXPENSE_CATEGORY?ADMIN_EXPENSE_CATEGORY:(a.cat||defaultActivityCategory(a.l));
+    const key=a.l.toLocaleLowerCase('fr');
+    if(!normalizedActLabels.has(key)){normalizedActLabels.add(key);normalizedActTypes.push(a);}
+  });
+  ACT_TYPES.length=0;normalizedActTypes.forEach(a=>ACT_TYPES.push(a));
+  Object.values(CASERNE_DATA).forEach(cd=>{
+    (cd&&Array.isArray(cd.activites)?cd.activites:[]).forEach(a=>{
+      const normalizedType=normalizeAdminExpenseType(a.type);
+      if(normalizedType!==a.type||isAdminExpenseCategory(a.categorie)||defaultActivityCategory(normalizedType)===ADMIN_EXPENSE_CATEGORY){
+        a.type=normalizedType;a.categorie=ADMIN_EXPENSE_CATEGORY;
+      }
+    });
+  });
   if(data.REPORT_TYPES&&data.REPORT_TYPES.length){REPORT_TYPES.length=0;data.REPORT_TYPES.forEach(r=>REPORT_TYPES.push(r));}
   if(data.ENGIN_TYPES&&data.ENGIN_TYPES.length){ENGIN_TYPES.length=0;data.ENGIN_TYPES.forEach(t=>ENGIN_TYPES.push(t));}
   if(data.COM&&data.COM.length){COM.length=0;data.COM.forEach(c=>COM.push(c));}
@@ -832,6 +847,16 @@ function _applyDataObject(data){
   function migrateUser(u){if(u.fonctionsFormateur&&u.fonctionsFormateur.length){const m=u.fonctionsFormateur.map(f=>MFF[f]||f);u.fonctionsFormateur=[...new Set(m)];}}
   CASERNES.forEach(cas=>(cas.users||[]).forEach(migrateUser));
   Object.values(CASERNE_DATA).forEach(cd=>{if(cd&&typeof cd==='object'&&cd.users)(cd.users||[]).forEach(migrateUser);});
+  Object.keys(CASERNE_DATA).forEach(cid=>{
+    const cd=CASERNE_DATA[cid];if(!cd||!Array.isArray(cd.users))return;
+    let responsableTrouve=false;
+    cd.users.forEach(u=>{
+      if(u.responsableFormation===true&&!responsableTrouve){
+        responsableTrouve=true;u.caserneId=cid;u.rights=Array.isArray(u.rights)?u.rights:[];
+        if(!u.rights.includes('Formation'))u.rights.push('Formation');
+      }else if(u.responsableFormation===true)u.responsableFormation=false;
+    });
+  });
   // Réhydrater les photos (exclues du push JSONBin) depuis localStorage local
   try{
     Object.keys(CASERNE_DATA).forEach(function(cid){

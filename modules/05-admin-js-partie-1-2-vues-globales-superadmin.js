@@ -222,12 +222,21 @@ function renderSuperAdmin(){
         ${OP_CASERNES().map(c=>{
           const d=CASERNE_DATA[c.id]||{users:[]};
           const admin=d.users?.find(u=>u.rights?.includes('Administration'));
+          const responsableFormation=d.users?.find(u=>u.responsableFormation===true);
           return `<div style="background:${c.couleur}11;border-radius:10px;padding:12px;border:1px solid ${c.couleur}33;">
             <div style="font-size:11px;font-weight:700;color:${c.couleur};margin-bottom:6px;text-transform:uppercase;">&#x1F6E1;️ Admin ${c.nom}</div>
             ${admin?`<div style="font-size:13px;font-weight:600;">${admin.prenom} ${admin.nom}</div>
               <div style="font-size:11px;color:#666;font-family:monospace;margin:3px 0;">${admin.l}</div>
               <button class="btn sm" style="font-size:11px;margin-top:6px;" onclick="editAdminCaserne('${c.id}')">&#x1F511; Modifier mot de passe</button>`
             :`<div style="font-size:12px;color:#999;">Aucun admin défini</div>`}
+            <div style="border-top:1px solid ${c.couleur}33;margin-top:10px;padding-top:9px;">
+              <div style="font-size:10px;font-weight:700;color:#6D28D9;text-transform:uppercase;margin-bottom:5px;">🎓 Responsable formation</div>
+              <select class="fi" style="font-size:11px;padding:4px 6px;width:100%;" onchange="setResponsableFormation('${c.id}',this.value)">
+                <option value="">— Aucun responsable —</option>
+                ${[...(d.users||[])].filter(u=>!u._isSA).sort((a,b)=>(a.nom+' '+a.prenom).localeCompare(b.nom+' '+b.prenom,'fr')).map(u=>`<option value="${u.l}"${responsableFormation&&responsableFormation.l===u.l?' selected':''}>${u.nom} ${u.prenom}</option>`).join('')}
+              </select>
+              <div style="font-size:10px;color:#777;margin-top:4px;">Profil rattaché à ${c.nom}, modifiable uniquement ici.</div>
+            </div>
           </div>`;
         }).join('')}
       </div>
@@ -838,6 +847,25 @@ function renderChefCorpsBody(){
 
 
 // Gestion comptes spéciaux
+function setResponsableFormation(caserneId,login){
+  if(!isSuperAdmin()){showToast('Seul le super-administrateur peut d\u00e9finir le responsable formation.','warn');return;}
+  const data=CASERNE_DATA[caserneId];
+  if(!data||!Array.isArray(data.users))return;
+  data.users.forEach(u=>{u.responsableFormation=false;u.appRole=deriveAccountRole(u);});
+  if(login){
+    const selected=data.users.find(u=>u.l===login);
+    if(!selected){showToast('Compte introuvable dans cette caserne.','warn');renderSuperAdmin();return;}
+    selected.responsableFormation=true;
+    selected.caserneId=caserneId;
+    selected.rights=Array.isArray(selected.rights)?selected.rights:[];
+    if(!selected.rights.includes('Formation'))selected.rights.push('Formation');
+    selected.appRole=deriveAccountRole(selected);
+  }
+  if(CURRENT_CASERNE_ID===caserneId)syncCaserneContext();
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);renderSuperAdmin();
+  showToast(login?'Responsable formation enregistr\u00e9 \u2713':'Responsable formation retir\u00e9','success');
+}
 function changeSACaserne(cid){
   const sa=getSuperAdminAccount();
   if(sa){sa.caserneId=cid;sa.appRole='superadmin';}

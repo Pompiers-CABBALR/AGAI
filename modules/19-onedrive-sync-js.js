@@ -1100,6 +1100,13 @@ let ACTIVITES = [];
 
 // ── Numérotation ──
 function actGetData(){ return (CURRENT_CASERNE_ID&&CASERNE_DATA[CURRENT_CASERNE_ID]) ? (CASERNE_DATA[CURRENT_CASERNE_ID].activites||(CASERNE_DATA[CURRENT_CASERNE_ID].activites=[])) : ACTIVITES; }
+function activityIsFraisAdministratifs(a){
+  const category=a&&a.categorie?a.categorie:defaultActivityCategory(a&&a.type);
+  return isAdminExpenseCategory(category)||defaultActivityCategory(a&&a.type)===ADMIN_EXPENSE_CATEGORY;
+}
+function actTypesForCurrentUser(){
+  return ACT_TYPES.filter(t=>!isAdminExpenseCategory(t.cat||defaultActivityCategory(t.l))||canAccessFraisAdministratifs());
+}
 function actNextNums(date){
   const data=actGetData();
   const y=date.slice(0,4),m=date.slice(5,7);
@@ -1176,7 +1183,7 @@ function actToggleForm(){
     const dateEl=document.getElementById('act-date');
     if(dateEl){dateEl.value=today;actDateChange();}
     const sel=document.getElementById('act-type');
-    if(sel){sel.innerHTML='<option value="">\u2014 Choisir \u2014</option>'+ACT_TYPES.map(a=>`<option value="${a.l.replace(/"/g,'&quot;')}">${a.i} ${a.l}</option>`).join('');}
+    if(sel){sel.innerHTML='<option value="">\u2014 Choisir \u2014</option>'+actTypesForCurrentUser().map(a=>`<option value="${a.l.replace(/"/g,'&quot;')}">${a.i} ${a.l}</option>`).join('');}
     actLoadParticipants();
     panel.scrollIntoView({behavior:'smooth',block:'start'});
   }
@@ -1193,6 +1200,7 @@ function rActivite(){
 // ── Contrôle d'accès activité ──
 function actCanSeeDetail(a){
   if(!CU)return false;
+  if(activityIsFraisAdministratifs(a)&&!canAccessFraisAdministratifs())return false;
   if(isAdminModeActive())return true;
   return (a.participants||[]).includes(CU.l);
 }
@@ -1201,7 +1209,7 @@ function actCanSeeDetail(a){
 function rActiviteList(){
   const list=document.getElementById('act-list');
   if(!list)return;
-  const data=actGetData();
+  const data=actGetData().filter(a=>!activityIsFraisAdministratifs(a)||canAccessFraisAdministratifs());
   const isAdmin=isAdminModeActive();
   const sorted=[...data].sort((a,b)=>b.date.localeCompare(a.date)||b.ts-a.ts);
   if(!sorted.length){list.innerHTML='<div style="text-align:center;padding:20px;color:var(--t2);font-size:13px;">Aucune activité enregistrée.</div>';return;}
@@ -1262,6 +1270,7 @@ function saveActivite(){
   const {numAnnuel,numMensuel}=actNextNums(date);
   const id='ACT_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
   const typeDef=ACT_TYPES.find(t=>t.l===type);
+  if(activityIsFraisAdministratifs({type,categorie:typeDef?.cat})&&!canAccessFraisAdministratifs()){err.style.display='block';err.textContent='Acc\u00e8s non autoris\u00e9 aux frais administratifs.';return;}
   const entry={id,date,type,categorie:typeDef?.cat||'Activit\u00e9s de service',hDebut:hd,hFin:hf,duree:dureeEl,cr,participants,
     numAnnuel,numMensuel,
     auteur:CU?CU.l:'',auteurNom:CU?(CU.prenom+' '+CU.nom):'',
@@ -1331,13 +1340,14 @@ function actEditer(id){
   const data=actGetData();
   const a=data.find(x=>x.id===id);
   if(!a)return;
+  if(activityIsFraisAdministratifs(a)&&!canAccessFraisAdministratifs()){showToast('Acc\u00e8s r\u00e9serv\u00e9 aux profils autoris\u00e9s.','warn');return;}
   const agentsOpts=[...(USERS||[])].sort((u1,u2)=>u1.nom.localeCompare(u2.nom,'fr')||u1.prenom.localeCompare(u2.prenom,'fr')).map(u=>`<label style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--brd);font-size:12px;">
     <input type="checkbox" value="${u.l}" ${(a.participants||[]).includes(u.l)?'checked':''} style="width:14px;height:14px;accent-color:var(--red);">
     <span>${u.nom} ${u.prenom}</span><span style="font-size:10px;color:var(--t3);margin-left:auto;">${u.grade||''}</span></label>`).join('');
   document.getElementById('mt').textContent='Modifier — '+actNumStr(a);
   document.getElementById('mi').textContent='';
   document.getElementById('mb').innerHTML=`<div>
-    <div class="fg"><div class="fgl">Type</div><select class="fi" id="aedit-type">${ACT_TYPES.map(t=>`<option value="${t.l}"${t.l===a.type?' selected':''}>${t.i} ${t.l}</option>`).join('')}</select></div>
+    <div class="fg"><div class="fgl">Type</div><select class="fi" id="aedit-type">${actTypesForCurrentUser().map(t=>`<option value="${t.l}"${t.l===a.type?' selected':''}>${t.i} ${t.l}</option>`).join('')}</select></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
       <div class="fg"><div class="fgl">Heure début</div><input class="fi" type="time" id="aedit-hd" value="${a.hDebut||''}" oninput="aeditCalcDuree()"/></div>
       <div class="fg"><div class="fgl">Heure fin</div><input class="fi" type="time" id="aedit-hf" value="${a.hFin||''}" oninput="aeditCalcDuree()"/></div>
@@ -1366,6 +1376,8 @@ function actSaveEdit(id){
   // Journaliser les changements
   const champs=[];
   const newType=document.getElementById('aedit-type')?.value;
+  const selectedType=ACT_TYPES.find(t=>t.l===newType);
+  if(activityIsFraisAdministratifs({type:newType,categorie:selectedType?.cat})&&!canAccessFraisAdministratifs()){err.style.display='block';err.textContent='Acc\u00e8s non autoris\u00e9 aux frais administratifs.';return;}
   const newHd=document.getElementById('aedit-hd')?.value;
   const newHf=document.getElementById('aedit-hf')?.value;
   const newDuree=document.getElementById('aedit-duree')?.value;

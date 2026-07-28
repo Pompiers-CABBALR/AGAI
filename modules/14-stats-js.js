@@ -246,7 +246,7 @@ function rStatsActivites(){
   const annStr=String(stAnnee);
   const tauxAct=getStatsTaux().actSvc;
   const agents=[...USERS].sort((a,b)=>a.nom.localeCompare(b.nom,'fr')||a.prenom.localeCompare(b.prenom,'fr'));
-  const allData=actGetData();
+  const allData=actGetData().filter(a=>!activityIsFraisAdministratifs(a)||canAccessFraisAdministratifs());
   const data=allData.filter(a=>a.date&&a.date.startsWith(annStr));
   function minToHHMM(m){return pad(Math.floor(m/60))+':'+pad(m%60);}
 
@@ -929,7 +929,7 @@ function adminMonthlyData(period){
   };
   const interventions=[].concat(IVS||[],PILP_IVS||[])
     .filter(function(iv){return iv.s==='terminee'&&(iv.h||'').startsWith(period.prefixCompact);});
-  const activites=(actGetData()||[]).filter(function(a){return (a.date||'').startsWith(period.prefixDate);});
+  const activites=(actGetData()||[]).filter(function(a){return (a.date||'').startsWith(period.prefixDate)&&(!activityIsFraisAdministratifs(a)||canAccessFraisAdministratifs());});
   const fmpas=(fmpaGetData()||[]).filter(function(f){return (f.date||'').startsWith(period.prefixDate);});
   const stag=(formStagGetData()||[]).filter(function(f){return overlaps(f.ddebut,f.dfin);});
   const form=(formFormGetData()||[]).filter(function(f){return overlaps(f.ddebut,f.dfin);});
@@ -1069,7 +1069,7 @@ function adminExportActivityCategory(a){
 }
 function adminExportActivityReportType(a){
   const category=adminExportActivityCategory(a);
-  if(category==='Frais administratifs')return reportTypeCode('fa');
+  if(isAdminExpenseCategory(category))return reportTypeCode('fa');
   if(category==='D\u00e9placements')return reportTypeCode('depl');
   return reportTypeCode('ac');
 }

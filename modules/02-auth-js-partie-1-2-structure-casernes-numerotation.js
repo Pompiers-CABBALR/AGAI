@@ -10,6 +10,18 @@ const GLOBAL_ACCOUNTS=[];
 // Helpers
 function isSuperAdmin(){return GLOBAL_ROLE==='superadmin'&&!window._superAdminDisabled;}
 function isChefCorps(){return GLOBAL_ROLE==='chef_corps';}
+function isResponsableFormation(user){
+  const account=user||CU;
+  if(!account)return false;
+  if(account.responsableFormation===true)return true;
+  const stored=(USERS||[]).find(u=>u.l===account.l);
+  return !!(stored&&stored.responsableFormation===true);
+}
+function canAccessFraisAdministratifs(){
+  if(isSuperAdmin()||isChefCorps())return true;
+  if(!CU)return false;
+  return CU.fonction==='Chef de centre'||CU.fonction==='Adjoint au chef de centre'||isResponsableFormation(CU);
+}
 function getSuperAdminAccount(){return GLOBAL_ACCOUNTS.find(a=>a.role==='superadmin');}
 function getChefCorpsAccount(){return GLOBAL_ACCOUNTS.find(a=>a.role==='chef_corps');}
 
@@ -18,6 +30,7 @@ function deriveAccountRole(account){
   if(account.role==='superadmin'||account._isSA)return 'superadmin';
   if(account.role==='chef_corps')return 'chef_corps';
   if(Array.isArray(account.rights)&&account.rights.includes('Administration'))return 'administrateur_caserne';
+  if(account.responsableFormation===true)return 'responsable_formation';
   if(account.fonction==='Chef de centre')return 'chef_centre';
   if(account.fonction==='Adjoint au chef de centre')return 'adjoint_chef_centre';
   return 'agent';

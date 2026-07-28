@@ -90,15 +90,27 @@ let ACT_TYPES=[
   {l:'D\u00e9placement vers le garage',i:'\uD83C\uDFDB\uFE0F',cat:'D\u00e9placements'},
   {l:'Entretien casernement, v\u00e9hicules',i:'\uD83D\uDD27',cat:'Logistique et entretien'},
   {l:'Plein des v\u00e9hicules',i:'\u26FD',cat:'Logistique et entretien'},
-  {l:'Frais administratifs \u2014 Chef de centre',i:'\uD83D\uDDC2\uFE0F',cat:'Frais administratifs'},
-  {l:'Frais administratifs \u2014 Adjoint au chef de centre',i:'\uD83D\uDDC2\uFE0F',cat:'Frais administratifs'},
-  {l:'Frais administratifs \u2014 Chef de corps',i:'\uD83D\uDDC2\uFE0F',cat:'Frais administratifs'},
-  {l:'Frais administratifs \u2014 Responsable des formations',i:'\uD83C\uDF93',cat:'Frais administratifs'},
+  {l:'Frais administratif chef de corps',i:'\uD83D\uDDC2\uFE0F',cat:'Frais administratif'},
+  {l:'Frais administratif chef unit\u00e9 territoriale',i:'\uD83D\uDDC2\uFE0F',cat:'Frais administratif'},
+  {l:'Frais administratif responsable formation',i:'\uD83C\uDF93',cat:'Frais administratif'},
 ];
-const ACT_CATEGORIES=['Activit\u00e9s de service','D\u00e9placements','Logistique et entretien','Frais administratifs'];
+const ADMIN_EXPENSE_CATEGORY='Frais administratif';
+const ACT_CATEGORIES=['Activit\u00e9s de service','D\u00e9placements','Logistique et entretien',ADMIN_EXPENSE_CATEGORY];
+function isAdminExpenseCategory(value){
+  return /^frais administratif(?:s)?$/i.test(String(value||'').trim());
+}
+function normalizeAdminExpenseType(label){
+  const original=String(label||'').trim();
+  const text=original.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[\u2013\u2014-]+/g,' ').replace(/\s+/g,' ').trim();
+  if(!/^frais administratif(?:s)?\b/.test(text))return original;
+  if(/\bchef de corps\b/.test(text))return 'Frais administratif chef de corps';
+  if(/\b(chef de centre|adjoint au chef de centre|chef unite territoriale)\b/.test(text))return 'Frais administratif chef unit\u00e9 territoriale';
+  if(/\bresponsable (?:des )?formations?\b/.test(text))return 'Frais administratif responsable formation';
+  return original;
+}
 function defaultActivityCategory(label){
   const text=String(label||'').trim();
-  if(/^frais administratifs\b/i.test(text))return 'Frais administratifs';
+  if(/^frais administratif(?:s)?\b/i.test(text))return ADMIN_EXPENSE_CATEGORY;
   if(/^d\u00e9placement\b/i.test(text))return 'D\u00e9placements';
   if(/^(entretien|plein des v\u00e9hicules)/i.test(text))return 'Logistique et entretien';
   return 'Activit\u00e9s de service';
@@ -117,7 +129,7 @@ let REPORT_TYPES=[
 const ACT_ICON_LIBRARY=[
   {i:'\uD83D\uDCCB',l:'Activit\u00e9 de service'},
   {i:'\uD83D\uDC65',l:'R\u00e9union'},
-  {i:'\uD83D\uDDC2\uFE0F',l:'Frais administratifs'},
+  {i:'\uD83D\uDDC2\uFE0F',l:'Frais administratif'},
   {i:'\uD83D\uDC68\u200D\uD83D\uDE92',l:'Encadrement'},
   {i:'\uD83C\uDF96\uFE0F',l:'C\u00e9r\u00e9monie'},
   {i:'\uD83D\uDEA7',l:'Contr\u00f4le ou s\u00e9curit\u00e9'},
@@ -145,6 +157,18 @@ const GLOBAL_ACCOUNTS=[];
 // Helpers
 function isSuperAdmin(){return GLOBAL_ROLE==='superadmin'&&!window._superAdminDisabled;}
 function isChefCorps(){return GLOBAL_ROLE==='chef_corps';}
+function isResponsableFormation(user){
+  const account=user||CU;
+  if(!account)return false;
+  if(account.responsableFormation===true)return true;
+  const stored=(USERS||[]).find(u=>u.l===account.l);
+  return !!(stored&&stored.responsableFormation===true);
+}
+function canAccessFraisAdministratifs(){
+  if(isSuperAdmin()||isChefCorps())return true;
+  if(!CU)return false;
+  return CU.fonction==='Chef de centre'||CU.fonction==='Adjoint au chef de centre'||isResponsableFormation(CU);
+}
 function getSuperAdminAccount(){return GLOBAL_ACCOUNTS.find(a=>a.role==='superadmin');}
 function getChefCorpsAccount(){return GLOBAL_ACCOUNTS.find(a=>a.role==='chef_corps');}
 
@@ -153,6 +177,7 @@ function deriveAccountRole(account){
   if(account.role==='superadmin'||account._isSA)return 'superadmin';
   if(account.role==='chef_corps')return 'chef_corps';
   if(Array.isArray(account.rights)&&account.rights.includes('Administration'))return 'administrateur_caserne';
+  if(account.responsableFormation===true)return 'responsable_formation';
   if(account.fonction==='Chef de centre')return 'chef_centre';
   if(account.fonction==='Adjoint au chef de centre')return 'adjoint_chef_centre';
   return 'agent';
@@ -1017,12 +1042,21 @@ function renderSuperAdmin(){
         ${OP_CASERNES().map(c=>{
           const d=CASERNE_DATA[c.id]||{users:[]};
           const admin=d.users?.find(u=>u.rights?.includes('Administration'));
+          const responsableFormation=d.users?.find(u=>u.responsableFormation===true);
           return `<div style="background:${c.couleur}11;border-radius:10px;padding:12px;border:1px solid ${c.couleur}33;">
             <div style="font-size:11px;font-weight:700;color:${c.couleur};margin-bottom:6px;text-transform:uppercase;">&#x1F6E1;️ Admin ${c.nom}</div>
             ${admin?`<div style="font-size:13px;font-weight:600;">${admin.prenom} ${admin.nom}</div>
               <div style="font-size:11px;color:#666;font-family:monospace;margin:3px 0;">${admin.l}</div>
               <button class="btn sm" style="font-size:11px;margin-top:6px;" onclick="editAdminCaserne('${c.id}')">&#x1F511; Modifier mot de passe</button>`
             :`<div style="font-size:12px;color:#999;">Aucun admin défini</div>`}
+            <div style="border-top:1px solid ${c.couleur}33;margin-top:10px;padding-top:9px;">
+              <div style="font-size:10px;font-weight:700;color:#6D28D9;text-transform:uppercase;margin-bottom:5px;">🎓 Responsable formation</div>
+              <select class="fi" style="font-size:11px;padding:4px 6px;width:100%;" onchange="setResponsableFormation('${c.id}',this.value)">
+                <option value="">— Aucun responsable —</option>
+                ${[...(d.users||[])].filter(u=>!u._isSA).sort((a,b)=>(a.nom+' '+a.prenom).localeCompare(b.nom+' '+b.prenom,'fr')).map(u=>`<option value="${u.l}"${responsableFormation&&responsableFormation.l===u.l?' selected':''}>${u.nom} ${u.prenom}</option>`).join('')}
+              </select>
+              <div style="font-size:10px;color:#777;margin-top:4px;">Profil rattaché à ${c.nom}, modifiable uniquement ici.</div>
+            </div>
           </div>`;
         }).join('')}
       </div>
@@ -1633,6 +1667,25 @@ function renderChefCorpsBody(){
 
 
 // Gestion comptes spéciaux
+function setResponsableFormation(caserneId,login){
+  if(!isSuperAdmin()){showToast('Seul le super-administrateur peut d\u00e9finir le responsable formation.','warn');return;}
+  const data=CASERNE_DATA[caserneId];
+  if(!data||!Array.isArray(data.users))return;
+  data.users.forEach(u=>{u.responsableFormation=false;u.appRole=deriveAccountRole(u);});
+  if(login){
+    const selected=data.users.find(u=>u.l===login);
+    if(!selected){showToast('Compte introuvable dans cette caserne.','warn');renderSuperAdmin();return;}
+    selected.responsableFormation=true;
+    selected.caserneId=caserneId;
+    selected.rights=Array.isArray(selected.rights)?selected.rights:[];
+    if(!selected.rights.includes('Formation'))selected.rights.push('Formation');
+    selected.appRole=deriveAccountRole(selected);
+  }
+  if(CURRENT_CASERNE_ID===caserneId)syncCaserneContext();
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);renderSuperAdmin();
+  showToast(login?'Responsable formation enregistr\u00e9 \u2713':'Responsable formation retir\u00e9','success');
+}
 function changeSACaserne(cid){
   const sa=getSuperAdminAccount();
   if(sa){sa.caserneId=cid;sa.appRole='superadmin';}
@@ -4627,7 +4680,7 @@ function rProfil(){
   const ini=(CU.prenom||'?')[0].toUpperCase()+(CU.nom||'?')[0].toUpperCase();
   document.getElementById('prof-avatar').textContent=ini;
   document.getElementById('prof-name').textContent=(CU.prenom||'')+' '+(CU.nom||'');
-  document.getElementById('prof-grade-lbl').textContent='Grade : '+(CU.grade||'—');
+  document.getElementById('prof-grade-lbl').textContent='Grade : '+(CU.grade||'—')+(isResponsableFormation(CU)?' · Responsable formation':'');
   // Champs affichés en lecture seule
   const prenomInp=document.getElementById('prof-prenom');
   if(prenomInp)prenomInp.value=CU.prenom||'';
@@ -4746,7 +4799,8 @@ function rAdm(){
     // Le superadmin peut modifier sa propre ligne ; les autres ne peuvent pas toucher au SA
     const saEditable=isSA&&isSuperAdmin()&&u.l===CU.l;
     const roLbl=isSA?'<span style="font-size:10px;background:#FEF2F2;color:#C0392B;padding:2px 7px;border-radius:8px;font-weight:600;">Super Admin</span>':'';
-    const nomCell=(isSA&&!saEditable)?`<td style="font-size:12px;font-weight:500;">${u.nom} ${roLbl}</td>`:`<td><input type="text" value="${u.nom}" data-login="${u.l}" data-field="nom" onchange="updateUser(this.dataset.login,this.dataset.field,this.value)" style="width:80px;padding:3px 6px;border:1px solid var(--brd);border-radius:5px;font-size:12px;"/>${saEditable?roLbl:''}</td>`;
+    const rfLbl=u.responsableFormation===true?'<span style="font-size:9px;background:#F3E8FF;color:#6D28D9;padding:2px 6px;border-radius:8px;font-weight:700;white-space:nowrap;">Resp. formation</span>':'';
+    const nomCell=(isSA&&!saEditable)?`<td style="font-size:12px;font-weight:500;">${u.nom} ${roLbl} ${rfLbl}</td>`:`<td><input type="text" value="${u.nom}" data-login="${u.l}" data-field="nom" onchange="updateUser(this.dataset.login,this.dataset.field,this.value)" style="width:80px;padding:3px 6px;border:1px solid var(--brd);border-radius:5px;font-size:12px;"/>${saEditable?roLbl:''}${rfLbl}</td>`;
     const prenomCell=(isSA&&!saEditable)?`<td style="font-size:12px;">${u.prenom}</td>`:`<td><input type="text" value="${u.prenom}" data-login="${u.l}" data-field="prenom" onchange="updateUser(this.dataset.login,this.dataset.field,this.value)" style="width:70px;padding:3px 6px;border:1px solid var(--brd);border-radius:5px;font-size:12px;"/></td>`;
     const gradeCell=(isSA&&!saEditable)?`<td style="font-size:12px;color:var(--t2);">${u.grade||''}</td>`:`<td><select data-login="${u.l}" data-field="grade" onchange="updateUser(this.dataset.login,this.dataset.field,this.value)" style="width:110px;padding:3px 5px;border:1px solid var(--brd);border-radius:5px;font-size:11px;">${GRADES.map(g=>`<option${g===u.grade?' selected':''}>${g}</option>`).join('')}</select></td>`;
     const fonctionCell=(isSA&&!saEditable)?`<td style="font-size:12px;color:var(--t2);">${u.fonction||''}</td>`:`<td><select data-login="${u.l}" data-field="fonction" onchange="updateUser(this.dataset.login,this.dataset.field,this.value)" style="width:160px;padding:3px 5px;border:1px solid var(--brd);border-radius:5px;font-size:11px;">${FONCTIONS.map(f=>`<option${f===(u.fonction||'Équipier')?' selected':''}>${f}</option>`).join('')}</select></td>`;
@@ -9076,7 +9130,7 @@ function rStatsActivites(){
   const annStr=String(stAnnee);
   const tauxAct=getStatsTaux().actSvc;
   const agents=[...USERS].sort((a,b)=>a.nom.localeCompare(b.nom,'fr')||a.prenom.localeCompare(b.prenom,'fr'));
-  const allData=actGetData();
+  const allData=actGetData().filter(a=>!activityIsFraisAdministratifs(a)||canAccessFraisAdministratifs());
   const data=allData.filter(a=>a.date&&a.date.startsWith(annStr));
   function minToHHMM(m){return pad(Math.floor(m/60))+':'+pad(m%60);}
 
@@ -9759,7 +9813,7 @@ function adminMonthlyData(period){
   };
   const interventions=[].concat(IVS||[],PILP_IVS||[])
     .filter(function(iv){return iv.s==='terminee'&&(iv.h||'').startsWith(period.prefixCompact);});
-  const activites=(actGetData()||[]).filter(function(a){return (a.date||'').startsWith(period.prefixDate);});
+  const activites=(actGetData()||[]).filter(function(a){return (a.date||'').startsWith(period.prefixDate)&&(!activityIsFraisAdministratifs(a)||canAccessFraisAdministratifs());});
   const fmpas=(fmpaGetData()||[]).filter(function(f){return (f.date||'').startsWith(period.prefixDate);});
   const stag=(formStagGetData()||[]).filter(function(f){return overlaps(f.ddebut,f.dfin);});
   const form=(formFormGetData()||[]).filter(function(f){return overlaps(f.ddebut,f.dfin);});
@@ -9899,7 +9953,7 @@ function adminExportActivityCategory(a){
 }
 function adminExportActivityReportType(a){
   const category=adminExportActivityCategory(a);
-  if(category==='Frais administratifs')return reportTypeCode('fa');
+  if(isAdminExpenseCategory(category))return reportTypeCode('fa');
   if(category==='D\u00e9placements')return reportTypeCode('depl');
   return reportTypeCode('ac');
 }
@@ -10077,7 +10131,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260728-referentiels-rapports-taux-58';
+const APP_VERSION='20260728-frais-administratif-libelles-60';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -12150,7 +12204,22 @@ function _applyDataObject(data){
   }
   if(data.NAT&&data.NAT.length){NAT.length=0;data.NAT.forEach(n=>NAT.push(n));}
   if(data.ACT_TYPES&&data.ACT_TYPES.length){ACT_TYPES.length=0;data.ACT_TYPES.forEach(a=>ACT_TYPES.push(a));}
-  ACT_TYPES.forEach(a=>{if(!a.cat)a.cat=defaultActivityCategory(a.l);});
+  const normalizedActTypes=[],normalizedActLabels=new Set();
+  ACT_TYPES.forEach(a=>{
+    a.l=normalizeAdminExpenseType(a.l);
+    a.cat=isAdminExpenseCategory(a.cat)||defaultActivityCategory(a.l)===ADMIN_EXPENSE_CATEGORY?ADMIN_EXPENSE_CATEGORY:(a.cat||defaultActivityCategory(a.l));
+    const key=a.l.toLocaleLowerCase('fr');
+    if(!normalizedActLabels.has(key)){normalizedActLabels.add(key);normalizedActTypes.push(a);}
+  });
+  ACT_TYPES.length=0;normalizedActTypes.forEach(a=>ACT_TYPES.push(a));
+  Object.values(CASERNE_DATA).forEach(cd=>{
+    (cd&&Array.isArray(cd.activites)?cd.activites:[]).forEach(a=>{
+      const normalizedType=normalizeAdminExpenseType(a.type);
+      if(normalizedType!==a.type||isAdminExpenseCategory(a.categorie)||defaultActivityCategory(normalizedType)===ADMIN_EXPENSE_CATEGORY){
+        a.type=normalizedType;a.categorie=ADMIN_EXPENSE_CATEGORY;
+      }
+    });
+  });
   if(data.REPORT_TYPES&&data.REPORT_TYPES.length){REPORT_TYPES.length=0;data.REPORT_TYPES.forEach(r=>REPORT_TYPES.push(r));}
   if(data.ENGIN_TYPES&&data.ENGIN_TYPES.length){ENGIN_TYPES.length=0;data.ENGIN_TYPES.forEach(t=>ENGIN_TYPES.push(t));}
   if(data.COM&&data.COM.length){COM.length=0;data.COM.forEach(c=>COM.push(c));}
@@ -12167,6 +12236,16 @@ function _applyDataObject(data){
   function migrateUser(u){if(u.fonctionsFormateur&&u.fonctionsFormateur.length){const m=u.fonctionsFormateur.map(f=>MFF[f]||f);u.fonctionsFormateur=[...new Set(m)];}}
   CASERNES.forEach(cas=>(cas.users||[]).forEach(migrateUser));
   Object.values(CASERNE_DATA).forEach(cd=>{if(cd&&typeof cd==='object'&&cd.users)(cd.users||[]).forEach(migrateUser);});
+  Object.keys(CASERNE_DATA).forEach(cid=>{
+    const cd=CASERNE_DATA[cid];if(!cd||!Array.isArray(cd.users))return;
+    let responsableTrouve=false;
+    cd.users.forEach(u=>{
+      if(u.responsableFormation===true&&!responsableTrouve){
+        responsableTrouve=true;u.caserneId=cid;u.rights=Array.isArray(u.rights)?u.rights:[];
+        if(!u.rights.includes('Formation'))u.rights.push('Formation');
+      }else if(u.responsableFormation===true)u.responsableFormation=false;
+    });
+  });
   // Réhydrater les photos (exclues du push JSONBin) depuis localStorage local
   try{
     Object.keys(CASERNE_DATA).forEach(function(cid){
@@ -14543,6 +14622,13 @@ let ACTIVITES = [];
 
 // ── Numérotation ──
 function actGetData(){ return (CURRENT_CASERNE_ID&&CASERNE_DATA[CURRENT_CASERNE_ID]) ? (CASERNE_DATA[CURRENT_CASERNE_ID].activites||(CASERNE_DATA[CURRENT_CASERNE_ID].activites=[])) : ACTIVITES; }
+function activityIsFraisAdministratifs(a){
+  const category=a&&a.categorie?a.categorie:defaultActivityCategory(a&&a.type);
+  return isAdminExpenseCategory(category)||defaultActivityCategory(a&&a.type)===ADMIN_EXPENSE_CATEGORY;
+}
+function actTypesForCurrentUser(){
+  return ACT_TYPES.filter(t=>!isAdminExpenseCategory(t.cat||defaultActivityCategory(t.l))||canAccessFraisAdministratifs());
+}
 function actNextNums(date){
   const data=actGetData();
   const y=date.slice(0,4),m=date.slice(5,7);
@@ -14619,7 +14705,7 @@ function actToggleForm(){
     const dateEl=document.getElementById('act-date');
     if(dateEl){dateEl.value=today;actDateChange();}
     const sel=document.getElementById('act-type');
-    if(sel){sel.innerHTML='<option value="">\u2014 Choisir \u2014</option>'+ACT_TYPES.map(a=>`<option value="${a.l.replace(/"/g,'&quot;')}">${a.i} ${a.l}</option>`).join('');}
+    if(sel){sel.innerHTML='<option value="">\u2014 Choisir \u2014</option>'+actTypesForCurrentUser().map(a=>`<option value="${a.l.replace(/"/g,'&quot;')}">${a.i} ${a.l}</option>`).join('');}
     actLoadParticipants();
     panel.scrollIntoView({behavior:'smooth',block:'start'});
   }
@@ -14636,6 +14722,7 @@ function rActivite(){
 // ── Contrôle d'accès activité ──
 function actCanSeeDetail(a){
   if(!CU)return false;
+  if(activityIsFraisAdministratifs(a)&&!canAccessFraisAdministratifs())return false;
   if(isAdminModeActive())return true;
   return (a.participants||[]).includes(CU.l);
 }
@@ -14644,7 +14731,7 @@ function actCanSeeDetail(a){
 function rActiviteList(){
   const list=document.getElementById('act-list');
   if(!list)return;
-  const data=actGetData();
+  const data=actGetData().filter(a=>!activityIsFraisAdministratifs(a)||canAccessFraisAdministratifs());
   const isAdmin=isAdminModeActive();
   const sorted=[...data].sort((a,b)=>b.date.localeCompare(a.date)||b.ts-a.ts);
   if(!sorted.length){list.innerHTML='<div style="text-align:center;padding:20px;color:var(--t2);font-size:13px;">Aucune activité enregistrée.</div>';return;}
@@ -14705,6 +14792,7 @@ function saveActivite(){
   const {numAnnuel,numMensuel}=actNextNums(date);
   const id='ACT_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
   const typeDef=ACT_TYPES.find(t=>t.l===type);
+  if(activityIsFraisAdministratifs({type,categorie:typeDef?.cat})&&!canAccessFraisAdministratifs()){err.style.display='block';err.textContent='Acc\u00e8s non autoris\u00e9 aux frais administratifs.';return;}
   const entry={id,date,type,categorie:typeDef?.cat||'Activit\u00e9s de service',hDebut:hd,hFin:hf,duree:dureeEl,cr,participants,
     numAnnuel,numMensuel,
     auteur:CU?CU.l:'',auteurNom:CU?(CU.prenom+' '+CU.nom):'',
@@ -14774,13 +14862,14 @@ function actEditer(id){
   const data=actGetData();
   const a=data.find(x=>x.id===id);
   if(!a)return;
+  if(activityIsFraisAdministratifs(a)&&!canAccessFraisAdministratifs()){showToast('Acc\u00e8s r\u00e9serv\u00e9 aux profils autoris\u00e9s.','warn');return;}
   const agentsOpts=[...(USERS||[])].sort((u1,u2)=>u1.nom.localeCompare(u2.nom,'fr')||u1.prenom.localeCompare(u2.prenom,'fr')).map(u=>`<label style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--brd);font-size:12px;">
     <input type="checkbox" value="${u.l}" ${(a.participants||[]).includes(u.l)?'checked':''} style="width:14px;height:14px;accent-color:var(--red);">
     <span>${u.nom} ${u.prenom}</span><span style="font-size:10px;color:var(--t3);margin-left:auto;">${u.grade||''}</span></label>`).join('');
   document.getElementById('mt').textContent='Modifier — '+actNumStr(a);
   document.getElementById('mi').textContent='';
   document.getElementById('mb').innerHTML=`<div>
-    <div class="fg"><div class="fgl">Type</div><select class="fi" id="aedit-type">${ACT_TYPES.map(t=>`<option value="${t.l}"${t.l===a.type?' selected':''}>${t.i} ${t.l}</option>`).join('')}</select></div>
+    <div class="fg"><div class="fgl">Type</div><select class="fi" id="aedit-type">${actTypesForCurrentUser().map(t=>`<option value="${t.l}"${t.l===a.type?' selected':''}>${t.i} ${t.l}</option>`).join('')}</select></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
       <div class="fg"><div class="fgl">Heure début</div><input class="fi" type="time" id="aedit-hd" value="${a.hDebut||''}" oninput="aeditCalcDuree()"/></div>
       <div class="fg"><div class="fgl">Heure fin</div><input class="fi" type="time" id="aedit-hf" value="${a.hFin||''}" oninput="aeditCalcDuree()"/></div>
@@ -14809,6 +14898,8 @@ function actSaveEdit(id){
   // Journaliser les changements
   const champs=[];
   const newType=document.getElementById('aedit-type')?.value;
+  const selectedType=ACT_TYPES.find(t=>t.l===newType);
+  if(activityIsFraisAdministratifs({type:newType,categorie:selectedType?.cat})&&!canAccessFraisAdministratifs()){err.style.display='block';err.textContent='Acc\u00e8s non autoris\u00e9 aux frais administratifs.';return;}
   const newHd=document.getElementById('aedit-hd')?.value;
   const newHf=document.getElementById('aedit-hf')?.value;
   const newDuree=document.getElementById('aedit-duree')?.value;

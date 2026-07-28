@@ -39,15 +39,27 @@ let ACT_TYPES=[
   {l:'D\u00e9placement vers le garage',i:'\uD83C\uDFDB\uFE0F',cat:'D\u00e9placements'},
   {l:'Entretien casernement, v\u00e9hicules',i:'\uD83D\uDD27',cat:'Logistique et entretien'},
   {l:'Plein des v\u00e9hicules',i:'\u26FD',cat:'Logistique et entretien'},
-  {l:'Frais administratifs \u2014 Chef de centre',i:'\uD83D\uDDC2\uFE0F',cat:'Frais administratifs'},
-  {l:'Frais administratifs \u2014 Adjoint au chef de centre',i:'\uD83D\uDDC2\uFE0F',cat:'Frais administratifs'},
-  {l:'Frais administratifs \u2014 Chef de corps',i:'\uD83D\uDDC2\uFE0F',cat:'Frais administratifs'},
-  {l:'Frais administratifs \u2014 Responsable des formations',i:'\uD83C\uDF93',cat:'Frais administratifs'},
+  {l:'Frais administratif chef de corps',i:'\uD83D\uDDC2\uFE0F',cat:'Frais administratif'},
+  {l:'Frais administratif chef unit\u00e9 territoriale',i:'\uD83D\uDDC2\uFE0F',cat:'Frais administratif'},
+  {l:'Frais administratif responsable formation',i:'\uD83C\uDF93',cat:'Frais administratif'},
 ];
-const ACT_CATEGORIES=['Activit\u00e9s de service','D\u00e9placements','Logistique et entretien','Frais administratifs'];
+const ADMIN_EXPENSE_CATEGORY='Frais administratif';
+const ACT_CATEGORIES=['Activit\u00e9s de service','D\u00e9placements','Logistique et entretien',ADMIN_EXPENSE_CATEGORY];
+function isAdminExpenseCategory(value){
+  return /^frais administratif(?:s)?$/i.test(String(value||'').trim());
+}
+function normalizeAdminExpenseType(label){
+  const original=String(label||'').trim();
+  const text=original.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[\u2013\u2014-]+/g,' ').replace(/\s+/g,' ').trim();
+  if(!/^frais administratif(?:s)?\b/.test(text))return original;
+  if(/\bchef de corps\b/.test(text))return 'Frais administratif chef de corps';
+  if(/\b(chef de centre|adjoint au chef de centre|chef unite territoriale)\b/.test(text))return 'Frais administratif chef unit\u00e9 territoriale';
+  if(/\bresponsable (?:des )?formations?\b/.test(text))return 'Frais administratif responsable formation';
+  return original;
+}
 function defaultActivityCategory(label){
   const text=String(label||'').trim();
-  if(/^frais administratifs\b/i.test(text))return 'Frais administratifs';
+  if(/^frais administratif(?:s)?\b/i.test(text))return ADMIN_EXPENSE_CATEGORY;
   if(/^d\u00e9placement\b/i.test(text))return 'D\u00e9placements';
   if(/^(entretien|plein des v\u00e9hicules)/i.test(text))return 'Logistique et entretien';
   return 'Activit\u00e9s de service';
@@ -66,7 +78,7 @@ let REPORT_TYPES=[
 const ACT_ICON_LIBRARY=[
   {i:'\uD83D\uDCCB',l:'Activit\u00e9 de service'},
   {i:'\uD83D\uDC65',l:'R\u00e9union'},
-  {i:'\uD83D\uDDC2\uFE0F',l:'Frais administratifs'},
+  {i:'\uD83D\uDDC2\uFE0F',l:'Frais administratif'},
   {i:'\uD83D\uDC68\u200D\uD83D\uDE92',l:'Encadrement'},
   {i:'\uD83C\uDF96\uFE0F',l:'C\u00e9r\u00e9monie'},
   {i:'\uD83D\uDEA7',l:'Contr\u00f4le ou s\u00e9curit\u00e9'},
