@@ -215,7 +215,7 @@ function showStatsTauxParams(){
     </label>
     <label style="display:flex;align-items:flex-start;gap:10px;background:#EFF6FF;border:1px solid #93C5FD;border-radius:9px;padding:10px 12px;margin:12px 0;cursor:pointer;">
       <input type="checkbox" id="export-round-quarter" ${t.exportRoundQuarter!==false?'checked':''} style="width:18px;height:18px;accent-color:#1D4ED8;margin-top:1px;"/>
-      <span><strong style="font-size:12px;color:#1D4ED8;">Arrondir les heures d’intervention au quart d’heure supérieur</strong><br><span style="font-size:11px;color:var(--t2);">Appliqué uniquement aux colonnes HEURES et HEURES_2 de l’export : 00, 15, 30 ou 45 minutes.</span></span>
+      <span><strong style="font-size:12px;color:#1D4ED8;">Arrondir les heures d’intervention au quart d’heure supérieur</strong><br><span style="font-size:11px;color:var(--t2);">Appliqué aux colonnes HEURES et HEURES_2 : 00, 15, 30 ou 45 minutes. Les interventions SDIS conservent toujours leur durée exacte.</span></span>
     </label>
     <div id="taux-err" style="font-size:12px;color:#E24B4A;display:none;margin-bottom:8px;"></div>
     <div class="brow">
@@ -970,19 +970,19 @@ function adminExportRoundMinutesQuarter(minutes){
   if(total===0)return 0;
   return Math.ceil(total/15)*15;
 }
-function adminExportFormatInterventionMinutes(minutes){
-  const enabled=getStatsTaux().exportRoundQuarter!==false;
+function adminExportFormatInterventionMinutes(minutes,iv){
+  const enabled=getStatsTaux().exportRoundQuarter!==false&&adminExportReportType(iv)!=='SDIS';
   return adminExportMinutesHHMM(enabled?adminExportRoundMinutesQuarter(minutes):minutes);
 }
-function adminExportRoundDurationQuarter(value){
-  if(getStatsTaux().exportRoundQuarter===false||!value)return value||'';
+function adminExportRoundDurationQuarter(value,iv){
+  if(getStatsTaux().exportRoundQuarter===false||adminExportReportType(iv)==='SDIS'||!value)return value||'';
   const match=String(value).match(/^(\d+):(\d{2})$/);
   if(!match)return value;
   return adminExportMinutesHHMM(adminExportRoundMinutesQuarter(Number(match[1])*60+Number(match[2])));
 }
 function adminExportInterventionRates(iv){
   const fallbackDuration=adminExportDuration('',iv&&iv._hDebut,iv&&iv._hFin);
-  const fallback={taux1:'',heures1:adminExportRoundDurationQuarter(fallbackDuration),taux2:'',heures2:''};
+  const fallback={taux1:'',heures1:adminExportRoundDurationQuarter(fallbackDuration,iv),taux2:'',heures2:''};
   if(!iv||!iv._hDebut||!iv._hFin||!iv.h||iv.h.length<8)return fallback;
   const dateStr=iv.h.slice(0,8);
   const yr=parseInt(dateStr.slice(0,4),10),mo=parseInt(dateStr.slice(4,6),10)-1,da=parseInt(dateStr.slice(6,8),10);
@@ -1003,7 +1003,7 @@ function adminExportInterventionRates(iv){
     if(!ordre.includes(taux))ordre.push(taux);
   }
   const parts=ordre.filter(function(taux){return totals[taux]>0;}).map(function(taux){
-    return {taux:taux+'%',heures:adminExportFormatInterventionMinutes(totals[taux])};
+    return {taux:taux+'%',heures:adminExportFormatInterventionMinutes(totals[taux],iv)};
   });
   if(!parts.length)return fallback;
   if(parts.length===1)return {taux1:parts[0].taux,heures1:parts[0].heures,taux2:'',heures2:''};
@@ -1051,12 +1051,16 @@ function adminExportRegisterDateKey(row){
   const m=text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   return m?m[3]+m[2]+m[1]:text;
 }
+function adminExportIsFraisAdministratifs(a){
+  return /^frais administratifs\b/i.test(String(a&&a.type||'').trim());
+}
 function adminExportActivityRegisterRow(a,exportRates){
   const agents=[a.auteur].concat(a.participants||[]).filter(function(login,index,list){
     return login&&list.indexOf(login)===index;
   });
+  const isFraisAdmin=adminExportIsFraisAdministratifs(a);
   return adminExportRegisterRow({
-    4:adminExportDateIso(a.date),5:'AC',6:exportRates.actSvc+'%',
+    4:adminExportDateIso(a.date),5:isFraisAdmin?'FA':'AC',6:(isFraisAdmin?100:exportRates.actSvc)+'%',
     7:adminExportDuration(a.duree,a.hDebut,a.hFin),11:a.type||'',
     16:a.hDebut||'',19:a.hFin||''
   },adminExportPeople(agents));

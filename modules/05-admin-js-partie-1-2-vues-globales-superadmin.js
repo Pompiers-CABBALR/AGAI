@@ -1258,10 +1258,15 @@ function addNature(){
 function delNature(i){confirmModal('Supprimer cette nature ?',function(){NAT.splice(i,1);renderRefNatures();});}
 
 // ── Référentiel Activités de service ──
+function actIconOptions(selected){
+  const icons=ACT_ICON_LIBRARY.slice();
+  if(selected&&!icons.some(x=>x.i===selected))icons.unshift({i:selected,l:'Ic\u00f4ne personnalis\u00e9e'});
+  return icons.map(x=>`<option value="${escHtml(x.i)}"${x.i===selected?' selected':''}>${x.i} ${escHtml(x.l)}</option>`).join('');
+}
 function renderRefActivites(){
   const rows=ACT_TYPES.map((a,i)=>`<tr style="border-bottom:1px solid #f0f0f0;">
-    <td style="padding:5px 8px;text-align:center;"><input type="text" value="${a.i}" style="width:44px;padding:3px 5px;border:1px solid var(--brd);border-radius:5px;font-size:15px;text-align:center;" onchange="ACT_TYPES[${i}].i=this.value"/></td>
-    <td style="padding:5px 8px;"><input type="text" value="${a.l.replace(/"/g,'&quot;')}" style="width:100%;padding:3px 7px;border:1px solid var(--brd);border-radius:5px;font-size:12px;font-weight:500;" onchange="ACT_TYPES[${i}].l=this.value.trim()||ACT_TYPES[${i}].l"/></td>
+    <td style="padding:5px 8px;"><select class="fi" style="width:190px;font-size:12px;" onchange="updateActType(${i},'i',this.value)">${actIconOptions(a.i)}</select></td>
+    <td style="padding:5px 8px;"><input type="text" value="${a.l.replace(/"/g,'&quot;')}" style="width:100%;padding:3px 7px;border:1px solid var(--brd);border-radius:5px;font-size:12px;font-weight:500;" onchange="updateActType(${i},'l',this.value)"/></td>
     <td style="padding:5px 6px;text-align:center;"><button class="btn sm" style="font-size:10px;color:#E24B4A;" onclick="delActType(${i})">&#x2715;</button></td>
   </tr>`).join('');
   document.getElementById('ref-body').innerHTML=`
@@ -1269,29 +1274,45 @@ function renderRefActivites(){
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
         <div style="font-size:13px;font-weight:600;">${ACT_TYPES.length} activit\u00e9s <span style="font-size:11px;color:var(--t2);font-weight:400;">&#x2014; modifiables directement</span></div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-          <input type="text" id="new-act-ico" placeholder="\uD83D\uDCCB" class="fi" style="width:52px;text-align:center;"/>
+          <select id="new-act-ico" class="fi" style="width:190px;">${actIconOptions('\uD83D\uDCCB')}</select>
           <input type="text" id="new-act-nom" placeholder="Libell\u00e9 de l\u2019activit\u00e9" class="fi" style="width:240px;"/>
           <button class="btn pr sm" onclick="addActType()">+ Ajouter</button>
         </div>
       </div>
       <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">
         <thead><tr style="background:#f5f5f5;">
-          <th style="padding:6px 10px;width:52px;text-align:center;">Ic\u00f4ne</th>
+          <th style="padding:6px 10px;width:190px;text-align:left;">Ic\u00f4ne</th>
           <th style="padding:6px 10px;text-align:left;">Libell\u00e9</th>
           <th style="padding:6px 10px;width:36px;"></th>
         </tr></thead><tbody>${rows}</tbody>
       </table></div>
     </div>`;
 }
+function updateActType(index,field,value){
+  const item=ACT_TYPES[index];if(!item)return;
+  const next=String(value||'').trim();
+  if(field==='l'){if(!next){renderRefActivites();return;}item.l=next;}
+  else if(field==='i')item.i=next||'\uD83D\uDCCB';
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);
+}
 function addActType(){
   const l=document.getElementById('new-act-nom').value.trim();
-  const i=document.getElementById('new-act-ico').value.trim()||'\uD83D\uDCCB';
+  const i=document.getElementById('new-act-ico').value||'\uD83D\uDCCB';
   if(!l)return;
-  if(!ACT_TYPES.find(a=>a.l===l))ACT_TYPES.push({l,i});
-  document.getElementById('new-act-nom').value='';document.getElementById('new-act-ico').value='';
+  if(ACT_TYPES.find(a=>a.l.toLocaleLowerCase('fr')===l.toLocaleLowerCase('fr'))){showToast('Cette activit\u00e9 existe d\u00e9j\u00e0.','info');return;}
+  ACT_TYPES.push({l,i});
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);
+  document.getElementById('new-act-nom').value='';
   renderRefActivites();
+  showToast('Activit\u00e9 ajout\u00e9e \u2713','success');
 }
-function delActType(i){confirmModal('Supprimer cette activit\u00e9 ?',function(){ACT_TYPES.splice(i,1);renderRefActivites();});}
+function delActType(i){confirmModal('Supprimer cette activit\u00e9 ?',function(){
+  ACT_TYPES.splice(i,1);
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);renderRefActivites();
+});}
 
 // Ajouter un autre superadmin
 function addSuperAdmin(){

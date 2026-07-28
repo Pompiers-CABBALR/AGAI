@@ -83,12 +83,31 @@ let NAT=[
 ];
 let ACT_TYPES=[
   {l:'Activit\u00e9 de service',i:'\uD83D\uDCCB'},
+  {l:'R\u00e9union',i:'\uD83D\uDC65'},
   {l:'C\u00e9r\u00e9monie',i:'\uD83C\uDF96\uFE0F'},
   {l:'Contr\u00f4le des poteaux d\u2019incendie',i:'\uD83D\uDEA7'},
   {l:'D\u00e9placement divers',i:'\uD83D\uDE90'},
   {l:'D\u00e9placement vers le garage',i:'\uD83C\uDFDB\uFE0F'},
   {l:'Entretien casernement, v\u00e9hicules',i:'\uD83D\uDD27'},
   {l:'Plein des v\u00e9hicules',i:'\u26FD'},
+  {l:'Frais administratifs \u2014 Chef de centre',i:'\uD83D\uDDC2\uFE0F'},
+  {l:'Frais administratifs \u2014 Adjoint au chef de centre',i:'\uD83D\uDDC2\uFE0F'},
+  {l:'Frais administratifs \u2014 Chef de corps',i:'\uD83D\uDDC2\uFE0F'},
+  {l:'Frais administratifs \u2014 Responsable des formations',i:'\uD83C\uDF93'},
+];
+const ACT_ICON_LIBRARY=[
+  {i:'\uD83D\uDCCB',l:'Activit\u00e9 de service'},
+  {i:'\uD83D\uDC65',l:'R\u00e9union'},
+  {i:'\uD83D\uDDC2\uFE0F',l:'Frais administratifs'},
+  {i:'\uD83D\uDC68\u200D\uD83D\uDE92',l:'Encadrement'},
+  {i:'\uD83C\uDF96\uFE0F',l:'C\u00e9r\u00e9monie'},
+  {i:'\uD83D\uDEA7',l:'Contr\u00f4le ou s\u00e9curit\u00e9'},
+  {i:'\uD83D\uDE90',l:'D\u00e9placement'},
+  {i:'\uD83D\uDD27',l:'Entretien'},
+  {i:'\u26FD',l:'Plein de carburant'},
+  {i:'\uD83D\uDCDE',l:'T\u00e9l\u00e9phone'},
+  {i:'\uD83D\uDCDD',l:'Compte rendu'},
+  {i:'\uD83C\uDF93',l:'Formation'}
 ];
 let COM=[{"nom": "Allouagne", "secteur": "UT Lapugnoy"}, {"nom": "Ames", "secteur": "UT Divion"}, {"nom": "Amettes", "secteur": "UT Divion"}, {"nom": "Annequin", "secteur": "UT Noyelles-lès-Vermelles"}, {"nom": "Annezin", "secteur": "UT Sailly-Labourse"}, {"nom": "Auchel", "secteur": "UT Lapugnoy"}, {"nom": "Auchy-au-bois", "secteur": "UT Divion"}, {"nom": "Auchy-les-Mines", "secteur": "UT Noyelles-lès-Vermelles"}, {"nom": "Bajus", "secteur": "UT Hersin-Coupigny"}, {"nom": "Barlin", "secteur": "UT Hersin-Coupigny"}, {"nom": "Beugin", "secteur": "UT Hersin-Coupigny"}, {"nom": "Beuvry", "secteur": "UT Sailly-Labourse"}, {"nom": "Billy-Berclau", "secteur": "UT Noyelles-lès-Vermelles"}, {"nom": "Blessy", "secteur": "UT Isbergues"}, {"nom": "Bourecq", "secteur": "UT Isbergues"}, {"nom": "Bruay-la-Buissière", "secteur": "UT Divion"}, {"nom": "Burbure", "secteur": "UT Lapugnoy"}, {"nom": "Busnes", "secteur": "UT Lapugnoy"}, {"nom": "Béthune", "secteur": "UT Sailly-Labourse"}, {"nom": "Calonne-Ricouart", "secteur": "UT Divion"}, {"nom": "Calonne-sur-la-Lys", "secteur": "UT Isbergues"}, {"nom": "Camblain-Châtelain", "secteur": "UT Hersin-Coupigny"}, {"nom": "Cambrin", "secteur": "UT Noyelles-lès-Vermelles"}, {"nom": "Cauchy-à-la-Tour", "secteur": "UT Divion"}, {"nom": "Caucourt", "secteur": "UT Hersin-Coupigny"}, {"nom": "Chocques", "secteur": "UT Lapugnoy"}, {"nom": "Cuinchy", "secteur": "UT Cuinchy"}, {"nom": "Divion", "secteur": "UT Divion"}, {"nom": "Diéval", "secteur": "UT Hersin-Coupigny"}, {"nom": "Douvrin", "secteur": "UT Noyelles-lès-Vermelles"}, {"nom": "Drouvin-le-Marais", "secteur": "UT Sailly-Labourse"}, {"nom": "Ecquedecques", "secteur": "UT Divion"}, {"nom": "Essars", "secteur": "UT Cuinchy"}, {"nom": "Estrée-Blanche", "secteur": "UT Isbergues"}, {"nom": "Estrée-Cauchy", "secteur": "UT Hersin-Coupigny"}, {"nom": "Ferfay", "secteur": "UT Divion"}, {"nom": "Festubert", "secteur": "UT Cuinchy"}, {"nom": "Fouquereuil", "secteur": "UT Sailly-Labourse"}, {"nom": "Fouquières-lès-Béthune", "secteur": "UT Sailly-Labourse"}, {"nom": "Fresnicourt-le-Dolmen", "secteur": "UT Hersin-Coupigny"}, {"nom": "Gauchin-Légal", "secteur": "UT Hersin-Coupigny"}, {"nom": "Givenchy-lès-la-Bassée", "secteur": "UT Cuinchy"}, {"nom": "Gonnehem", "secteur": "UT Lapugnoy"}, {"nom": "Gosnay", "secteur": "UT Sailly-Labourse"}, {"nom": "Guarbecque", "secteur": "UT Isbergues"}, {"nom": "Haillicourt", "secteur": "UT Hersin-Coupigny"}, {"nom": "Haisnes", "secteur": "UT Noyelles-lès-Vermelles"}, {"nom": "Ham-en-Artois", "secteur": "UT Isbergues"}, {"nom": "Hermin", "secteur": "UT Hersin-Coupigny"}, {"nom": "Hersin-Coupigny", "secteur": "UT Hersin-Coupigny"}, {"nom": "Hesdigneul-lès-Béthune", "secteur": "UT Sailly-Labourse"}, {"nom": "Hinges", "secteur": "UT Cuinchy"}, {"nom": "Houchin", "secteur": "UT Hersin-Coupigny"}, {"nom": "Houdain", "secteur": "UT Hersin-Coupigny"}, {"nom": "Isbergues", "secteur": "UT Isbergues"}, {"nom": "La Comté", "secteur": "UT Hersin-Coupigny"}, {"nom": "La Couture", "secteur": "UT Cuinchy"}, {"nom": "Labeuvrière", "secteur": "UT Lapugnoy"}, {"nom": "Labourse", "secteur": "UT Sailly-Labourse"}, {"nom": "Lambres", "secteur": "UT Isbergues"}, {"nom": "Lapugnoy", "secteur": "UT Lapugnoy"}, {"nom": "Lespesses", "secteur": "UT Divion"}, {"nom": "Liettres", "secteur": "UT Isbergues"}, {"nom": "Ligny-lès-Aire", "secteur": "UT Isbergues"}, {"nom": "Lillers", "secteur": "UT Lapugnoy"}, {"nom": "Linghem", "secteur": "UT Isbergues"}, {"nom": "Lières", "secteur": "UT Divion"}, {"nom": "Locon", "secteur": "UT Cuinchy"}, {"nom": "Lorgies", "secteur": "UT Cuinchy"}, {"nom": "Lozinghem", "secteur": "UT Lapugnoy"}, {"nom": "Maisnil-lès-Ruitz", "secteur": "UT Hersin-Coupigny"}, {"nom": "Marles-les-Mines", "secteur": "UT Lapugnoy"}, {"nom": "Mazinghem", "secteur": "UT Isbergues"}, {"nom": "Mont-Bernanchon", "secteur": "UT Cuinchy"}, {"nom": "Neuve-Chapelle", "secteur": "UT Cuinchy"}, {"nom": "Noeux-les-Mines", "secteur": "UT Sailly-Labourse"}, {"nom": "Norrent-Fontes", "secteur": "UT Isbergues"}, {"nom": "Noyelles-lès-Vermelles", "secteur": "UT Noyelles-lès-Vermelles"}, {"nom": "Oblinghem", "secteur": "UT Cuinchy"}, {"nom": "Ourton", "secteur": "UT Hersin-Coupigny"}, {"nom": "Quernes", "secteur": "UT Isbergues"}, {"nom": "Rebreuve-Ranchicourt", "secteur": "UT Hersin-Coupigny"}, {"nom": "Rely", "secteur": "UT Isbergues"}, {"nom": "Richebourg", "secteur": "UT Cuinchy"}, {"nom": "Robecq", "secteur": "UT Lapugnoy"}, {"nom": "Rombly", "secteur": "UT Isbergues"}, {"nom": "Ruitz", "secteur": "UT Hersin-Coupigny"}, {"nom": "Sailly-Labourse", "secteur": "UT Sailly-Labourse"}, {"nom": "Saint-Floris", "secteur": "UT Isbergues"}, {"nom": "Saint-Hilaire-Cottes", "secteur": "UT Isbergues"}, {"nom": "Saint-Venant", "secteur": "UT Isbergues"}, {"nom": "Vaudricourt", "secteur": "UT Sailly-Labourse"}, {"nom": "Vendin-lès-Béthune", "secteur": "UT Cuinchy"}, {"nom": "Vermelles", "secteur": "UT Noyelles-lès-Vermelles"}, {"nom": "Verquigneul", "secteur": "UT Sailly-Labourse"}, {"nom": "Verquin", "secteur": "UT Sailly-Labourse"}, {"nom": "Vieille-Chapelle", "secteur": "UT Cuinchy"}, {"nom": "Violaines", "secteur": "UT Cuinchy"}, {"nom": "Westrehem", "secteur": "UT Divion"}, {"nom": "Witternesse", "secteur": "UT Isbergues"}];
 const GC={'Lapugnoy':[50.508,2.548],'Auchy-les-Mines':[50.513,2.775],'Béthune':[50.530,2.637],'Barlin':[50.455,2.617],'Lillers':[50.560,2.484],'Divion':[50.462,2.596],'Noeux-les-Mines':[50.476,2.666],'Bruay-la-Buissière':[50.481,2.545]};
@@ -2015,10 +2034,15 @@ function addNature(){
 function delNature(i){confirmModal('Supprimer cette nature ?',function(){NAT.splice(i,1);renderRefNatures();});}
 
 // ── Référentiel Activités de service ──
+function actIconOptions(selected){
+  const icons=ACT_ICON_LIBRARY.slice();
+  if(selected&&!icons.some(x=>x.i===selected))icons.unshift({i:selected,l:'Ic\u00f4ne personnalis\u00e9e'});
+  return icons.map(x=>`<option value="${escHtml(x.i)}"${x.i===selected?' selected':''}>${x.i} ${escHtml(x.l)}</option>`).join('');
+}
 function renderRefActivites(){
   const rows=ACT_TYPES.map((a,i)=>`<tr style="border-bottom:1px solid #f0f0f0;">
-    <td style="padding:5px 8px;text-align:center;"><input type="text" value="${a.i}" style="width:44px;padding:3px 5px;border:1px solid var(--brd);border-radius:5px;font-size:15px;text-align:center;" onchange="ACT_TYPES[${i}].i=this.value"/></td>
-    <td style="padding:5px 8px;"><input type="text" value="${a.l.replace(/"/g,'&quot;')}" style="width:100%;padding:3px 7px;border:1px solid var(--brd);border-radius:5px;font-size:12px;font-weight:500;" onchange="ACT_TYPES[${i}].l=this.value.trim()||ACT_TYPES[${i}].l"/></td>
+    <td style="padding:5px 8px;"><select class="fi" style="width:190px;font-size:12px;" onchange="updateActType(${i},'i',this.value)">${actIconOptions(a.i)}</select></td>
+    <td style="padding:5px 8px;"><input type="text" value="${a.l.replace(/"/g,'&quot;')}" style="width:100%;padding:3px 7px;border:1px solid var(--brd);border-radius:5px;font-size:12px;font-weight:500;" onchange="updateActType(${i},'l',this.value)"/></td>
     <td style="padding:5px 6px;text-align:center;"><button class="btn sm" style="font-size:10px;color:#E24B4A;" onclick="delActType(${i})">&#x2715;</button></td>
   </tr>`).join('');
   document.getElementById('ref-body').innerHTML=`
@@ -2026,29 +2050,45 @@ function renderRefActivites(){
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
         <div style="font-size:13px;font-weight:600;">${ACT_TYPES.length} activit\u00e9s <span style="font-size:11px;color:var(--t2);font-weight:400;">&#x2014; modifiables directement</span></div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-          <input type="text" id="new-act-ico" placeholder="\uD83D\uDCCB" class="fi" style="width:52px;text-align:center;"/>
+          <select id="new-act-ico" class="fi" style="width:190px;">${actIconOptions('\uD83D\uDCCB')}</select>
           <input type="text" id="new-act-nom" placeholder="Libell\u00e9 de l\u2019activit\u00e9" class="fi" style="width:240px;"/>
           <button class="btn pr sm" onclick="addActType()">+ Ajouter</button>
         </div>
       </div>
       <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">
         <thead><tr style="background:#f5f5f5;">
-          <th style="padding:6px 10px;width:52px;text-align:center;">Ic\u00f4ne</th>
+          <th style="padding:6px 10px;width:190px;text-align:left;">Ic\u00f4ne</th>
           <th style="padding:6px 10px;text-align:left;">Libell\u00e9</th>
           <th style="padding:6px 10px;width:36px;"></th>
         </tr></thead><tbody>${rows}</tbody>
       </table></div>
     </div>`;
 }
+function updateActType(index,field,value){
+  const item=ACT_TYPES[index];if(!item)return;
+  const next=String(value||'').trim();
+  if(field==='l'){if(!next){renderRefActivites();return;}item.l=next;}
+  else if(field==='i')item.i=next||'\uD83D\uDCCB';
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);
+}
 function addActType(){
   const l=document.getElementById('new-act-nom').value.trim();
-  const i=document.getElementById('new-act-ico').value.trim()||'\uD83D\uDCCB';
+  const i=document.getElementById('new-act-ico').value||'\uD83D\uDCCB';
   if(!l)return;
-  if(!ACT_TYPES.find(a=>a.l===l))ACT_TYPES.push({l,i});
-  document.getElementById('new-act-nom').value='';document.getElementById('new-act-ico').value='';
+  if(ACT_TYPES.find(a=>a.l.toLocaleLowerCase('fr')===l.toLocaleLowerCase('fr'))){showToast('Cette activit\u00e9 existe d\u00e9j\u00e0.','info');return;}
+  ACT_TYPES.push({l,i});
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);
+  document.getElementById('new-act-nom').value='';
   renderRefActivites();
+  showToast('Activit\u00e9 ajout\u00e9e \u2713','success');
 }
-function delActType(i){confirmModal('Supprimer cette activit\u00e9 ?',function(){ACT_TYPES.splice(i,1);renderRefActivites();});}
+function delActType(i){confirmModal('Supprimer cette activit\u00e9 ?',function(){
+  ACT_TYPES.splice(i,1);
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);renderRefActivites();
+});}
 
 // Ajouter un autre superadmin
 function addSuperAdmin(){
@@ -8889,7 +8929,7 @@ function showStatsTauxParams(){
     </label>
     <label style="display:flex;align-items:flex-start;gap:10px;background:#EFF6FF;border:1px solid #93C5FD;border-radius:9px;padding:10px 12px;margin:12px 0;cursor:pointer;">
       <input type="checkbox" id="export-round-quarter" ${t.exportRoundQuarter!==false?'checked':''} style="width:18px;height:18px;accent-color:#1D4ED8;margin-top:1px;"/>
-      <span><strong style="font-size:12px;color:#1D4ED8;">Arrondir les heures d’intervention au quart d’heure supérieur</strong><br><span style="font-size:11px;color:var(--t2);">Appliqué uniquement aux colonnes HEURES et HEURES_2 de l’export : 00, 15, 30 ou 45 minutes.</span></span>
+      <span><strong style="font-size:12px;color:#1D4ED8;">Arrondir les heures d’intervention au quart d’heure supérieur</strong><br><span style="font-size:11px;color:var(--t2);">Appliqué aux colonnes HEURES et HEURES_2 : 00, 15, 30 ou 45 minutes. Les interventions SDIS conservent toujours leur durée exacte.</span></span>
     </label>
     <div id="taux-err" style="font-size:12px;color:#E24B4A;display:none;margin-bottom:8px;"></div>
     <div class="brow">
@@ -9644,19 +9684,19 @@ function adminExportRoundMinutesQuarter(minutes){
   if(total===0)return 0;
   return Math.ceil(total/15)*15;
 }
-function adminExportFormatInterventionMinutes(minutes){
-  const enabled=getStatsTaux().exportRoundQuarter!==false;
+function adminExportFormatInterventionMinutes(minutes,iv){
+  const enabled=getStatsTaux().exportRoundQuarter!==false&&adminExportReportType(iv)!=='SDIS';
   return adminExportMinutesHHMM(enabled?adminExportRoundMinutesQuarter(minutes):minutes);
 }
-function adminExportRoundDurationQuarter(value){
-  if(getStatsTaux().exportRoundQuarter===false||!value)return value||'';
+function adminExportRoundDurationQuarter(value,iv){
+  if(getStatsTaux().exportRoundQuarter===false||adminExportReportType(iv)==='SDIS'||!value)return value||'';
   const match=String(value).match(/^(\d+):(\d{2})$/);
   if(!match)return value;
   return adminExportMinutesHHMM(adminExportRoundMinutesQuarter(Number(match[1])*60+Number(match[2])));
 }
 function adminExportInterventionRates(iv){
   const fallbackDuration=adminExportDuration('',iv&&iv._hDebut,iv&&iv._hFin);
-  const fallback={taux1:'',heures1:adminExportRoundDurationQuarter(fallbackDuration),taux2:'',heures2:''};
+  const fallback={taux1:'',heures1:adminExportRoundDurationQuarter(fallbackDuration,iv),taux2:'',heures2:''};
   if(!iv||!iv._hDebut||!iv._hFin||!iv.h||iv.h.length<8)return fallback;
   const dateStr=iv.h.slice(0,8);
   const yr=parseInt(dateStr.slice(0,4),10),mo=parseInt(dateStr.slice(4,6),10)-1,da=parseInt(dateStr.slice(6,8),10);
@@ -9677,7 +9717,7 @@ function adminExportInterventionRates(iv){
     if(!ordre.includes(taux))ordre.push(taux);
   }
   const parts=ordre.filter(function(taux){return totals[taux]>0;}).map(function(taux){
-    return {taux:taux+'%',heures:adminExportFormatInterventionMinutes(totals[taux])};
+    return {taux:taux+'%',heures:adminExportFormatInterventionMinutes(totals[taux],iv)};
   });
   if(!parts.length)return fallback;
   if(parts.length===1)return {taux1:parts[0].taux,heures1:parts[0].heures,taux2:'',heures2:''};
@@ -9725,12 +9765,16 @@ function adminExportRegisterDateKey(row){
   const m=text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   return m?m[3]+m[2]+m[1]:text;
 }
+function adminExportIsFraisAdministratifs(a){
+  return /^frais administratifs\b/i.test(String(a&&a.type||'').trim());
+}
 function adminExportActivityRegisterRow(a,exportRates){
   const agents=[a.auteur].concat(a.participants||[]).filter(function(login,index,list){
     return login&&list.indexOf(login)===index;
   });
+  const isFraisAdmin=adminExportIsFraisAdministratifs(a);
   return adminExportRegisterRow({
-    4:adminExportDateIso(a.date),5:'AC',6:exportRates.actSvc+'%',
+    4:adminExportDateIso(a.date),5:isFraisAdmin?'FA':'AC',6:(isFraisAdmin?100:exportRates.actSvc)+'%',
     7:adminExportDuration(a.duree,a.hDebut,a.hFin),11:a.type||'',
     16:a.hDebut||'',19:a.hFin||''
   },adminExportPeople(agents));
@@ -9897,7 +9941,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260728-export-arrondi-quart-54';
+const APP_VERSION='20260728-export-frais-admin-fa-57';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -11866,6 +11910,7 @@ function _buildDataObject(){
     GLOBAL_ACCOUNTS:GLOBAL_ACCOUNTS.map(a=>({...a})),
     CASERNE_DATA:{},
     NAT:JSON.parse(JSON.stringify(NAT)),
+    ACT_TYPES:JSON.parse(JSON.stringify(ACT_TYPES)),
     COM:JSON.parse(JSON.stringify(COM)),
     ENGIN_TYPES:JSON.parse(JSON.stringify(ENGIN_TYPES)),
     APL_COUNTER:{...APL_COUNTER},
@@ -11967,6 +12012,7 @@ function _applyDataObject(data){
     });
   }
   if(data.NAT&&data.NAT.length){NAT.length=0;data.NAT.forEach(n=>NAT.push(n));}
+  if(data.ACT_TYPES&&data.ACT_TYPES.length){ACT_TYPES.length=0;data.ACT_TYPES.forEach(a=>ACT_TYPES.push(a));}
   if(data.ENGIN_TYPES&&data.ENGIN_TYPES.length){ENGIN_TYPES.length=0;data.ENGIN_TYPES.forEach(t=>ENGIN_TYPES.push(t));}
   if(data.COM&&data.COM.length){COM.length=0;data.COM.forEach(c=>COM.push(c));}
   if(data.APL_COUNTER)Object.assign(APL_COUNTER,data.APL_COUNTER);
@@ -12097,6 +12143,7 @@ async function _jbPush(data){
       merged.GLOBAL_ACCOUNTS=data.GLOBAL_ACCOUNTS;
     }
     merged.NAT=data.NAT;
+    merged.ACT_TYPES=data.ACT_TYPES;
     merged.COM=data.COM;
     merged.APL_COUNTER=Object.assign({},current.APL_COUNTER||{},data.APL_COUNTER||{});
     merged.INT_GLOBAL_COUNTER=Object.assign({},current.INT_GLOBAL_COUNTER||{},data.INT_GLOBAL_COUNTER||{});
@@ -12373,6 +12420,7 @@ function _sbSplitRows(data){
     CASERNES: data.CASERNES,
     GLOBAL_ACCOUNTS: data.GLOBAL_ACCOUNTS,
     NAT: data.NAT,
+    ACT_TYPES: data.ACT_TYPES,
     COM: data.COM,
     ENGIN_TYPES: data.ENGIN_TYPES,
     APL_COUNTER: data.APL_COUNTER,
@@ -12409,7 +12457,7 @@ function _sbAssembleRows(rows){
       const g = r.data || {};
       Object.assign(data, {
         v: g.v, CASERNES: g.CASERNES, GLOBAL_ACCOUNTS: g.GLOBAL_ACCOUNTS,
-        NAT: g.NAT, COM: g.COM, ENGIN_TYPES: g.ENGIN_TYPES, APL_COUNTER: g.APL_COUNTER,
+        NAT: g.NAT, ACT_TYPES: g.ACT_TYPES, COM: g.COM, ENGIN_TYPES: g.ENGIN_TYPES, APL_COUNTER: g.APL_COUNTER,
         INT_GLOBAL_COUNTER: g.INT_GLOBAL_COUNTER, INT_CAS_COUNTER: g.INT_CAS_COUNTER,
         PILP_COUNTER: g.PILP_COUNTER, DISPOS_UNLOCKED: g.DISPOS_UNLOCKED,
         DISPO_REQUESTS: g.DISPO_REQUESTS, LOGIN_HISTORY: g.LOGIN_HISTORY,
@@ -12703,7 +12751,7 @@ function _rcSplitAll(data){
   let rows = [];
   // Ligne globale unique (compteurs, comptes, NAT/COM, etc.) — type 'global'
   rows.push({ id:'_GLOBAL'+RC_SEP+'global'+RC_SEP+'main', caserne:'_GLOBAL', type:'global', data:{
-    v:data.v, CASERNES:data.CASERNES, GLOBAL_ACCOUNTS:data.GLOBAL_ACCOUNTS, NAT:data.NAT, COM:data.COM, ENGIN_TYPES:data.ENGIN_TYPES,
+    v:data.v, CASERNES:data.CASERNES, GLOBAL_ACCOUNTS:data.GLOBAL_ACCOUNTS, NAT:data.NAT, ACT_TYPES:data.ACT_TYPES, COM:data.COM, ENGIN_TYPES:data.ENGIN_TYPES,
     APL_COUNTER:data.APL_COUNTER, INT_GLOBAL_COUNTER:data.INT_GLOBAL_COUNTER, INT_CAS_COUNTER:data.INT_CAS_COUNTER,
     PILP_COUNTER:data.PILP_COUNTER, DISPOS_UNLOCKED:data.DISPOS_UNLOCKED, DISPO_REQUESTS:data.DISPO_REQUESTS,
     LOGIN_HISTORY:data.LOGIN_HISTORY,
@@ -12879,7 +12927,7 @@ async function _rcPull(silent){
       if(r.caserne==='_GLOBAL'){
         if(r.type==='global' && !r.deleted){
           const g=r.data||{};
-          Object.assign(data, {v:g.v, CASERNES:g.CASERNES, GLOBAL_ACCOUNTS:g.GLOBAL_ACCOUNTS, NAT:g.NAT, COM:g.COM, ENGIN_TYPES:g.ENGIN_TYPES,
+          Object.assign(data, {v:g.v, CASERNES:g.CASERNES, GLOBAL_ACCOUNTS:g.GLOBAL_ACCOUNTS, NAT:g.NAT, ACT_TYPES:g.ACT_TYPES, COM:g.COM, ENGIN_TYPES:g.ENGIN_TYPES,
             APL_COUNTER:g.APL_COUNTER, INT_GLOBAL_COUNTER:g.INT_GLOBAL_COUNTER, INT_CAS_COUNTER:g.INT_CAS_COUNTER,
             PILP_COUNTER:g.PILP_COUNTER, DISPOS_UNLOCKED:g.DISPOS_UNLOCKED, DISPO_REQUESTS:g.DISPO_REQUESTS, LOGIN_HISTORY:g.LOGIN_HISTORY,
             LOGIN_HISTORY_DELETED:g.LOGIN_HISTORY_DELETED});
