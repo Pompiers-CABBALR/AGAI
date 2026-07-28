@@ -390,6 +390,77 @@ function _frelonSummaryLine(iv){
   return parts.join(' | ');
 }
 
+function hhmmToMinutes(value){
+  const match=String(value||'').match(/^(\d{2}):(\d{2})$/);
+  if(!match)return null;
+  const hours=Number(match[1]),minutes=Number(match[2]);
+  if(hours>23||minutes>59)return null;
+  return hours*60+minutes;
+}
+
+function saveInterventionStartCorrection(ivId){
+  const iv=IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  if(!canEditInterventionStart(iv)){
+    showToast('Cette heure ne peut pas être modifiée par ce compte.','warn');return;
+  }
+  const field=document.getElementById('cr-start-correction');
+  const next=field?field.value:'';
+  const nextMinutes=hhmmToMinutes(next);
+  if(nextMinutes===null){showToast('Saisissez une heure valide au format HH:MM.','warn');return;}
+  const old=iv._hDebut||'';
+  const real=iv._hDebutReelle||iv._hDebutInitiale||old;
+  if(!real){showToast('L’heure réelle de départ est introuvable.','warn');return;}
+  if(!hasAdministrativeAccount()){
+    const realMinutes=hhmmToMinutes(real);
+    const backward=(realMinutes-nextMinutes+1440)%1440;
+    if(backward>15){
+      showToast('Le chef d’agrès peut avancer l’heure de départ de 15 minutes maximum.','warn');return;
+    }
+  }
+  if(next===old){showToast('L’heure de départ est inchangée.','info');return;}
+  if(!iv._hDebutReelle)iv._hDebutReelle=real;
+  if(!iv._hDebutInitiale)iv._hDebutInitiale=real;
+  iv._hDebut=next;
+  iv._heureDebutModifiee=true;
+  if(!Array.isArray(iv._heureDebutModifs))iv._heureDebutModifs=[];
+  const change={
+    ancienne:old,nouvelle:next,reelle:real,auteur:CU.l,
+    horodatage:getH(N()),administrateur:hasAdministrativeAccount()
+  };
+  iv._heureDebutModifs.push(change);
+  pushTL(iv,'modif-heure',CU.l,
+    'Heure de début '+old+' → '+next+' (heure réelle conservée : '+real+')');
+  saveData(true);rI();rHist();
+  showToast('Heure corrigée et ajoutée à l’historique.','success');
+  showCompteRenduModal(ivId);
+}
+
+function interventionStartCorrectionHTML(iv){
+  const canEdit=canEditInterventionStart(iv);
+  const admin=hasAdministrativeAccount();
+  const own=iv.agr===CU.l||iv._agr2===CU.l;
+  const first=isFirstInterventionOfRoute(iv);
+  const real=iv._hDebutReelle||iv._hDebutInitiale||iv._hDebut||'';
+  const changes=Array.isArray(iv._heureDebutModifs)?iv._heureDebutModifs:[];
+  if(!iv._hDebut&&!real)return '';
+  const notice=!canEdit&&own&&!admin&&!first
+    ?'<div style="font-size:11px;color:#92400E;margin-top:6px;">Dans une tournée de plusieurs interventions, seule la première autorise une correction manuelle par le chef d’agrès. Les suivantes sont enchaînées automatiquement.</div>'
+    :'';
+  const trace=changes.length
+    ?'<div style="font-size:10px;color:#7C2D12;margin-top:6px;">Dernière modification : '+escHtml(changes[changes.length-1].ancienne)+' → '+escHtml(changes[changes.length-1].nouvelle)+' par '+escHtml(changes[changes.length-1].auteur)+' · '+escHtml(changes[changes.length-1].horodatage)+'</div>'
+    :'';
+  return '<div style="background:'+(iv._heureDebutModifiee?'#FFF7ED':'#F8FAFC')+';border:1px solid '+(iv._heureDebutModifiee?'#FDBA74':'#CBD5E1')+';border-radius:8px;padding:10px 12px;margin-bottom:10px;">'
+    +'<div style="font-size:12px;font-weight:700;color:'+(iv._heureDebutModifiee?'#9A3412':'#334155')+';margin-bottom:7px;">&#x23F1; Heure de début'+(iv._heureDebutModifiee?' — corrigée':'')+'</div>'
+    +'<div style="display:flex;align-items:end;gap:8px;flex-wrap:wrap;">'
+    +'<div class="fg" style="margin:0;min-width:140px;flex:1;"><div class="fgl" style="font-size:11px;">Heure enregistrée</div>'
+    +'<input class="fi" id="cr-start-correction" type="time" value="'+escHtml(iv._hDebut||real)+'"'+(canEdit?'':' readonly')+' style="font-size:12px;padding:6px 8px;'+(!canEdit?'background:#f5f5f5;':'')+'"></div>'
+    +'<div style="font-size:11px;color:var(--t2);padding-bottom:7px;">Heure réelle : <strong>'+escHtml(real)+'</strong></div>'
+    +(canEdit?'<button class="btn sm" style="background:#C2410C;color:#fff;margin-bottom:1px;" onclick="saveInterventionStartCorrection(\''+iv.id+'\')">Enregistrer l’heure</button>':'')
+    +'</div>'
+    +(canEdit&&!admin?'<div style="font-size:10px;color:var(--t2);margin-top:6px;">Correction autorisée jusqu’à 15 minutes avant l’heure réelle, uniquement avant validation du rapport.</div>':'')
+    +notice+trace+'</div>';
+}
+
 function showCompteRenduModal(ivId) {
   const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
   const isOwn       = iv.agr===CU.l||iv._agr2===CU.l;
@@ -430,6 +501,7 @@ function showCompteRenduModal(ivId) {
 
   document.getElementById('mt').textContent = 'Compte rendu d\u2019intervention';
   document.getElementById('mi').textContent = iv.n + ' \u2014 ' + iv.com;
+  const startCorrectionFields=interventionStartCorrectionHTML(iv);
 
   // Champs supplémentaires SDIS
   const sdisFields = iv._sdis ? (function(){
@@ -437,7 +509,8 @@ function showCompteRenduModal(ivId) {
     const hRet=iv._hFin||'';
     const hNow=getHHMM(N()).slice(0,5);
     const ro=canWrite?'':' readonly';
-    const roLocked=iv._crValide?' readonly':''; // départ/retour verrouillés après validation CR
+    const roDeparture=' readonly'; // le départ se corrige uniquement via la zone tracée dédiée
+    const roLocked=iv._crValide?' readonly':'';
     return '<div style="background:#DBEAFE;border:1px solid #93C5FD;border-radius:8px;padding:10px 12px;margin-bottom:10px;">'
       +'<div style="font-size:12px;font-weight:700;color:#1D4ED8;margin-bottom:8px;">🚑 Champs spécifiques SDIS'
       +(iv._crValide?'<span style="font-size:10px;font-weight:400;margin-left:8px;color:#6B7280;">🔒 Départ/Retour verrouillés</span>':'')
@@ -449,7 +522,7 @@ function showCompteRenduModal(ivId) {
       +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;">N° intervention SDIS</div>'
       +'<input class="fi" id="cr-numsdis"'+ro+' value="'+(iv._numSDIS||'')+'" placeholder="ex: 112057-1" style="font-size:12px;padding:4px 6px;"></div>'
       +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;">⬆️ Départ engin</div>'
-      +'<input class="fi" id="cr-hdepart" type="time"'+roLocked+' value="'+hDep+'" onchange="sdisUpdateMinMax()" style="font-size:12px;padding:4px 6px;'+(iv._crValide?'background:#f5f5f5;':'')+'"></div>'
+      +'<input class="fi" id="cr-hdepart" type="time"'+roDeparture+' value="'+hDep+'" onchange="sdisUpdateMinMax()" style="font-size:12px;padding:4px 6px;background:#f5f5f5;"></div>'
       +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;">⬇️ Retour engin</div>'
       +'<input class="fi" id="cr-hretour" type="time"'+roLocked+' value="'+hRet+'" onchange="sdisUpdateMinMax()" style="font-size:12px;padding:4px 6px;'+(iv._crValide?'background:#f5f5f5;':'')+'"></div>'
       +'</div>'
@@ -477,6 +550,7 @@ function showCompteRenduModal(ivId) {
   document.getElementById('mb').innerHTML =
     '<div style="padding:4px 0;">'
     + infoBanner
+    + startCorrectionFields
     + sdisFields
     + frelonFields
     + '<div class="fg"><div class="fgl">Compte rendu du chef d\'agrès</div>'
@@ -537,9 +611,8 @@ function _sdisSaveFields(iv){
   const v=id=>(document.getElementById(id)||{}).value||'';
   iv._hAcquis     = v('cr-hacquis');
   iv._numSDIS     = v('cr-numsdis');
-  // Départ/retour modifiables seulement avant validation
+  // Le départ est géré par la correction tracée ; le retour reste modifiable avant validation.
   if(!iv._crValide){
-    iv._hDebut = v('cr-hdepart')||iv._hDebut;
     iv._hFin   = v('cr-hretour')||iv._hFin;
   }
   iv._hSll        = v('cr-hsll');

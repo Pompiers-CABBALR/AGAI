@@ -3145,7 +3145,67 @@ function cpH(){const v=document.getElementById('hv').textContent;if(navigator.cl
 // ────────────────── INTERVENTIONS ──────────────────
 function rIPostUpdate(){rStatsHeader();}
 function sf(f,btn){flt=f;document.querySelectorAll('#tab-interv .fb').forEach(b=>b.classList.remove('active'));btn.classList.add('active');rI();}
-function pushTL(iv,s,who){if(!iv.tl)iv.tl=[];iv.tl.push(mkTL(s,getH(N()),who));}
+function pushTL(iv,s,who,note){
+  if(!iv.tl)iv.tl=[];
+  const entry=mkTL(s,getH(N()),who);
+  if(note)entry.note=note;
+  iv.tl.push(entry);
+}
+
+// Les administrateurs doivent voir les corrections horaires même lorsque leur
+// mode d'administration est désactivé. On contrôle donc ici le rôle du compte,
+// et non l'état temporaire du bouton "pouvoir administrateur".
+function hasAdministrativeAccount(){
+  if(!CU)return false;
+  return GLOBAL_ROLE==='superadmin'||CU.role==='superadmin'||CU._isSA===true||
+    (Array.isArray(CU.rights)&&CU.rights.includes('Administration'));
+}
+
+function assignInterventionRoute(iv,login){
+  if(!iv||!login)return;
+  const active=IVS.filter(function(x){
+    return x.id!==iv.id&&x.agr===login&&['selectionne','en-cours'].includes(x.s);
+  });
+  let batch=active.map(function(x){return x._routeBatchId;}).find(Boolean);
+  if(!batch)batch='ROUTE_'+String(Date.now())+'_'+login;
+  const sameBatch=IVS.filter(function(x){return x._routeBatchId===batch;});
+  const maxOrder=sameBatch.reduce(function(max,x){return Math.max(max,Number(x._routeOrder)||0);},0);
+  iv._routeBatchId=batch;
+  if(!iv._routeOrder)iv._routeOrder=maxOrder+1;
+}
+
+function prepareInterventionRoute(iv){
+  if(!iv)return;
+  assignInterventionRoute(iv,iv.agr||CU.l);
+  const login=iv.agr||CU.l;
+  const active=IVS.filter(function(x){
+    return x.agr===login&&['selectionne','en-cours'].includes(x.s);
+  });
+  active.forEach(function(x){assignInterventionRoute(x,login);});
+}
+
+function isFirstInterventionOfRoute(iv){
+  if(!iv||!iv._routeBatchId)return true;
+  const route=IVS.filter(function(x){return x._routeBatchId===iv._routeBatchId;});
+  if(route.length<2)return true;
+  const first=route.slice().sort(function(a,b){
+    return (Number(a._routeOrder)||9999)-(Number(b._routeOrder)||9999);
+  })[0];
+  return !!first&&first.id===iv.id;
+}
+
+function canEditInterventionStart(iv){
+  if(!iv||!CU)return false;
+  if(hasAdministrativeAccount())return true;
+  const own=iv.agr===CU.l||iv._agr2===CU.l;
+  return own&&!iv._crValide&&isFirstInterventionOfRoute(iv);
+}
+
+function interventionAddressLabel(iv){
+  return [iv&&iv.addr,iv&&iv.com].filter(Boolean).join(', ');
+}
+
+const _pendingNextInterventionStarts={};
 
 // === P8 : Fonction de rendu dédiée (évite XSS + facilite les tests) ===
 /**
@@ -3184,7 +3244,7 @@ function renderInterventionRow(iv, ag, tireur) {
     <div class="ivrl" onclick="${onclick}">
       <div class="ivrh">&#x1F4C5; ${(iv.h || '').slice(0, 8)}${isRenfortUT ? ' <span style="background:#7C3AED;color:#fff;border-radius:4px;padding:0 5px;font-size:9px;font-weight:700;margin-left:4px;">RENFORT UT</span>' : ''}</div>
       <div class="ivrn">${isPilp ? '&#x1F3AF; ' : ''}${escHtml(iv.n)}${isRenfortUT ? ` <span style="font-size:10px;color:#7C3AED;font-weight:400;">— ${escHtml(iv._caserneSourceNom || '')}</span>` : ''}${iv._avisPassage ? ' <span style="background:#9B59B6;color:#fff;border-radius:4px;padding:0 5px;font-size:9px;font-weight:700;margin-left:4px;">🟣 Avis passage</span>' : ''}</div>
-      <div class="ivrc">&#x1F4CD; ${escHtml(iv.com)}${iv.eng ? ' · ' + escHtml(iv.eng) : ''}${isRenfortUT && iv._hDebut ? ' · depuis ' + escHtml(iv._hDebut) : ''}${numBadges}</div>
+      <div class="ivrc">&#x1F4CD; ${escHtml(interventionAddressLabel(iv))}${iv.eng ? ' · ' + escHtml(iv.eng) : ''}${isRenfortUT && iv._hDebut ? ' · depuis ' + escHtml(iv._hDebut) : ''}${numBadges}</div>
     </div>
     <div class="ivrr" onclick="${onclick}">
       <span class="bdg ${bc}">${bt}</span>
@@ -3192,6 +3252,7 @@ function renderInterventionRow(iv, ag, tireur) {
       ${isRenfortUT ? '<span class="bdg" style="background:#7C3AED;color:#fff;font-size:10px;">Renfort UT</span>' : ''}
       ${iv._urgence ? '<span class="bdg" style="background:#B91C1C;color:#fff;font-size:10px;font-weight:700;">🚨 URGENCE ERP</span>' : ''}
       ${iv._sdis ? '<span class="bdg" style="background:#1D4ED8;color:#fff;font-size:10px;font-weight:700;">SDIS</span>' : ''}
+      ${iv._heureDebutModifiee&&hasAdministrativeAccount() ? '<span class="bdg" title="Heure de début corrigée — consulter la traçabilité" style="background:#FFF7ED;color:#9A3412;border:1px solid #FDBA74;font-size:10px;font-weight:700;">&#x23F1; Heure corrigée</span>' : ''}
       ${iv._echelleToiture ? '<span class="bdg" style="background:#F59E0B;color:#fff;font-size:10px;">Echelle de toit</span>' : ''}
       ${iv._epa ? '<span class="bdg" style="background:#8E44AD;color:#fff;font-size:10px;">EPA</span>' : ''}
       ${iv.rappels ? `<span class="bdg bp" style="font-size:10px;${isAdminModeActive()?'cursor:pointer;':''}"${isAdminModeActive()?` title="Déjà intervenu ici ?" onclick="event.stopPropagation();showInterventionsLiees('${iv.id}')"`:''}>${iv.rappels}×</span>` : ''}
@@ -3286,7 +3347,7 @@ function rI(){
       </div>
       <div id="av-detail" style="display:${avExpanded?'block':'none'};">
         ${avis.map(iv=>`<div class="ivr avis-passage" onclick="oM('${iv.id}')">
-          <div class="ivrl"><div class="ivrh">&#x1F4C5; ${escHtml(iv.h.slice(0,8))}</div><div class="ivrn">${escHtml(iv.n)}</div><div class="ivrc">&#x1F4CD; ${escHtml(iv.com)}${iv.rappels?' · '+Number(iv.rappels)+' rappel(s)':''}</div></div>
+          <div class="ivrl"><div class="ivrh">&#x1F4C5; ${escHtml(iv.h.slice(0,8))}</div><div class="ivrn">${escHtml(iv.n)}</div><div class="ivrc">&#x1F4CD; ${escHtml(interventionAddressLabel(iv))}${iv.rappels?' · '+Number(iv.rappels)+' rappel(s)':''}</div></div>
           <div class="ivrr"><span class="bdg bp">Avis passage</span></div></div>`).join('')}
       </div>`;
   } else as.style.display='none';
@@ -3333,8 +3394,16 @@ function rI(){
 
 function toggleChk(id,el){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
-  if(el.checked){iv.s='selectionne';iv.agr=CU.l;pushTL(iv,'selectionne',CU.l);}
-  else{iv.s='en-attente';iv.agr=null;pushTL(iv,'en-attente',CU.l);}
+  if(el.checked){
+    iv.s='selectionne';iv.agr=CU.l;
+    assignInterventionRoute(iv,CU.l);
+    pushTL(iv,'selectionne',CU.l,'Ordre de tournée : '+iv._routeOrder);
+  }
+  else{
+    iv.s='en-attente';iv.agr=null;
+    delete iv._routeBatchId;delete iv._routeOrder;
+    pushTL(iv,'en-attente',CU.l);
+  }
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);rI(); // push immédiat : changement de statut partagé, sinon la sélection est écrasée au prochain pull
 }
@@ -3368,9 +3437,9 @@ function oM(id){
   const dispApl=iv._numApl||iv.id;
   const dispTransfert=iv._transfertDe?` ↩ transféré de ${CASERNES.find(cas=>cas.id===iv._transfertDe)?.nom||iv._transfertDe}`:'';
   document.getElementById('mi').textContent=dispApl+dispTransfert;
-  const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis de passage'],'modif':['bgr','Modification'],'modif-adresse':['bgr','Adresse corrigée'],'reclasse':['bgr','Reclasé'],'releve':['binfo','Relève'],'info-compl':['binfo','ℹ️ Complément d\u2019info']};
+  const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis de passage'],'modif':['bgr','Modification'],'modif-adresse':['bgr','Adresse corrigée'],'modif-heure':['binfo','Heure de début corrigée'],'reclasse':['bgr','Reclasé'],'releve':['binfo','Relève'],'info-compl':['binfo','ℹ️ Complément d\u2019info']};
   const[bc,bt]=bm[iv.s]||['bgr','—'];
-  const sdots={'en-attente':'#E24B4A','selectionne':'var(--sel)','en-cours':'var(--amb)','terminee':'var(--grn)','avis-passage':'var(--pur)','modif':'#888','modif-adresse':'#888','reclasse':'#888','releve':'#0369A1','info-compl':'#0369A1'};
+  const sdots={'en-attente':'#E24B4A','selectionne':'var(--sel)','en-cours':'var(--amb)','terminee':'var(--grn)','avis-passage':'var(--pur)','modif':'#888','modif-adresse':'#888','modif-heure':'#C2410C','reclasse':'#888','releve':'#0369A1','info-compl':'#0369A1'};
   const tlHtml=(iv.tl||[]).map(t=>`<div class="tl-item"><div class="tl-dot" style="background:${sdots[t.s]||'#aaa'};"></div><div class="tl-info"><span class="tl-status">${bm[t.s]?bm[t.s][1]:t.s}${t.note?` — ${t.note}`:''}</span> <span class="tl-horo">&#x1F4C5; ${t.h}</span><div class="tl-who">${t.who}</div></div></div>`).join('');
   const reclassHtml=(ag&&iv.s==='en-cours')?`<div class="reclass-box">
     <div class="reclass-title">Reclasser la nature</div>
@@ -3590,8 +3659,8 @@ function oM(id){
     }).join('')}</div></div></div>`:''}
     ${iv._isRenfort?`<div class="mr"><div class="ml" style="color:#7C3AED;">&#x1F692; Mode Renfort UT</div><div class="mv2" style="font-size:12px;background:#F5F3FF;border-radius:8px;padding:8px 12px;border:1px solid #DDD6FE;"><span style="font-weight:600;color:#7C3AED;">Renfort pour ${iv._caserneSourceNom||iv._caserneSource||''}</span><br><span style="font-size:11px;color:var(--t2);">Votre caserne est intervenue en renfort sur cette intervention.</span></div></div>`:''}
     ${iv.det?`<div class="mr"><div class="ml">Détails</div><div class="mv2">${escHtml(iv.det)}</div></div>`:''}
-    ${iv.s==='terminee'&&(iv._crTexte||iv._compteRendu)&&(iv.agr===CU.l||iv._agr2===CU.l||(iv._equipage1||[]).some(function(e){return e.login===CU.l;})||(iv._equipage2||[]).some(function(e){return e.login===CU.l;})||isAdminModeActive())?`<div class="mr"><div class="ml" style="color:#0F766E;">&#x1F4CB; Compte rendu${iv._crValide?' &#x1F512;':''}</div><div class="mv2" style="white-space:pre-wrap;font-size:12px;background:#F0FDFA;border-radius:8px;padding:8px 10px;border:1px solid #99F6E4;">${iv._crTexte||iv._compteRendu}</div></div>`:''}
-    ${iv.s==='terminee'&&(iv.agr===CU.l||iv._agr2===CU.l||hasRight('Administration')||isAdminModeActive())?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 2px 0;">
+    ${iv.s==='terminee'&&(iv._crTexte||iv._compteRendu)&&(iv.agr===CU.l||iv._agr2===CU.l||(iv._equipage1||[]).some(function(e){return e.login===CU.l;})||(iv._equipage2||[]).some(function(e){return e.login===CU.l;})||hasAdministrativeAccount())?`<div class="mr"><div class="ml" style="color:#0F766E;">&#x1F4CB; Compte rendu${iv._crValide?' &#x1F512;':''}</div><div class="mv2" style="white-space:pre-wrap;font-size:12px;background:#F0FDFA;border-radius:8px;padding:8px 10px;border:1px solid #99F6E4;">${iv._crTexte||iv._compteRendu}</div></div>`:''}
+    ${iv.s==='terminee'&&(iv.agr===CU.l||iv._agr2===CU.l||hasAdministrativeAccount())?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 2px 0;">
       <button class="btn sm" style="background:#0F766E;color:#fff;border-color:#0F766E;" onclick="showCompteRenduModal('${iv.id}')">${iv._crValide?'&#x1F512; Voir':iv._crTexte||iv._compteRendu?'&#x270F;&#xFE0F; Modifier':'&#x1F4CB; Rédiger le compte rendu'}</button>
       <button class="btn sm" style="background:#C0392B;color:#fff;" onclick="voirRapportIntervention('${iv.id}')">&#x1F5A8; Rapport PDF</button>
     </div>`:``}    <div class="msep"></div>
@@ -3720,9 +3789,13 @@ function cS(id,s){
   if(!iv.tl)iv.tl=[];
   iv.s=s;
   if(s==='selectionne'||s==='en-cours'){ if(isAgres()||isChef()||isAdminModeActive()) iv.agr=CU.l; }
-  if(s==='en-attente')iv.agr=null;
+  if(s==='selectionne')assignInterventionRoute(iv,iv.agr||CU.l);
+  if(s==='en-attente'){
+    iv.agr=null;
+    delete iv._routeBatchId;delete iv._routeOrder;
+  }
   const agr2Label=iv._agr2?(()=>{const u=USERS.find(u=>u.l===iv._agr2);return u?' + '+fullName(u)+' (2\u00e8me)':' + '+iv._agr2;})():'';
-  pushTL(iv,s,CU.l+agr2Label);
+  pushTL(iv,s,CU.l+agr2Label,s==='selectionne'?'Ordre de tournée : '+iv._routeOrder:'');
   if(CD())CD().ivs=IVS;
   // Push immédiat pour les sélections (sans debounce)
   if(s==='selectionne'||s==='en-attente'){
@@ -3735,6 +3808,43 @@ function cS(id,s){
   cM();rI();
   if(s==='terminee')rAccueil();
   rStatsHeader();
+}
+
+function getNextSelectedInterventions(closedIv){
+  if(!closedIv)return[];
+  return IVS.filter(function(candidate){
+    if(candidate.id===closedIv.id||candidate.s!=='selectionne'||candidate.agr!==closedIv.agr)return false;
+    if(closedIv._routeBatchId)return candidate._routeBatchId===closedIv._routeBatchId;
+    return true;
+  }).sort(function(a,b){
+    return (Number(a._routeOrder)||9999)-(Number(b._routeOrder)||9999);
+  });
+}
+
+function chooseNextSelectedIntervention(nextId,previousId){
+  const next=IVS.find(function(x){return x.id===nextId;});
+  const previous=IVS.find(function(x){return x.id===previousId;});
+  if(!next||!previous)return;
+  _pendingNextInterventionStarts[nextId]=previous._hFin||getHHMM(N());
+  cM();
+  showPersonnelModal(nextId);
+}
+
+function showNextSelectedInterventionModal(closedIv){
+  if(!closedIv||closedIv.agr!==CU.l)return;
+  const nextItems=getNextSelectedInterventions(closedIv);
+  if(!nextItems.length)return;
+  document.getElementById('mt').textContent='Intervention suivante';
+  document.getElementById('mi').textContent='Départ proposé à '+(closedIv._hFin||getHHMM(N()));
+  document.getElementById('mb').innerHTML=
+    '<div style="background:#EEF2FF;border:1px solid #C7D2FE;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#3730A3;">'
+    +'Sélectionnez l’intervention à enchaîner. Son heure de début reprendra automatiquement l’heure de fin de l’intervention que vous venez de clôturer.</div>'
+    +nextItems.map(function(next){
+      return '<button class="btn" style="width:100%;text-align:left;justify-content:flex-start;margin-bottom:8px;padding:10px 12px;" onclick="chooseNextSelectedIntervention(\''+next.id+'\',\''+closedIv.id+'\')">'
+        +'<span><strong>'+escHtml(next.n)+'</strong><br><span style="font-size:11px;color:var(--t2);">&#x1F4CD; '+escHtml(interventionAddressLabel(next))+'</span></span></button>';
+    }).join('')
+    +'<button class="mclose" onclick="cM()">Plus tard</button>';
+  document.getElementById('mo').style.display='flex';
 }
 
 function clot(id){
@@ -3781,6 +3891,7 @@ function clot(id){
   if(!iv.eng&&selEng)iv.eng=selEng;
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);cM();rI();rAccueil();rStatsHeader(); // push immédiat : clôture d'intervention
+  setTimeout(function(){showNextSelectedInterventionModal(iv);},80);
 }
 function clotAvis(id){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
@@ -4196,6 +4307,7 @@ function rHist(){
   <span class="bdg ${iv.s==='terminee'?'bg2':iv.s==='avis-passage'?'bp':iv.s==='annulee'?'bgr':'ba'}" style="font-size:10px;">${iv.s==='terminee'?'✓':iv.s==='avis-passage'?'&#x1F7E3;':iv.s==='annulee'?'✕':'↻'}</span>
   ${iv._mailsEnvoyes&&iv._mailsEnvoyes.length?'<span title="Envoyé par mail ('+iv._mailsEnvoyes.length+'x)" style="font-size:11px;margin-left:3px;">✉️</span>':''}
   <span class="hist-report-flags">
+    ${iv._heureDebutModifiee&&hasAdministrativeAccount()?'<span class="hist-report-badge pending" style="background:#FFF7ED;color:#9A3412;border-color:#FDBA74;" title="L’heure réelle est conservée dans la traçabilité">&#x23F1; Heure corrigée</span>':''}
     ${iv.s==='terminee'&&iv._crValide?'<span class="hist-report-badge validated" title="Le compte rendu est validé">✅ Rapport validé</span>':iv.s==='terminee'&&(iv._crTexte||iv._compteRendu)?'<span class="hist-report-badge pending" title="Compte rendu en attente de validation">📋 Non validé</span>':''}
     ${iv._impressions&&iv._impressions.length?'<span class="hist-report-badge printed" title="Rapport imprimé '+iv._impressions.length+' fois">🖨️ Rapport imprimé'+(iv._impressions.length>1?' ×'+iv._impressions.length:'')+'</span>':''}
   </span>
@@ -7156,7 +7268,8 @@ function updateEquipageExclusions(){refreshEquipageSelects();}
 
 function showPersonnelModal(id){
   const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
-  const heure=getHHMM(N());
+  const heure=_pendingNextInterventionStarts[id]||getHHMM(N());
+  const chained=!!_pendingNextInterventionStarts[id];
   const wk=weekKey(getMondayOfWeek(0));
 
   // Piquet du CA principal
@@ -7229,7 +7342,8 @@ function showPersonnelModal(id){
   document.getElementById('mb').innerHTML=
     '<div>'
     +'<div style="background:#FEF0E7;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#854F0B;">'
-    +'\u23F1\uFE0F Heure de d\u00e9part : <strong>'+heure+'</strong></div>'
+    +'\u23F1\uFE0F Heure de d\u00e9part : <strong>'+heure+'</strong>'
+    +(chained?' <span style="font-size:10px;font-weight:600;color:#7C3AED;">(enchaînée après l’intervention précédente)</span>':'')+'</div>'
     +'<div style="font-size:12px;font-weight:700;color:var(--t);margin-bottom:8px;">&#x1F692; Engin 1 \u2014 '+fullName(USERS.find(function(u){return u.l===CU.l;})||{prenom:CU.l,nom:''})+'</div>'
     +'<div class="fg" style="margin-bottom:8px;"><div class="fgl">Engin engag\u00e9</div>'
     +'<select class="fi" id="pers-engin" onchange="document.getElementById(\'eq1-body\').innerHTML=buildEquipage1Dyn(this.value);refreshEquipageSelects()">'+enginOpts(engin1Sugg)+'</select></div>'
@@ -7275,7 +7389,10 @@ function buildEquipage2Dyn(enginVal){
 
 function confirmerDepart(id){
   const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
-  const heure=getHHMM(N());
+  prepareInterventionRoute(iv);
+  const chained=!!_pendingNextInterventionStarts[id];
+  const heure=_pendingNextInterventionStarts[id]||getHHMM(N());
+  delete _pendingNextInterventionStarts[id];
   const engin1=document.getElementById('pers-engin')?.value||'';
   const engin2=document.getElementById('pers-engin2')?.value||'';
   const getVal=function(sid){const el=document.getElementById(sid);return el?el.value:'';};
@@ -7297,6 +7414,8 @@ function confirmerDepart(id){
   if(!iv.tl)iv.tl=[];
   iv.s='en-cours';iv.agr=CU.l;
   iv._hDebut=heure;
+  if(!iv._hDebutReelle)iv._hDebutReelle=heure;
+  if(!iv._hDebutInitiale)iv._hDebutInitiale=heure;
   // Compléter les infos des agents renfort (absents de USERS) pour l'affichage et le PDF
   const _renfortList=_getRenfortPersonnel();
   const _enrich=function(arr){arr.forEach(function(e){if(e&&e.login&&!USERS.find(function(u){return u.l===e.login;})){const rf=_renfortList.find(function(r){return r.login===e.login;});if(rf){e.renfort=true;e.nom=rf.nom;e.prenom=rf.prenom;e.grade=rf.grade;e.caserneNom=rf.caserneNom;}}});};
@@ -7308,7 +7427,8 @@ function confirmerDepart(id){
   if(engin1)iv.eng=engin1;
   const agr2Label=agr2?(function(){const u=USERS.find(function(u){return u.l===agr2;});return u?' + '+fullName(u)+' (2\u00e8me)':' + '+agr2;})():'';
   const persLabel=' ['+eq1.concat(eq2).map(function(e){const u=USERS.find(function(x){return x.l===e.login;});return e.role+': '+(u?fullName(u):e.login);}).join(', ')+']';
-  pushTL(iv,'en-cours',CU.l+agr2Label+persLabel);
+  pushTL(iv,'en-cours',CU.l+agr2Label+persLabel,
+    chained?'Début enchaîné à '+heure+' après l’intervention précédente':'Départ réel à '+heure);
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);cM();rI();rStatsHeader(); // push immédiat : changement de statut partagé
   setTimeout(function(){oM(id);},80);
@@ -10267,6 +10387,77 @@ function _frelonSummaryLine(iv){
   return parts.join(' | ');
 }
 
+function hhmmToMinutes(value){
+  const match=String(value||'').match(/^(\d{2}):(\d{2})$/);
+  if(!match)return null;
+  const hours=Number(match[1]),minutes=Number(match[2]);
+  if(hours>23||minutes>59)return null;
+  return hours*60+minutes;
+}
+
+function saveInterventionStartCorrection(ivId){
+  const iv=IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  if(!canEditInterventionStart(iv)){
+    showToast('Cette heure ne peut pas être modifiée par ce compte.','warn');return;
+  }
+  const field=document.getElementById('cr-start-correction');
+  const next=field?field.value:'';
+  const nextMinutes=hhmmToMinutes(next);
+  if(nextMinutes===null){showToast('Saisissez une heure valide au format HH:MM.','warn');return;}
+  const old=iv._hDebut||'';
+  const real=iv._hDebutReelle||iv._hDebutInitiale||old;
+  if(!real){showToast('L’heure réelle de départ est introuvable.','warn');return;}
+  if(!hasAdministrativeAccount()){
+    const realMinutes=hhmmToMinutes(real);
+    const backward=(realMinutes-nextMinutes+1440)%1440;
+    if(backward>15){
+      showToast('Le chef d’agrès peut avancer l’heure de départ de 15 minutes maximum.','warn');return;
+    }
+  }
+  if(next===old){showToast('L’heure de départ est inchangée.','info');return;}
+  if(!iv._hDebutReelle)iv._hDebutReelle=real;
+  if(!iv._hDebutInitiale)iv._hDebutInitiale=real;
+  iv._hDebut=next;
+  iv._heureDebutModifiee=true;
+  if(!Array.isArray(iv._heureDebutModifs))iv._heureDebutModifs=[];
+  const change={
+    ancienne:old,nouvelle:next,reelle:real,auteur:CU.l,
+    horodatage:getH(N()),administrateur:hasAdministrativeAccount()
+  };
+  iv._heureDebutModifs.push(change);
+  pushTL(iv,'modif-heure',CU.l,
+    'Heure de début '+old+' → '+next+' (heure réelle conservée : '+real+')');
+  saveData(true);rI();rHist();
+  showToast('Heure corrigée et ajoutée à l’historique.','success');
+  showCompteRenduModal(ivId);
+}
+
+function interventionStartCorrectionHTML(iv){
+  const canEdit=canEditInterventionStart(iv);
+  const admin=hasAdministrativeAccount();
+  const own=iv.agr===CU.l||iv._agr2===CU.l;
+  const first=isFirstInterventionOfRoute(iv);
+  const real=iv._hDebutReelle||iv._hDebutInitiale||iv._hDebut||'';
+  const changes=Array.isArray(iv._heureDebutModifs)?iv._heureDebutModifs:[];
+  if(!iv._hDebut&&!real)return '';
+  const notice=!canEdit&&own&&!admin&&!first
+    ?'<div style="font-size:11px;color:#92400E;margin-top:6px;">Dans une tournée de plusieurs interventions, seule la première autorise une correction manuelle par le chef d’agrès. Les suivantes sont enchaînées automatiquement.</div>'
+    :'';
+  const trace=changes.length
+    ?'<div style="font-size:10px;color:#7C2D12;margin-top:6px;">Dernière modification : '+escHtml(changes[changes.length-1].ancienne)+' → '+escHtml(changes[changes.length-1].nouvelle)+' par '+escHtml(changes[changes.length-1].auteur)+' · '+escHtml(changes[changes.length-1].horodatage)+'</div>'
+    :'';
+  return '<div style="background:'+(iv._heureDebutModifiee?'#FFF7ED':'#F8FAFC')+';border:1px solid '+(iv._heureDebutModifiee?'#FDBA74':'#CBD5E1')+';border-radius:8px;padding:10px 12px;margin-bottom:10px;">'
+    +'<div style="font-size:12px;font-weight:700;color:'+(iv._heureDebutModifiee?'#9A3412':'#334155')+';margin-bottom:7px;">&#x23F1; Heure de début'+(iv._heureDebutModifiee?' — corrigée':'')+'</div>'
+    +'<div style="display:flex;align-items:end;gap:8px;flex-wrap:wrap;">'
+    +'<div class="fg" style="margin:0;min-width:140px;flex:1;"><div class="fgl" style="font-size:11px;">Heure enregistrée</div>'
+    +'<input class="fi" id="cr-start-correction" type="time" value="'+escHtml(iv._hDebut||real)+'"'+(canEdit?'':' readonly')+' style="font-size:12px;padding:6px 8px;'+(!canEdit?'background:#f5f5f5;':'')+'"></div>'
+    +'<div style="font-size:11px;color:var(--t2);padding-bottom:7px;">Heure réelle : <strong>'+escHtml(real)+'</strong></div>'
+    +(canEdit?'<button class="btn sm" style="background:#C2410C;color:#fff;margin-bottom:1px;" onclick="saveInterventionStartCorrection(\''+iv.id+'\')">Enregistrer l’heure</button>':'')
+    +'</div>'
+    +(canEdit&&!admin?'<div style="font-size:10px;color:var(--t2);margin-top:6px;">Correction autorisée jusqu’à 15 minutes avant l’heure réelle, uniquement avant validation du rapport.</div>':'')
+    +notice+trace+'</div>';
+}
+
 function showCompteRenduModal(ivId) {
   const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
   const isOwn       = iv.agr===CU.l||iv._agr2===CU.l;
@@ -10307,6 +10498,7 @@ function showCompteRenduModal(ivId) {
 
   document.getElementById('mt').textContent = 'Compte rendu d\u2019intervention';
   document.getElementById('mi').textContent = iv.n + ' \u2014 ' + iv.com;
+  const startCorrectionFields=interventionStartCorrectionHTML(iv);
 
   // Champs supplémentaires SDIS
   const sdisFields = iv._sdis ? (function(){
@@ -10314,7 +10506,8 @@ function showCompteRenduModal(ivId) {
     const hRet=iv._hFin||'';
     const hNow=getHHMM(N()).slice(0,5);
     const ro=canWrite?'':' readonly';
-    const roLocked=iv._crValide?' readonly':''; // départ/retour verrouillés après validation CR
+    const roDeparture=' readonly'; // le départ se corrige uniquement via la zone tracée dédiée
+    const roLocked=iv._crValide?' readonly':'';
     return '<div style="background:#DBEAFE;border:1px solid #93C5FD;border-radius:8px;padding:10px 12px;margin-bottom:10px;">'
       +'<div style="font-size:12px;font-weight:700;color:#1D4ED8;margin-bottom:8px;">🚑 Champs spécifiques SDIS'
       +(iv._crValide?'<span style="font-size:10px;font-weight:400;margin-left:8px;color:#6B7280;">🔒 Départ/Retour verrouillés</span>':'')
@@ -10326,7 +10519,7 @@ function showCompteRenduModal(ivId) {
       +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;">N° intervention SDIS</div>'
       +'<input class="fi" id="cr-numsdis"'+ro+' value="'+(iv._numSDIS||'')+'" placeholder="ex: 112057-1" style="font-size:12px;padding:4px 6px;"></div>'
       +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;">⬆️ Départ engin</div>'
-      +'<input class="fi" id="cr-hdepart" type="time"'+roLocked+' value="'+hDep+'" onchange="sdisUpdateMinMax()" style="font-size:12px;padding:4px 6px;'+(iv._crValide?'background:#f5f5f5;':'')+'"></div>'
+      +'<input class="fi" id="cr-hdepart" type="time"'+roDeparture+' value="'+hDep+'" onchange="sdisUpdateMinMax()" style="font-size:12px;padding:4px 6px;background:#f5f5f5;"></div>'
       +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;">⬇️ Retour engin</div>'
       +'<input class="fi" id="cr-hretour" type="time"'+roLocked+' value="'+hRet+'" onchange="sdisUpdateMinMax()" style="font-size:12px;padding:4px 6px;'+(iv._crValide?'background:#f5f5f5;':'')+'"></div>'
       +'</div>'
@@ -10354,6 +10547,7 @@ function showCompteRenduModal(ivId) {
   document.getElementById('mb').innerHTML =
     '<div style="padding:4px 0;">'
     + infoBanner
+    + startCorrectionFields
     + sdisFields
     + frelonFields
     + '<div class="fg"><div class="fgl">Compte rendu du chef d\'agrès</div>'
@@ -10414,9 +10608,8 @@ function _sdisSaveFields(iv){
   const v=id=>(document.getElementById(id)||{}).value||'';
   iv._hAcquis     = v('cr-hacquis');
   iv._numSDIS     = v('cr-numsdis');
-  // Départ/retour modifiables seulement avant validation
+  // Le départ est géré par la correction tracée ; le retour reste modifiable avant validation.
   if(!iv._crValide){
-    iv._hDebut = v('cr-hdepart')||iv._hDebut;
     iv._hFin   = v('cr-hretour')||iv._hFin;
   }
   iv._hSll        = v('cr-hsll');

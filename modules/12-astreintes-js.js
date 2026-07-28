@@ -2635,7 +2635,8 @@ function updateEquipageExclusions(){refreshEquipageSelects();}
 
 function showPersonnelModal(id){
   const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
-  const heure=getHHMM(N());
+  const heure=_pendingNextInterventionStarts[id]||getHHMM(N());
+  const chained=!!_pendingNextInterventionStarts[id];
   const wk=weekKey(getMondayOfWeek(0));
 
   // Piquet du CA principal
@@ -2708,7 +2709,8 @@ function showPersonnelModal(id){
   document.getElementById('mb').innerHTML=
     '<div>'
     +'<div style="background:#FEF0E7;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#854F0B;">'
-    +'\u23F1\uFE0F Heure de d\u00e9part : <strong>'+heure+'</strong></div>'
+    +'\u23F1\uFE0F Heure de d\u00e9part : <strong>'+heure+'</strong>'
+    +(chained?' <span style="font-size:10px;font-weight:600;color:#7C3AED;">(enchaînée après l’intervention précédente)</span>':'')+'</div>'
     +'<div style="font-size:12px;font-weight:700;color:var(--t);margin-bottom:8px;">&#x1F692; Engin 1 \u2014 '+fullName(USERS.find(function(u){return u.l===CU.l;})||{prenom:CU.l,nom:''})+'</div>'
     +'<div class="fg" style="margin-bottom:8px;"><div class="fgl">Engin engag\u00e9</div>'
     +'<select class="fi" id="pers-engin" onchange="document.getElementById(\'eq1-body\').innerHTML=buildEquipage1Dyn(this.value);refreshEquipageSelects()">'+enginOpts(engin1Sugg)+'</select></div>'
@@ -2754,7 +2756,10 @@ function buildEquipage2Dyn(enginVal){
 
 function confirmerDepart(id){
   const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
-  const heure=getHHMM(N());
+  prepareInterventionRoute(iv);
+  const chained=!!_pendingNextInterventionStarts[id];
+  const heure=_pendingNextInterventionStarts[id]||getHHMM(N());
+  delete _pendingNextInterventionStarts[id];
   const engin1=document.getElementById('pers-engin')?.value||'';
   const engin2=document.getElementById('pers-engin2')?.value||'';
   const getVal=function(sid){const el=document.getElementById(sid);return el?el.value:'';};
@@ -2776,6 +2781,8 @@ function confirmerDepart(id){
   if(!iv.tl)iv.tl=[];
   iv.s='en-cours';iv.agr=CU.l;
   iv._hDebut=heure;
+  if(!iv._hDebutReelle)iv._hDebutReelle=heure;
+  if(!iv._hDebutInitiale)iv._hDebutInitiale=heure;
   // Compléter les infos des agents renfort (absents de USERS) pour l'affichage et le PDF
   const _renfortList=_getRenfortPersonnel();
   const _enrich=function(arr){arr.forEach(function(e){if(e&&e.login&&!USERS.find(function(u){return u.l===e.login;})){const rf=_renfortList.find(function(r){return r.login===e.login;});if(rf){e.renfort=true;e.nom=rf.nom;e.prenom=rf.prenom;e.grade=rf.grade;e.caserneNom=rf.caserneNom;}}});};
@@ -2787,7 +2794,8 @@ function confirmerDepart(id){
   if(engin1)iv.eng=engin1;
   const agr2Label=agr2?(function(){const u=USERS.find(function(u){return u.l===agr2;});return u?' + '+fullName(u)+' (2\u00e8me)':' + '+agr2;})():'';
   const persLabel=' ['+eq1.concat(eq2).map(function(e){const u=USERS.find(function(x){return x.l===e.login;});return e.role+': '+(u?fullName(u):e.login);}).join(', ')+']';
-  pushTL(iv,'en-cours',CU.l+agr2Label+persLabel);
+  pushTL(iv,'en-cours',CU.l+agr2Label+persLabel,
+    chained?'Début enchaîné à '+heure+' après l’intervention précédente':'Départ réel à '+heure);
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);cM();rI();rStatsHeader(); // push immédiat : changement de statut partagé
   setTimeout(function(){oM(id);},80);
