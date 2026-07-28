@@ -3197,7 +3197,7 @@ function isFirstInterventionOfRoute(iv){
 function canEditInterventionStart(iv){
   if(!iv||!CU)return false;
   if(hasAdministrativeAccount())return true;
-  const own=iv.agr===CU.l||iv._agr2===CU.l;
+  const own=isInterventionReportChef(iv,CU.l);
   return own&&!iv._crValide&&isFirstInterventionOfRoute(iv);
 }
 
@@ -10447,7 +10447,7 @@ function saveInterventionStartCorrection(ivId){
 function interventionStartCorrectionHTML(iv){
   const canEdit=canEditInterventionStart(iv);
   const admin=hasAdministrativeAccount();
-  const own=iv.agr===CU.l||iv._agr2===CU.l;
+  const own=isInterventionReportChef(iv,CU.l);
   const first=isFirstInterventionOfRoute(iv);
   const real=iv._hDebutReelle||iv._hDebutInitiale||iv._hDebut||'';
   const changes=Array.isArray(iv._heureDebutModifs)?iv._heureDebutModifs:[];

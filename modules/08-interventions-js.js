@@ -54,7 +54,7 @@ function isFirstInterventionOfRoute(iv){
 function canEditInterventionStart(iv){
   if(!iv||!CU)return false;
   if(hasAdministrativeAccount())return true;
-  const own=iv.agr===CU.l||iv._agr2===CU.l;
+  const own=isInterventionReportChef(iv,CU.l);
   return own&&!iv._crValide&&isFirstInterventionOfRoute(iv);
 }
 
