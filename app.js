@@ -9934,7 +9934,7 @@ function adminMonthlyData(period){
     return start<=period.end&&realEnd>=period.start;
   };
   const interventions=[].concat(IVS||[],PILP_IVS||[])
-    .filter(function(iv){return iv.s==='terminee'&&(iv.h||'').startsWith(period.prefixCompact);});
+    .filter(function(iv){return iv.s==='terminee'&&adminExportInterventionStartDate(iv).startsWith(period.prefixCompact);});
   const activites=(actGetData()||[]).filter(function(a){return (a.date||'').startsWith(period.prefixDate)&&(!activityIsFraisAdministratifs(a)||canAccessFraisAdministratifs());});
   const fmpas=(fmpaGetData()||[]).filter(function(f){return (f.date||'').startsWith(period.prefixDate);});
   const stag=(formStagGetData()||[]).filter(function(f){return overlaps(f.ddebut,f.dfin);});
@@ -9962,6 +9962,33 @@ function adminExportDateCompact(h){
 function adminExportTimeCompact(h){
   if(!h||h.length<13)return '';
   return h.slice(9,11)+':'+h.slice(11,13);
+}
+function adminExportInterventionStartDate(iv){
+  const callStamp=String(iv&&iv.h||'');
+  if(!/^\d{8}/.test(callStamp))return '';
+  const compact=callStamp.slice(0,8);
+  const startTime=String(iv&&(
+    iv._hDebut||iv._hDebutReelle||iv._hDebutInitiale||''
+  )||'');
+  const startMatch=startTime.match(/^(\d{1,2}):(\d{2})$/);
+  const callTime=adminExportTimeCompact(callStamp);
+  const callMatch=callTime.match(/^(\d{2}):(\d{2})$/);
+  if(!startMatch||!callMatch)return compact;
+  const year=parseInt(compact.slice(0,4),10);
+  const month=parseInt(compact.slice(4,6),10)-1;
+  const day=parseInt(compact.slice(6,8),10);
+  const startMinutes=parseInt(startMatch[1],10)*60+parseInt(startMatch[2],10);
+  const callMinutes=parseInt(callMatch[1],10)*60+parseInt(callMatch[2],10);
+  if(startMinutes<0||startMinutes>=1440||callMinutes<0||callMinutes>=1440)return compact;
+  const date=new Date(year,month,day);
+  if(callMinutes-startMinutes>720){
+    date.setDate(date.getDate()+1);
+  }else if(startMinutes>callMinutes&&callMinutes+1440-startMinutes<=15){
+    date.setDate(date.getDate()-1);
+  }
+  return String(date.getFullYear())
+    +String(date.getMonth()+1).padStart(2,'0')
+    +String(date.getDate()).padStart(2,'0');
 }
 function adminExportUser(login){
   if(!login)return '';
@@ -9999,8 +10026,8 @@ function adminExportRoundDurationQuarter(value,iv){
 function adminExportInterventionRates(iv){
   const fallbackDuration=adminExportDuration('',iv&&iv._hDebut,iv&&iv._hFin);
   const fallback={taux1:'',heures1:adminExportRoundDurationQuarter(fallbackDuration,iv),taux2:'',heures2:''};
-  if(!iv||!iv._hDebut||!iv._hFin||!iv.h||iv.h.length<8)return fallback;
-  const dateStr=iv.h.slice(0,8);
+  const dateStr=adminExportInterventionStartDate(iv);
+  if(!iv||!iv._hDebut||!iv._hFin||dateStr.length<8)return fallback;
   const yr=parseInt(dateStr.slice(0,4),10),mo=parseInt(dateStr.slice(4,6),10)-1,da=parseInt(dateStr.slice(6,8),10);
   const debut=String(iv._hDebut).split(':').map(Number),fin=String(iv._hFin).split(':').map(Number);
   if([yr,mo,da,debut[0],debut[1],fin[0],fin[1]].some(function(n){return !Number.isFinite(n);}))return fallback;
@@ -10177,14 +10204,18 @@ function exportAdminMonthlyExcel(){
       'En complémentarité','V.T.U.1','V.T.U.2','V.P.I','Autres','Autres à préciser',
       'Compte rendu de mission','Annotation','Rapport établi'
     ].concat(presents);
-    const ivRows=[...data.interventions].sort(function(a,b){return (a.h||'').localeCompare(b.h||'');}).map(function(iv){
+    const ivRows=[...data.interventions].sort(function(a,b){
+      const aKey=adminExportInterventionStartDate(a)+'_'+String(a._hDebut||adminExportTimeCompact(a.h));
+      const bKey=adminExportInterventionStartDate(b)+'_'+String(b._hDebut||adminExportTimeCompact(b.h));
+      return aKey.localeCompare(bKey);
+    }).map(function(iv){
       const veh=adminExportVehicles(iv);
       const rates=adminExportInterventionRates(iv);
       const rapportAuteur=adminExportUser(iv._crAuteur)+(iv._crDateValidation?' · '+iv._crDateValidation:'');
       const isSdis=adminExportReportType(iv)==='SDIS';
       return [
         iv._numMois||'',iv._numCaserne||iv._numApl||iv.id||'',iv._numSDIS||'',iv._numGlobal||'',
-        adminExportDateCompact(iv.h),adminExportReportType(iv),
+        adminExportDateCompact(adminExportInterventionStartDate(iv)),adminExportReportType(iv),
         rates.taux1,rates.heures1,rates.taux2,rates.heures2,iv._km||'',
         iv.n||'',iv.req||'',[(iv.addr||''),(iv.addrComp||'')].filter(Boolean).join(' — '),iv.com||'',
         isSdis?(iv._hAcquis||adminExportTimeCompact(iv.h)):'',iv._hDebut||'',isSdis?(iv._hSll||''):'',isSdis?(iv._hDispo||''):'',iv._hFin||'',isSdis?(iv._hOpTerminee||''):'',
@@ -10253,7 +10284,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260729-brouillon-compte-rendu-66';
+const APP_VERSION='20260729-export-date-debut-67';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
