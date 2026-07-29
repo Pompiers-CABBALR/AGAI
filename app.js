@@ -4075,6 +4075,7 @@ let _modalLocked = false;
 function cM(){
   if(_modalLocked)return;
   const mo=document.getElementById('mo'),panel=mo&&mo.querySelector('.mod');
+  if(mo&&mo.classList.contains('cr-modal-overlay'))window._activeReportDraftIvId=null;
   if(mo)mo.style.display='none';
   if(mo)mo.classList.remove('cr-modal-overlay');
   if(panel)panel.scrollTop=0;
@@ -10252,7 +10253,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260729-tri-terminaison-stable-65';
+const APP_VERSION='20260729-brouillon-compte-rendu-66';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -11025,6 +11026,33 @@ function keepCompteRenduFieldVisible(){
   try{field.scrollIntoView({block:'center',inline:'nearest',behavior:'auto'});}catch(e){field.scrollIntoView();}
 }
 
+const COMPTE_RENDU_DRAFT_PREFIX='agai_cr_draft_';
+function compteRenduDraftKey(ivId){
+  return COMPTE_RENDU_DRAFT_PREFIX+[CURRENT_CASERNE_ID||'sans-caserne',CU&&CU.l||'sans-compte',ivId].map(encodeURIComponent).join('_');
+}
+function readCompteRenduDraft(ivId){
+  try{
+    const raw=localStorage.getItem(compteRenduDraftKey(ivId));
+    if(!raw)return null;
+    const draft=JSON.parse(raw);
+    if(!draft||typeof draft.text!=='string'||Date.now()-Number(draft.updatedAt||0)>7*24*60*60*1000){
+      localStorage.removeItem(compteRenduDraftKey(ivId));return null;
+    }
+    return draft;
+  }catch(e){return null;}
+}
+function writeCompteRenduDraft(ivId,text,updatedAt){
+  const draft={text:String(text||''),updatedAt:Number(updatedAt)||Date.now()};
+  try{localStorage.setItem(compteRenduDraftKey(ivId),JSON.stringify(draft));}catch(e){}
+  window._activeReportDraftIvId=ivId;
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  return draft;
+}
+function onCompteRenduDraftInput(field){
+  if(!field)return;
+  writeCompteRenduDraft(field.dataset.ivId||'',field.value);
+}
+
 function showCompteRenduModal(ivId) {
   const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
   const isOwn       = isInterventionReportChef(iv,CU.l);
@@ -11066,6 +11094,10 @@ function showCompteRenduModal(ivId) {
   document.getElementById('mt').textContent = 'Compte rendu d\u2019intervention';
   document.getElementById('mi').textContent = iv.n + ' \u2014 ' + iv.com;
   const startCorrectionFields=interventionStartCorrectionHTML(iv);
+  const storedReportText=iv._crTexte||iv._compteRendu||'';
+  const localDraft=readCompteRenduDraft(ivId);
+  const reportText=localDraft&&localDraft.text!==storedReportText&&Number(localDraft.updatedAt||0)>Number(iv._crLocalSavedAt||0)
+    ?localDraft.text:storedReportText;
 
   // Champs supplémentaires SDIS
   const sdisFields = iv._sdis ? (function(){
@@ -11118,13 +11150,14 @@ function showCompteRenduModal(ivId) {
     + sdisFields
     + frelonFields
     + '<div class="fg"><div class="fgl">Compte rendu du chef d\'agrès</div>'
-    + '<textarea class="fi" id="cr-texte" rows="7" style="resize:vertical;" onfocus="setTimeout(keepCompteRenduFieldVisible,120)"'
+    + '<textarea class="fi" id="cr-texte" data-iv-id="'+escHtml(ivId)+'" rows="7" style="resize:vertical;" oninput="onCompteRenduDraftInput(this)" onfocus="setTimeout(keepCompteRenduFieldVisible,120)"'
     + (canWrite?' placeholder="Ex : Nid de guepes sous toiture..."':' readonly')
-    + '>' + (iv._crTexte||iv._compteRendu||'') + '</textarea></div>'
+    + '>' + escHtml(reportText) + '</textarea></div>'
     + '<div id="cr-save-status" style="display:none;background:#ECFDF5;border:1px solid #86EFAC;color:#166534;border-radius:8px;padding:8px 10px;margin-top:8px;font-size:12px;font-weight:600;"></div>'
     + '<div class="brow" style="flex-wrap:wrap;gap:6px;margin-top:12px;">' + btns + '</div>'
     + '</div>';
   const reportOverlay=document.getElementById('mo');
+  window._activeReportDraftIvId=ivId;
   reportOverlay.classList.add('cr-modal-overlay');
   openModalAtTop();
   // Toggle PILP billes
@@ -11215,16 +11248,19 @@ function validerCompteRendu(ivId) {
   if(!texte.trim()){showToast('Saisissez un compte rendu avant de valider','warn');return;}
   if(iv._sdis&&!_sdisValidateHeures(iv))return;
   confirmModal('Valider d\u00e9finitivement le compte rendu\u00a0? Il ne pourra plus \u00eatre modifi\u00e9.',function(){
+    const savedAt=Date.now();
+    writeCompteRenduDraft(ivId,texte,savedAt);
     iv._crTexte          = texte;
     iv._compteRendu      = texte;
+    iv._crLocalSavedAt   = savedAt;
     iv._crAuteur         = CU.l;
     iv._crDate           = getHHMM(N());
     iv._crValide         = true;
     iv._crDateValidation = getHHMM(N());
     if(iv._sdis) _sdisSaveFields(iv);
     if(_isFrelonIv(iv)) _frelonSaveFields(iv);
-    saveData();
-    saveData();rI();rHist();
+    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+    saveData(true);rI();rHist();
     cM();
     setTimeout(function(){oM(ivId);},80);
   });
@@ -11237,12 +11273,17 @@ function saveCompteRendu(ivId, andClot) {
   if(iv._crValide && !isSuperAdmin){showToast('Compte rendu verrouill\u00e9','warn');return;}
   if(!isOwn&&!isSuperAdmin){showToast('Non autoris\u00e9','warn');return;}
   if(iv._sdis&&!_sdisValidateHeures(iv))return;
-  iv._crTexte     = (document.getElementById('cr-texte')||{}).value||'';
+  const reportText=(document.getElementById('cr-texte')||{}).value||'';
+  const savedAt=Date.now();
+  writeCompteRenduDraft(ivId,reportText,savedAt);
+  iv._crTexte     = reportText;
   iv._compteRendu = iv._crTexte;
+  iv._crLocalSavedAt=savedAt;
   iv._crAuteur    = CU.l;
   iv._crDate      = getHHMM(N());
   if(iv._sdis) _sdisSaveFields(iv);
   if(_isFrelonIv(iv)) _frelonSaveFields(iv);
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);rI();rHist();
   if(andClot){cM();clot(ivId);}
   else{
@@ -12307,6 +12348,10 @@ function _buildDataObject(){
 }
 
 function _applyDataObject(data){
+  const activeReportId=typeof window!=='undefined'?window._activeReportDraftIvId:null;
+  const activeReportCaserne=activeReportId&&CURRENT_CASERNE_ID?CASERNE_DATA[CURRENT_CASERNE_ID]:null;
+  const activeReportSnapshot=activeReportCaserne&&Array.isArray(activeReportCaserne.ivs)
+    ?activeReportCaserne.ivs.find(function(iv){return iv&&iv.id===activeReportId;}):null;
   if(data.CASERNES&&data.CASERNES.length){CASERNES.length=0;data.CASERNES.forEach(c=>CASERNES.push(c));}
   // Garantir la présence de la caserne État-Major (espace de saisie du chef de corps)
   if(!CASERNES.find(c=>c.id==='EMAJ')){
@@ -12362,6 +12407,11 @@ function _applyDataObject(data){
         if(src._initCompteurs!==undefined)dst._initCompteurs=src._initCompteurs;
       }
     });
+  }
+  if(activeReportSnapshot&&Date.now()-_jbEditLock<15000&&CASERNE_DATA[CURRENT_CASERNE_ID]){
+    const target=CASERNE_DATA[CURRENT_CASERNE_ID].ivs||(CASERNE_DATA[CURRENT_CASERNE_ID].ivs=[]);
+    const index=target.findIndex(function(iv){return iv&&iv.id===activeReportId;});
+    if(index>=0)target[index]=activeReportSnapshot;else target.push(activeReportSnapshot);
   }
   if(data.NAT&&data.NAT.length){NAT.length=0;data.NAT.forEach(n=>NAT.push(n));}
   if(data.ACT_TYPES&&data.ACT_TYPES.length){ACT_TYPES.length=0;data.ACT_TYPES.forEach(a=>ACT_TYPES.push(a));}

@@ -757,6 +757,10 @@ function _buildDataObject(){
 }
 
 function _applyDataObject(data){
+  const activeReportId=typeof window!=='undefined'?window._activeReportDraftIvId:null;
+  const activeReportCaserne=activeReportId&&CURRENT_CASERNE_ID?CASERNE_DATA[CURRENT_CASERNE_ID]:null;
+  const activeReportSnapshot=activeReportCaserne&&Array.isArray(activeReportCaserne.ivs)
+    ?activeReportCaserne.ivs.find(function(iv){return iv&&iv.id===activeReportId;}):null;
   if(data.CASERNES&&data.CASERNES.length){CASERNES.length=0;data.CASERNES.forEach(c=>CASERNES.push(c));}
   // Garantir la présence de la caserne État-Major (espace de saisie du chef de corps)
   if(!CASERNES.find(c=>c.id==='EMAJ')){
@@ -812,6 +816,11 @@ function _applyDataObject(data){
         if(src._initCompteurs!==undefined)dst._initCompteurs=src._initCompteurs;
       }
     });
+  }
+  if(activeReportSnapshot&&Date.now()-_jbEditLock<15000&&CASERNE_DATA[CURRENT_CASERNE_ID]){
+    const target=CASERNE_DATA[CURRENT_CASERNE_ID].ivs||(CASERNE_DATA[CURRENT_CASERNE_ID].ivs=[]);
+    const index=target.findIndex(function(iv){return iv&&iv.id===activeReportId;});
+    if(index>=0)target[index]=activeReportSnapshot;else target.push(activeReportSnapshot);
   }
   if(data.NAT&&data.NAT.length){NAT.length=0;data.NAT.forEach(n=>NAT.push(n));}
   if(data.ACT_TYPES&&data.ACT_TYPES.length){ACT_TYPES.length=0;data.ACT_TYPES.forEach(a=>ACT_TYPES.push(a));}

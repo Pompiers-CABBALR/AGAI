@@ -584,6 +584,7 @@ let _modalLocked = false;
 function cM(){
   if(_modalLocked)return;
   const mo=document.getElementById('mo'),panel=mo&&mo.querySelector('.mod');
+  if(mo&&mo.classList.contains('cr-modal-overlay'))window._activeReportDraftIvId=null;
   if(mo)mo.style.display='none';
   if(mo)mo.classList.remove('cr-modal-overlay');
   if(panel)panel.scrollTop=0;
