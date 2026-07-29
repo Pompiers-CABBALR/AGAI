@@ -142,6 +142,15 @@ function renderInterventionRow(iv, ag, tireur) {
 }
 
 // Tri : en-attente par date asc, autres par dernière action desc
+function interventionTerminationSortKey(iv){
+  if(!iv)return '';
+  const terminaisons=(iv.tl||[]).filter(function(entry){return entry&&entry.s==='terminee'&&entry.h;});
+  if(terminaisons.length)return terminaisons.map(function(entry){return entry.h;}).sort()[0];
+  const day=String(iv.h||'').slice(0,8);
+  const end=String(iv._hFin||'').replace(':','');
+  return day+(end?'_'+end:String(iv.h||'').slice(8));
+}
+
 function sortedIVS(list){
   return list.sort((a,b)=>{
     // Une urgence ERP n'est prioritaire que tant qu'elle est active.
@@ -158,7 +167,7 @@ function sortedIVS(list){
     const lb=b.tl&&b.tl.length?b.tl[b.tl.length-1].h:b.h;
     // Dans le groupe « Terminées », conserver l'ordre chronologique :
     // la dernière intervention clôturée vient s'ajouter en bas du groupe.
-    if(a.s==='terminee')return la.localeCompare(lb);
+    if(a.s==='terminee')return interventionTerminationSortKey(a).localeCompare(interventionTerminationSortKey(b));
     return lb.localeCompare(la); // desc
   });
 }

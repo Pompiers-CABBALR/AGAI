@@ -3633,6 +3633,15 @@ function renderInterventionRow(iv, ag, tireur) {
 }
 
 // Tri : en-attente par date asc, autres par dernière action desc
+function interventionTerminationSortKey(iv){
+  if(!iv)return '';
+  const terminaisons=(iv.tl||[]).filter(function(entry){return entry&&entry.s==='terminee'&&entry.h;});
+  if(terminaisons.length)return terminaisons.map(function(entry){return entry.h;}).sort()[0];
+  const day=String(iv.h||'').slice(0,8);
+  const end=String(iv._hFin||'').replace(':','');
+  return day+(end?'_'+end:String(iv.h||'').slice(8));
+}
+
 function sortedIVS(list){
   return list.sort((a,b)=>{
     // Une urgence ERP n'est prioritaire que tant qu'elle est active.
@@ -3649,7 +3658,7 @@ function sortedIVS(list){
     const lb=b.tl&&b.tl.length?b.tl[b.tl.length-1].h:b.h;
     // Dans le groupe « Terminées », conserver l'ordre chronologique :
     // la dernière intervention clôturée vient s'ajouter en bas du groupe.
-    if(a.s==='terminee')return la.localeCompare(lb);
+    if(a.s==='terminee')return interventionTerminationSortKey(a).localeCompare(interventionTerminationSortKey(b));
     return lb.localeCompare(la); // desc
   });
 }
@@ -10243,7 +10252,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260729-compte-rendu-mobile-enchainement-64';
+const APP_VERSION='20260729-tri-terminaison-stable-65';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
