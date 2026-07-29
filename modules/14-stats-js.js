@@ -958,26 +958,30 @@ function adminExportTimeCompact(h){
   return h.slice(9,11)+':'+h.slice(11,13);
 }
 function adminExportInterventionStartDate(iv){
-  const callStamp=String(iv&&iv.h||'');
-  if(!/^\d{8}/.test(callStamp))return '';
-  const compact=callStamp.slice(0,8);
+  const timeline=Array.isArray(iv&&iv.tl)?iv.tl:[];
+  const departure=timeline.find(function(entry){
+    return entry&&entry.s==='en-cours'&&/^\d{8}/.test(String(entry.h||''));
+  });
+  const referenceStamp=String(departure&&departure.h||iv&&iv.h||'');
+  if(!/^\d{8}/.test(referenceStamp))return '';
+  const compact=referenceStamp.slice(0,8);
   const startTime=String(iv&&(
     iv._hDebut||iv._hDebutReelle||iv._hDebutInitiale||''
   )||'');
   const startMatch=startTime.match(/^(\d{1,2}):(\d{2})$/);
-  const callTime=adminExportTimeCompact(callStamp);
-  const callMatch=callTime.match(/^(\d{2}):(\d{2})$/);
-  if(!startMatch||!callMatch)return compact;
+  const referenceTime=adminExportTimeCompact(referenceStamp);
+  const referenceMatch=referenceTime.match(/^(\d{2}):(\d{2})$/);
+  if(!startMatch||!referenceMatch)return compact;
   const year=parseInt(compact.slice(0,4),10);
   const month=parseInt(compact.slice(4,6),10)-1;
   const day=parseInt(compact.slice(6,8),10);
   const startMinutes=parseInt(startMatch[1],10)*60+parseInt(startMatch[2],10);
-  const callMinutes=parseInt(callMatch[1],10)*60+parseInt(callMatch[2],10);
-  if(startMinutes<0||startMinutes>=1440||callMinutes<0||callMinutes>=1440)return compact;
+  const referenceMinutes=parseInt(referenceMatch[1],10)*60+parseInt(referenceMatch[2],10);
+  if(startMinutes<0||startMinutes>=1440||referenceMinutes<0||referenceMinutes>=1440)return compact;
   const date=new Date(year,month,day);
-  if(callMinutes-startMinutes>720){
+  if(!departure&&referenceMinutes-startMinutes>720){
     date.setDate(date.getDate()+1);
-  }else if(startMinutes>callMinutes&&callMinutes+1440-startMinutes<=15){
+  }else if(startMinutes>referenceMinutes&&referenceMinutes+1440-startMinutes<=15){
     date.setDate(date.getDate()-1);
   }
   return String(date.getFullYear())
