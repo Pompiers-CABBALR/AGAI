@@ -40,7 +40,10 @@ function syncViewportMetrics(){
     const viewport=window.visualViewport;
     const height=Math.round(viewport&&viewport.height?viewport.height:window.innerHeight);
     if(height>0)document.documentElement.style.setProperty('--app-height',height+'px');
+    const offsetTop=Math.max(0,Math.round(viewport&&viewport.offsetTop?viewport.offsetTop:0));
+    document.documentElement.style.setProperty('--visual-offset-top',offsetTop+'px');
     if(typeof syncAppelNatureViewport==='function')requestAnimationFrame(syncAppelNatureViewport);
+    if(typeof keepCompteRenduFieldVisible==='function'&&document.activeElement&&document.activeElement.id==='cr-texte')requestAnimationFrame(keepCompteRenduFieldVisible);
   });
 }
 syncViewportMetrics();
@@ -3539,9 +3542,18 @@ function isFirstInterventionOfRoute(iv){
   return !!first&&first.id===iv.id;
 }
 
+function interventionCrewSignature(iv,equipage1,equipage2){
+  const members=[].concat(equipage1||iv&&iv._equipage1||[],equipage2||iv&&iv._equipage2||[])
+    .map(function(member){return member&&member.login||'';}).filter(Boolean);
+  if(iv&&iv.agr)members.push(iv.agr);
+  if(iv&&iv._agr2)members.push(iv._agr2);
+  return [...new Set(members)].sort().join('|');
+}
+
 function canEditInterventionStart(iv){
   if(!iv||!CU)return false;
   if(hasAdministrativeAccount())return true;
+  if(iv._startLockedByChain===true)return false;
   const own=isInterventionReportChef(iv,CU.l);
   return own&&!iv._crValide&&isFirstInterventionOfRoute(iv);
 }
@@ -4055,6 +4067,7 @@ function cM(){
   if(_modalLocked)return;
   const mo=document.getElementById('mo'),panel=mo&&mo.querySelector('.mod');
   if(mo)mo.style.display='none';
+  if(mo)mo.classList.remove('cr-modal-overlay');
   if(panel)panel.scrollTop=0;
 }
 function openModalAtTop(focusId){
@@ -4183,6 +4196,7 @@ function chooseNextSelectedIntervention(nextId,previousId){
   const previous=IVS.find(function(x){return x.id===previousId;});
   if(!next||!previous)return;
   _pendingNextInterventionStarts[nextId]=previous._hFin||getHHMM(N());
+  next._chainPreviousInterventionId=previous.id;
   cM();
   showPersonnelModal(nextId);
 }
@@ -7749,6 +7763,7 @@ function confirmerDepart(id){
   const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
   prepareInterventionRoute(iv);
   const chained=!!_pendingNextInterventionStarts[id];
+  const chainedPreviousId=iv._chainPreviousInterventionId||'';
   const heure=_pendingNextInterventionStarts[id]||getHHMM(N());
   delete _pendingNextInterventionStarts[id];
   const engin1=document.getElementById('pers-engin')?.value||'';
@@ -7778,6 +7793,16 @@ function confirmerDepart(id){
   const _renfortList=_getRenfortPersonnel();
   const _enrich=function(arr){arr.forEach(function(e){if(e&&e.login&&!USERS.find(function(u){return u.l===e.login;})){const rf=_renfortList.find(function(r){return r.login===e.login;});if(rf){e.renfort=true;e.nom=rf.nom;e.prenom=rf.prenom;e.grade=rf.grade;e.caserneNom=rf.caserneNom;}}});};
   _enrich(eq1);_enrich(eq2);
+  const previous=chainedPreviousId?IVS.find(function(candidate){return candidate.id===chainedPreviousId;}):null;
+  const sameCrew=!!(chained&&previous&&interventionCrewSignature(previous)&&interventionCrewSignature(previous)===interventionCrewSignature(iv,eq1,eq2));
+  if(sameCrew){
+    iv._startLockedByChain=true;
+    iv._chainedFromInterventionId=previous.id;
+  }else{
+    delete iv._startLockedByChain;
+    delete iv._chainedFromInterventionId;
+  }
+  delete iv._chainPreviousInterventionId;
   iv._equipage1=eq1;
   iv._engin1=engin1;
   iv._equipage2=eq2.length?eq2:null;
@@ -10218,7 +10243,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260728-correction-adresse-verifiee-63';
+const APP_VERSION='20260729-compte-rendu-mobile-enchainement-64';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -10771,7 +10796,7 @@ function telechargerAttestationPdf(ivId) {
 function _isFrelonIv(iv){
   return iv&&(iv.n==='Nid de frelons asiatiques'||iv.n==='Nid de frelons asiatiques — PILP');
 }
-function _frelonFormHTML(iv,ro){
+function _frelonDetailFormHTML(iv,ro){
   const fd=iv._frelonData||{};
   const roAttr=ro?' disabled':'';
   const bg=ro?'background:#f5f5f5;':'';
@@ -10824,6 +10849,26 @@ function _frelonFormHTML(iv,ro){
         +'</div>':'')
     +'</div>';
 }
+function _frelonHasDestruction(iv){
+  if(!iv)return false;
+  if(iv._frelonDestruction===true)return true;
+  if(iv._frelonDestruction===false)return false;
+  return !!iv._frelonData;
+}
+function toggleFrelonDestructionForm(){
+  const select=document.getElementById('frel-destruction');
+  const details=document.getElementById('frelon-detail-wrap');
+  if(details)details.style.display=select&&select.value==='Oui'?'':'none';
+}
+function _frelonFormHTML(iv,ro){
+  const destruction=_frelonHasDestruction(iv);
+  const choice=ro
+    ?'<div style="font-size:13px;font-weight:700;color:'+(destruction?'#166534':'#6B7280')+';">'+(destruction?'Oui':'Non')+'</div>'
+    :'<select class="fi" id="frel-destruction" onchange="toggleFrelonDestructionForm()" style="font-size:12px;padding:6px 8px;"><option value="Non"'+(!destruction?' selected':'')+'>Non</option><option value="Oui"'+(destruction?' selected':'')+'>Oui</option></select>';
+  return '<div style="background:#F8FAFC;border:1px solid #CBD5E1;border-radius:10px;padding:10px 12px;margin-bottom:10px;">'
+    +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;">Destruction d\u2019un nid réalisée ?</div>'+choice+'</div></div>'
+    +'<div id="frelon-detail-wrap" style="display:'+(destruction?'':'none')+';">'+_frelonDetailFormHTML(iv,ro)+'</div>';
+}
 function frelonPhotoChange(input){
   const file=input.files[0];if(!file)return;
   const reader=new FileReader();
@@ -10842,6 +10887,13 @@ function frelonPhotoSuppr(){
 
 function _frelonSaveFields(iv){
   function v(id){return (document.getElementById(id)||{}).value||'';}
+  const destruction=v('frel-destruction')==='Oui';
+  iv._frelonDestruction=destruction;
+  if(!destruction){
+    iv._frelonData=null;
+    window._frelonPhotoB64=null;
+    return;
+  }
   const oldPhoto=iv._frelonData&&iv._frelonData.photo||'';
   const newPhoto=window._frelonPhotoB64;
   const photo=newPhoto==='__suppr__'?'':newPhoto||oldPhoto;
@@ -10863,6 +10915,7 @@ function _frelonSaveFields(iv){
   };
 }
 function _frelonSummaryLine(iv){
+  if(iv&&iv._frelonDestruction===false)return '';
   const fd=iv._frelonData;if(!fd)return '';
   const parts=[];
   parts.push('Nid '+fd.type);
@@ -10932,12 +10985,15 @@ function interventionStartCorrectionHTML(iv){
   const admin=hasAdministrativeAccount();
   const own=isInterventionReportChef(iv,CU.l);
   const first=isFirstInterventionOfRoute(iv);
+  const chainedLocked=iv._startLockedByChain===true;
   const real=iv._hDebutReelle||iv._hDebutInitiale||iv._hDebut||'';
   const changes=Array.isArray(iv._heureDebutModifs)?iv._heureDebutModifs:[];
   if(!iv._hDebut&&!real)return '';
-  const notice=!canEdit&&own&&!admin&&!first
-    ?'<div style="font-size:11px;color:#92400E;margin-top:6px;">Dans une tournée de plusieurs interventions, seule la première autorise une correction manuelle par le chef d’agrès. Les suivantes sont enchaînées automatiquement.</div>'
-    :'';
+  const notice=!canEdit&&own&&!admin&&chainedLocked
+    ?'<div style="font-size:11px;color:#92400E;margin-top:6px;">Cette intervention est enchaînée avec le même équipage après l’intervention précédente. Son heure de départ est automatique et ne peut pas être modifiée par le chef d’agrès.</div>'
+    :!canEdit&&own&&!admin&&!first
+      ?'<div style="font-size:11px;color:#92400E;margin-top:6px;">Dans une tournée de plusieurs interventions, seule la première autorise une correction manuelle par le chef d’agrès. Les suivantes sont enchaînées automatiquement.</div>'
+      :'';
   const trace=changes.length
     ?'<div style="font-size:10px;color:#7C2D12;margin-top:6px;">Dernière modification : '+escHtml(changes[changes.length-1].ancienne)+' → '+escHtml(changes[changes.length-1].nouvelle)+' par '+escHtml(changes[changes.length-1].auteur)+' · '+escHtml(changes[changes.length-1].horodatage)+'</div>'
     :'';
@@ -10951,6 +11007,13 @@ function interventionStartCorrectionHTML(iv){
     +'</div>'
     +(canEdit&&!admin?'<div style="font-size:10px;color:var(--t2);margin-top:6px;">Correction autorisée jusqu’à 15 minutes avant l’heure réelle, uniquement avant validation du rapport.</div>':'')
     +notice+trace+'</div>';
+}
+
+function keepCompteRenduFieldVisible(){
+  const field=document.getElementById('cr-texte');
+  const overlay=document.getElementById('mo');
+  if(!field||!overlay||!overlay.classList.contains('cr-modal-overlay'))return;
+  try{field.scrollIntoView({block:'center',inline:'nearest',behavior:'auto'});}catch(e){field.scrollIntoView();}
 }
 
 function showCompteRenduModal(ivId) {
@@ -11046,13 +11109,15 @@ function showCompteRenduModal(ivId) {
     + sdisFields
     + frelonFields
     + '<div class="fg"><div class="fgl">Compte rendu du chef d\'agrès</div>'
-    + '<textarea class="fi" id="cr-texte" rows="7" style="resize:vertical;"'
+    + '<textarea class="fi" id="cr-texte" rows="7" style="resize:vertical;" onfocus="setTimeout(keepCompteRenduFieldVisible,120)"'
     + (canWrite?' placeholder="Ex : Nid de guepes sous toiture..."':' readonly')
     + '>' + (iv._crTexte||iv._compteRendu||'') + '</textarea></div>'
     + '<div id="cr-save-status" style="display:none;background:#ECFDF5;border:1px solid #86EFAC;color:#166534;border-radius:8px;padding:8px 10px;margin-top:8px;font-size:12px;font-weight:600;"></div>'
     + '<div class="brow" style="flex-wrap:wrap;gap:6px;margin-top:12px;">' + btns + '</div>'
     + '</div>';
-  document.getElementById('mo').style.display = 'flex';
+  const reportOverlay=document.getElementById('mo');
+  reportOverlay.classList.add('cr-modal-overlay');
+  openModalAtTop();
   // Toggle PILP billes
   const moyenEl=document.getElementById('frel-moyen');
   const pilpWrap=document.getElementById('frel-pilp-wrap');

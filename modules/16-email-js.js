@@ -279,7 +279,7 @@ function telechargerAttestationPdf(ivId) {
 function _isFrelonIv(iv){
   return iv&&(iv.n==='Nid de frelons asiatiques'||iv.n==='Nid de frelons asiatiques — PILP');
 }
-function _frelonFormHTML(iv,ro){
+function _frelonDetailFormHTML(iv,ro){
   const fd=iv._frelonData||{};
   const roAttr=ro?' disabled':'';
   const bg=ro?'background:#f5f5f5;':'';
@@ -332,6 +332,26 @@ function _frelonFormHTML(iv,ro){
         +'</div>':'')
     +'</div>';
 }
+function _frelonHasDestruction(iv){
+  if(!iv)return false;
+  if(iv._frelonDestruction===true)return true;
+  if(iv._frelonDestruction===false)return false;
+  return !!iv._frelonData;
+}
+function toggleFrelonDestructionForm(){
+  const select=document.getElementById('frel-destruction');
+  const details=document.getElementById('frelon-detail-wrap');
+  if(details)details.style.display=select&&select.value==='Oui'?'':'none';
+}
+function _frelonFormHTML(iv,ro){
+  const destruction=_frelonHasDestruction(iv);
+  const choice=ro
+    ?'<div style="font-size:13px;font-weight:700;color:'+(destruction?'#166534':'#6B7280')+';">'+(destruction?'Oui':'Non')+'</div>'
+    :'<select class="fi" id="frel-destruction" onchange="toggleFrelonDestructionForm()" style="font-size:12px;padding:6px 8px;"><option value="Non"'+(!destruction?' selected':'')+'>Non</option><option value="Oui"'+(destruction?' selected':'')+'>Oui</option></select>';
+  return '<div style="background:#F8FAFC;border:1px solid #CBD5E1;border-radius:10px;padding:10px 12px;margin-bottom:10px;">'
+    +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;">Destruction d\u2019un nid réalisée ?</div>'+choice+'</div></div>'
+    +'<div id="frelon-detail-wrap" style="display:'+(destruction?'':'none')+';">'+_frelonDetailFormHTML(iv,ro)+'</div>';
+}
 function frelonPhotoChange(input){
   const file=input.files[0];if(!file)return;
   const reader=new FileReader();
@@ -350,6 +370,13 @@ function frelonPhotoSuppr(){
 
 function _frelonSaveFields(iv){
   function v(id){return (document.getElementById(id)||{}).value||'';}
+  const destruction=v('frel-destruction')==='Oui';
+  iv._frelonDestruction=destruction;
+  if(!destruction){
+    iv._frelonData=null;
+    window._frelonPhotoB64=null;
+    return;
+  }
   const oldPhoto=iv._frelonData&&iv._frelonData.photo||'';
   const newPhoto=window._frelonPhotoB64;
   const photo=newPhoto==='__suppr__'?'':newPhoto||oldPhoto;
@@ -371,6 +398,7 @@ function _frelonSaveFields(iv){
   };
 }
 function _frelonSummaryLine(iv){
+  if(iv&&iv._frelonDestruction===false)return '';
   const fd=iv._frelonData;if(!fd)return '';
   const parts=[];
   parts.push('Nid '+fd.type);
@@ -440,12 +468,15 @@ function interventionStartCorrectionHTML(iv){
   const admin=hasAdministrativeAccount();
   const own=isInterventionReportChef(iv,CU.l);
   const first=isFirstInterventionOfRoute(iv);
+  const chainedLocked=iv._startLockedByChain===true;
   const real=iv._hDebutReelle||iv._hDebutInitiale||iv._hDebut||'';
   const changes=Array.isArray(iv._heureDebutModifs)?iv._heureDebutModifs:[];
   if(!iv._hDebut&&!real)return '';
-  const notice=!canEdit&&own&&!admin&&!first
-    ?'<div style="font-size:11px;color:#92400E;margin-top:6px;">Dans une tournée de plusieurs interventions, seule la première autorise une correction manuelle par le chef d’agrès. Les suivantes sont enchaînées automatiquement.</div>'
-    :'';
+  const notice=!canEdit&&own&&!admin&&chainedLocked
+    ?'<div style="font-size:11px;color:#92400E;margin-top:6px;">Cette intervention est enchaînée avec le même équipage après l’intervention précédente. Son heure de départ est automatique et ne peut pas être modifiée par le chef d’agrès.</div>'
+    :!canEdit&&own&&!admin&&!first
+      ?'<div style="font-size:11px;color:#92400E;margin-top:6px;">Dans une tournée de plusieurs interventions, seule la première autorise une correction manuelle par le chef d’agrès. Les suivantes sont enchaînées automatiquement.</div>'
+      :'';
   const trace=changes.length
     ?'<div style="font-size:10px;color:#7C2D12;margin-top:6px;">Dernière modification : '+escHtml(changes[changes.length-1].ancienne)+' → '+escHtml(changes[changes.length-1].nouvelle)+' par '+escHtml(changes[changes.length-1].auteur)+' · '+escHtml(changes[changes.length-1].horodatage)+'</div>'
     :'';
@@ -459,6 +490,13 @@ function interventionStartCorrectionHTML(iv){
     +'</div>'
     +(canEdit&&!admin?'<div style="font-size:10px;color:var(--t2);margin-top:6px;">Correction autorisée jusqu’à 15 minutes avant l’heure réelle, uniquement avant validation du rapport.</div>':'')
     +notice+trace+'</div>';
+}
+
+function keepCompteRenduFieldVisible(){
+  const field=document.getElementById('cr-texte');
+  const overlay=document.getElementById('mo');
+  if(!field||!overlay||!overlay.classList.contains('cr-modal-overlay'))return;
+  try{field.scrollIntoView({block:'center',inline:'nearest',behavior:'auto'});}catch(e){field.scrollIntoView();}
 }
 
 function showCompteRenduModal(ivId) {
@@ -554,13 +592,15 @@ function showCompteRenduModal(ivId) {
     + sdisFields
     + frelonFields
     + '<div class="fg"><div class="fgl">Compte rendu du chef d\'agrès</div>'
-    + '<textarea class="fi" id="cr-texte" rows="7" style="resize:vertical;"'
+    + '<textarea class="fi" id="cr-texte" rows="7" style="resize:vertical;" onfocus="setTimeout(keepCompteRenduFieldVisible,120)"'
     + (canWrite?' placeholder="Ex : Nid de guepes sous toiture..."':' readonly')
     + '>' + (iv._crTexte||iv._compteRendu||'') + '</textarea></div>'
     + '<div id="cr-save-status" style="display:none;background:#ECFDF5;border:1px solid #86EFAC;color:#166534;border-radius:8px;padding:8px 10px;margin-top:8px;font-size:12px;font-weight:600;"></div>'
     + '<div class="brow" style="flex-wrap:wrap;gap:6px;margin-top:12px;">' + btns + '</div>'
     + '</div>';
-  document.getElementById('mo').style.display = 'flex';
+  const reportOverlay=document.getElementById('mo');
+  reportOverlay.classList.add('cr-modal-overlay');
+  openModalAtTop();
   // Toggle PILP billes
   const moyenEl=document.getElementById('frel-moyen');
   const pilpWrap=document.getElementById('frel-pilp-wrap');

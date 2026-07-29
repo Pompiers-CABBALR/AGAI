@@ -2758,6 +2758,7 @@ function confirmerDepart(id){
   const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
   prepareInterventionRoute(iv);
   const chained=!!_pendingNextInterventionStarts[id];
+  const chainedPreviousId=iv._chainPreviousInterventionId||'';
   const heure=_pendingNextInterventionStarts[id]||getHHMM(N());
   delete _pendingNextInterventionStarts[id];
   const engin1=document.getElementById('pers-engin')?.value||'';
@@ -2787,6 +2788,16 @@ function confirmerDepart(id){
   const _renfortList=_getRenfortPersonnel();
   const _enrich=function(arr){arr.forEach(function(e){if(e&&e.login&&!USERS.find(function(u){return u.l===e.login;})){const rf=_renfortList.find(function(r){return r.login===e.login;});if(rf){e.renfort=true;e.nom=rf.nom;e.prenom=rf.prenom;e.grade=rf.grade;e.caserneNom=rf.caserneNom;}}});};
   _enrich(eq1);_enrich(eq2);
+  const previous=chainedPreviousId?IVS.find(function(candidate){return candidate.id===chainedPreviousId;}):null;
+  const sameCrew=!!(chained&&previous&&interventionCrewSignature(previous)&&interventionCrewSignature(previous)===interventionCrewSignature(iv,eq1,eq2));
+  if(sameCrew){
+    iv._startLockedByChain=true;
+    iv._chainedFromInterventionId=previous.id;
+  }else{
+    delete iv._startLockedByChain;
+    delete iv._chainedFromInterventionId;
+  }
+  delete iv._chainPreviousInterventionId;
   iv._equipage1=eq1;
   iv._engin1=engin1;
   iv._equipage2=eq2.length?eq2:null;

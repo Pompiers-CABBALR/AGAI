@@ -51,9 +51,18 @@ function isFirstInterventionOfRoute(iv){
   return !!first&&first.id===iv.id;
 }
 
+function interventionCrewSignature(iv,equipage1,equipage2){
+  const members=[].concat(equipage1||iv&&iv._equipage1||[],equipage2||iv&&iv._equipage2||[])
+    .map(function(member){return member&&member.login||'';}).filter(Boolean);
+  if(iv&&iv.agr)members.push(iv.agr);
+  if(iv&&iv._agr2)members.push(iv._agr2);
+  return [...new Set(members)].sort().join('|');
+}
+
 function canEditInterventionStart(iv){
   if(!iv||!CU)return false;
   if(hasAdministrativeAccount())return true;
+  if(iv._startLockedByChain===true)return false;
   const own=isInterventionReportChef(iv,CU.l);
   return own&&!iv._crValide&&isFirstInterventionOfRoute(iv);
 }
@@ -567,6 +576,7 @@ function cM(){
   if(_modalLocked)return;
   const mo=document.getElementById('mo'),panel=mo&&mo.querySelector('.mod');
   if(mo)mo.style.display='none';
+  if(mo)mo.classList.remove('cr-modal-overlay');
   if(panel)panel.scrollTop=0;
 }
 function openModalAtTop(focusId){
@@ -695,6 +705,7 @@ function chooseNextSelectedIntervention(nextId,previousId){
   const previous=IVS.find(function(x){return x.id===previousId;});
   if(!next||!previous)return;
   _pendingNextInterventionStarts[nextId]=previous._hFin||getHHMM(N());
+  next._chainPreviousInterventionId=previous.id;
   cM();
   showPersonnelModal(nextId);
 }

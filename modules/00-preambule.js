@@ -40,7 +40,10 @@ function syncViewportMetrics(){
     const viewport=window.visualViewport;
     const height=Math.round(viewport&&viewport.height?viewport.height:window.innerHeight);
     if(height>0)document.documentElement.style.setProperty('--app-height',height+'px');
+    const offsetTop=Math.max(0,Math.round(viewport&&viewport.offsetTop?viewport.offsetTop:0));
+    document.documentElement.style.setProperty('--visual-offset-top',offsetTop+'px');
     if(typeof syncAppelNatureViewport==='function')requestAnimationFrame(syncAppelNatureViewport);
+    if(typeof keepCompteRenduFieldVisible==='function'&&document.activeElement&&document.activeElement.id==='cr-texte')requestAnimationFrame(keepCompteRenduFieldVisible);
   });
 }
 syncViewportMetrics();
