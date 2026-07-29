@@ -464,6 +464,7 @@ function saveInterventionStartCorrection(ivId){
 }
 
 function interventionStartCorrectionHTML(iv){
+  const following=isFollowingInterventionInSeries(iv);
   const canEdit=canEditInterventionStart(iv);
   const admin=hasAdministrativeAccount();
   const own=isInterventionReportChef(iv,CU.l);
@@ -472,6 +473,15 @@ function interventionStartCorrectionHTML(iv){
   const real=iv._hDebutReelle||iv._hDebutInitiale||iv._hDebut||'';
   const changes=Array.isArray(iv._heureDebutModifs)?iv._heureDebutModifs:[];
   if(!iv._hDebut&&!real)return '';
+  if(following){
+    const traceFollowing=changes.length
+      ?'<div style="font-size:10px;color:#7C2D12;margin-top:6px;">DerniÃ¨re modification : '+escHtml(changes[changes.length-1].ancienne)+' â†’ '+escHtml(changes[changes.length-1].nouvelle)+' par '+escHtml(changes[changes.length-1].auteur)+' Â· '+escHtml(changes[changes.length-1].horodatage)+'</div>'
+      :'';
+    return '<div style="background:#F8FAFC;border:1px solid #CBD5E1;border-radius:8px;padding:10px 12px;margin-bottom:10px;">'
+      +'<div style="font-size:12px;font-weight:700;color:#334155;">&#x23F1; Heure de dÃ©but : '+escHtml(iv._hDebut||real)+'</div>'
+      +'<div style="font-size:11px;color:#92400E;margin-top:5px;">Intervention enchaÃ®nÃ©e avec le mÃªme Ã©quipage : lâ€™heure est automatique et ne peut pas Ãªtre modifiÃ©e.</div>'
+      +traceFollowing+'</div>';
+  }
   const notice=!canEdit&&own&&!admin&&chainedLocked
     ?'<div style="font-size:11px;color:#92400E;margin-top:6px;">Cette intervention est enchaînée avec le même équipage après l’intervention précédente. Son heure de départ est automatique et ne peut pas être modifiée par le chef d’agrès.</div>'
     :!canEdit&&own&&!admin&&!first

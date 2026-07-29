@@ -59,10 +59,48 @@ function interventionCrewSignature(iv,equipage1,equipage2){
   return [...new Set(members)].sort().join('|');
 }
 
+function interventionTimelineStamp(iv,status,latest){
+  const entries=(Array.isArray(iv&&iv.tl)?iv.tl:[]).filter(function(entry){
+    return entry&&entry.s===status&&/^\d{8}/.test(String(entry.h||''));
+  });
+  if(!entries.length)return '';
+  return String(entries[latest?entries.length-1:0].h||'');
+}
+
+function interventionCompactStampMillis(value){
+  const digits=String(value||'').replace(/\D/g,'');
+  if(digits.length<12)return NaN;
+  return new Date(
+    parseInt(digits.slice(0,4),10),
+    parseInt(digits.slice(4,6),10)-1,
+    parseInt(digits.slice(6,8),10),
+    parseInt(digits.slice(8,10),10),
+    parseInt(digits.slice(10,12),10)
+  ).getTime();
+}
+
+function isFollowingInterventionInSeries(iv){
+  if(!iv)return false;
+  if(iv._startLockedByChain===true||iv._chainedFromInterventionId)return true;
+  if(iv._routeBatchId&&!isFirstInterventionOfRoute(iv))return true;
+  const signature=interventionCrewSignature(iv);
+  const startStamp=interventionTimelineStamp(iv,'en-cours',false);
+  const startMillis=interventionCompactStampMillis(startStamp);
+  if(!signature||!Number.isFinite(startMillis)||!iv._hDebut)return false;
+  return IVS.some(function(previous){
+    if(!previous||previous.id===iv.id||previous.s!=='terminee')return false;
+    if(interventionCrewSignature(previous)!==signature)return false;
+    if(!previous._hFin||previous._hFin!==iv._hDebut)return false;
+    const endMillis=interventionCompactStampMillis(interventionTimelineStamp(previous,'terminee',true));
+    const delay=startMillis-endMillis;
+    return Number.isFinite(endMillis)&&delay>=0&&delay<=12*60*60*1000;
+  });
+}
+
 function canEditInterventionStart(iv){
   if(!iv||!CU)return false;
+  if(isFollowingInterventionInSeries(iv))return false;
   if(hasAdministrativeAccount())return true;
-  if(iv._startLockedByChain===true)return false;
   const own=isInterventionReportChef(iv,CU.l);
   return own&&!iv._crValide&&isFirstInterventionOfRoute(iv);
 }
