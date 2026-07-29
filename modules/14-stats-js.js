@@ -1156,10 +1156,38 @@ function adminExportVehicles(iv){
     complement:iv._isRenfort?(iv._caserneSourceNom||iv._caserneSource||'Renfort'):(iv._engin2||'')
   };
 }
+function adminExportExcelDurationValue(value){
+  if(value===''||value===null||value===undefined)return value;
+  if(typeof value==='number'&&Number.isFinite(value))return value;
+  const parts=String(value).split(/\s*\+\s*/);
+  let totalMinutes=0;
+  for(let i=0;i<parts.length;i++){
+    const match=parts[i].match(/^(\d+):([0-5]\d)$/);
+    if(!match)return value;
+    totalMinutes+=parseInt(match[1],10)*60+parseInt(match[2],10);
+  }
+  return totalMinutes/1440;
+}
 function adminExportSheet(XLSX,headers,rows,widths){
   const ws=XLSX.utils.aoa_to_sheet([headers].concat(rows));
   const lastCol=XLSX.utils.encode_col(headers.length-1);
   const lastRow=Math.max(1,rows.length+1);
+  const durationColumns=headers.reduce(function(out,header,index){
+    if(header==='Heures'||header==='Heures_2')out.push(index);
+    return out;
+  },[]);
+  for(let r=1;r<lastRow;r++){
+    durationColumns.forEach(function(c){
+      const addr=XLSX.utils.encode_cell({r,c}),cell=ws[addr];
+      if(!cell)return;
+      const value=adminExportExcelDurationValue(cell.v);
+      if(typeof value==='number'&&Number.isFinite(value)){
+        cell.v=value;
+        cell.t='n';
+        cell.z='[h]:mm';
+      }
+    });
+  }
   ws['!autofilter']={ref:'A1:'+lastCol+lastRow};
   ws['!freeze']={xSplit:0,ySplit:1,topLeftCell:'A2',activePane:'bottomLeft',state:'frozen'};
   ws['!rows']=[{hpt:42}].concat(rows.map(function(){return {hpt:30};}));
