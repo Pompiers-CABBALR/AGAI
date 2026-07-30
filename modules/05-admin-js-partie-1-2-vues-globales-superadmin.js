@@ -654,12 +654,13 @@ function renderGlobalStats(){
   const annee=new Date().getFullYear();
   const mois=new Date().getMonth()+1;
   const moisStr=annee+'-'+String(mois).padStart(2,'0');
-  const rows=OP_CASERNES().map(c=>{
+  const globalCasernes=OP_CASERNES();
+  const rows=globalCasernes.map(c=>{
     const d=CASERNE_DATA[c.id]||{ivs:[]};
-    const ivs=(d.ivs||[]).filter(iv=>!iv._isPilip&&iv.s!=='annulee');
-    const nbAnn=ivs.filter(iv=>(iv.h||'').startsWith(String(annee))).length;
-    const nbMois=ivs.filter(iv=>(iv.h||'').startsWith(moisStr.replace('-',''))).length;
-    const nbJour=ivs.filter(iv=>(iv.h||'').startsWith(String(annee)+String(mois).padStart(2,'0')+String(new Date().getDate()).padStart(2,'0'))).length;
+    const ivs=(d.ivs||[]).filter(iv=>!iv._isPilip&&iv.s==='terminee');
+    const nbAnn=ivs.filter(iv=>statsInterventionInPeriod(iv,String(annee))).length;
+    const nbMois=ivs.filter(iv=>statsInterventionInPeriod(iv,moisStr.replace('-',''))).length;
+    const nbJour=ivs.filter(iv=>statsInterventionInPeriod(iv,String(annee)+String(mois).padStart(2,'0')+String(new Date().getDate()).padStart(2,'0'))).length;
     return `<tr>
       <td style="padding:8px;font-weight:500;"><span style="background:${c.couleur};color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;">${c.code}</span> ${c.nom}</td>
       <td style="padding:8px;text-align:center;font-weight:700;">${nbJour}</td>
@@ -667,9 +668,9 @@ function renderGlobalStats(){
       <td style="padding:8px;text-align:center;font-weight:700;">${nbAnn}</td>
     </tr>`;
   }).join('');
-  const totD=CASERNES.reduce((s,c)=>{const d=CASERNE_DATA[c.id]||{ivs:[]};return s+(d.ivs||[]).filter(iv=>!iv._isPilip&&iv.s==='terminee'&&(iv.h||'').startsWith(String(annee)+String(mois).padStart(2,'0')+String(new Date().getDate()).padStart(2,'0'))).length;},0);
-  const totM=CASERNES.reduce((s,c)=>{const d=CASERNE_DATA[c.id]||{ivs:[]};return s+(d.ivs||[]).filter(iv=>!iv._isPilip&&iv.s==='terminee'&&(iv.h||'').startsWith(moisStr.replace('-',''))).length;},0);
-  const totA=CASERNES.reduce((s,c)=>{const d=CASERNE_DATA[c.id]||{ivs:[]};return s+(d.ivs||[]).filter(iv=>!iv._isPilip&&iv.s==='terminee'&&(iv.h||'').startsWith(String(annee))).length;},0);
+  const totD=globalCasernes.reduce((s,c)=>{const d=CASERNE_DATA[c.id]||{ivs:[]};return s+(d.ivs||[]).filter(iv=>!iv._isPilip&&iv.s==='terminee'&&statsInterventionInPeriod(iv,String(annee)+String(mois).padStart(2,'0')+String(new Date().getDate()).padStart(2,'0'))).length;},0);
+  const totM=globalCasernes.reduce((s,c)=>{const d=CASERNE_DATA[c.id]||{ivs:[]};return s+(d.ivs||[]).filter(iv=>!iv._isPilip&&iv.s==='terminee'&&statsInterventionInPeriod(iv,moisStr.replace('-',''))).length;},0);
+  const totA=globalCasernes.reduce((s,c)=>{const d=CASERNE_DATA[c.id]||{ivs:[]};return s+(d.ivs||[]).filter(iv=>!iv._isPilip&&iv.s==='terminee'&&statsInterventionInPeriod(iv,String(annee))).length;},0);
   return `<table style="width:100%;border-collapse:collapse;font-size:12px;">
     <thead><tr style="background:#f5f5f5;">
       <th style="padding:8px;text-align:left;">Caserne</th>
@@ -708,7 +709,7 @@ function getIvsForCC(){
   const all=[];
   cas.forEach(function(c){
     const d=CASERNE_DATA[c.id]||{ivs:[]};
-    (d.ivs||[]).filter(function(iv){return !iv._isPilip&&iv.s!=='annulee'&&(iv.h||'').startsWith(prefix);})
+    (d.ivs||[]).filter(function(iv){return !iv._isPilip&&iv.s==='terminee'&&statsInterventionInPeriod(iv,prefix);})
       .forEach(function(iv){all.push(Object.assign({},iv,{_casId:c.id,_casNom:c.nom,_casCouleur:c.couleur}));});
   });
   return all;
@@ -721,7 +722,7 @@ function renderChefCorpsBody(){
     const vues=[['annuel','Annuel'],['nat-mois','Nature/mois'],['com-mois','Commune/mois'],['nat-com','Nature\u00d7Commune']];
     const btnHtml=vues.map(function(vl){
       const v=vl[0],l=vl[1],actif=ccVue===v;
-      return '<button onclick="ccVue=\''+v+'\';renderChefCorpsBody()" style="padding:5px 11px;border-radius:8px;border:1px solid #ccc;cursor:pointer;font-size:11px;font-weight:'+(actif?'700':'400')+';background:'+(actif?'#C0392B':'#f5f5f5')+';color:'+(actif?'#fff':'#333')+';">'+l+'</button>';
+      return '<button onclick="ccVue=\''+v+'\';if(ccVue===\'annuel\')ccMois=0;renderChefCorpsBody()" style="padding:5px 11px;border-radius:8px;border:1px solid #ccc;cursor:pointer;font-size:11px;font-weight:'+(actif?'700':'400')+';background:'+(actif?'#C0392B':'#f5f5f5')+';color:'+(actif?'#fff':'#333')+';">'+l+'</button>';
     }).join('');
     const moisOpts='<option value="0">Toute l\u2019ann\u00e9e</option>'+MOIS_NOMS.map(function(m,i){
       return '<option value="'+(i+1)+'"'+(ccMois===i+1?' selected':'')+'>'+m+'</option>';
@@ -733,7 +734,7 @@ function renderChefCorpsBody(){
       +'<button onclick="ccAnnee--;ccMois=0;renderChefCorpsBody()" style="background:#f5f5f5;border:1px solid #ddd;border-radius:8px;padding:5px 12px;cursor:pointer;">&larr;</button>'
       +'<span style="font-size:16px;font-weight:700;min-width:50px;text-align:center;">'+ccAnnee+'</span>'
       +'<button onclick="ccAnnee++;ccMois=0;renderChefCorpsBody()" style="background:#f5f5f5;border:1px solid #ddd;border-radius:8px;padding:5px 12px;cursor:pointer;">&rarr;</button>'
-      +'<select onchange="ccMois=parseInt(this.value);renderChefCorpsBody()" style="padding:5px 10px;border-radius:8px;border:1px solid #ddd;font-size:12px;">'+moisOpts+'</select>'
+      +'<select onchange="ccMois=parseInt(this.value);if(ccVue===\'annuel\'&&ccMois>0)ccVue=\'nat-mois\';renderChefCorpsBody()" style="padding:5px 10px;border-radius:8px;border:1px solid #ddd;font-size:12px;">'+moisOpts+'</select>'
       +'<div style="display:flex;gap:3px;flex-wrap:wrap;">'+btnHtml+'</div>'
       +'<select onchange="ccCaserne=this.value;renderChefCorpsBody()" style="padding:5px 10px;border-radius:8px;border:1px solid #ddd;font-size:12px;">'+casOpts+'</select>'
       +'</div>';
@@ -762,8 +763,8 @@ function renderChefCorpsBody(){
     let rows='';
     MOIS_NOMS.forEach(function(nom,mi){
       const mStr=String(ccAnnee)+String(mi+1).padStart(2,'0');
-      const nbTot=ivs.filter(function(iv){return (iv.h||'').startsWith(mStr);}).length;
-      const cols=cas.map(function(c){const nb=ivs.filter(function(iv){return iv._casId===c.id&&(iv.h||'').startsWith(mStr);}).length;return '<td style="padding:6px 8px;text-align:center;">'+(nb||'—')+'</td>';}).join('');
+      const nbTot=ivs.filter(function(iv){return statsInterventionInPeriod(iv,mStr);}).length;
+      const cols=cas.map(function(c){const nb=ivs.filter(function(iv){return iv._casId===c.id&&statsInterventionInPeriod(iv,mStr);}).length;return '<td style="padding:6px 8px;text-align:center;">'+(nb||'—')+'</td>';}).join('');
       rows+='<tr style="border-bottom:1px solid #f5f5f5;cursor:pointer;" onclick="ccMois='+(mi+1)+';ccVue=\'nat-mois\';renderChefCorpsBody()">'
         +'<td style="padding:6px 10px;font-size:12px;font-weight:500;">'+nom+'</td>'+cols
         +'<td style="padding:6px 8px;text-align:center;font-weight:700;">'+(nbTot||'—')+'</td></tr>';
@@ -786,7 +787,7 @@ function renderChefCorpsBody(){
       let cols='';
       moisActifs.forEach(function(mi){
         const mStr=String(ccAnnee)+String(mi).padStart(2,'0');
-        const nb=ivs.filter(function(iv){return iv.n===n.l&&(iv.h||'').startsWith(mStr);}).length;
+        const nb=ivs.filter(function(iv){return iv.n===n.l&&statsInterventionInPeriod(iv,mStr);}).length;
         cols+='<td style="padding:4px 5px;text-align:center;font-size:11px;'+(nb?'font-weight:700;background:#EAF3DE;':'')+'">'+(nb||'—')+'</td>';
       });
       const tot=ivs.filter(function(iv){return iv.n===n.l;}).length;
@@ -808,7 +809,7 @@ function renderChefCorpsBody(){
       let cols='';
       moisActifs.forEach(function(mi){
         const mStr=String(ccAnnee)+String(mi).padStart(2,'0');
-        const nb=ivs.filter(function(iv){return iv.com===com&&(iv.h||'').startsWith(mStr);}).length;
+        const nb=ivs.filter(function(iv){return iv.com===com&&statsInterventionInPeriod(iv,mStr);}).length;
         cols+='<td style="padding:4px 5px;text-align:center;font-size:11px;'+(nb?'font-weight:700;background:#EAF3DE;':'')+'">'+(nb||'—')+'</td>';
       });
       const tot=ivs.filter(function(iv){return iv.com===com;}).length;

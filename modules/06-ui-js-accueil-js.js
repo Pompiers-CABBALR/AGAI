@@ -15,8 +15,9 @@ function rAccueil(){
   const moisStr=annee+String(d.getMonth()+1).padStart(2,'0');
   // Exclure les interventions annulées, PILIP et non-terminées des stats
   const ivStats=IVS.filter(iv=>!iv._isPilip&&iv.s==='terminee');
-  const nbAnnee=ivStats.filter(iv=>(iv.h||'').startsWith(annee)).length+(isTireurPILP()?PILP_IVS.filter(iv=>(iv.h||'').startsWith(annee)&&iv.s==='terminee').length:0);
-  const nbMois=ivStats.filter(iv=>(iv.h||'').startsWith(moisStr)).length;
+  const pilpStats=isTireurPILP()?PILP_IVS.filter(iv=>iv.s==='terminee'):[];
+  const nbAnnee=ivStats.filter(iv=>statsInterventionInPeriod(iv,annee)).length+pilpStats.filter(iv=>statsInterventionInPeriod(iv,annee)).length;
+  const nbMois=ivStats.filter(iv=>statsInterventionInPeriod(iv,moisStr)).length+pilpStats.filter(iv=>statsInterventionInPeriod(iv,moisStr)).length;
   const nbAttente=IVS.filter(iv=>!iv._isPilip&&iv.s==='en-attente').length;
   const nbPilpAtt=PILP_IVS.filter(iv=>iv.s==='en-attente').length;
   const nbAppelsCaserne=getCallCount(CURRENT_CASERNE_ID);

@@ -7,10 +7,20 @@ let stMois=0;
 let stVue='annuel';
 const ST_MOIS=['Janvier','F\u00e9vrier','Mars','Avril','Mai','Juin','Juillet','Ao\u00fbt','Septembre','Octobre','Novembre','D\u00e9cembre'];
 
+function statsInterventionDateKey(iv){
+  const actual=typeof adminExportInterventionStartDate==='function'?adminExportInterventionStartDate(iv):'';
+  if(actual)return actual;
+  const raw=String(iv&&iv.h||'');
+  return /^\d{8}/.test(raw)?raw.slice(0,8):'';
+}
+function statsInterventionInPeriod(iv,prefix){
+  return statsInterventionDateKey(iv).startsWith(String(prefix||''));
+}
+
 function getStIvs(){
   const annStr=String(stAnnee);
   const prefix=stMois>0?annStr+String(stMois).padStart(2,'0'):annStr;
-  return IVS.filter(function(iv){return !iv._isPilip&&iv.s==='terminee'&&(iv.h||'').startsWith(prefix);});
+  return IVS.filter(function(iv){return !iv._isPilip&&iv.s==='terminee'&&statsInterventionInPeriod(iv,prefix);});
 }
 
 function rStats(){
@@ -21,7 +31,7 @@ function rStats(){
     const vues=[['annuel','Annuel'],['nat-mois','Nature/mois'],['com-mois','Commune/mois'],['nat-com','Commune\u00d7Nature']].concat(showPersonnel?[['pers-ivs','Personnel'],['pers-heures','Personnel/Heures'],['pers-act','Activités serv.'],['pers-form','Formations'],['pers-dispos','Dispos/Semaine']]:[]);
     const btnHtml=vues.map(function(vl){
       const v=vl[0],l=vl[1],actif=stVue===v;
-      return '<button onclick="stVue=\''+v+'\';rStatsContent()" style="padding:5px 10px;border-radius:8px;border:1px solid #ccc;cursor:pointer;font-size:11px;font-weight:'+(actif?'700':'400')+';background:'+(actif?'#C0392B':'#f5f5f5')+';color:'+(actif?'#fff':'#333')+';">'+l+'</button>';
+      return '<button onclick="stVue=\''+v+'\';if(stVue===\'annuel\')stMois=0;rStats()" style="padding:5px 10px;border-radius:8px;border:1px solid #ccc;cursor:pointer;font-size:11px;font-weight:'+(actif?'700':'400')+';background:'+(actif?'#C0392B':'#f5f5f5')+';color:'+(actif?'#fff':'#333')+';">'+l+'</button>';
     }).join('');
     const moisOpts='<option value="0">Toute l\u2019ann\u00e9e</option>'+ST_MOIS.map(function(m,i){
       return '<option value="'+(i+1)+'"'+(stMois===i+1?' selected':'')+'>'+m+'</option>';
@@ -31,7 +41,7 @@ function rStats(){
       +'<button onclick="stAnnee--;stMois=0;rStats()" style="background:#f5f5f5;border:1px solid #ccc;border-radius:8px;padding:4px 12px;cursor:pointer;font-size:14px;">&larr;</button>'
       +'<span style="font-size:16px;font-weight:700;min-width:44px;text-align:center;">'+stAnnee+'</span>'
       +'<button onclick="stAnnee++;stMois=0;rStats()" style="background:#f5f5f5;border:1px solid #ccc;border-radius:8px;padding:4px 12px;cursor:pointer;font-size:14px;">&rarr;</button>'
-      +'<select onchange="stMois=parseInt(this.value);rStatsContent()" style="padding:4px 8px;border-radius:8px;border:1px solid #ccc;font-size:12px;">'+moisOpts+'</select>'
+      +'<select onchange="stMois=parseInt(this.value);if(stVue===\'annuel\'&&stMois>0)stVue=\'nat-mois\';rStats()" style="padding:4px 8px;border-radius:8px;border:1px solid #ccc;font-size:12px;">'+moisOpts+'</select>'
       +'<div style="display:flex;gap:3px;flex-wrap:wrap;">'+btnHtml+'</div>'
       +exportBtn
       +'</div>';
@@ -71,7 +81,7 @@ function rStatsContent(){
     let rows='';
     ST_MOIS.forEach(function(nom,mi){
       const mStr=String(stAnnee)+String(mi+1).padStart(2,'0');
-      const nb=IVS.filter(function(iv){return !iv._isPilip&&iv.s==='terminee'&&(iv.h||'').startsWith(mStr);}).length;
+      const nb=ivs.filter(function(iv){return statsInterventionInPeriod(iv,mStr);}).length;
       const pct=total>0?Math.round(nb/total*100):0;
       rows+='<tr style="border-bottom:1px solid #f5f5f5;cursor:pointer;" onclick="stMois='+(mi+1)+';stVue=\'nat-mois\';rStats()">'
         +'<td style="padding:6px 10px;font-size:12px;font-weight:500;">'+nom+'</td>'
@@ -101,7 +111,7 @@ function rStatsContent(){
       let cols='';
       moisActifs.forEach(function(mi){
         const mStr=String(stAnnee)+String(mi).padStart(2,'0');
-        const nb=ivs.filter(function(iv){return iv.n===n.l&&(iv.h||'').startsWith(mStr);}).length;
+        const nb=ivs.filter(function(iv){return iv.n===n.l&&statsInterventionInPeriod(iv,mStr);}).length;
         cols+='<td style="padding:4px 5px;text-align:center;font-size:11px;'+(nb?'font-weight:700;background:#EAF3DE;':'')+'">'+(nb||'—')+'</td>';
       });
       const tot=ivs.filter(function(iv){return iv.n===n.l;}).length;
@@ -122,7 +132,7 @@ function rStatsContent(){
       let cols='';
       moisActifs.forEach(function(mi){
         const mStr=String(stAnnee)+String(mi).padStart(2,'0');
-        const nb=ivs.filter(function(iv){return iv.com===com&&(iv.h||'').startsWith(mStr);}).length;
+        const nb=ivs.filter(function(iv){return iv.com===com&&statsInterventionInPeriod(iv,mStr);}).length;
         cols+='<td style="padding:4px 5px;text-align:center;font-size:11px;'+(nb?'font-weight:700;background:#EAF3DE;':'')+'">'+(nb||'—')+'</td>';
       });
       const tot=ivs.filter(function(iv){return iv.com===com;}).length;
@@ -315,7 +325,9 @@ function rStatsFormations(){
   function fmpaMinsPour(f){
     if(!f.hDebut||!f.hFin)return 0;
     const [h,m]=f.hDebut.split(':').map(Number),[h2,m2]=f.hFin.split(':').map(Number);
-    let d=(h2*60+m2)-(h*60+m);return d>0?d:0;
+    let d=(h2*60+m2)-(h*60+m);
+    if(d<0)d+=1440;
+    return d;
   }
   function filtMois(arr,mi,dateField){
     const mStr=annStr+'-'+String(mi).padStart(2,'0');
@@ -434,9 +446,9 @@ function getInterventionTauxConfigFor(currentDate,hour,reportType){
   return {categorie:'jour',valeur:t[prefix+'Jour']};
 }
 function calcTauxIntervention(iv){
-  if(!iv._hDebut||!iv._hFin||!iv.h)return null;
-  // Récupérer la date de l'intervention depuis iv.h (format YYYYMMDD_HHMM)
-  const dateStr=iv.h.slice(0,8); // YYYYMMDD
+  if(!iv._hDebut||!iv._hFin)return null;
+  const dateStr=statsInterventionDateKey(iv);
+  if(dateStr.length<8)return null;
   const yr=parseInt(dateStr.slice(0,4)),mo=parseInt(dateStr.slice(4,6))-1,da=parseInt(dateStr.slice(6,8));
 
   const [dh,dm]=iv._hDebut.split(':').map(Number);
@@ -520,10 +532,10 @@ function getAgentPresenceOnIV(iv,login){
 
 // ── Calcule les taux pour un agent sur une intervention (en tenant compte des relèves) ──
 function calcTauxAgentIV(iv,login){
-  if(!iv.h)return null;
   const periodes=getAgentPresenceOnIV(iv,login);
   if(!periodes.length)return null;
-  const dateStr=iv.h.slice(0,8);
+  const dateStr=statsInterventionDateKey(iv);
+  if(dateStr.length<8)return null;
   const yr=parseInt(dateStr.slice(0,4)),mo=parseInt(dateStr.slice(4,6))-1,da=parseInt(dateStr.slice(6,8));
   let t100=0,t150=0,t200=0;
   periodes.forEach(function(p){
@@ -558,7 +570,7 @@ function agentInIV(iv,login){
 function rStatsPersonnel(vue){
   const annStr=String(stAnnee);
   const prefix=stMois>0?annStr+String(stMois).padStart(2,'0'):annStr;
-  const ivsFiltres=IVS.filter(function(iv){return !iv._isPilip&&iv.s!=='annulee'&&(iv.h||'').startsWith(prefix);});
+  const ivsFiltres=IVS.filter(function(iv){return !iv._isPilip&&iv.s==='terminee'&&statsInterventionInPeriod(iv,prefix);});
 
   // Tous les agents connus
   const agents=USERS.slice().sort(function(a,b){
@@ -577,7 +589,7 @@ function rStatsPersonnel(vue){
       const tot=ivAgent.length;
       const cols=moisActifs.map(function(mi){
         const mStr=annStr+String(mi).padStart(2,'0');
-        const nb=ivAgent.filter(function(iv){return (iv.h||'').startsWith(mStr);}).length;
+        const nb=ivAgent.filter(function(iv){return statsInterventionInPeriod(iv,mStr);}).length;
         return '<td style="padding:4px 5px;text-align:center;font-size:11px;'+(nb?'font-weight:700;background:#EAF3DE;':'')+'">'+(nb||'\u2014')+'</td>';
       }).join('');
       rows+='<tr style="border-bottom:1px solid #f5f5f5;'+(tot===0?'opacity:.4;':'')+'">'
@@ -597,11 +609,18 @@ function rStatsPersonnel(vue){
   } else if(vue==='pers-heures'){
     function minToHHMM(m){return pad(Math.floor(m/60))+':'+pad(m%60);}
     const moisActifs=stMois>0?[stMois]:Array.from({length:12},function(_,i){return i+1;});
-
-    const legende='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">'
-      +'<span style="background:#EAF3DE;border-radius:6px;padding:2px 8px;font-size:11px;">100% — Lun–Sam 07h–22h</span>'
-      +'<span style="background:#FEF9C3;border-radius:6px;padding:2px 8px;font-size:11px;">150% — Dim &amp; Fériés 07h–22h</span>'
-      +'<span style="background:#FAEEDA;border-radius:6px;padding:2px 8px;font-size:11px;">200% — Nuit 22h–07h</span>'
+    const configuredRates=getStatsTaux();
+    const rateBadge=function(code,jour,dim,nuit){
+      return '<span style="background:#F8FAFC;border:1px solid var(--brd);border-radius:6px;padding:3px 8px;font-size:10px;"><strong>'+code+'</strong> : jour '+jour+' % · dim./férié '+dim+' % · nuit '+nuit+' %</span>';
+    };
+    const legende='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:7px;">'
+      +'<span style="background:#EAF3DE;border-radius:6px;padding:2px 8px;font-size:11px;">Jour — Lun–Sam 07h–22h</span>'
+      +'<span style="background:#FEF9C3;border-radius:6px;padding:2px 8px;font-size:11px;">Dim./férié — 07h–22h</span>'
+      +'<span style="background:#FAEEDA;border-radius:6px;padding:2px 8px;font-size:11px;">Nuit — 22h–07h</span>'
+      +'</div><div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px;">'
+      +rateBadge('INTER',configuredRates.interJour,configuredRates.interDimFerie,configuredRates.interNuit)
+      +rateBadge('SDIS',configuredRates.sdisJour,configuredRates.sdisDimFerie,configuredRates.sdisNuit)
+      +rateBadge('RENF',configuredRates.renfJour,configuredRates.renfDimFerie,configuredRates.renfNuit)
       +'</div>';
 
     let thHtml='<th style="padding:5px 8px;text-align:left;min-width:120px;font-size:11px;">Agent</th>'
@@ -609,31 +628,29 @@ function rStatsPersonnel(vue){
     moisActifs.forEach(function(mi){
       thHtml+='<th colspan="3" style="padding:4px 5px;text-align:center;font-size:10px;border-left:2px solid #e0e0e0;">'+ST_MOIS[mi-1].slice(0,3)+'</th>';
     });
-    thHtml+='<th colspan="4" style="padding:4px 5px;text-align:center;font-size:10px;background:#f0f0f0;border-left:2px solid #ccc;">Total année</th>';
+    thHtml+='<th colspan="4" style="padding:4px 5px;text-align:center;font-size:10px;background:#f0f0f0;border-left:2px solid #ccc;">'+(stMois>0?'Total '+ST_MOIS[stMois-1]:'Total année')+'</th>';
 
     let thSub='<th></th><th></th>';
     moisActifs.forEach(function(){
-      thSub+='<th style="padding:2px 3px;text-align:center;font-size:9px;color:#3B6D11;border-left:2px solid #e0e0e0;">100%</th>'
-        +'<th style="padding:2px 3px;text-align:center;font-size:9px;color:#854F0B;">150%</th>'
-        +'<th style="padding:2px 3px;text-align:center;font-size:9px;color:#E24B4A;">200%</th>';
+      thSub+='<th style="padding:2px 3px;text-align:center;font-size:9px;color:#3B6D11;border-left:2px solid #e0e0e0;">Jour</th>'
+        +'<th style="padding:2px 3px;text-align:center;font-size:9px;color:#854F0B;">Dim./férié</th>'
+        +'<th style="padding:2px 3px;text-align:center;font-size:9px;color:#E24B4A;">Nuit</th>';
     });
-    thSub+='<th style="padding:2px 3px;text-align:center;font-size:9px;color:#3B6D11;border-left:2px solid #ccc;">100%</th>'
-      +'<th style="padding:2px 3px;text-align:center;font-size:9px;color:#854F0B;">150%</th>'
-      +'<th style="padding:2px 3px;text-align:center;font-size:9px;color:#E24B4A;">200%</th>'
+    thSub+='<th style="padding:2px 3px;text-align:center;font-size:9px;color:#3B6D11;border-left:2px solid #ccc;">Jour</th>'
+      +'<th style="padding:2px 3px;text-align:center;font-size:9px;color:#854F0B;">Dim./férié</th>'
+      +'<th style="padding:2px 3px;text-align:center;font-size:9px;color:#E24B4A;">Nuit</th>'
       +'<th style="padding:2px 3px;text-align:center;font-size:9px;font-weight:700;color:var(--t);">Total</th>';
 
     let rows='';
     let grand100=0,grand150=0,grand200=0;
     agents.forEach(function(u){
       const ivAgent=ivsFiltres.filter(function(iv){
-        return iv.agr===u.l
-          ||(iv._equipage1&&iv._equipage1.some(function(e){return e.login===u.l;}))
-          ||(iv._equipage2&&iv._equipage2.some(function(e){return e.login===u.l;}));
+        return agentInIV(iv,u.l);
       });
       let tot100=0,tot150=0,tot200=0,hasDonnes=false;
       const cols=moisActifs.map(function(mi){
         const mStr=annStr+String(mi).padStart(2,'0');
-        const ivMois=ivAgent.filter(function(iv){return (iv.h||'').startsWith(mStr)&&iv._hDebut&&iv._hFin;});
+        const ivMois=ivAgent.filter(function(iv){return statsInterventionInPeriod(iv,mStr)&&iv._hDebut&&iv._hFin;});
         let m100=0,m150=0,m200=0;
         ivMois.forEach(function(iv){
           const t=calcTauxAgentIV(iv,u.l);
@@ -670,8 +687,8 @@ function rStatsPersonnel(vue){
       +'</tr>';
 
     return '<div style="background:#fff;border-radius:12px;padding:12px;overflow-x:auto;">'
-      +'<div style="font-size:12px;font-weight:600;margin-bottom:4px;">Heures d’interventions par agent et par taux</div>'
-      +'<div style="font-size:11px;color:var(--t2);margin-bottom:8px;">Heures réelles ventilées par tranche tarifaire.</div>'
+      +'<div style="font-size:12px;font-weight:600;margin-bottom:4px;">Heures d’interventions par agent et par tranche tarifaire</div>'
+      +'<div style="font-size:11px;color:var(--t2);margin-bottom:8px;">Heures réelles ventilées selon l’horaire. Les taux appliqués restent propres aux rapports INTER, SDIS et RENF.</div>'
       +legende
       +'<table style="width:100%;border-collapse:collapse;font-size:11px;">'
       +'<thead>'
@@ -687,8 +704,9 @@ function rStatsPersonnel(vue){
     const gran=ASTR_CONFIG.granularity||60;
     const minParSlot=gran;
 
-    // Collecter toutes les semaines de l'année
-    const semaines=Object.keys(DISPOS).filter(function(wk){return wk.startsWith(annStr);});
+    // Une semaine peut commencer dans l'année précédente ou suivante :
+    // chaque journée est donc rattachée à sa date civile réelle.
+    const semaines=Object.keys(DISPOS);
 
     function minDispoAgent(login,filtre){
       let total=0;
@@ -710,12 +728,13 @@ function rStatsPersonnel(vue){
         });
         Object.keys(parJour).forEach(function(dayIdx){
           const di=parseInt(dayIdx);
-          if(filtre&&filtre.type==='jour'&&di!==filtre.val)return;
-          if(filtre&&filtre.type==='mois'){
-            const yr=parseInt(wk.slice(0,4)),mo=parseInt(wk.slice(4,6)),da=parseInt(wk.slice(6,8));
-            const dt=new Date(yr,mo-1,da);dt.setDate(dt.getDate()+di);
-            if(dt.getMonth()+1!==filtre.val)return;
-          }
+          const yr=parseInt(wk.slice(0,4)),mo=parseInt(wk.slice(4,6)),da=parseInt(wk.slice(6,8));
+          const dt=new Date(yr,mo-1,da);dt.setDate(dt.getDate()+di);
+          if(dt.getFullYear()!==stAnnee)return;
+          const actualDayIndex=dt.getDay()===0?6:dt.getDay()-1;
+          if(filtre&&filtre.type==='jour'&&actualDayIndex!==filtre.val)return;
+          const targetMonth=filtre&&filtre.type==='mois'?filtre.val:stMois;
+          if(targetMonth>0&&dt.getMonth()+1!==targetMonth)return;
           const slotsCochés=Math.min(parJour[dayIdx].size,slotsParJour);
           total+=slotsCochés*agentGran;
         });
@@ -760,13 +779,20 @@ function rStatsPersonnel(vue){
     // ── Heures de piquet par agent × semaine ──
     function minPiquetAgent(login,filtre){
       let total=0;
-      const allWks=Object.keys(PIQUETS).filter(function(wk){return wk.startsWith(annStr);});
+      const allWks=Object.keys(PIQUETS);
       allWks.forEach(function(wk){
-        if(filtre&&filtre.type==='mois'){
-          const yr=parseInt(wk.slice(0,4)),mo=parseInt(wk.slice(4,6));
-          if(mo!==filtre.val)return;
-        }
         (PIQUETS[wk]||[]).forEach(function(p){
+          const jourIndex=JOURS_FULL.indexOf(p.jour);
+          if(jourIndex<0)return;
+          let offset=-1;
+          for(let oi=0;oi<7;oi++){if(jourLabel(oi,true)===p.jour){offset=oi;break;}}
+          if(offset<0)return;
+          const yr=parseInt(wk.slice(0,4)),mo=parseInt(wk.slice(4,6)),da=parseInt(wk.slice(6,8));
+          const piquetDate=new Date(yr,mo-1,da);piquetDate.setDate(piquetDate.getDate()+offset);
+          if(piquetDate.getFullYear()!==stAnnee)return;
+          if(filtre&&filtre.type==='jour'&&jourIndex!==filtre.val)return;
+          const targetMonth=filtre&&filtre.type==='mois'?filtre.val:stMois;
+          if(targetMonth>0&&piquetDate.getMonth()+1!==targetMonth)return;
           const membres=p.membres&&p.membres.length?p.membres:[
             p.chefAgres?{login:p.chefAgres,hDebut:p.debut,hFin:p.fin}:null,
             p.conducteur?{login:p.conducteur,hDebut:p.debut,hFin:p.fin}:null,
@@ -775,9 +801,6 @@ function rStatsPersonnel(vue){
           ].filter(Boolean);
           membres.forEach(function(m){
             if(m.login!==login)return;
-            if(filtre&&filtre.type==='jour'){
-              const jIdx=JOURS_FULL.indexOf(p.jour);if(jIdx!==filtre.val)return;
-            }
             const dMin=timeToMin(m.hDebut||p.debut);
             const fMin=timeToMin(m.hFin||p.fin);
             const dur=fMin<=dMin?1440-dMin+fMin:fMin-dMin;
@@ -818,29 +841,30 @@ function rStatsPersonnel(vue){
         +'<td style="padding:4px 6px;text-align:center;font-weight:700;background:#f9f9f9;font-size:10px;">'+(tot?minToHHMM(tot):'\u2014')+'</td></tr>';
     });
 
+    const dispoPeriodLabel=stMois>0?ST_MOIS[stMois-1]+' '+stAnnee:String(stAnnee);
     return '<div style="background:#fff;border-radius:12px;padding:12px;overflow-x:auto;margin-bottom:12px;">'
-      +'<div style="font-size:12px;font-weight:600;margin-bottom:8px;">Disponibilit\u00e9s par jour de semaine ('+stAnnee+')</div>'
+      +'<div style="font-size:12px;font-weight:600;margin-bottom:8px;">Disponibilit\u00e9s par jour de semaine ('+dispoPeriodLabel+')</div>'
       +'<table style="width:100%;border-collapse:collapse;">'
       +'<thead><tr style="background:#f5f5f5;"><th style="padding:5px 8px;text-align:left;min-width:130px;font-size:11px;">Agent</th>'
       +'<th style="padding:5px 5px;font-size:10px;">Grade</th>'
       +thJours+'<th style="padding:4px 6px;text-align:center;font-size:11px;background:#f0f0f0;">Total</th></tr></thead>'
       +'<tbody>'+rowsJour+'</tbody></table></div>'
       +'<div style="background:#fff;border-radius:12px;padding:12px;overflow-x:auto;margin-bottom:12px;">'
-      +'<div style="font-size:12px;font-weight:600;margin-bottom:8px;">Disponibilit\u00e9s par mois ('+stAnnee+')</div>'
+      +'<div style="font-size:12px;font-weight:600;margin-bottom:8px;">Disponibilit\u00e9s par mois ('+dispoPeriodLabel+')</div>'
       +'<table style="width:100%;border-collapse:collapse;">'
       +'<thead><tr style="background:#f5f5f5;"><th style="padding:5px 8px;text-align:left;min-width:130px;font-size:11px;">Agent</th>'
       +'<th style="padding:5px 5px;font-size:10px;">Grade</th>'
       +thMois2+'<th style="padding:4px 6px;text-align:center;font-size:11px;background:#f0f0f0;">Total</th></tr></thead>'
       +'<tbody>'+rowsMois+'</tbody></table></div>'
       +'<div style="background:#fff;border-radius:12px;padding:12px;overflow-x:auto;margin-bottom:12px;">'
-      +'<div style="font-size:12px;font-weight:600;margin-bottom:8px;">&#x1F4CC; Heures de piquet par jour de semaine ('+stAnnee+')</div>'
+      +'<div style="font-size:12px;font-weight:600;margin-bottom:8px;">&#x1F4CC; Heures de piquet par jour de semaine ('+dispoPeriodLabel+')</div>'
       +'<table style="width:100%;border-collapse:collapse;">'
       +'<thead><tr style="background:#FEF0E7;"><th style="padding:5px 8px;text-align:left;min-width:130px;font-size:11px;">Agent</th>'
       +'<th style="padding:5px 5px;font-size:10px;">Grade</th>'
       +thJours+'<th style="padding:4px 6px;text-align:center;font-size:11px;background:#f0f0f0;">Total</th></tr></thead>'
       +'<tbody>'+rowsPiqJour+'</tbody></table></div>'
       +'<div style="background:#fff;border-radius:12px;padding:12px;overflow-x:auto;">'
-      +'<div style="font-size:12px;font-weight:600;margin-bottom:8px;">&#x1F4CC; Heures de piquet par mois ('+stAnnee+')</div>'
+      +'<div style="font-size:12px;font-weight:600;margin-bottom:8px;">&#x1F4CC; Heures de piquet par mois ('+dispoPeriodLabel+')</div>'
       +'<table style="width:100%;border-collapse:collapse;">'
       +'<thead><tr style="background:#FEF0E7;"><th style="padding:5px 8px;text-align:left;min-width:130px;font-size:11px;">Agent</th>'
       +'<th style="padding:5px 5px;font-size:10px;">Grade</th>'
@@ -862,9 +886,9 @@ function rStatsHeader(){
   const moisStr=annee+String(d.getMonth()+1).padStart(2,'0');
   const todayStr=moisStr+String(d.getDate()).padStart(2,'0');
   const ivStats=IVS.filter(iv=>!iv._isPilip&&iv.s!=='annulee');
-  const nbJour=ivStats.filter(iv=>(iv.h||'').startsWith(todayStr)).length;
-  const nbMois=ivStats.filter(iv=>(iv.h||'').startsWith(moisStr)).length;
-  const nbAnnee=ivStats.filter(iv=>(iv.h||'').startsWith(annee)).length;
+  const nbJour=ivStats.filter(iv=>statsInterventionInPeriod(iv,todayStr)).length;
+  const nbMois=ivStats.filter(iv=>statsInterventionInPeriod(iv,moisStr)).length;
+  const nbAnnee=ivStats.filter(iv=>statsInterventionInPeriod(iv,annee)).length;
   const nbAttente=ivStats.filter(iv=>iv.s==='en-attente').length;
   const nbEnCours=ivStats.filter(iv=>iv.s==='en-cours').length;
   const items=[
