@@ -590,6 +590,27 @@ body{min-height:var(--app-height);}
   scroll-margin-top:90px;
   scroll-margin-bottom:140px;
 }
+@media(max-width:900px){
+  .mov.keyboard-aware-modal{
+    top:var(--visual-offset-top);
+    right:0;
+    bottom:auto;
+    left:0;
+    height:var(--app-height);
+    align-items:flex-start;
+    overflow:hidden;
+  }
+  .mov.keyboard-aware-modal .mod{
+    max-height:100%;
+    overflow-y:auto;
+    overscroll-behavior-y:contain;
+    -webkit-overflow-scrolling:touch;
+  }
+  .mov.keyboard-aware-modal textarea{
+    scroll-margin-top:90px;
+    scroll-margin-bottom:120px;
+  }
+}
 html.modal-scroll-locked,html.modal-scroll-locked body{overflow:hidden!important;overflow-x:hidden!important;overscroll-behavior:none!important;}
 html.modal-scroll-locked body{position:fixed;width:100%;max-width:100vw;left:0;right:0;}
 .pec-form-scroll{

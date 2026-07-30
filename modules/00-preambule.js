@@ -44,6 +44,7 @@ function syncViewportMetrics(){
     document.documentElement.style.setProperty('--visual-offset-top',offsetTop+'px');
     if(typeof syncAppelNatureViewport==='function')requestAnimationFrame(syncAppelNatureViewport);
     if(typeof keepCompteRenduFieldVisible==='function'&&document.activeElement&&document.activeElement.id==='cr-texte')requestAnimationFrame(keepCompteRenduFieldVisible);
+    if(typeof keepMobileModalFieldVisible==='function'&&window._activeMobileModalFieldId)requestAnimationFrame(keepMobileModalFieldVisible);
   });
 }
 syncViewportMetrics();

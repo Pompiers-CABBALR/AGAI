@@ -2899,8 +2899,9 @@ function showComplementModal(id){
     +'<div id="compl-info-err" style="font-size:12px;color:#E24B4A;display:none;margin-bottom:8px;"></div>'
     +'<div class="brow">'
     +'<button class="btn pr sm" onclick="saveComplementInfo(\''+id+'\')">&#x1F4BE; Ajouter</button>'
-    +'<button class="btn sm" onclick="oM(\''+id+'\')">Retour</button></div></div>';
+    +'<button class="btn sm" onclick="deactivateMobileModalField();oM(\''+id+'\')">Retour</button></div></div>';
   openModalAtTop('compl-info-val');
+  activateMobileModalField('compl-info-val');
 }
 function saveComplementInfo(id){
   const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;

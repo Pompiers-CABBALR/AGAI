@@ -475,11 +475,11 @@ function interventionStartCorrectionHTML(iv){
   if(!iv._hDebut&&!real)return '';
   if(following){
     const traceFollowing=changes.length
-      ?'<div style="font-size:10px;color:#7C2D12;margin-top:6px;">DerniÃ¨re modification : '+escHtml(changes[changes.length-1].ancienne)+' â†’ '+escHtml(changes[changes.length-1].nouvelle)+' par '+escHtml(changes[changes.length-1].auteur)+' Â· '+escHtml(changes[changes.length-1].horodatage)+'</div>'
+      ?'<div style="font-size:10px;color:#7C2D12;margin-top:6px;">Derni\u00e8re modification : '+escHtml(changes[changes.length-1].ancienne)+' \u2192 '+escHtml(changes[changes.length-1].nouvelle)+' par '+escHtml(changes[changes.length-1].auteur)+' \u00b7 '+escHtml(changes[changes.length-1].horodatage)+'</div>'
       :'';
     return '<div style="background:#F8FAFC;border:1px solid #CBD5E1;border-radius:8px;padding:10px 12px;margin-bottom:10px;">'
-      +'<div style="font-size:12px;font-weight:700;color:#334155;">&#x23F1; Heure de dÃ©but : '+escHtml(iv._hDebut||real)+'</div>'
-      +'<div style="font-size:11px;color:#92400E;margin-top:5px;">Intervention enchaÃ®nÃ©e avec le mÃªme Ã©quipage : lâ€™heure est automatique et ne peut pas Ãªtre modifiÃ©e.</div>'
+      +'<div style="font-size:12px;font-weight:700;color:#334155;">&#x23F1; Heure de d\u00e9but : '+escHtml(iv._hDebut||real)+'</div>'
+      +'<div style="font-size:11px;color:#92400E;margin-top:5px;">Intervention encha\u00een\u00e9e avec le m\u00eame \u00e9quipage : l\u2019heure est automatique et ne peut pas \u00eatre modifi\u00e9e.</div>'
       +traceFollowing+'</div>';
   }
   const notice=!canEdit&&own&&!admin&&chainedLocked

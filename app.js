@@ -44,6 +44,7 @@ function syncViewportMetrics(){
     document.documentElement.style.setProperty('--visual-offset-top',offsetTop+'px');
     if(typeof syncAppelNatureViewport==='function')requestAnimationFrame(syncAppelNatureViewport);
     if(typeof keepCompteRenduFieldVisible==='function'&&document.activeElement&&document.activeElement.id==='cr-texte')requestAnimationFrame(keepCompteRenduFieldVisible);
+    if(typeof keepMobileModalFieldVisible==='function'&&window._activeMobileModalFieldId)requestAnimationFrame(keepMobileModalFieldVisible);
   });
 }
 syncViewportMetrics();
@@ -4116,9 +4117,34 @@ function cM(){
   if(_modalLocked)return;
   const mo=document.getElementById('mo'),panel=mo&&mo.querySelector('.mod');
   if(mo&&mo.classList.contains('cr-modal-overlay'))window._activeReportDraftIvId=null;
+  deactivateMobileModalField();
   if(mo)mo.style.display='none';
   if(mo)mo.classList.remove('cr-modal-overlay');
   if(panel)panel.scrollTop=0;
+}
+window._activeMobileModalFieldId='';
+function keepMobileModalFieldVisible(){
+  const fieldId=window._activeMobileModalFieldId;
+  const field=fieldId&&document.getElementById(fieldId);
+  const overlay=document.getElementById('mo');
+  if(!field||!overlay||!overlay.classList.contains('keyboard-aware-modal'))return;
+  try{field.scrollIntoView({block:'center',inline:'nearest',behavior:'auto'});}catch(e){field.scrollIntoView();}
+}
+function activateMobileModalField(fieldId){
+  const overlay=document.getElementById('mo');
+  const field=document.getElementById(fieldId);
+  if(!overlay||!field)return;
+  window._activeMobileModalFieldId=fieldId;
+  overlay.classList.add('keyboard-aware-modal');
+  const keep=function(){setTimeout(keepMobileModalFieldVisible,80);};
+  field.addEventListener('focus',keep,{passive:true});
+  field.addEventListener('input',keep,{passive:true});
+  requestAnimationFrame(keep);
+}
+function deactivateMobileModalField(){
+  const overlay=document.getElementById('mo');
+  window._activeMobileModalFieldId='';
+  if(overlay)overlay.classList.remove('keyboard-aware-modal');
 }
 function openModalAtTop(focusId){
   const mo=document.getElementById('mo'),panel=mo&&mo.querySelector('.mod');
@@ -7955,8 +7981,9 @@ function showComplementModal(id){
     +'<div id="compl-info-err" style="font-size:12px;color:#E24B4A;display:none;margin-bottom:8px;"></div>'
     +'<div class="brow">'
     +'<button class="btn pr sm" onclick="saveComplementInfo(\''+id+'\')">&#x1F4BE; Ajouter</button>'
-    +'<button class="btn sm" onclick="oM(\''+id+'\')">Retour</button></div></div>';
+    +'<button class="btn sm" onclick="deactivateMobileModalField();oM(\''+id+'\')">Retour</button></div></div>';
   openModalAtTop('compl-info-val');
+  activateMobileModalField('compl-info-val');
 }
 function saveComplementInfo(id){
   const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
@@ -10357,7 +10384,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260730-sync-actions-critiques-72';
+const APP_VERSION='20260730-mobile-cr-information-73';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -11106,11 +11133,11 @@ function interventionStartCorrectionHTML(iv){
   if(!iv._hDebut&&!real)return '';
   if(following){
     const traceFollowing=changes.length
-      ?'<div style="font-size:10px;color:#7C2D12;margin-top:6px;">DerniÃ¨re modification : '+escHtml(changes[changes.length-1].ancienne)+' â†’ '+escHtml(changes[changes.length-1].nouvelle)+' par '+escHtml(changes[changes.length-1].auteur)+' Â· '+escHtml(changes[changes.length-1].horodatage)+'</div>'
+      ?'<div style="font-size:10px;color:#7C2D12;margin-top:6px;">Derni\u00e8re modification : '+escHtml(changes[changes.length-1].ancienne)+' \u2192 '+escHtml(changes[changes.length-1].nouvelle)+' par '+escHtml(changes[changes.length-1].auteur)+' \u00b7 '+escHtml(changes[changes.length-1].horodatage)+'</div>'
       :'';
     return '<div style="background:#F8FAFC;border:1px solid #CBD5E1;border-radius:8px;padding:10px 12px;margin-bottom:10px;">'
-      +'<div style="font-size:12px;font-weight:700;color:#334155;">&#x23F1; Heure de dÃ©but : '+escHtml(iv._hDebut||real)+'</div>'
-      +'<div style="font-size:11px;color:#92400E;margin-top:5px;">Intervention enchaÃ®nÃ©e avec le mÃªme Ã©quipage : lâ€™heure est automatique et ne peut pas Ãªtre modifiÃ©e.</div>'
+      +'<div style="font-size:12px;font-weight:700;color:#334155;">&#x23F1; Heure de d\u00e9but : '+escHtml(iv._hDebut||real)+'</div>'
+      +'<div style="font-size:11px;color:#92400E;margin-top:5px;">Intervention encha\u00een\u00e9e avec le m\u00eame \u00e9quipage : l\u2019heure est automatique et ne peut pas \u00eatre modifi\u00e9e.</div>'
       +traceFollowing+'</div>';
   }
   const notice=!canEdit&&own&&!admin&&chainedLocked
