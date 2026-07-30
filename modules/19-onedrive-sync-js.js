@@ -1105,7 +1105,10 @@ function activityIsFraisAdministratifs(a){
   return isAdminExpenseCategory(category)||defaultActivityCategory(a&&a.type)===ADMIN_EXPENSE_CATEGORY;
 }
 function activityVisibleInHistory(a){
-  return !activityIsFraisAdministratifs(a)||canAccessFraisAdministratifs();
+  if(hasAdministrativeAccount())return true;
+  if(!CU)return false;
+  if(activityIsFraisAdministratifs(a)&&!canAccessFraisAdministratifs())return false;
+  return Array.isArray(a&&a.participants)&&a.participants.includes(CU.l);
 }
 function actTypesForCurrentUser(){
   return ACT_TYPES.filter(t=>!isAdminExpenseCategory(t.cat||defaultActivityCategory(t.l))||canAccessFraisAdministratifs());
@@ -1202,10 +1205,7 @@ function rActivite(){
 
 // ── Contrôle d'accès activité ──
 function actCanSeeDetail(a){
-  if(!CU)return false;
-  if(activityIsFraisAdministratifs(a))return canAccessFraisAdministratifs();
-  if(isAdminModeActive())return true;
-  return (a.participants||[]).includes(CU.l);
+  return activityVisibleInHistory(a);
 }
 
 // ── Liste ──

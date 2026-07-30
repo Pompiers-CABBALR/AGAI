@@ -896,9 +896,9 @@ let _jbEditLock   = 0; // timestamp de la dernière modification — bloque le p
 function _jbSetStatus(state){
   let el=document.getElementById('jb-status');
   if(!el){el=document.createElement('div');el.id='jb-status';document.body.appendChild(el);}
-  const cfg={ok:{txt:'☁️ Sync OK',bg:'#ECFDF5',color:'#065F46'},saving:{txt:'⏳ Sync...',bg:'#FFF7ED',color:'#92400E'},error:{txt:'⚠️ Sync KO',bg:'#FEF2F2',color:'#991B1B'},loading:{txt:'⏳ Chargement',bg:'#EFF6FF',color:'#1D4ED8'}};
+  const cfg={ok:{txt:'☁️ Sync OK',bg:'#ECFDF5',color:'#065F46'},saving:{txt:'⏳ Sync...',bg:'#FFF7ED',color:'#92400E'},pending:{txt:'⏳ Sync en attente',bg:'#FFF7ED',color:'#92400E'},error:{txt:'⚠️ Sync KO',bg:'#FEF2F2',color:'#991B1B'},loading:{txt:'⏳ Chargement',bg:'#EFF6FF',color:'#1D4ED8'}};
   const c=cfg[state]||cfg.ok;
-  el.textContent=c.txt;
+  el.textContent=c.txt+(state==='pending'&&typeof _rcPendingDirty!=='undefined'?' ('+_rcPendingDirty.size+')':'');
   el.style.cssText='position:fixed;bottom:8px;right:8px;z-index:9999;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;background:'+c.bg+';color:'+c.color+';box-shadow:0 1px 4px rgba(0,0,0,.15);cursor:pointer;';
   el.onclick=function(){jbSyncNow();};
 }
@@ -908,6 +908,11 @@ function saveData(immediate){
     // Forcer la resynchronisation des variables globales avant sauvegarde
     if(CURRENT_CASERNE_ID&&typeof syncCaserneContext==='function')syncCaserneContext();
     const data=_buildDataObject();
+    if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcTrackChangedRecords==='function'){
+      let previous=null;
+      try{const raw=localStorage.getItem(JB_CACHE_KEY);if(raw)previous=JSON.parse(raw);}catch(e){}
+      _rcTrackChangedRecords(previous,data);
+    }
     localStorage.setItem(JB_CACHE_KEY,JSON.stringify(data));
     if(_jbSaveTimer)clearTimeout(_jbSaveTimer);
     // Push immédiat pour les opérations critiques (changements de statut, etc.)
@@ -1171,6 +1176,11 @@ function _postLoadInit(){
 }
 
 function jbSyncNow(){
+  if(USE_RECORDS&&typeof _rcPendingDirty!=='undefined'&&_rcPendingDirty.size){
+    _rcPush(false);
+    showToast('Synchronisation des actions en attente relancÃ©e','info');
+    return;
+  }
   const puller = USE_RECORDS ? _rcPull : (USE_SUPABASE ? _sbPull : _jbPull);
   puller(false).then(function(ok){
     if(ok)showToast('Données synchronisées ✓','success');
@@ -1342,7 +1352,9 @@ async function _sbPush(data){
     });
     if (!resp.ok) throw new Error('Supabase POST HTTP ' + resp.status);
     // Cache local complet (avec photos)
-    localStorage.setItem(JB_CACHE_KEY, JSON.stringify(data));
+    if(_rcDirtyGeneration===generationAtStart){
+      localStorage.setItem(JB_CACHE_KEY, JSON.stringify(data));
+    }
     _jbLastPush = Date.now();
     _jbSetStatus('ok');
   } catch(e) {
@@ -1512,7 +1524,47 @@ let _rcSaving = false;
 let _rcRealtime = null;
 let _rcPollTimer = null;
 let _rcLastPush = 0;
-const _rcPendingDirty = new Set(); // ids modifiés localement en attente de push
+let _rcRetryTimer = null;
+let _rcRetryDelay = 2500;
+let _rcDirtyGeneration = 0;
+const RC_PENDING_DIRTY_KEY = 'agai_rc_pending_dirty';
+function _rcLoadPendingDirty(){
+  try{
+    const saved=JSON.parse(localStorage.getItem(RC_PENDING_DIRTY_KEY)||'[]');
+    return Array.isArray(saved)?saved.filter(Boolean):[];
+  }catch(e){return [];}
+}
+const _rcPendingDirty = new Set(_rcLoadPendingDirty());
+function _rcPersistPendingDirty(){
+  try{localStorage.setItem(RC_PENDING_DIRTY_KEY,JSON.stringify(Array.from(_rcPendingDirty)));}catch(e){}
+}
+function _rcScheduleRetry(delay){
+  if(!USE_RECORDS||!_rcPendingDirty.size)return;
+  if(_rcRetryTimer)clearTimeout(_rcRetryTimer);
+  const wait=typeof delay==='number'?Math.max(0,delay):_rcRetryDelay;
+  _rcRetryTimer=window.setTimeout(function(){
+    _rcRetryTimer=null;
+    if(!_rcSaving)_rcPush(false);
+  },wait);
+}
+function _rcTrackChangedRecords(previousData,nextData){
+  if(!USE_RECORDS||!nextData)return;
+  const previousRows=previousData?_rcSplitAll(previousData):[];
+  const previousMap={};
+  previousRows.forEach(function(row){
+    previousMap[row.id]=JSON.stringify({data:row.data,deleted:!!row.deleted});
+  });
+  let changed=false;
+  _rcSplitAll(nextData).forEach(function(row){
+    const serialized=JSON.stringify({data:row.data,deleted:!!row.deleted});
+    if(previousMap[row.id]!==serialized){_rcPendingDirty.add(row.id);changed=true;}
+  });
+  if(changed)_rcDirtyGeneration++;
+  _rcPersistPendingDirty();
+}
+window.addEventListener('online',function(){
+  if(USE_RECORDS&&_rcPendingDirty.size)_rcScheduleRetry(0);
+});
 
 // Construit un id global unique
 function _rcId(caserne, type, key){ return caserne + RC_SEP + type + RC_SEP + key; }
@@ -1702,8 +1754,9 @@ function _rcPushGlobalRowKeepalive(){
 }
 
 async function _rcPush(fullPush){
-  if(_rcSaving){ window.setTimeout(function(){ _rcPush(fullPush); }, 800); return; }
+  if(_rcSaving){ _rcScheduleRetry(800); return; }
   _rcSaving = true; _jbSetStatus('saving');
+  const generationAtStart=_rcDirtyGeneration;
   try {
     const data = _buildDataObject();
     let rows;
@@ -1727,7 +1780,11 @@ async function _rcPush(fullPush){
         rows = candidate;
       }
     }
-    if(!rows.length){ _rcSaving=false; _jbSetStatus('ok'); return; }
+    if(!rows.length){
+      _jbSetStatus(_rcPendingDirty.size?'pending':'ok');
+      if(_rcPendingDirty.size)_rcScheduleRetry();
+      return;
+    }
     // Allègement : retirer photos lourdes des interventions (réutilise la logique existante)
     rows = rows.map(function(r){
       if(r.type==='iv' && r.data){ const lite=Object.assign({},r.data); delete lite.frelonPhotos; delete lite._pdfCache; return Object.assign({},r,{data:lite}); }
@@ -1742,10 +1799,21 @@ async function _rcPush(fullPush){
     });
     if(!resp.ok) throw new Error('records POST HTTP '+resp.status);
     localStorage.setItem(JB_CACHE_KEY, JSON.stringify(data));
-    _rcLastPush = Date.now(); _rcPendingDirty.clear();
-    _jbSetStatus('ok');
+    _rcLastPush = Date.now();
+    if(_rcDirtyGeneration===generationAtStart){
+      rows.forEach(function(row){_rcPendingDirty.delete(row.id);});
+    }
+    _rcPersistPendingDirty();
+    _rcRetryDelay=2500;
+    if(_rcRetryTimer){clearTimeout(_rcRetryTimer);_rcRetryTimer=null;}
+    _jbSetStatus(_rcPendingDirty.size?'pending':'ok');
+    if(_rcPendingDirty.size)_rcScheduleRetry();
   } catch(e){
-    console.warn('[AGAI][RC] Push error:', e); _jbSetStatus('error');
+    console.warn('[AGAI][RC] Push error:', e);
+    _rcPersistPendingDirty();
+    _jbSetStatus(_rcPendingDirty.size?'pending':'error');
+    _rcRetryDelay=Math.min(30000,Math.max(2500,_rcRetryDelay*2));
+    _rcScheduleRetry();
   } finally {
     _rcSaving = false;
   }
@@ -1754,6 +1822,11 @@ async function _rcPush(fullPush){
 // ── PULL : lit tous les enregistrements et reconstruit l'état ──
 async function _rcPull(silent){
   if(_rcSaving) return true;
+  if(_rcPendingDirty.size){
+    _jbSetStatus('pending');
+    _rcScheduleRetry(0);
+    return true;
+  }
   try {
     if(!silent) _jbSetStatus('loading');
     const resp = await fetch(RC_REST + '?select=id,caserne,type,data,deleted', { headers:_sbHeaders });

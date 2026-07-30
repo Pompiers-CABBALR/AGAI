@@ -67,7 +67,8 @@ function _createSession(){
     };
     LOGIN_HISTORY.unshift(entry);
     if(LOGIN_HISTORY.length>500)LOGIN_HISTORY=LOGIN_HISTORY.slice(0,500);
-    saveData();
+    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+    saveData(true);
   }
   if(_sessionTimer)clearTimeout(_sessionTimer);
   if(_sessionWarnTimer)clearTimeout(_sessionWarnTimer);

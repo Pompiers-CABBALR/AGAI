@@ -45,6 +45,13 @@ function formFormGetData(){
     :[];
 }
 
+function formationVisibleInHistory(f,includeFormateurs){
+  if(hasAdministrativeAccount())return true;
+  if(!CU||!f)return false;
+  if(Array.isArray(f.participants)&&f.participants.includes(CU.l))return true;
+  return includeFormateurs===true&&Array.isArray(f.formateurs)&&f.formateurs.includes(CU.l);
+}
+
 // ── Helper ──
 function formSlotMins(hd,hf){
   if(!hd||!hf)return 0;
@@ -149,7 +156,7 @@ function rFormFormateurs(){
 function rFormStagList(){
   const el=document.getElementById('formstag-list');
   if(!el)return;
-  const data=formStagGetData();
+  const data=formStagGetData().filter(function(f){return formationVisibleInHistory(f,false);});
   const isAdmin=isAdminModeActive();
   if(!data.length){el.innerHTML='<div style="text-align:center;padding:16px;color:var(--t2);font-size:13px;">Aucune formation enregistrée.</div>';return;}
   const sorted=[...data].sort((a,b)=>b.ddebut.localeCompare(a.ddebut));
@@ -186,7 +193,7 @@ function rFormStagList(){
 function rFormFormList(){
   const el=document.getElementById('formform-list');
   if(!el)return;
-  const data=formFormGetData();
+  const data=formFormGetData().filter(function(f){return formationVisibleInHistory(f,false);});
   const isAdmin=isAdminModeActive();
   if(!data.length){el.innerHTML='<div style="text-align:center;padding:16px;color:var(--t2);font-size:13px;">Aucune formation enregistrée.</div>';return;}
   const sorted=[...data].sort((a,b)=>b.ddebut.localeCompare(a.ddebut));
@@ -223,7 +230,7 @@ function rFormFormList(){
 function rFormStagRecap(){
   const el=document.getElementById('formstag-recap');
   if(!el)return;
-  const data=formStagGetData();
+  const data=formStagGetData().filter(function(f){return formationVisibleInHistory(f,false);});
   const byAgent={};
   data.forEach(f=>{
     const mins=formMinsTotal(f);
@@ -233,7 +240,7 @@ function rFormStagRecap(){
       byAgent[l].sessions.push({titre:f.titre,ddebut:f.ddebut,dfin:f.dfin,duree:formMinsToStr(mins),ref:f.ref});
     });
   });
-  const agents=[...(USERS||[])].sort((a,b)=>a.nom.localeCompare(b.nom,'fr'));
+  const agents=[...(USERS||[])].filter(function(u){return hasAdministrativeAccount()||CU&&u.l===CU.l;}).sort((a,b)=>a.nom.localeCompare(b.nom,'fr'));
   const rows=agents.filter(u=>byAgent[u.l]).map(u=>{
     const d=byAgent[u.l];
     return `<div class="ivr" style="border-left-color:var(--blu);">
@@ -253,7 +260,7 @@ function rFormStagRecap(){
 function rFormFormRecap(){
   const el=document.getElementById('formform-recap');
   if(!el)return;
-  const data=formFormGetData();
+  const data=formFormGetData().filter(function(f){return formationVisibleInHistory(f,false);});
   const byAgent={};
   data.forEach(f=>{
     const mins=formMinsTotal(f);
@@ -263,7 +270,7 @@ function rFormFormRecap(){
       byAgent[l].sessions.push({titre:f.titre,ddebut:f.ddebut,dfin:f.dfin,duree:formMinsToStr(mins),ref:f.ref});
     });
   });
-  const agents=[...(USERS||[])].sort((a,b)=>a.nom.localeCompare(b.nom,'fr'));
+  const agents=[...(USERS||[])].filter(function(u){return hasAdministrativeAccount()||CU&&u.l===CU.l;}).sort((a,b)=>a.nom.localeCompare(b.nom,'fr'));
   const rows=agents.filter(u=>byAgent[u.l]).map(u=>{
     const d=byAgent[u.l];
     return `<div class="ivr" style="border-left-color:var(--grn);">
@@ -320,6 +327,7 @@ function formVoirDetail(type,id){
   const data=type==='stag'?formStagGetData():formFormGetData();
   const f=data.find(x=>x.id===id);
   if(!f)return;
+  if(!formationVisibleInHistory(f,false)){showToast('AccÃ¨s rÃ©servÃ© aux personnes inscrites Ã  cette formation','warn');return;}
   const sortedP=[...(f.participants||[])].sort((la,lb)=>{const ua=USERS.find(x=>x.l===la),ub=USERS.find(x=>x.l===lb);return (ua?ua.nom:la).localeCompare(ub?ub.nom:lb,'fr');});
   const presListe=sortedP.map(l=>{const u=USERS.find(x=>x.l===l);return u?((u.grade?u.grade+' ':'')+u.nom+' '+u.prenom):l;}).join('<br>');
   const mins=formMinsTotal(f);
@@ -486,7 +494,7 @@ function rFmpaInit(){
 function rFmpaList(){
   const list=document.getElementById('fmpa-list');
   if(!list)return;
-  const data=fmpaGetData();
+  const data=fmpaGetData().filter(function(f){return formationVisibleInHistory(f,true);});
   if(!data.length){list.innerHTML='<div style="text-align:center;padding:20px;color:var(--t2);font-size:13px;">Aucune FMPA enregistrée.</div>';return;}
   const sorted=[...data].sort((a,b)=>b.date.localeCompare(a.date)||b.ts-a.ts);
   const isAdmin=isAdminModeActive();
@@ -560,6 +568,7 @@ function saveFmpa(){
 function fmpaVoirDetail(id){
   const a=fmpaGetData().find(x=>x.id===id);
   if(!a)return;
+  if(!formationVisibleInHistory(a,true)){showToast('AccÃ¨s rÃ©servÃ© aux stagiaires et formateurs de cette FMPA','warn');return;}
   const isAdmin=isAdminModeActive();
   const nbP=(a.participants||[]).length;
   const sortedPart=[...(a.participants||[])].sort((la,lb)=>{

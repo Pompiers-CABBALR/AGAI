@@ -724,14 +724,8 @@ function cS(id,s){
   const agr2Label=iv._agr2?(()=>{const u=USERS.find(u=>u.l===iv._agr2);return u?' + '+fullName(u)+' (2\u00e8me)':' + '+iv._agr2;})():'';
   pushTL(iv,s,CU.l+agr2Label,s==='selectionne'?'Ordre de tournée : '+iv._routeOrder:'');
   if(CD())CD().ivs=IVS;
-  // Push immédiat pour les sélections (sans debounce)
-  if(s==='selectionne'||s==='en-attente'){
-    const data=_buildDataObject();
-    localStorage.setItem(JB_CACHE_KEY,JSON.stringify(data));
-    _jbPush(data); // push immédiat
-  } else {
-    saveData();
-  }
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);
   cM();rI();
   if(s==='terminee')rAccueil();
   rStatsHeader();

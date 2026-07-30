@@ -577,9 +577,10 @@ function enr(){
       avisIds:exPilp.map(iv=>iv.id),tl:[mkTL('en-attente',h,CU.l)]
     });
     if(CD())CD().pilpIvs=PILP_IVS;
+    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
     const cm=document.getElementById('cm');cm.style.display='block';
     cm.innerHTML='&#x1F3AF; PILP créée — <strong>'+numsInt.numCas+'</strong><br><span style="font-family:monospace;font-size:11px;">'+numApl+'</span>';
-    saveData();
+    saveData(true);
     rF();rI();rAccueil();gS(1);
     setTimeout(()=>{cm.style.display='none';},5000);
     return;

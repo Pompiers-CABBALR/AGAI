@@ -627,7 +627,8 @@ function _createSession(){
     };
     LOGIN_HISTORY.unshift(entry);
     if(LOGIN_HISTORY.length>500)LOGIN_HISTORY=LOGIN_HISTORY.slice(0,500);
-    saveData();
+    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+    saveData(true);
   }
   if(_sessionTimer)clearTimeout(_sessionTimer);
   if(_sessionWarnTimer)clearTimeout(_sessionWarnTimer);
@@ -3405,9 +3406,10 @@ function enr(){
       avisIds:exPilp.map(iv=>iv.id),tl:[mkTL('en-attente',h,CU.l)]
     });
     if(CD())CD().pilpIvs=PILP_IVS;
+    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
     const cm=document.getElementById('cm');cm.style.display='block';
     cm.innerHTML='&#x1F3AF; PILP créée — <strong>'+numsInt.numCas+'</strong><br><span style="font-family:monospace;font-size:11px;">'+numApl+'</span>';
-    saveData();
+    saveData(true);
     rF();rI();rAccueil();gS(1);
     setTimeout(()=>{cm.style.display='none';},5000);
     return;
@@ -4215,14 +4217,8 @@ function cS(id,s){
   const agr2Label=iv._agr2?(()=>{const u=USERS.find(u=>u.l===iv._agr2);return u?' + '+fullName(u)+' (2\u00e8me)':' + '+iv._agr2;})():'';
   pushTL(iv,s,CU.l+agr2Label,s==='selectionne'?'Ordre de tournée : '+iv._routeOrder:'');
   if(CD())CD().ivs=IVS;
-  // Push immédiat pour les sélections (sans debounce)
-  if(s==='selectionne'||s==='en-attente'){
-    const data=_buildDataObject();
-    localStorage.setItem(JB_CACHE_KEY,JSON.stringify(data));
-    _jbPush(data); // push immédiat
-  } else {
-    saveData();
-  }
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);
   cM();rI();
   if(s==='terminee')rAccueil();
   rStatsHeader();
@@ -4543,6 +4539,8 @@ function cSPilp(id,s){
   if(s==='en-cours')iv.tireur=CU.l;
   if(s==='en-attente'){iv.agr=null;iv.tireur=null;}
   if(!iv.tl)iv.tl=[];iv.tl.push(mkTL(s,getH(N()),CU.l));
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);
   rPilp();oPilp(id);
 }
 function clotPilp(id){
@@ -4553,6 +4551,8 @@ function clotPilp(id){
     iv.s='avis-passage';iv.rappels=(iv.rappels||0)+1;
     if(!iv.avisIds)iv.avisIds=[];if(!iv.avisIds.includes(iv.id))iv.avisIds.push(iv.id);
     iv.tl.push({s:'avis-passage',h,who:CU.l});
+    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+    saveData(true);
     rPilp();oPilp(id);
   } else {
     iv.s='terminee';iv._hFin=getHHMM(N());iv.tl.push({s:'terminee',h,who:CU.l});
@@ -4564,7 +4564,8 @@ function clotPilp(id){
       if(!iv._numMois)    iv._numMois=nums.numMois;
     }
     (iv.avisIds||[]).forEach(aid=>{const av=PILP_IVS.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';av.tl.push({s:'terminee',h,who:CU.l+' (fusion)'});}});
-    saveData();
+    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+    saveData(true);
     cM();rPilp();rI();rAccueil();
   }
 }
@@ -4581,6 +4582,8 @@ function clotAvisPilp(id){
       rappels:0,avisIds:[],_lienPilp:true,tl:[...iv.tl]});
   }
   (iv.avisIds||[]).forEach(aid=>{const av=PILP_IVS.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';av.tl.push({s:'terminee',h,who:CU.l+' (fusion)'});}});
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);
   cM();rPilp();rI();rAccueil();
 }
 
@@ -10354,7 +10357,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260729-verrou-serie-interventions-70';
+const APP_VERSION='20260730-sync-actions-critiques-72';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -12598,9 +12601,9 @@ let _jbEditLock   = 0; // timestamp de la dernière modification — bloque le p
 function _jbSetStatus(state){
   let el=document.getElementById('jb-status');
   if(!el){el=document.createElement('div');el.id='jb-status';document.body.appendChild(el);}
-  const cfg={ok:{txt:'☁️ Sync OK',bg:'#ECFDF5',color:'#065F46'},saving:{txt:'⏳ Sync...',bg:'#FFF7ED',color:'#92400E'},error:{txt:'⚠️ Sync KO',bg:'#FEF2F2',color:'#991B1B'},loading:{txt:'⏳ Chargement',bg:'#EFF6FF',color:'#1D4ED8'}};
+  const cfg={ok:{txt:'☁️ Sync OK',bg:'#ECFDF5',color:'#065F46'},saving:{txt:'⏳ Sync...',bg:'#FFF7ED',color:'#92400E'},pending:{txt:'⏳ Sync en attente',bg:'#FFF7ED',color:'#92400E'},error:{txt:'⚠️ Sync KO',bg:'#FEF2F2',color:'#991B1B'},loading:{txt:'⏳ Chargement',bg:'#EFF6FF',color:'#1D4ED8'}};
   const c=cfg[state]||cfg.ok;
-  el.textContent=c.txt;
+  el.textContent=c.txt+(state==='pending'&&typeof _rcPendingDirty!=='undefined'?' ('+_rcPendingDirty.size+')':'');
   el.style.cssText='position:fixed;bottom:8px;right:8px;z-index:9999;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;background:'+c.bg+';color:'+c.color+';box-shadow:0 1px 4px rgba(0,0,0,.15);cursor:pointer;';
   el.onclick=function(){jbSyncNow();};
 }
@@ -12610,6 +12613,11 @@ function saveData(immediate){
     // Forcer la resynchronisation des variables globales avant sauvegarde
     if(CURRENT_CASERNE_ID&&typeof syncCaserneContext==='function')syncCaserneContext();
     const data=_buildDataObject();
+    if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcTrackChangedRecords==='function'){
+      let previous=null;
+      try{const raw=localStorage.getItem(JB_CACHE_KEY);if(raw)previous=JSON.parse(raw);}catch(e){}
+      _rcTrackChangedRecords(previous,data);
+    }
     localStorage.setItem(JB_CACHE_KEY,JSON.stringify(data));
     if(_jbSaveTimer)clearTimeout(_jbSaveTimer);
     // Push immédiat pour les opérations critiques (changements de statut, etc.)
@@ -12873,6 +12881,11 @@ function _postLoadInit(){
 }
 
 function jbSyncNow(){
+  if(USE_RECORDS&&typeof _rcPendingDirty!=='undefined'&&_rcPendingDirty.size){
+    _rcPush(false);
+    showToast('Synchronisation des actions en attente relancÃ©e','info');
+    return;
+  }
   const puller = USE_RECORDS ? _rcPull : (USE_SUPABASE ? _sbPull : _jbPull);
   puller(false).then(function(ok){
     if(ok)showToast('Données synchronisées ✓','success');
@@ -13044,7 +13057,9 @@ async function _sbPush(data){
     });
     if (!resp.ok) throw new Error('Supabase POST HTTP ' + resp.status);
     // Cache local complet (avec photos)
-    localStorage.setItem(JB_CACHE_KEY, JSON.stringify(data));
+    if(_rcDirtyGeneration===generationAtStart){
+      localStorage.setItem(JB_CACHE_KEY, JSON.stringify(data));
+    }
     _jbLastPush = Date.now();
     _jbSetStatus('ok');
   } catch(e) {
@@ -13214,7 +13229,47 @@ let _rcSaving = false;
 let _rcRealtime = null;
 let _rcPollTimer = null;
 let _rcLastPush = 0;
-const _rcPendingDirty = new Set(); // ids modifiés localement en attente de push
+let _rcRetryTimer = null;
+let _rcRetryDelay = 2500;
+let _rcDirtyGeneration = 0;
+const RC_PENDING_DIRTY_KEY = 'agai_rc_pending_dirty';
+function _rcLoadPendingDirty(){
+  try{
+    const saved=JSON.parse(localStorage.getItem(RC_PENDING_DIRTY_KEY)||'[]');
+    return Array.isArray(saved)?saved.filter(Boolean):[];
+  }catch(e){return [];}
+}
+const _rcPendingDirty = new Set(_rcLoadPendingDirty());
+function _rcPersistPendingDirty(){
+  try{localStorage.setItem(RC_PENDING_DIRTY_KEY,JSON.stringify(Array.from(_rcPendingDirty)));}catch(e){}
+}
+function _rcScheduleRetry(delay){
+  if(!USE_RECORDS||!_rcPendingDirty.size)return;
+  if(_rcRetryTimer)clearTimeout(_rcRetryTimer);
+  const wait=typeof delay==='number'?Math.max(0,delay):_rcRetryDelay;
+  _rcRetryTimer=window.setTimeout(function(){
+    _rcRetryTimer=null;
+    if(!_rcSaving)_rcPush(false);
+  },wait);
+}
+function _rcTrackChangedRecords(previousData,nextData){
+  if(!USE_RECORDS||!nextData)return;
+  const previousRows=previousData?_rcSplitAll(previousData):[];
+  const previousMap={};
+  previousRows.forEach(function(row){
+    previousMap[row.id]=JSON.stringify({data:row.data,deleted:!!row.deleted});
+  });
+  let changed=false;
+  _rcSplitAll(nextData).forEach(function(row){
+    const serialized=JSON.stringify({data:row.data,deleted:!!row.deleted});
+    if(previousMap[row.id]!==serialized){_rcPendingDirty.add(row.id);changed=true;}
+  });
+  if(changed)_rcDirtyGeneration++;
+  _rcPersistPendingDirty();
+}
+window.addEventListener('online',function(){
+  if(USE_RECORDS&&_rcPendingDirty.size)_rcScheduleRetry(0);
+});
 
 // Construit un id global unique
 function _rcId(caserne, type, key){ return caserne + RC_SEP + type + RC_SEP + key; }
@@ -13404,8 +13459,9 @@ function _rcPushGlobalRowKeepalive(){
 }
 
 async function _rcPush(fullPush){
-  if(_rcSaving){ window.setTimeout(function(){ _rcPush(fullPush); }, 800); return; }
+  if(_rcSaving){ _rcScheduleRetry(800); return; }
   _rcSaving = true; _jbSetStatus('saving');
+  const generationAtStart=_rcDirtyGeneration;
   try {
     const data = _buildDataObject();
     let rows;
@@ -13429,7 +13485,11 @@ async function _rcPush(fullPush){
         rows = candidate;
       }
     }
-    if(!rows.length){ _rcSaving=false; _jbSetStatus('ok'); return; }
+    if(!rows.length){
+      _jbSetStatus(_rcPendingDirty.size?'pending':'ok');
+      if(_rcPendingDirty.size)_rcScheduleRetry();
+      return;
+    }
     // Allègement : retirer photos lourdes des interventions (réutilise la logique existante)
     rows = rows.map(function(r){
       if(r.type==='iv' && r.data){ const lite=Object.assign({},r.data); delete lite.frelonPhotos; delete lite._pdfCache; return Object.assign({},r,{data:lite}); }
@@ -13444,10 +13504,21 @@ async function _rcPush(fullPush){
     });
     if(!resp.ok) throw new Error('records POST HTTP '+resp.status);
     localStorage.setItem(JB_CACHE_KEY, JSON.stringify(data));
-    _rcLastPush = Date.now(); _rcPendingDirty.clear();
-    _jbSetStatus('ok');
+    _rcLastPush = Date.now();
+    if(_rcDirtyGeneration===generationAtStart){
+      rows.forEach(function(row){_rcPendingDirty.delete(row.id);});
+    }
+    _rcPersistPendingDirty();
+    _rcRetryDelay=2500;
+    if(_rcRetryTimer){clearTimeout(_rcRetryTimer);_rcRetryTimer=null;}
+    _jbSetStatus(_rcPendingDirty.size?'pending':'ok');
+    if(_rcPendingDirty.size)_rcScheduleRetry();
   } catch(e){
-    console.warn('[AGAI][RC] Push error:', e); _jbSetStatus('error');
+    console.warn('[AGAI][RC] Push error:', e);
+    _rcPersistPendingDirty();
+    _jbSetStatus(_rcPendingDirty.size?'pending':'error');
+    _rcRetryDelay=Math.min(30000,Math.max(2500,_rcRetryDelay*2));
+    _rcScheduleRetry();
   } finally {
     _rcSaving = false;
   }
@@ -13456,6 +13527,11 @@ async function _rcPush(fullPush){
 // ── PULL : lit tous les enregistrements et reconstruit l'état ──
 async function _rcPull(silent){
   if(_rcSaving) return true;
+  if(_rcPendingDirty.size){
+    _jbSetStatus('pending');
+    _rcScheduleRetry(0);
+    return true;
+  }
   try {
     if(!silent) _jbSetStatus('loading');
     const resp = await fetch(RC_REST + '?select=id,caserne,type,data,deleted', { headers:_sbHeaders });
@@ -14949,7 +15025,10 @@ function activityIsFraisAdministratifs(a){
   return isAdminExpenseCategory(category)||defaultActivityCategory(a&&a.type)===ADMIN_EXPENSE_CATEGORY;
 }
 function activityVisibleInHistory(a){
-  return !activityIsFraisAdministratifs(a)||canAccessFraisAdministratifs();
+  if(hasAdministrativeAccount())return true;
+  if(!CU)return false;
+  if(activityIsFraisAdministratifs(a)&&!canAccessFraisAdministratifs())return false;
+  return Array.isArray(a&&a.participants)&&a.participants.includes(CU.l);
 }
 function actTypesForCurrentUser(){
   return ACT_TYPES.filter(t=>!isAdminExpenseCategory(t.cat||defaultActivityCategory(t.l))||canAccessFraisAdministratifs());
@@ -15046,10 +15125,7 @@ function rActivite(){
 
 // ── Contrôle d'accès activité ──
 function actCanSeeDetail(a){
-  if(!CU)return false;
-  if(activityIsFraisAdministratifs(a))return canAccessFraisAdministratifs();
-  if(isAdminModeActive())return true;
-  return (a.participants||[]).includes(CU.l);
+  return activityVisibleInHistory(a);
 }
 
 // ── Liste ──
@@ -15415,6 +15491,13 @@ function formFormGetData(){
     :[];
 }
 
+function formationVisibleInHistory(f,includeFormateurs){
+  if(hasAdministrativeAccount())return true;
+  if(!CU||!f)return false;
+  if(Array.isArray(f.participants)&&f.participants.includes(CU.l))return true;
+  return includeFormateurs===true&&Array.isArray(f.formateurs)&&f.formateurs.includes(CU.l);
+}
+
 // ── Helper ──
 function formSlotMins(hd,hf){
   if(!hd||!hf)return 0;
@@ -15519,7 +15602,7 @@ function rFormFormateurs(){
 function rFormStagList(){
   const el=document.getElementById('formstag-list');
   if(!el)return;
-  const data=formStagGetData();
+  const data=formStagGetData().filter(function(f){return formationVisibleInHistory(f,false);});
   const isAdmin=isAdminModeActive();
   if(!data.length){el.innerHTML='<div style="text-align:center;padding:16px;color:var(--t2);font-size:13px;">Aucune formation enregistrée.</div>';return;}
   const sorted=[...data].sort((a,b)=>b.ddebut.localeCompare(a.ddebut));
@@ -15556,7 +15639,7 @@ function rFormStagList(){
 function rFormFormList(){
   const el=document.getElementById('formform-list');
   if(!el)return;
-  const data=formFormGetData();
+  const data=formFormGetData().filter(function(f){return formationVisibleInHistory(f,false);});
   const isAdmin=isAdminModeActive();
   if(!data.length){el.innerHTML='<div style="text-align:center;padding:16px;color:var(--t2);font-size:13px;">Aucune formation enregistrée.</div>';return;}
   const sorted=[...data].sort((a,b)=>b.ddebut.localeCompare(a.ddebut));
@@ -15593,7 +15676,7 @@ function rFormFormList(){
 function rFormStagRecap(){
   const el=document.getElementById('formstag-recap');
   if(!el)return;
-  const data=formStagGetData();
+  const data=formStagGetData().filter(function(f){return formationVisibleInHistory(f,false);});
   const byAgent={};
   data.forEach(f=>{
     const mins=formMinsTotal(f);
@@ -15603,7 +15686,7 @@ function rFormStagRecap(){
       byAgent[l].sessions.push({titre:f.titre,ddebut:f.ddebut,dfin:f.dfin,duree:formMinsToStr(mins),ref:f.ref});
     });
   });
-  const agents=[...(USERS||[])].sort((a,b)=>a.nom.localeCompare(b.nom,'fr'));
+  const agents=[...(USERS||[])].filter(function(u){return hasAdministrativeAccount()||CU&&u.l===CU.l;}).sort((a,b)=>a.nom.localeCompare(b.nom,'fr'));
   const rows=agents.filter(u=>byAgent[u.l]).map(u=>{
     const d=byAgent[u.l];
     return `<div class="ivr" style="border-left-color:var(--blu);">
@@ -15623,7 +15706,7 @@ function rFormStagRecap(){
 function rFormFormRecap(){
   const el=document.getElementById('formform-recap');
   if(!el)return;
-  const data=formFormGetData();
+  const data=formFormGetData().filter(function(f){return formationVisibleInHistory(f,false);});
   const byAgent={};
   data.forEach(f=>{
     const mins=formMinsTotal(f);
@@ -15633,7 +15716,7 @@ function rFormFormRecap(){
       byAgent[l].sessions.push({titre:f.titre,ddebut:f.ddebut,dfin:f.dfin,duree:formMinsToStr(mins),ref:f.ref});
     });
   });
-  const agents=[...(USERS||[])].sort((a,b)=>a.nom.localeCompare(b.nom,'fr'));
+  const agents=[...(USERS||[])].filter(function(u){return hasAdministrativeAccount()||CU&&u.l===CU.l;}).sort((a,b)=>a.nom.localeCompare(b.nom,'fr'));
   const rows=agents.filter(u=>byAgent[u.l]).map(u=>{
     const d=byAgent[u.l];
     return `<div class="ivr" style="border-left-color:var(--grn);">
@@ -15690,6 +15773,7 @@ function formVoirDetail(type,id){
   const data=type==='stag'?formStagGetData():formFormGetData();
   const f=data.find(x=>x.id===id);
   if(!f)return;
+  if(!formationVisibleInHistory(f,false)){showToast('AccÃ¨s rÃ©servÃ© aux personnes inscrites Ã  cette formation','warn');return;}
   const sortedP=[...(f.participants||[])].sort((la,lb)=>{const ua=USERS.find(x=>x.l===la),ub=USERS.find(x=>x.l===lb);return (ua?ua.nom:la).localeCompare(ub?ub.nom:lb,'fr');});
   const presListe=sortedP.map(l=>{const u=USERS.find(x=>x.l===l);return u?((u.grade?u.grade+' ':'')+u.nom+' '+u.prenom):l;}).join('<br>');
   const mins=formMinsTotal(f);
@@ -15856,7 +15940,7 @@ function rFmpaInit(){
 function rFmpaList(){
   const list=document.getElementById('fmpa-list');
   if(!list)return;
-  const data=fmpaGetData();
+  const data=fmpaGetData().filter(function(f){return formationVisibleInHistory(f,true);});
   if(!data.length){list.innerHTML='<div style="text-align:center;padding:20px;color:var(--t2);font-size:13px;">Aucune FMPA enregistrée.</div>';return;}
   const sorted=[...data].sort((a,b)=>b.date.localeCompare(a.date)||b.ts-a.ts);
   const isAdmin=isAdminModeActive();
@@ -15930,6 +16014,7 @@ function saveFmpa(){
 function fmpaVoirDetail(id){
   const a=fmpaGetData().find(x=>x.id===id);
   if(!a)return;
+  if(!formationVisibleInHistory(a,true)){showToast('AccÃ¨s rÃ©servÃ© aux stagiaires et formateurs de cette FMPA','warn');return;}
   const isAdmin=isAdminModeActive();
   const nbP=(a.participants||[]).length;
   const sortedPart=[...(a.participants||[])].sort((la,lb)=>{

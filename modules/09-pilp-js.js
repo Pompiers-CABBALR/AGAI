@@ -210,6 +210,8 @@ function cSPilp(id,s){
   if(s==='en-cours')iv.tireur=CU.l;
   if(s==='en-attente'){iv.agr=null;iv.tireur=null;}
   if(!iv.tl)iv.tl=[];iv.tl.push(mkTL(s,getH(N()),CU.l));
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);
   rPilp();oPilp(id);
 }
 function clotPilp(id){
@@ -220,6 +222,8 @@ function clotPilp(id){
     iv.s='avis-passage';iv.rappels=(iv.rappels||0)+1;
     if(!iv.avisIds)iv.avisIds=[];if(!iv.avisIds.includes(iv.id))iv.avisIds.push(iv.id);
     iv.tl.push({s:'avis-passage',h,who:CU.l});
+    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+    saveData(true);
     rPilp();oPilp(id);
   } else {
     iv.s='terminee';iv._hFin=getHHMM(N());iv.tl.push({s:'terminee',h,who:CU.l});
@@ -231,7 +235,8 @@ function clotPilp(id){
       if(!iv._numMois)    iv._numMois=nums.numMois;
     }
     (iv.avisIds||[]).forEach(aid=>{const av=PILP_IVS.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';av.tl.push({s:'terminee',h,who:CU.l+' (fusion)'});}});
-    saveData();
+    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+    saveData(true);
     cM();rPilp();rI();rAccueil();
   }
 }
@@ -248,6 +253,8 @@ function clotAvisPilp(id){
       rappels:0,avisIds:[],_lienPilp:true,tl:[...iv.tl]});
   }
   (iv.avisIds||[]).forEach(aid=>{const av=PILP_IVS.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';av.tl.push({s:'terminee',h,who:CU.l+' (fusion)'});}});
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);
   cM();rPilp();rI();rAccueil();
 }
 
