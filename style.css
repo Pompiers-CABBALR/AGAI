@@ -590,6 +590,41 @@ body{min-height:var(--app-height);}
   scroll-margin-top:90px;
   scroll-margin-bottom:140px;
 }
+@media(min-width:901px) and (pointer:fine){
+  .mov.cr-modal-overlay{
+    inset:0;
+    width:100vw;
+    height:100vh;
+    padding:32px;
+    align-items:center;
+    background:rgba(15,23,42,.52);
+    backdrop-filter:blur(2px);
+  }
+  .mov.cr-modal-overlay .mod{
+    width:min(920px,calc(100vw - 64px));
+    max-width:920px;
+    height:auto;
+    max-height:calc(100vh - 64px);
+    margin:auto;
+    padding:26px 30px 24px;
+    border:1px solid rgba(255,255,255,.7);
+    border-radius:18px;
+    box-shadow:0 24px 70px rgba(15,23,42,.28);
+  }
+  .mov.cr-modal-overlay .mhan{display:none;}
+  .mov.cr-modal-overlay .mtit{font-size:19px;line-height:1.25;margin-bottom:4px;}
+  .mov.cr-modal-overlay .mid2{font-size:12px;margin-bottom:16px;}
+  .mov.cr-modal-overlay #cr-texte{min-height:220px;}
+  .mov.cr-modal-overlay .mclose{
+    display:block;
+    width:auto;
+    min-width:150px;
+    margin:18px 0 0 auto;
+    padding:10px 22px;
+    border:1px solid var(--brd);
+    background:#F8FAFC;
+  }
+}
 @media(max-width:900px){
   .mov.keyboard-aware-modal{
     top:var(--visual-offset-top);
