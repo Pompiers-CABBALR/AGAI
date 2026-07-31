@@ -1208,6 +1208,26 @@ function renderSuperAdmin(){
       </div>
     </div>`;
   }).join('');
+  const etatMajor=CASERNES.find(c=>c.id==='EMAJ')||{id:'EMAJ',nom:'État-Major',couleur:'#1D4ED8'};
+  const etatMajorData=CASERNE_DATA.EMAJ||{ivs:[],activites:[],formations:[]};
+  const etatMajorHtml=`<div style="background:#EFF6FF;border-radius:14px;padding:16px;border-left:4px solid ${etatMajor.couleur};border-top:1px solid #BFDBFE;border-right:1px solid #BFDBFE;border-bottom:1px solid #BFDBFE;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+      <span style="background:${etatMajor.couleur};color:#fff;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;">ÉTAT-MAJOR</span>
+      <span style="font-size:15px;font-weight:700;">Espace du chef de corps</span>
+      <button class="btn sm" style="margin-left:auto;font-size:11px;background:${etatMajor.couleur};color:#fff;border-color:${etatMajor.couleur};" onclick="saAccederEtatMajor()">▶ Accéder à l'espace</button>
+    </div>
+    <div style="background:#fff;border:1px solid #DBEAFE;border-radius:10px;padding:10px;margin-bottom:10px;">
+      <div style="font-size:10px;font-weight:700;color:#1D4ED8;text-transform:uppercase;margin-bottom:4px;">Chef de corps désigné</div>
+      <div style="font-size:13px;font-weight:600;">${cc?escHtml(fullName(cc)):'Aucun chef de corps désigné'}</div>
+      ${cc?`<div style="font-size:11px;color:#64748B;font-family:monospace;margin-top:2px;">${escHtml(cc.l||'')}</div>`:''}
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:12px;">
+      <div style="background:#fff;border-radius:8px;padding:8px;text-align:center;"><div style="font-size:22px;font-weight:700;color:${etatMajor.couleur};">${(etatMajorData.ivs||[]).length}</div><div style="color:#666;">Interventions</div></div>
+      <div style="background:#fff;border-radius:8px;padding:8px;text-align:center;"><div style="font-size:22px;font-weight:700;">${(etatMajorData.activites||[]).length}</div><div style="color:#666;">Activités</div></div>
+      <div style="background:#fff;border-radius:8px;padding:8px;text-align:center;"><div style="font-size:22px;font-weight:700;">${(etatMajorData.formations||[]).length}</div><div style="color:#666;">Formations</div></div>
+    </div>
+    <div style="font-size:10px;color:#64748B;margin-top:9px;">Cet espace est distinct des casernes opérationnelles et ne possède pas d'administrateur de caserne.</div>
+  </div>`;
   body.innerHTML=`
     ${comptesHtml}
     <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;border:1px solid #eee;">
@@ -1326,7 +1346,7 @@ function renderSuperAdmin(){
         <button class="btn pr" onclick="addSuperAdmin()">+ Super Admin</button>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;">${casHtml}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;">${etatMajorHtml}${casHtml}</div>
     <div style="margin-top:20px;background:#fff;border-radius:14px;padding:16px;">
       <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;">Statistiques globales</h3>
       ${renderGlobalStats()}
@@ -1892,6 +1912,20 @@ function saAccederChefCorps(){
     const rc2=CC()?'<button onclick="retourCaserne()" style="background:rgba(255,255,255,.15);border:none;color:#fff;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:12px;">← '+CC().nom+'</button>':'';
     gvNav.innerHTML=rc2+'<button onclick="showGlobalView(\'superadmin\')" style="background:rgba(255,255,255,.25);border:none;color:#fff;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;">&#x1F310; Vue globale</button>';
   }
+}
+
+// Superadmin accède directement à l'espace de saisie État-Major
+function saAccederEtatMajor(){
+  if(!isSuperAdmin())return;
+  ccAccederEspaceSaisie();
+  const backBtn=document.getElementById('cc-back-dash');
+  if(backBtn){backBtn.innerHTML='🌐 Gestion globale';backBtn.onclick=saRetourEtatMajor;}
+}
+function saRetourEtatMajor(){
+  CURRENT_CASERNE_ID=null;
+  const backBtn=document.getElementById('cc-back-dash');
+  if(backBtn)backBtn.classList.add('hidden');
+  showGlobalView('superadmin');
 }
 
 // ── Chef de corps : accès à son espace de saisie (caserne État-Major) ──
@@ -11060,7 +11094,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260801-gestion-chef-corps-etat-major-86';
+const APP_VERSION='20260801-espace-etat-major-superadmin-87';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
