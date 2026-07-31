@@ -1226,6 +1226,13 @@ function renderSuperAdmin(){
       <div style="background:#fff;border-radius:8px;padding:8px;text-align:center;"><div style="font-size:22px;font-weight:700;">${(etatMajorData.activites||[]).length}</div><div style="color:#666;">Activités</div></div>
       <div style="background:#fff;border-radius:8px;padding:8px;text-align:center;"><div style="font-size:22px;font-weight:700;">${(etatMajorData.formations||[]).length}</div><div style="color:#666;">Formations</div></div>
     </div>
+    <div style="margin-top:10px;border-top:1px solid #BFDBFE;padding-top:10px;">
+      <div style="font-size:11px;font-weight:600;color:#1D4ED8;margin-bottom:6px;">&#x2709;&#xFE0F; E-MAIL GÉNÉRIQUE</div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <input class="fi" type="email" id="email-EMAJ" value="${escHtml(etatMajor.email||'')}" placeholder="etat-major@exemple.fr" style="flex:1;font-size:11px;padding:6px 8px;min-width:0;"/>
+        <button class="btn sm" style="font-size:11px;background:${etatMajor.couleur};color:#fff;border-color:${etatMajor.couleur};" onclick="saSaveEmail('EMAJ')">&#x1F4BE; Enregistrer</button>
+      </div>
+    </div>
     <div style="font-size:10px;color:#64748B;margin-top:9px;">Cet espace est distinct des casernes opérationnelles et ne possède pas d'administrateur de caserne.</div>
   </div>`;
   body.innerHTML=`
@@ -11094,7 +11101,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260801-espace-etat-major-superadmin-87';
+const APP_VERSION='20260801-email-generique-etat-major-88';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
