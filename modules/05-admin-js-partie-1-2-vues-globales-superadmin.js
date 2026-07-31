@@ -848,7 +848,7 @@ function renderChefCorpsBody(){
     // Toutes les communes × mois (même les 0)
     const moisActifs=ccMois>0?[ccMois]:Array.from({length:12},function(_,i){return i+1;});
     const thMois=moisActifs.map(function(mi){return '<th style="padding:4px 5px;text-align:center;font-size:10px;min-width:28px;">'+MOIS_NOMS[mi-1].slice(0,3)+'</th>';}).join('');
-    const allComs=COM.map(function(c){return typeof c==='string'?c:c.nom;});
+    const allComs=statsCommunesIntervenuesEnPremier(ivs);
     let rowsCM='';
     allComs.forEach(function(com){
       let cols='';
@@ -868,7 +868,7 @@ function renderChefCorpsBody(){
 
   } else if(ccVue==='nat-com'){
     // Communes en lignes, natures en colonnes
-    const allComsCC=COM.map(function(x){return typeof x==='string'?x:x.nom;});
+    const allComsCC=statsCommunesIntervenuesEnPremier(ivs);
     const thNatCC=NAT.map(function(n){return '<th style="padding:3px 4px;text-align:center;font-size:9px;writing-mode:vertical-lr;transform:rotate(180deg);height:64px;max-width:20px;white-space:nowrap;">'+n.i+' '+n.l+'</th>';}).join('');
     let rowsCN='';
     allComsCC.forEach(function(com){

@@ -166,6 +166,13 @@ function isChefCorps(){return GLOBAL_ROLE==='chef_corps';}
 function isInterventionComptabilisee(iv){
   return !!(iv&&iv.s==='terminee'&&!iv._refugeAnimalier);
 }
+function statsCommunesIntervenuesEnPremier(interventions){
+  const actives=new Set((interventions||[]).map(function(iv){return String(iv&&iv.com||'').trim();}).filter(Boolean));
+  return COM.map(function(commune){return typeof commune==='string'?commune:commune.nom;}).sort(function(a,b){
+    const activeA=actives.has(a)?1:0,activeB=actives.has(b)?1:0;
+    return activeB-activeA||String(a).localeCompare(String(b),'fr',{sensitivity:'base'});
+  });
+}
 function isResponsableFormation(user){
   const account=user||CU;
   if(!account)return false;
@@ -1760,7 +1767,7 @@ function renderChefCorpsBody(){
     // Toutes les communes × mois (même les 0)
     const moisActifs=ccMois>0?[ccMois]:Array.from({length:12},function(_,i){return i+1;});
     const thMois=moisActifs.map(function(mi){return '<th style="padding:4px 5px;text-align:center;font-size:10px;min-width:28px;">'+MOIS_NOMS[mi-1].slice(0,3)+'</th>';}).join('');
-    const allComs=COM.map(function(c){return typeof c==='string'?c:c.nom;});
+    const allComs=statsCommunesIntervenuesEnPremier(ivs);
     let rowsCM='';
     allComs.forEach(function(com){
       let cols='';
@@ -1780,7 +1787,7 @@ function renderChefCorpsBody(){
 
   } else if(ccVue==='nat-com'){
     // Communes en lignes, natures en colonnes
-    const allComsCC=COM.map(function(x){return typeof x==='string'?x:x.nom;});
+    const allComsCC=statsCommunesIntervenuesEnPremier(ivs);
     const thNatCC=NAT.map(function(n){return '<th style="padding:3px 4px;text-align:center;font-size:9px;writing-mode:vertical-lr;transform:rotate(180deg);height:64px;max-width:20px;white-space:nowrap;">'+n.i+' '+n.l+'</th>';}).join('');
     let rowsCN='';
     allComsCC.forEach(function(com){
@@ -9898,7 +9905,7 @@ function rStatsContent(){
   } else if(stVue==='com-mois'){
     const moisActifs=stMois>0?[stMois]:Array.from({length:12},function(_,i){return i+1;});
     const thMois=moisActifs.map(function(mi){return '<th style="padding:4px 5px;text-align:center;font-size:10px;min-width:28px;">'+ST_MOIS[mi-1].slice(0,3)+'</th>';}).join('');
-    const allComs=COM.map(function(x){return typeof x==='string'?x:x.nom;});
+    const allComs=statsCommunesIntervenuesEnPremier(ivs);
     let rowsCM='';
     allComs.forEach(function(com){
       let cols='';
@@ -9918,7 +9925,7 @@ function rStatsContent(){
 
   } else if(stVue==='nat-com'){
     // Communes en lignes, natures en colonnes
-    const allComs=COM.map(function(x){return typeof x==='string'?x:x.nom;});
+    const allComs=statsCommunesIntervenuesEnPremier(ivs);
     const thNat=NAT.map(function(n){return '<th style="padding:3px 4px;text-align:center;font-size:9px;writing-mode:vertical-lr;transform:rotate(180deg);height:64px;max-width:20px;white-space:nowrap;">'+n.i+' '+n.l+'</th>';}).join('');
     let rowsCN='';
     allComs.forEach(function(com){
@@ -11106,7 +11113,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260801-compteurs-actifs-apres-minuit-90';
+const APP_VERSION='20260801-communes-intervenues-en-premier-91';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne

@@ -126,7 +126,7 @@ function rStatsContent(){
   } else if(stVue==='com-mois'){
     const moisActifs=stMois>0?[stMois]:Array.from({length:12},function(_,i){return i+1;});
     const thMois=moisActifs.map(function(mi){return '<th style="padding:4px 5px;text-align:center;font-size:10px;min-width:28px;">'+ST_MOIS[mi-1].slice(0,3)+'</th>';}).join('');
-    const allComs=COM.map(function(x){return typeof x==='string'?x:x.nom;});
+    const allComs=statsCommunesIntervenuesEnPremier(ivs);
     let rowsCM='';
     allComs.forEach(function(com){
       let cols='';
@@ -146,7 +146,7 @@ function rStatsContent(){
 
   } else if(stVue==='nat-com'){
     // Communes en lignes, natures en colonnes
-    const allComs=COM.map(function(x){return typeof x==='string'?x:x.nom;});
+    const allComs=statsCommunesIntervenuesEnPremier(ivs);
     const thNat=NAT.map(function(n){return '<th style="padding:3px 4px;text-align:center;font-size:9px;writing-mode:vertical-lr;transform:rotate(180deg);height:64px;max-width:20px;white-space:nowrap;">'+n.i+' '+n.l+'</th>';}).join('');
     let rowsCN='';
     allComs.forEach(function(com){

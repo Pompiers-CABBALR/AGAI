@@ -13,6 +13,13 @@ function isChefCorps(){return GLOBAL_ROLE==='chef_corps';}
 function isInterventionComptabilisee(iv){
   return !!(iv&&iv.s==='terminee'&&!iv._refugeAnimalier);
 }
+function statsCommunesIntervenuesEnPremier(interventions){
+  const actives=new Set((interventions||[]).map(function(iv){return String(iv&&iv.com||'').trim();}).filter(Boolean));
+  return COM.map(function(commune){return typeof commune==='string'?commune:commune.nom;}).sort(function(a,b){
+    const activeA=actives.has(a)?1:0,activeB=actives.has(b)?1:0;
+    return activeB-activeA||String(a).localeCompare(String(b),'fr',{sensitivity:'base'});
+  });
+}
 function isResponsableFormation(user){
   const account=user||CU;
   if(!account)return false;
