@@ -1173,6 +1173,7 @@ function _postLoadInit(){
   if(CASERNE_DATA._global&&CASERNE_DATA._global.logoB64){
     window._LOGO_OVERRIDE='data:'+(CASERNE_DATA._global.logoMime||'image/jpeg')+';base64,'+CASERNE_DATA._global.logoB64;
   }
+  if(!CU)try{_restoreSessionAfterLoad();}catch(e){console.warn('[AGAI] Restauration de session impossible:',e);}
 }
 
 function jbSyncNow(){

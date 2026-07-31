@@ -121,6 +121,92 @@ function isInterventionReportChef(iv,login){
   });
 }
 
+function interventionRoleKey(role){
+  return String(role||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z]/g,'');
+}
+function interventionMainTeammate(iv){
+  const crew=Array.isArray(iv&&iv._equipage1)?iv._equipage1:[];
+  return crew.find(function(member){return member&&interventionRoleKey(member.role)==='equipier';})||null;
+}
+function interventionTeammateName(login){
+  if(!login)return 'Aucun';
+  const user=USERS.find(function(item){return item.l===login;});
+  return user?fullName(user):login;
+}
+function interventionTeammateEditorHTML(iv){
+  if(!iv||!CU)return '';
+  const current=interventionMainTeammate(iv);
+  const canManage=isInterventionReportChef(iv,CU.l)||hasAdministrativeAccount();
+  const currentLogin=current&&current.login||'';
+  if(!canManage){
+    return '<div style="background:#F8FAFC;border:1px solid #CBD5E1;border-radius:10px;padding:10px 12px;margin-bottom:10px;">'
+      +'<div style="font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">\ud83d\udc68\u200d\ud83d\ude92 \u00c9quipier de l\u2019engin principal</div>'
+      +'<div style="font-size:13px;">'+escHtml(interventionTeammateName(currentLogin))+'</div></div>';
+  }
+  const occupied=new Set();
+  [iv._equipage1,iv._equipage2].forEach(function(crew){
+    (Array.isArray(crew)?crew:[]).forEach(function(member){
+      if(member&&member.login&&member.login!==currentLogin)occupied.add(member.login);
+    });
+  });
+  if(iv.agr)occupied.add(iv.agr);
+  if(iv._agr2)occupied.add(iv._agr2);
+  const candidates=USERS.filter(function(user){return user&&user.l&&!occupied.has(user.l);}).slice().sort(function(a,b){
+    return fullName(a).localeCompare(fullName(b),'fr');
+  });
+  if(currentLogin&&!candidates.some(function(user){return user.l===currentLogin;})){
+    const currentUser=USERS.find(function(user){return user.l===currentLogin;});
+    if(currentUser)candidates.unshift(currentUser);
+  }
+  let options='<option value="">\u2014 Aucun \u00e9quipier renseign\u00e9 \u2014</option>';
+  options+=candidates.map(function(user){
+    return '<option value="'+escHtml(user.l)+'"'+(user.l===currentLogin?' selected':'')+'>'+escHtml(fullName(user))+'</option>';
+  }).join('');
+  if(currentLogin&&!USERS.some(function(user){return user.l===currentLogin;})){
+    options+='<option value="'+escHtml(currentLogin)+'" selected>'+escHtml(currentLogin)+'</option>';
+  }
+  return '<div style="background:#EFF6FF;border:1px solid #93C5FD;border-radius:10px;padding:10px 12px;margin-bottom:10px;">'
+    +'<div style="font-size:12px;font-weight:700;color:#1D4ED8;margin-bottom:7px;">\ud83d\udc68\u200d\ud83d\ude92 \u00c9quipier de l\u2019engin principal</div>'
+    +'<div class="cr-teammate-grid">'
+    +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;">Agent pr\u00e9sent</div><select class="fi" id="cr-equipier" style="min-width:0;">'+options+'</select></div>'
+    +'<button class="btn sm" style="background:#2563EB;color:#fff;white-space:nowrap;" onclick="saveInterventionTeammate(\''+escHtml(iv.id)+'\')">\ud83d\udcbe Enregistrer</button>'
+    +'</div><div style="font-size:10px;color:#64748B;margin-top:6px;">La correction est ajout\u00e9e \u00e0 l\u2019historique et reprise dans le rapport ainsi que dans les exports.</div></div>';
+}
+function saveInterventionTeammate(ivId){
+  const iv=IVS.find(function(item){return item.id===ivId;});if(!iv||!CU)return;
+  if(!isInterventionReportChef(iv,CU.l)&&!hasAdministrativeAccount()){
+    showToast('Modification r\u00e9serv\u00e9e au chef d\u2019agr\u00e8s de l\u2019intervention ou \u00e0 un administrateur.','warn');return;
+  }
+  const field=document.getElementById('cr-equipier');if(!field)return;
+  const before=interventionMainTeammate(iv);
+  const beforeLogin=before&&before.login||'';
+  const afterLogin=field.value||'';
+  if(beforeLogin===afterLogin){showToast('L\u2019\u00e9quipier est d\u00e9j\u00e0 enregistr\u00e9.','info');return;}
+  const duplicate=[iv._equipage1,iv._equipage2].some(function(crew){
+    return (Array.isArray(crew)?crew:[]).some(function(member){
+      return member&&member.login===afterLogin&&interventionRoleKey(member.role)!=='equipier';
+    });
+  });
+  if(afterLogin&&duplicate){showToast('Cet agent est d\u00e9j\u00e0 enregistr\u00e9 avec une autre fonction dans l\u2019\u00e9quipage.','warn');return;}
+  const reportField=document.getElementById('cr-texte');
+  if(reportField)writeCompteRenduDraft(ivId,reportField.value);
+  const crew=(Array.isArray(iv._equipage1)?iv._equipage1:[]).filter(function(member){
+    return !member||interventionRoleKey(member.role)!=='equipier';
+  });
+  if(afterLogin)crew.push({role:'\u00c9quipier',login:afterLogin});
+  iv._equipage1=crew;
+  if(!Array.isArray(iv._equipierModifications))iv._equipierModifications=[];
+  iv._equipierModifications.push({date:getH(N()),auteur:CU.l,avant:beforeLogin||null,apres:afterLogin||null});
+  let note='\u00c9quipier retir\u00e9 : '+interventionTeammateName(beforeLogin);
+  if(!beforeLogin&&afterLogin)note='\u00c9quipier ajout\u00e9 : '+interventionTeammateName(afterLogin);
+  else if(beforeLogin&&afterLogin)note='\u00c9quipier modifi\u00e9 : '+interventionTeammateName(beforeLogin)+' \u2192 '+interventionTeammateName(afterLogin);
+  pushTL(iv,'modif-equipier',CU.l,note);
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);rI();rHist();
+  showCompteRenduModal(ivId);
+  showToast('Composition de l\u2019\u00e9quipage enregistr\u00e9e.','success');
+}
+
 const _pendingNextInterventionStarts={};
 
 // === P8 : Fonction de rendu dédiée (évite XSS + facilite les tests) ===
@@ -362,9 +448,9 @@ function oM(id){
   const dispApl=iv._numApl||iv.id;
   const dispTransfert=iv._transfertDe?` ↩ transféré de ${CASERNES.find(cas=>cas.id===iv._transfertDe)?.nom||iv._transfertDe}`:'';
   document.getElementById('mi').textContent=dispApl+dispTransfert;
-  const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis de passage'],'modif':['bgr','Modification'],'modif-adresse':['bgr','Adresse corrigée'],'modif-heure':['binfo','Heure de début corrigée'],'reclasse':['bgr','Reclasé'],'releve':['binfo','Relève'],'info-compl':['binfo','ℹ️ Complément d\u2019info']};
+  const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis de passage'],'modif':['bgr','Modification'],'modif-adresse':['bgr','Adresse corrigée'],'modif-heure':['binfo','Heure de début corrigée'],'modif-equipier':['binfo','Équipier corrigé'],'reclasse':['bgr','Reclasé'],'releve':['binfo','Relève'],'info-compl':['binfo','ℹ️ Complément d\u2019info']};
   const[bc,bt]=bm[iv.s]||['bgr','—'];
-  const sdots={'en-attente':'#E24B4A','selectionne':'var(--sel)','en-cours':'var(--amb)','terminee':'var(--grn)','avis-passage':'var(--pur)','modif':'#888','modif-adresse':'#888','modif-heure':'#C2410C','reclasse':'#888','releve':'#0369A1','info-compl':'#0369A1'};
+  const sdots={'en-attente':'#E24B4A','selectionne':'var(--sel)','en-cours':'var(--amb)','terminee':'var(--grn)','avis-passage':'var(--pur)','modif':'#888','modif-adresse':'#888','modif-heure':'#C2410C','modif-equipier':'#2563EB','reclasse':'#888','releve':'#0369A1','info-compl':'#0369A1'};
   const tlHtml=(iv.tl||[]).map(t=>`<div class="tl-item"><div class="tl-dot" style="background:${sdots[t.s]||'#aaa'};"></div><div class="tl-info"><span class="tl-status">${bm[t.s]?bm[t.s][1]:t.s}${t.note?` — ${t.note}`:''}</span> <span class="tl-horo">&#x1F4C5; ${t.h}</span><div class="tl-who">${t.who}</div></div></div>`).join('');
   const reclassHtml=(ag&&iv.s==='en-cours')?`<div class="reclass-box">
     <div class="reclass-title">Reclasser la nature</div>

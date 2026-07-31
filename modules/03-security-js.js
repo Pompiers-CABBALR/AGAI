@@ -36,7 +36,39 @@ let SESSION_TOKEN=null;
 let SESSION_EXPIRY=null;
 let _sessionTimer=null;
 let _sessionWarnTimer=null;
+let _sessionLastPersist=0;
 // SESSION_DURATION_MS est défini dans config.js
+
+function _readStoredSession(){
+  try{return JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY)||'null');}catch(e){return null;}
+}
+function _persistSessionState(extra){
+  if(!SESSION_TOKEN||!CU)return;
+  const previous=_readStoredSession()||{};
+  const record=Object.assign({},previous,{
+    token:SESSION_TOKEN,
+    login:CU.l,
+    caserneId:CURRENT_CASERNE_ID||CU.caserneId||'',
+    globalRole:GLOBAL_ROLE||null,
+    expiresAt:SESSION_EXPIRY,
+    lastSeenAt:Date.now()
+  },extra||{});
+  try{localStorage.setItem(SESSION_STORAGE_KEY,JSON.stringify(record));_sessionLastPersist=Date.now();}catch(e){}
+}
+function _armSessionTimers(){
+  if(_sessionTimer)clearTimeout(_sessionTimer);
+  if(_sessionWarnTimer)clearTimeout(_sessionWarnTimer);
+  const remaining=Math.max(0,(SESSION_EXPIRY||0)-Date.now());
+  if(remaining>10*60*1000){
+    _sessionWarnTimer=setTimeout(function(){
+      showToast('⏱ Session expire dans 10 min — votre travail est sauvegardé.','warn');
+    },remaining-10*60*1000);
+  }
+  _sessionTimer=setTimeout(function(){
+    showToast('Session expirée. Reconnexion requise.','warn');
+    setTimeout(function(){doLogout();},2000);
+  },remaining);
+}
 
 function _createSession(){
   SESSION_TOKEN=crypto.randomUUID();
@@ -70,23 +102,15 @@ function _createSession(){
     if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
     saveData(true);
   }
-  if(_sessionTimer)clearTimeout(_sessionTimer);
-  if(_sessionWarnTimer)clearTimeout(_sessionWarnTimer);
-  // Avertissement 10 min avant expiration
-  _sessionWarnTimer=setTimeout(()=>{
-    showToast('⏱ Session expire dans 10 min — votre travail est sauvegardé.','warn');
-  },SESSION_DURATION_MS-10*60*1000);
-  // Déconnexion automatique
-  _sessionTimer=setTimeout(()=>{
-    showToast('Session expirée. Reconnexion requise.','warn');
-    setTimeout(()=>doLogout(),2000);
-  },SESSION_DURATION_MS);
+  _persistSessionState({backgroundAt:0});
+  _armSessionTimers();
 }
 
 function _clearSession(){
   SESSION_TOKEN=null;SESSION_EXPIRY=null;
   if(_sessionTimer){clearTimeout(_sessionTimer);_sessionTimer=null;}
   if(_sessionWarnTimer){clearTimeout(_sessionWarnTimer);_sessionWarnTimer=null;}
+  try{localStorage.removeItem(SESSION_STORAGE_KEY);}catch(e){}
 }
 
 function isSessionValid(){return SESSION_TOKEN!==null&&Date.now()<(SESSION_EXPIRY||0);}

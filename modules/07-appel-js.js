@@ -268,6 +268,7 @@ document.addEventListener('visibilitychange',function(){
   if(document.hidden){
     // L'app passe en arrière-plan : mémoriser l'heure et armer le minuteur
     _bgHiddenAt=Date.now();
+    _persistSessionState({backgroundAt:_bgHiddenAt});
     if(ms>0 && CU && isSessionValid()){
       if(_bgTimer)clearTimeout(_bgTimer);
       _bgTimer=setTimeout(function(){
@@ -281,10 +282,22 @@ document.addEventListener('visibilitychange',function(){
     // On vérifie le temps réellement écoulé et on déconnecte si le délai est dépassé.
     if(ms>0 && _bgHiddenAt && CU && (Date.now()-_bgHiddenAt)>=ms){
       try{doLogout();}catch(e){}
+      _bgHiddenAt=0;
+      return;
     }
     _bgHiddenAt=0;
+    _persistSessionState({backgroundAt:0});
   }
 });
+function _touchSessionActivity(){
+  if(!CU||!isSessionValid()||document.hidden)return;
+  if(Date.now()-_sessionLastPersist<30000)return;
+  _persistSessionState({backgroundAt:0});
+}
+['pointerdown','keydown','touchstart'].forEach(function(eventName){
+  document.addEventListener(eventName,_touchSessionActivity,{passive:true});
+});
+window.setInterval(_touchSessionActivity,60000);
 // Fermer le dropdown quand on clique ailleurs
 document.addEventListener('click',function(e){
   const dd=document.getElementById('fa-dd');

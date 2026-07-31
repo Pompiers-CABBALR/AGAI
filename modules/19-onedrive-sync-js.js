@@ -316,32 +316,22 @@ _migratePasswords();
 // Contrôle automatique de version : recharge l'app si une nouvelle version est en ligne
 _startVersionCheck();
 
-// ── Déconnexion automatique à la fermeture de la page ──
-window.addEventListener('pagehide', function(){
+// ── Fermeture/rechargement de la page ──
+// Une fermeture brève de la PWA ou un rechargement de version ne vaut pas
+// déconnexion. La session est restaurée tant que le délai d'arrière-plan
+// configuré n'est pas dépassé. Seul le bouton de déconnexion ferme la session.
+function _prepareSessionForPageExit(){
   if(SESSION_TOKEN){
-    const entry=LOGIN_HISTORY.find(e=>e.id===SESSION_TOKEN);
-    if(entry){entry.hDeconnexion=new Date().toISOString();entry.actif=false;}
-    // Persistance synchrone en localStorage.
+    const previous=_readStoredSession()||{};
+    _persistSessionState({backgroundAt:Number(previous.backgroundAt)||_bgHiddenAt||Date.now()});
     try{
       const data=_buildDataObject();
       localStorage.setItem(JB_CACHE_KEY,JSON.stringify(data));
     }catch(e){}
-    // En mode records : pousser UNIQUEMENT la ligne globale (LOGIN_HISTORY) via
-    // une requête keepalive, qui survit à la fermeture sans écraser le reste.
-    try{_rcPushGlobalRowKeepalive();}catch(e){}
   }
-});
-window.addEventListener('beforeunload', function(){
-  if(SESSION_TOKEN){
-    const entry=LOGIN_HISTORY.find(e=>e.id===SESSION_TOKEN);
-    if(entry){entry.hDeconnexion=new Date().toISOString();entry.actif=false;}
-    try{
-      const data=_buildDataObject();
-      localStorage.setItem(JB_CACHE_KEY,JSON.stringify(data));
-    }catch(e){}
-    try{_rcPushGlobalRowKeepalive();}catch(e){}
-  }
-});
+}
+window.addEventListener('pagehide',_prepareSessionForPageExit);
+window.addEventListener('beforeunload',_prepareSessionForPageExit);
 
 function tick(){
   document.getElementById('clk').textContent=N().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});

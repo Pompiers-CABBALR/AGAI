@@ -590,6 +590,7 @@ body{min-height:var(--app-height);}
   scroll-margin-top:90px;
   scroll-margin-bottom:140px;
 }
+.cr-teammate-grid{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end;}
 @media(min-width:901px) and (pointer:fine){
   .mov.cr-modal-overlay{
     inset:0;
@@ -781,6 +782,8 @@ html.appel-nature-locked .cnt{overflow:hidden!important;}
   .mod{border-radius:18px 18px 0 0;}
   .mov.cr-modal-overlay .mod{border-radius:0;padding-top:max(14px,var(--safe-top));}
   .mov.cr-modal-overlay #cr-texte{resize:none!important;min-height:180px;}
+  .cr-teammate-grid{grid-template-columns:minmax(0,1fr);}
+  .cr-teammate-grid .btn{width:100%;}
 }
 
 @media(max-width:420px){

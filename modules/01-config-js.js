@@ -7,6 +7,8 @@ const QUOTA_ASTREINTE_TEL_H = 3024;
 const PBKDF2_ITERATIONS = 100_000;
 /** Durée de session avant déconnexion automatique (8 heures) */
 const SESSION_DURATION_MS = 8 * 60 * 60 * 1000;
+/** Session locale restaurable après un rechargement ou une fermeture brève de la PWA. */
+const SESSION_STORAGE_KEY = 'agai_session_v2';
 /** Format numéro d'appel : 6 chiffres (APL_2026_000001) */
 const APL_NUM_DIGITS = 6;
 /** Format numéro PILP temporaire : 3 chiffres (PILP-2026-001) */

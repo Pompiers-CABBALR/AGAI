@@ -576,6 +576,7 @@ function showCompteRenduModal(ivId) {
 
   document.getElementById('mt').textContent = 'Compte rendu d\u2019intervention';
   document.getElementById('mi').textContent = iv.n + ' \u2014 ' + iv.com;
+  const teammateFields=interventionTeammateEditorHTML(iv);
   const startCorrectionFields=interventionStartCorrectionHTML(iv);
   const storedReportText=iv._crTexte||iv._compteRendu||'';
   const localDraft=readCompteRenduDraft(ivId);
@@ -629,6 +630,7 @@ function showCompteRenduModal(ivId) {
   document.getElementById('mb').innerHTML =
     '<div style="padding:4px 0;">'
     + infoBanner
+    + teammateFields
     + startCorrectionFields
     + sdisFields
     + frelonFields

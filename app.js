@@ -62,6 +62,8 @@ const QUOTA_ASTREINTE_TEL_H = 3024;
 const PBKDF2_ITERATIONS = 100_000;
 /** Durée de session avant déconnexion automatique (8 heures) */
 const SESSION_DURATION_MS = 8 * 60 * 60 * 1000;
+/** Session locale restaurable après un rechargement ou une fermeture brève de la PWA. */
+const SESSION_STORAGE_KEY = 'agai_session_v2';
 /** Format numéro d'appel : 6 chiffres (APL_2026_000001) */
 const APL_NUM_DIGITS = 6;
 /** Format numéro PILP temporaire : 3 chiffres (PILP-2026-001) */
@@ -597,7 +599,39 @@ let SESSION_TOKEN=null;
 let SESSION_EXPIRY=null;
 let _sessionTimer=null;
 let _sessionWarnTimer=null;
+let _sessionLastPersist=0;
 // SESSION_DURATION_MS est défini dans config.js
+
+function _readStoredSession(){
+  try{return JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY)||'null');}catch(e){return null;}
+}
+function _persistSessionState(extra){
+  if(!SESSION_TOKEN||!CU)return;
+  const previous=_readStoredSession()||{};
+  const record=Object.assign({},previous,{
+    token:SESSION_TOKEN,
+    login:CU.l,
+    caserneId:CURRENT_CASERNE_ID||CU.caserneId||'',
+    globalRole:GLOBAL_ROLE||null,
+    expiresAt:SESSION_EXPIRY,
+    lastSeenAt:Date.now()
+  },extra||{});
+  try{localStorage.setItem(SESSION_STORAGE_KEY,JSON.stringify(record));_sessionLastPersist=Date.now();}catch(e){}
+}
+function _armSessionTimers(){
+  if(_sessionTimer)clearTimeout(_sessionTimer);
+  if(_sessionWarnTimer)clearTimeout(_sessionWarnTimer);
+  const remaining=Math.max(0,(SESSION_EXPIRY||0)-Date.now());
+  if(remaining>10*60*1000){
+    _sessionWarnTimer=setTimeout(function(){
+      showToast('⏱ Session expire dans 10 min — votre travail est sauvegardé.','warn');
+    },remaining-10*60*1000);
+  }
+  _sessionTimer=setTimeout(function(){
+    showToast('Session expirée. Reconnexion requise.','warn');
+    setTimeout(function(){doLogout();},2000);
+  },remaining);
+}
 
 function _createSession(){
   SESSION_TOKEN=crypto.randomUUID();
@@ -631,23 +665,15 @@ function _createSession(){
     if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
     saveData(true);
   }
-  if(_sessionTimer)clearTimeout(_sessionTimer);
-  if(_sessionWarnTimer)clearTimeout(_sessionWarnTimer);
-  // Avertissement 10 min avant expiration
-  _sessionWarnTimer=setTimeout(()=>{
-    showToast('⏱ Session expire dans 10 min — votre travail est sauvegardé.','warn');
-  },SESSION_DURATION_MS-10*60*1000);
-  // Déconnexion automatique
-  _sessionTimer=setTimeout(()=>{
-    showToast('Session expirée. Reconnexion requise.','warn');
-    setTimeout(()=>doLogout(),2000);
-  },SESSION_DURATION_MS);
+  _persistSessionState({backgroundAt:0});
+  _armSessionTimers();
 }
 
 function _clearSession(){
   SESSION_TOKEN=null;SESSION_EXPIRY=null;
   if(_sessionTimer){clearTimeout(_sessionTimer);_sessionTimer=null;}
   if(_sessionWarnTimer){clearTimeout(_sessionWarnTimer);_sessionWarnTimer=null;}
+  try{localStorage.removeItem(SESSION_STORAGE_KEY);}catch(e){}
 }
 
 function isSessionValid(){return SESSION_TOKEN!==null&&Date.now()<(SESSION_EXPIRY||0);}
@@ -2372,6 +2398,85 @@ function delCaserne(id){
   confirmModal('Supprimer cette caserne et toutes ses données ?',function(){CASERNES=CASERNES.filter(c=>c.id!==id);delete CASERNE_DATA[id];saveData();renderSuperAdmin();});
 }
 
+function _restoreSessionAfterLoad(){
+  if(CU&&isSessionValid())return true;
+  const stored=_readStoredSession();
+  if(!stored||!stored.token||!stored.login||!Number.isFinite(Number(stored.expiresAt)))return false;
+  const now=Date.now();
+  if(now>=Number(stored.expiresAt)){
+    try{localStorage.removeItem(SESSION_STORAGE_KEY);}catch(e){}
+    const expiredEntry=LOGIN_HISTORY.find(function(entry){return entry.id===stored.token;});
+    if(expiredEntry&&!expiredEntry.hDeconnexion){
+      expiredEntry.hDeconnexion=new Date(Number(stored.expiresAt)).toISOString();
+      expiredEntry.actif=false;
+      expiredEntry.fermetureAuto='Session arrivée à expiration';
+    }
+    return false;
+  }
+
+  let restoredUser=null;
+  if(stored.globalRole){
+    const account=GLOBAL_ACCOUNTS.find(function(item){return item.l===stored.login&&item.role===stored.globalRole;});
+    if(!account)return false;
+    GLOBAL_ROLE=account.role;
+    if(account.role==='superadmin'&&account.caserneId){
+      CURRENT_CASERNE_ID=account.caserneId;
+      initCaserneData(account.caserneId);syncCaserneContext();
+      restoredUser={l:account.l,prenom:account.prenom,nom:account.nom,grade:account.grade,
+        rights:["Prise d'appel","Interventions","Historique complet","Chef d'agrès","Tireur PILP","Administration"],
+        rl:'Super Administrateur',fonction:'Chef de centre',caserneId:account.caserneId,appRole:'superadmin'};
+    }else{
+      CURRENT_CASERNE_ID=null;syncCaserneContext();
+      restoredUser={l:account.l,prenom:account.prenom,nom:account.nom,grade:account.grade,rights:[],rl:'Chef de Corps',caserneId:'EMAJ',appRole:'chef_corps'};
+    }
+  }else{
+    const caserneId=stored.caserneId;
+    if(!caserneId||!CASERNE_DATA[caserneId])return false;
+    GLOBAL_ROLE=null;CURRENT_CASERNE_ID=caserneId;syncCaserneContext();
+    restoredUser=USERS.find(function(user){return user.l===stored.login;})||null;
+    if(!restoredUser){CURRENT_CASERNE_ID=null;syncCaserneContext();return false;}
+    restoredUser.caserneId=caserneId;
+    restoredUser.appRole=deriveAccountRole(restoredUser);
+  }
+
+  const backgroundLimit=_getBgLogoutMs();
+  const backgroundAt=Number(stored.backgroundAt)||0;
+  if(backgroundLimit>0&&backgroundAt&&now-backgroundAt>=backgroundLimit){
+    const entry=LOGIN_HISTORY.find(function(item){return item.id===stored.token;});
+    if(entry&&!entry.hDeconnexion){
+      entry.hDeconnexion=new Date(backgroundAt+backgroundLimit).toISOString();
+      entry.actif=false;
+      entry.fermetureAuto='Inactivité en arrière-plan';
+    }
+    try{localStorage.removeItem(SESSION_STORAGE_KEY);}catch(e){}
+    CU=null;GLOBAL_ROLE=null;CURRENT_CASERNE_ID=null;syncCaserneContext();
+    saveData(true);
+    return false;
+  }
+
+  CU=restoredUser;
+  SESSION_TOKEN=stored.token;
+  SESSION_EXPIRY=Number(stored.expiresAt);
+  const cas=CC();if(cas)setCaserneTheme(cas.couleur);
+  document.getElementById('lw').style.display='none';
+  const app=document.getElementById('app');app.style.display='flex';app.style.flexDirection='column';
+  document.getElementById('t2u').textContent=CU.l+(cas?' — '+cas.nom:'');
+  document.getElementById('t2r').textContent=CU.rl||'';
+  const hop=document.getElementById('hop');if(hop)hop.textContent='Opérateur : '+CU.l;
+  GRADES.forEach(function(grade){
+    ['prof-grade-sel','nu-grade'].forEach(function(id){
+      const select=document.getElementById(id);
+      if(select&&![...select.options].some(function(option){return option.textContent===grade;})){
+        const option=document.createElement('option');option.textContent=grade;select.appendChild(option);
+      }
+    });
+  });
+  _persistSessionState({backgroundAt:0});
+  _armSessionTimers();
+  doLoginSuccess();
+  return true;
+}
+
 function doLoginSuccess(){
   // Synchroniser fonctionsFormateur sur CU depuis USERS (au cas où CU est une copie)
   if(CU){
@@ -3100,6 +3205,7 @@ document.addEventListener('visibilitychange',function(){
   if(document.hidden){
     // L'app passe en arrière-plan : mémoriser l'heure et armer le minuteur
     _bgHiddenAt=Date.now();
+    _persistSessionState({backgroundAt:_bgHiddenAt});
     if(ms>0 && CU && isSessionValid()){
       if(_bgTimer)clearTimeout(_bgTimer);
       _bgTimer=setTimeout(function(){
@@ -3113,10 +3219,22 @@ document.addEventListener('visibilitychange',function(){
     // On vérifie le temps réellement écoulé et on déconnecte si le délai est dépassé.
     if(ms>0 && _bgHiddenAt && CU && (Date.now()-_bgHiddenAt)>=ms){
       try{doLogout();}catch(e){}
+      _bgHiddenAt=0;
+      return;
     }
     _bgHiddenAt=0;
+    _persistSessionState({backgroundAt:0});
   }
 });
+function _touchSessionActivity(){
+  if(!CU||!isSessionValid()||document.hidden)return;
+  if(Date.now()-_sessionLastPersist<30000)return;
+  _persistSessionState({backgroundAt:0});
+}
+['pointerdown','keydown','touchstart'].forEach(function(eventName){
+  document.addEventListener(eventName,_touchSessionActivity,{passive:true});
+});
+window.setInterval(_touchSessionActivity,60000);
 // Fermer le dropdown quand on clique ailleurs
 document.addEventListener('click',function(e){
   const dd=document.getElementById('fa-dd');
@@ -3617,6 +3735,92 @@ function isInterventionReportChef(iv,login){
   });
 }
 
+function interventionRoleKey(role){
+  return String(role||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z]/g,'');
+}
+function interventionMainTeammate(iv){
+  const crew=Array.isArray(iv&&iv._equipage1)?iv._equipage1:[];
+  return crew.find(function(member){return member&&interventionRoleKey(member.role)==='equipier';})||null;
+}
+function interventionTeammateName(login){
+  if(!login)return 'Aucun';
+  const user=USERS.find(function(item){return item.l===login;});
+  return user?fullName(user):login;
+}
+function interventionTeammateEditorHTML(iv){
+  if(!iv||!CU)return '';
+  const current=interventionMainTeammate(iv);
+  const canManage=isInterventionReportChef(iv,CU.l)||hasAdministrativeAccount();
+  const currentLogin=current&&current.login||'';
+  if(!canManage){
+    return '<div style="background:#F8FAFC;border:1px solid #CBD5E1;border-radius:10px;padding:10px 12px;margin-bottom:10px;">'
+      +'<div style="font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">\ud83d\udc68\u200d\ud83d\ude92 \u00c9quipier de l\u2019engin principal</div>'
+      +'<div style="font-size:13px;">'+escHtml(interventionTeammateName(currentLogin))+'</div></div>';
+  }
+  const occupied=new Set();
+  [iv._equipage1,iv._equipage2].forEach(function(crew){
+    (Array.isArray(crew)?crew:[]).forEach(function(member){
+      if(member&&member.login&&member.login!==currentLogin)occupied.add(member.login);
+    });
+  });
+  if(iv.agr)occupied.add(iv.agr);
+  if(iv._agr2)occupied.add(iv._agr2);
+  const candidates=USERS.filter(function(user){return user&&user.l&&!occupied.has(user.l);}).slice().sort(function(a,b){
+    return fullName(a).localeCompare(fullName(b),'fr');
+  });
+  if(currentLogin&&!candidates.some(function(user){return user.l===currentLogin;})){
+    const currentUser=USERS.find(function(user){return user.l===currentLogin;});
+    if(currentUser)candidates.unshift(currentUser);
+  }
+  let options='<option value="">\u2014 Aucun \u00e9quipier renseign\u00e9 \u2014</option>';
+  options+=candidates.map(function(user){
+    return '<option value="'+escHtml(user.l)+'"'+(user.l===currentLogin?' selected':'')+'>'+escHtml(fullName(user))+'</option>';
+  }).join('');
+  if(currentLogin&&!USERS.some(function(user){return user.l===currentLogin;})){
+    options+='<option value="'+escHtml(currentLogin)+'" selected>'+escHtml(currentLogin)+'</option>';
+  }
+  return '<div style="background:#EFF6FF;border:1px solid #93C5FD;border-radius:10px;padding:10px 12px;margin-bottom:10px;">'
+    +'<div style="font-size:12px;font-weight:700;color:#1D4ED8;margin-bottom:7px;">\ud83d\udc68\u200d\ud83d\ude92 \u00c9quipier de l\u2019engin principal</div>'
+    +'<div class="cr-teammate-grid">'
+    +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;">Agent pr\u00e9sent</div><select class="fi" id="cr-equipier" style="min-width:0;">'+options+'</select></div>'
+    +'<button class="btn sm" style="background:#2563EB;color:#fff;white-space:nowrap;" onclick="saveInterventionTeammate(\''+escHtml(iv.id)+'\')">\ud83d\udcbe Enregistrer</button>'
+    +'</div><div style="font-size:10px;color:#64748B;margin-top:6px;">La correction est ajout\u00e9e \u00e0 l\u2019historique et reprise dans le rapport ainsi que dans les exports.</div></div>';
+}
+function saveInterventionTeammate(ivId){
+  const iv=IVS.find(function(item){return item.id===ivId;});if(!iv||!CU)return;
+  if(!isInterventionReportChef(iv,CU.l)&&!hasAdministrativeAccount()){
+    showToast('Modification r\u00e9serv\u00e9e au chef d\u2019agr\u00e8s de l\u2019intervention ou \u00e0 un administrateur.','warn');return;
+  }
+  const field=document.getElementById('cr-equipier');if(!field)return;
+  const before=interventionMainTeammate(iv);
+  const beforeLogin=before&&before.login||'';
+  const afterLogin=field.value||'';
+  if(beforeLogin===afterLogin){showToast('L\u2019\u00e9quipier est d\u00e9j\u00e0 enregistr\u00e9.','info');return;}
+  const duplicate=[iv._equipage1,iv._equipage2].some(function(crew){
+    return (Array.isArray(crew)?crew:[]).some(function(member){
+      return member&&member.login===afterLogin&&interventionRoleKey(member.role)!=='equipier';
+    });
+  });
+  if(afterLogin&&duplicate){showToast('Cet agent est d\u00e9j\u00e0 enregistr\u00e9 avec une autre fonction dans l\u2019\u00e9quipage.','warn');return;}
+  const reportField=document.getElementById('cr-texte');
+  if(reportField)writeCompteRenduDraft(ivId,reportField.value);
+  const crew=(Array.isArray(iv._equipage1)?iv._equipage1:[]).filter(function(member){
+    return !member||interventionRoleKey(member.role)!=='equipier';
+  });
+  if(afterLogin)crew.push({role:'\u00c9quipier',login:afterLogin});
+  iv._equipage1=crew;
+  if(!Array.isArray(iv._equipierModifications))iv._equipierModifications=[];
+  iv._equipierModifications.push({date:getH(N()),auteur:CU.l,avant:beforeLogin||null,apres:afterLogin||null});
+  let note='\u00c9quipier retir\u00e9 : '+interventionTeammateName(beforeLogin);
+  if(!beforeLogin&&afterLogin)note='\u00c9quipier ajout\u00e9 : '+interventionTeammateName(afterLogin);
+  else if(beforeLogin&&afterLogin)note='\u00c9quipier modifi\u00e9 : '+interventionTeammateName(beforeLogin)+' \u2192 '+interventionTeammateName(afterLogin);
+  pushTL(iv,'modif-equipier',CU.l,note);
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);rI();rHist();
+  showCompteRenduModal(ivId);
+  showToast('Composition de l\u2019\u00e9quipage enregistr\u00e9e.','success');
+}
+
 const _pendingNextInterventionStarts={};
 
 // === P8 : Fonction de rendu dédiée (évite XSS + facilite les tests) ===
@@ -3858,9 +4062,9 @@ function oM(id){
   const dispApl=iv._numApl||iv.id;
   const dispTransfert=iv._transfertDe?` ↩ transféré de ${CASERNES.find(cas=>cas.id===iv._transfertDe)?.nom||iv._transfertDe}`:'';
   document.getElementById('mi').textContent=dispApl+dispTransfert;
-  const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis de passage'],'modif':['bgr','Modification'],'modif-adresse':['bgr','Adresse corrigée'],'modif-heure':['binfo','Heure de début corrigée'],'reclasse':['bgr','Reclasé'],'releve':['binfo','Relève'],'info-compl':['binfo','ℹ️ Complément d\u2019info']};
+  const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis de passage'],'modif':['bgr','Modification'],'modif-adresse':['bgr','Adresse corrigée'],'modif-heure':['binfo','Heure de début corrigée'],'modif-equipier':['binfo','Équipier corrigé'],'reclasse':['bgr','Reclasé'],'releve':['binfo','Relève'],'info-compl':['binfo','ℹ️ Complément d\u2019info']};
   const[bc,bt]=bm[iv.s]||['bgr','—'];
-  const sdots={'en-attente':'#E24B4A','selectionne':'var(--sel)','en-cours':'var(--amb)','terminee':'var(--grn)','avis-passage':'var(--pur)','modif':'#888','modif-adresse':'#888','modif-heure':'#C2410C','reclasse':'#888','releve':'#0369A1','info-compl':'#0369A1'};
+  const sdots={'en-attente':'#E24B4A','selectionne':'var(--sel)','en-cours':'var(--amb)','terminee':'var(--grn)','avis-passage':'var(--pur)','modif':'#888','modif-adresse':'#888','modif-heure':'#C2410C','modif-equipier':'#2563EB','reclasse':'#888','releve':'#0369A1','info-compl':'#0369A1'};
   const tlHtml=(iv.tl||[]).map(t=>`<div class="tl-item"><div class="tl-dot" style="background:${sdots[t.s]||'#aaa'};"></div><div class="tl-info"><span class="tl-status">${bm[t.s]?bm[t.s][1]:t.s}${t.note?` — ${t.note}`:''}</span> <span class="tl-horo">&#x1F4C5; ${t.h}</span><div class="tl-who">${t.who}</div></div></div>`).join('');
   const reclassHtml=(ag&&iv.s==='en-cours')?`<div class="reclass-box">
     <div class="reclass-title">Reclasser la nature</div>
@@ -10410,7 +10614,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260731-statistiques-fiabilisees-75';
+const APP_VERSION='20260731-equipier-session-76';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -11260,6 +11464,7 @@ function showCompteRenduModal(ivId) {
 
   document.getElementById('mt').textContent = 'Compte rendu d\u2019intervention';
   document.getElementById('mi').textContent = iv.n + ' \u2014 ' + iv.com;
+  const teammateFields=interventionTeammateEditorHTML(iv);
   const startCorrectionFields=interventionStartCorrectionHTML(iv);
   const storedReportText=iv._crTexte||iv._compteRendu||'';
   const localDraft=readCompteRenduDraft(ivId);
@@ -11313,6 +11518,7 @@ function showCompteRenduModal(ivId) {
   document.getElementById('mb').innerHTML =
     '<div style="padding:4px 0;">'
     + infoBanner
+    + teammateFields
     + startCorrectionFields
     + sdisFields
     + frelonFields
@@ -12931,6 +13137,7 @@ function _postLoadInit(){
   if(CASERNE_DATA._global&&CASERNE_DATA._global.logoB64){
     window._LOGO_OVERRIDE='data:'+(CASERNE_DATA._global.logoMime||'image/jpeg')+';base64,'+CASERNE_DATA._global.logoB64;
   }
+  if(!CU)try{_restoreSessionAfterLoad();}catch(e){console.warn('[AGAI] Restauration de session impossible:',e);}
 }
 
 function jbSyncNow(){
@@ -14289,32 +14496,22 @@ _migratePasswords();
 // Contrôle automatique de version : recharge l'app si une nouvelle version est en ligne
 _startVersionCheck();
 
-// ── Déconnexion automatique à la fermeture de la page ──
-window.addEventListener('pagehide', function(){
+// ── Fermeture/rechargement de la page ──
+// Une fermeture brève de la PWA ou un rechargement de version ne vaut pas
+// déconnexion. La session est restaurée tant que le délai d'arrière-plan
+// configuré n'est pas dépassé. Seul le bouton de déconnexion ferme la session.
+function _prepareSessionForPageExit(){
   if(SESSION_TOKEN){
-    const entry=LOGIN_HISTORY.find(e=>e.id===SESSION_TOKEN);
-    if(entry){entry.hDeconnexion=new Date().toISOString();entry.actif=false;}
-    // Persistance synchrone en localStorage.
+    const previous=_readStoredSession()||{};
+    _persistSessionState({backgroundAt:Number(previous.backgroundAt)||_bgHiddenAt||Date.now()});
     try{
       const data=_buildDataObject();
       localStorage.setItem(JB_CACHE_KEY,JSON.stringify(data));
     }catch(e){}
-    // En mode records : pousser UNIQUEMENT la ligne globale (LOGIN_HISTORY) via
-    // une requête keepalive, qui survit à la fermeture sans écraser le reste.
-    try{_rcPushGlobalRowKeepalive();}catch(e){}
   }
-});
-window.addEventListener('beforeunload', function(){
-  if(SESSION_TOKEN){
-    const entry=LOGIN_HISTORY.find(e=>e.id===SESSION_TOKEN);
-    if(entry){entry.hDeconnexion=new Date().toISOString();entry.actif=false;}
-    try{
-      const data=_buildDataObject();
-      localStorage.setItem(JB_CACHE_KEY,JSON.stringify(data));
-    }catch(e){}
-    try{_rcPushGlobalRowKeepalive();}catch(e){}
-  }
-});
+}
+window.addEventListener('pagehide',_prepareSessionForPageExit);
+window.addEventListener('beforeunload',_prepareSessionForPageExit);
 
 function tick(){
   document.getElementById('clk').textContent=N().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});

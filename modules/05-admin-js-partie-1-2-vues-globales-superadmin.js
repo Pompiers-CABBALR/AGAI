@@ -1547,6 +1547,85 @@ function delCaserne(id){
   confirmModal('Supprimer cette caserne et toutes ses données ?',function(){CASERNES=CASERNES.filter(c=>c.id!==id);delete CASERNE_DATA[id];saveData();renderSuperAdmin();});
 }
 
+function _restoreSessionAfterLoad(){
+  if(CU&&isSessionValid())return true;
+  const stored=_readStoredSession();
+  if(!stored||!stored.token||!stored.login||!Number.isFinite(Number(stored.expiresAt)))return false;
+  const now=Date.now();
+  if(now>=Number(stored.expiresAt)){
+    try{localStorage.removeItem(SESSION_STORAGE_KEY);}catch(e){}
+    const expiredEntry=LOGIN_HISTORY.find(function(entry){return entry.id===stored.token;});
+    if(expiredEntry&&!expiredEntry.hDeconnexion){
+      expiredEntry.hDeconnexion=new Date(Number(stored.expiresAt)).toISOString();
+      expiredEntry.actif=false;
+      expiredEntry.fermetureAuto='Session arrivée à expiration';
+    }
+    return false;
+  }
+
+  let restoredUser=null;
+  if(stored.globalRole){
+    const account=GLOBAL_ACCOUNTS.find(function(item){return item.l===stored.login&&item.role===stored.globalRole;});
+    if(!account)return false;
+    GLOBAL_ROLE=account.role;
+    if(account.role==='superadmin'&&account.caserneId){
+      CURRENT_CASERNE_ID=account.caserneId;
+      initCaserneData(account.caserneId);syncCaserneContext();
+      restoredUser={l:account.l,prenom:account.prenom,nom:account.nom,grade:account.grade,
+        rights:["Prise d'appel","Interventions","Historique complet","Chef d'agrès","Tireur PILP","Administration"],
+        rl:'Super Administrateur',fonction:'Chef de centre',caserneId:account.caserneId,appRole:'superadmin'};
+    }else{
+      CURRENT_CASERNE_ID=null;syncCaserneContext();
+      restoredUser={l:account.l,prenom:account.prenom,nom:account.nom,grade:account.grade,rights:[],rl:'Chef de Corps',caserneId:'EMAJ',appRole:'chef_corps'};
+    }
+  }else{
+    const caserneId=stored.caserneId;
+    if(!caserneId||!CASERNE_DATA[caserneId])return false;
+    GLOBAL_ROLE=null;CURRENT_CASERNE_ID=caserneId;syncCaserneContext();
+    restoredUser=USERS.find(function(user){return user.l===stored.login;})||null;
+    if(!restoredUser){CURRENT_CASERNE_ID=null;syncCaserneContext();return false;}
+    restoredUser.caserneId=caserneId;
+    restoredUser.appRole=deriveAccountRole(restoredUser);
+  }
+
+  const backgroundLimit=_getBgLogoutMs();
+  const backgroundAt=Number(stored.backgroundAt)||0;
+  if(backgroundLimit>0&&backgroundAt&&now-backgroundAt>=backgroundLimit){
+    const entry=LOGIN_HISTORY.find(function(item){return item.id===stored.token;});
+    if(entry&&!entry.hDeconnexion){
+      entry.hDeconnexion=new Date(backgroundAt+backgroundLimit).toISOString();
+      entry.actif=false;
+      entry.fermetureAuto='Inactivité en arrière-plan';
+    }
+    try{localStorage.removeItem(SESSION_STORAGE_KEY);}catch(e){}
+    CU=null;GLOBAL_ROLE=null;CURRENT_CASERNE_ID=null;syncCaserneContext();
+    saveData(true);
+    return false;
+  }
+
+  CU=restoredUser;
+  SESSION_TOKEN=stored.token;
+  SESSION_EXPIRY=Number(stored.expiresAt);
+  const cas=CC();if(cas)setCaserneTheme(cas.couleur);
+  document.getElementById('lw').style.display='none';
+  const app=document.getElementById('app');app.style.display='flex';app.style.flexDirection='column';
+  document.getElementById('t2u').textContent=CU.l+(cas?' — '+cas.nom:'');
+  document.getElementById('t2r').textContent=CU.rl||'';
+  const hop=document.getElementById('hop');if(hop)hop.textContent='Opérateur : '+CU.l;
+  GRADES.forEach(function(grade){
+    ['prof-grade-sel','nu-grade'].forEach(function(id){
+      const select=document.getElementById(id);
+      if(select&&![...select.options].some(function(option){return option.textContent===grade;})){
+        const option=document.createElement('option');option.textContent=grade;select.appendChild(option);
+      }
+    });
+  });
+  _persistSessionState({backgroundAt:0});
+  _armSessionTimers();
+  doLoginSuccess();
+  return true;
+}
+
 function doLoginSuccess(){
   // Synchroniser fonctionsFormateur sur CU depuis USERS (au cas où CU est une copie)
   if(CU){
