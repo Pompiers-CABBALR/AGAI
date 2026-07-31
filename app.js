@@ -4246,7 +4246,8 @@ function rI(){
     }
   }
   const ag=isAgres(),chef=isChef()||hasRight('Administration');
-  const ti=IVS.filter(iv=>isTdy(iv)&&!iv._isPilip);
+  // Les statuts actifs restent comptés après minuit tant qu'ils ne sont pas traités.
+  const ti=IVS.filter(iv=>!iv._isPilip&&['en-attente','selectionne','en-cours'].includes(iv.s));
   document.getElementById('nb1').textContent=ti.filter(iv=>iv.s==='en-attente').length;
   document.getElementById('nb2s').textContent=ti.filter(iv=>iv.s==='selectionne').length;
   document.getElementById('nb2').textContent=IVS.filter(iv=>iv._avisEnAttente&&!iv._isPilip&&iv.s!=='annulee').length;
@@ -11105,7 +11106,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260801-interventions-non-comptabilisees-89';
+const APP_VERSION='20260801-compteurs-actifs-apres-minuit-90';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
