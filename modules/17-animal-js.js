@@ -637,7 +637,23 @@ function envoyerPriseEnCharge(ivId,ficheIndex) {
 }
 
 
+function isReportPrintingAllowed(){
+  const ua=String(navigator.userAgent||'');
+  const mobile=/Android|iPhone|iPad|iPod|Mobile|Tablet|Silk|Kindle/i.test(ua);
+  const ipadDesktop=/Macintosh/i.test(ua)&&Number(navigator.maxTouchPoints||0)>1;
+  let finePointer=true;
+  try{finePointer=window.matchMedia?window.matchMedia('(hover:hover) and (pointer:fine)').matches:true;}catch(e){}
+  return !mobile&&!ipadDesktop&&finePointer;
+}
+function disableIframePrintButtons(html){
+  const notice='<span style="display:inline-flex;align-items:center;padding:7px 10px;border-radius:6px;background:#FFF7ED;color:#9A3412;font:600 12px Arial,sans-serif;">\ud83d\udcf1 Impression disponible uniquement sur ordinateur</span>';
+  return String(html||'').replace(/<button\b[^>]*onclick=["']window\.print\(\)["'][^>]*>[\s\S]*?<\/button>/gi,notice);
+}
 function _onIframePrint() {
+  if(!isReportPrintingAllowed()){
+    showToast('L\u2019impression des rapports est autoris\u00e9e uniquement sur un ordinateur.','warn');
+    return;
+  }
   document.getElementById('iframe-content').contentWindow.print();
   const btn = document.getElementById('iframe-print-btn');
   const ivId = btn ? btn.getAttribute('data-ivid') : '';
@@ -656,12 +672,13 @@ function _onIframePrint() {
 function openIframeModal(html, ivId) {
   const modal = document.getElementById('iframe-modal');
   const iframe = document.getElementById('iframe-content');
+  const printAllowed=isReportPrintingAllowed();
   modal.style.display = 'flex';
-  iframe.srcdoc = html;
+  iframe.srcdoc = printAllowed?html:disableIframePrintButtons(html);
   // Afficher bouton imprimer pour les PDFs (contient @page)
   const printBtn = document.getElementById('iframe-print-btn');
   if(printBtn){
-    printBtn.style.display = html.includes('@page') ? 'inline-block' : 'none';
+    printBtn.style.display = printAllowed&&html.includes('@page') ? 'inline-block' : 'none';
     printBtn.setAttribute('data-ivid', ivId||'');
     printBtn.setAttribute('data-type', html.includes('Rapport d') ? 'rapport' : 'other');
   }
