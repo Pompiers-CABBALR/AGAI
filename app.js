@@ -6064,6 +6064,12 @@ function getDeadlineDate(weekOffset,customDl){
   dlDate.setHours(dl.hour,dl.minute,59,0);
   return dlDate;
 }
+function dispoDayLabel(wk,dayIdx,full){
+  const value=String(wk||'');
+  const start=new Date(Number(value.slice(0,4)),Number(value.slice(4,6))-1,Number(value.slice(6,8)));
+  start.setDate(start.getDate()+Number(dayIdx||0));
+  return jourLabel(dayIdx,!!full)+' '+pad(start.getDate())+'/'+pad(start.getMonth()+1);
+}
 function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWeek,myEq){
   const u=USERS.find(x=>x.l===login)||{prenom:login,nom:''};
   const eq=getEquipeOfUser(login)||(myEq&&myEq.membres&&myEq.membres.includes(login)?myEq:null);
@@ -6114,7 +6120,7 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
   // Grille alignée : largeur de case FIXE (aligne en-tête et cases, évite tout décalage).
   // Enveloppée dans un conteneur à défilement horizontal, comme le planning.
   const slotsDay0=getSlotsForDay(0,agGran);
-  const _lw=48;        // largeur de la colonne "jour" (px)
+  const _lw=78;        // largeur du libellé "Lun 27/07" (px)
   const _gridHost=document.getElementById('astr-dispo-grid');
   const _blockInset=22;
   const _availableW=Math.max(0,(_gridHost&&_gridHost.clientWidth?_gridHost.clientWidth:0)-_blockInset-_lw-1);
@@ -6152,7 +6158,7 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
   h+='</div>';
   for(let d=0;d<7;d++){
     const slotsD=getSlotsForDay(d,agGran);
-    h+='<div style="display:flex;align-items:center;margin-bottom:3px;"><div style="width:'+_lw+'px;flex-shrink:0;font-size:12px;font-weight:600;color:var(--t);">'+jourLabel(d,false)+'</div>';
+    h+='<div style="display:flex;align-items:center;margin-bottom:3px;"><div style="width:'+_lw+'px;flex-shrink:0;font-size:11px;font-weight:600;color:var(--t);white-space:nowrap;">'+dispoDayLabel(wk,d,false)+'</div>';
     for(let s=0;s<slotsD;s++){
       const key=d+'_'+s;
       const val=DISPOS[wk][login][key];
@@ -6162,7 +6168,7 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
       const oc=canEdit?'toggleDispoCell(\''+wk+'\',\''+login+'\','+d+','+s+',this,\''+(eq?eq.color:'#22C55E')+'\')':'';
       const dragVal=isDispo?'true':isIndispo?'false':'null';
       h+='<div class="dispo-cell" style="flex:0 0 '+_cw+'px;width:'+_cw+'px;box-sizing:border-box;height:28px;background:'+bg+';cursor:'+cursor+';transition:background .1s;border-radius:3px;border:1px solid #fff;user-select:none;"'
-        +' title="'+jourLabel(d,true)+' '+slotToLabelDay(d,s,agGran)+'"'
+        +' title="'+dispoDayLabel(wk,d,true)+' '+slotToLabelDay(d,s,agGran)+'"'
         +' data-wk="'+wk+'" data-login="'+login+'" data-d="'+d+'" data-s="'+s+'" data-val="'+dragVal+'"'
         +(oc?' onclick="'+oc+'"':'')+'></div>';
     }
@@ -10620,7 +10626,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260731-ordre-equipes-78';
+const APP_VERSION='20260731-dates-disponibilites-79';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
