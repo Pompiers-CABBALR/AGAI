@@ -262,7 +262,7 @@ function renderSuperAdmin(){
   const casHtml=OP_CASERNES().map(c=>{
     const d=CASERNE_DATA[c.id]||{users:[],ivs:[],pilpIvs:[]};
     const nbUsers=d.users?.length||0;
-    const nbIv=d.ivs?.length||0;
+    const nbIv=(d.ivs||[]).filter(isInterventionComptabilisee).length;
     return `<div style="background:#fff;border-radius:14px;padding:16px;border-left:4px solid ${c.couleur};">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
         <span style="background:${c.couleur};color:#fff;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;">${c.code}</span>
@@ -313,7 +313,7 @@ function renderSuperAdmin(){
       ${cc?`<div style="font-size:11px;color:#64748B;font-family:monospace;margin-top:2px;">${escHtml(cc.l||'')}</div>`:''}
     </div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:12px;">
-      <div style="background:#fff;border-radius:8px;padding:8px;text-align:center;"><div style="font-size:22px;font-weight:700;color:${etatMajor.couleur};">${(etatMajorData.ivs||[]).length}</div><div style="color:#666;">Interventions</div></div>
+      <div style="background:#fff;border-radius:8px;padding:8px;text-align:center;"><div style="font-size:22px;font-weight:700;color:${etatMajor.couleur};">${(etatMajorData.ivs||[]).filter(isInterventionComptabilisee).length}</div><div style="color:#666;">Interventions</div></div>
       <div style="background:#fff;border-radius:8px;padding:8px;text-align:center;"><div style="font-size:22px;font-weight:700;">${(etatMajorData.activites||[]).length}</div><div style="color:#666;">Activités</div></div>
       <div style="background:#fff;border-radius:8px;padding:8px;text-align:center;"><div style="font-size:22px;font-weight:700;">${(etatMajorData.formations||[]).length}</div><div style="color:#666;">Formations</div></div>
     </div>
@@ -702,7 +702,7 @@ function renderGlobalStats(){
   const globalCasernes=OP_CASERNES();
   const rows=globalCasernes.map(c=>{
     const d=CASERNE_DATA[c.id]||{ivs:[]};
-    const ivs=(d.ivs||[]).filter(iv=>!iv._isPilip&&iv.s==='terminee');
+    const ivs=(d.ivs||[]).filter(iv=>!iv._isPilip&&isInterventionComptabilisee(iv));
     const nbAnn=ivs.filter(iv=>statsInterventionInPeriod(iv,String(annee))).length;
     const nbMois=ivs.filter(iv=>statsInterventionInPeriod(iv,moisStr.replace('-',''))).length;
     const nbJour=ivs.filter(iv=>statsInterventionInPeriod(iv,String(annee)+String(mois).padStart(2,'0')+String(new Date().getDate()).padStart(2,'0'))).length;
@@ -713,9 +713,9 @@ function renderGlobalStats(){
       <td style="padding:8px;text-align:center;font-weight:700;">${nbAnn}</td>
     </tr>`;
   }).join('');
-  const totD=globalCasernes.reduce((s,c)=>{const d=CASERNE_DATA[c.id]||{ivs:[]};return s+(d.ivs||[]).filter(iv=>!iv._isPilip&&iv.s==='terminee'&&statsInterventionInPeriod(iv,String(annee)+String(mois).padStart(2,'0')+String(new Date().getDate()).padStart(2,'0'))).length;},0);
-  const totM=globalCasernes.reduce((s,c)=>{const d=CASERNE_DATA[c.id]||{ivs:[]};return s+(d.ivs||[]).filter(iv=>!iv._isPilip&&iv.s==='terminee'&&statsInterventionInPeriod(iv,moisStr.replace('-',''))).length;},0);
-  const totA=globalCasernes.reduce((s,c)=>{const d=CASERNE_DATA[c.id]||{ivs:[]};return s+(d.ivs||[]).filter(iv=>!iv._isPilip&&iv.s==='terminee'&&statsInterventionInPeriod(iv,String(annee))).length;},0);
+  const totD=globalCasernes.reduce((s,c)=>{const d=CASERNE_DATA[c.id]||{ivs:[]};return s+(d.ivs||[]).filter(iv=>!iv._isPilip&&isInterventionComptabilisee(iv)&&statsInterventionInPeriod(iv,String(annee)+String(mois).padStart(2,'0')+String(new Date().getDate()).padStart(2,'0'))).length;},0);
+  const totM=globalCasernes.reduce((s,c)=>{const d=CASERNE_DATA[c.id]||{ivs:[]};return s+(d.ivs||[]).filter(iv=>!iv._isPilip&&isInterventionComptabilisee(iv)&&statsInterventionInPeriod(iv,moisStr.replace('-',''))).length;},0);
+  const totA=globalCasernes.reduce((s,c)=>{const d=CASERNE_DATA[c.id]||{ivs:[]};return s+(d.ivs||[]).filter(iv=>!iv._isPilip&&isInterventionComptabilisee(iv)&&statsInterventionInPeriod(iv,String(annee))).length;},0);
   return `<table style="width:100%;border-collapse:collapse;font-size:12px;">
     <thead><tr style="background:#f5f5f5;">
       <th style="padding:8px;text-align:left;">Caserne</th>
@@ -754,7 +754,7 @@ function getIvsForCC(){
   const all=[];
   cas.forEach(function(c){
     const d=CASERNE_DATA[c.id]||{ivs:[]};
-    (d.ivs||[]).filter(function(iv){return !iv._isPilip&&iv.s==='terminee'&&statsInterventionInPeriod(iv,prefix);})
+    (d.ivs||[]).filter(function(iv){return !iv._isPilip&&isInterventionComptabilisee(iv)&&statsInterventionInPeriod(iv,prefix);})
       .forEach(function(iv){all.push(Object.assign({},iv,{_casId:c.id,_casNom:c.nom,_casCouleur:c.couleur}));});
   });
   return all;

@@ -159,6 +159,7 @@ function rHist(){
   const normalIvs=cA?IVS.filter(function(iv){return !['en-attente','selectionne','en-cours'].includes(iv.s)&&!iv._isPilip;}):IVS.filter(function(iv){return (isTdy(iv)||iv.s==='annulee')&&!iv._isPilip;});
   const pilpIvsH=canSeePILP()?(cA?PILP_IVS:PILP_IVS.filter(function(iv){return isTdy(iv);})) : [];
   const pilpMapped=pilpIvsH.map(function(p){return Object.assign({},p,{n:'[PILP] '+p.n,tl:p.tl,_isPilp:true});});
+  const countedTotal=function(list){return list.filter(isInterventionComptabilisee).length;};
   const dateKey=function(value){const digits=String(value||'').replace(/\D/g,'');return digits.length>=8?digits.slice(0,8):'';};
   const dayKey=function(iv){
     const timeline=Array.isArray(iv.tl)?iv.tl:[];
@@ -193,23 +194,23 @@ function rHist(){
   if(!years.length){c.innerHTML=tools+'<div style="padding:20px;text-align:center;font-size:13px;color:var(--t2);">Aucun historique.</div>';return;}
   const yearHtml=years.map(function(year,yearIndex){
     const monthKeys=Object.keys(groups[year]).sort(function(a,b){return b-a;});
-    const yearTotal=monthKeys.reduce(function(total,month){return total+Object.values(groups[year][month]).reduce(function(sum,week){return sum+Object.values(week.days).reduce(function(s,list){return s+list.length;},0);},0);},0);
+    const yearTotal=monthKeys.reduce(function(total,month){return total+Object.values(groups[year][month]).reduce(function(sum,week){return sum+Object.values(week.days).reduce(function(s,list){return s+countedTotal(list);},0);},0);},0);
     const yearId='hist-year-'+year,yearOpen=historyGroupOpen(yearId,true);
     return '<div class="hgrp hist-year-block"><div class="hgh" onclick="tg(\''+yearId+'\',\'arr-'+yearId+'\')">\ud83d\udcc5 '+year+'<span class="bdg bgr" style="margin-left:auto;">'+yearTotal+'</span><span id="arr-'+yearId+'">'+(yearOpen?'\u25bc':'\u25b6')+'</span></div><div id="'+yearId+'" class="hgb hist-group-content hist-year-content" style="display:'+(yearOpen?'':'none')+';">'
       +monthKeys.map(function(month,monthIndex){
         const weeks=groups[year][month],weekKeys=Object.keys(weeks).sort().reverse();
-        const monthTotal=weekKeys.reduce(function(total,key){return total+Object.values(weeks[key].days).reduce(function(s,list){return s+list.length;},0);},0);
+        const monthTotal=weekKeys.reduce(function(total,key){return total+Object.values(weeks[key].days).reduce(function(s,list){return s+countedTotal(list);},0);},0);
         const monthId='hist-month-'+year+'-'+month,monthOpen=historyGroupOpen(monthId,true);
         return '<div class="hist-month-block"><div class="hsub" onclick="tg(\''+monthId+'\',\'arr-'+monthId+'\')">'+months[Number(month)]+'<span class="bdg bgr">'+monthTotal+'</span><span id="arr-'+monthId+'" style="margin-left:auto;">'+(monthOpen?'\u25bc':'\u25b6')+'</span></div><div id="'+monthId+'" class="hist-group-content hist-month-content" style="display:'+(monthOpen?'':'none')+';">'
           +weekKeys.map(function(weekKey,weekIndex){
             const week=weeks[weekKey],days=Object.keys(week.days).sort().reverse();
-            const weekTotal=days.reduce(function(sum,day){return sum+week.days[day].length;},0);
+            const weekTotal=days.reduce(function(sum,day){return sum+countedTotal(week.days[day]);},0);
             const weekId='hist-week-'+year+'-'+month+'-'+weekKey,open=historyGroupOpen(weekId,yearIndex===0&&monthIndex===0&&weekIndex===0);
             return '<div class="hist-week-block"><div class="hist-week-header" onclick="tg(\''+weekId+'\',\'arr-'+weekId+'\')"><span>\ud83d\uddd3\ufe0f '+week.info.label+'</span><span class="bdg bgr">'+weekTotal+'</span><span id="arr-'+weekId+'" style="margin-left:auto;">'+(open?'\u25bc':'\u25b6')+'</span></div><div id="'+weekId+'" class="hist-group-content hist-week-content" style="display:'+(open?'':'none')+';">'
               +days.map(function(day){
                 const list=week.days[day],dayId='hist-day-'+day+'-'+weekKey,dayOpen=historyGroupOpen(dayId,true);
                 const dt=new Date(Number(day.slice(0,4)),Number(day.slice(4,6))-1,Number(day.slice(6,8))),dayName=dt.toLocaleDateString('fr-FR',{weekday:'long'});
-                return '<div class="hist-day-block"><div class="hist-day-header" onclick="tg(\''+dayId+'\',\'arr-'+dayId+'\')"><span>'+dayName.charAt(0).toUpperCase()+dayName.slice(1)+' '+day.slice(6,8)+'/'+day.slice(4,6)+'/'+day.slice(0,4)+'</span><span class="bdg bgr">'+list.length+'</span><span id="arr-'+dayId+'" style="margin-left:auto;">'+(dayOpen?'\u25bc':'\u25b6')+'</span></div><div id="'+dayId+'" class="hist-group-content hist-day-content" style="display:'+(dayOpen?'':'none')+';">'+list.map(historyRowHTML).join('')+'</div></div>';
+                return '<div class="hist-day-block"><div class="hist-day-header" onclick="tg(\''+dayId+'\',\'arr-'+dayId+'\')"><span>'+dayName.charAt(0).toUpperCase()+dayName.slice(1)+' '+day.slice(6,8)+'/'+day.slice(4,6)+'/'+day.slice(0,4)+'</span><span class="bdg bgr" title="Interventions comptabilisées">'+countedTotal(list)+'</span><span id="arr-'+dayId+'" style="margin-left:auto;">'+(dayOpen?'\u25bc':'\u25b6')+'</span></div><div id="'+dayId+'" class="hist-group-content hist-day-content" style="display:'+(dayOpen?'':'none')+';">'+list.map(historyRowHTML).join('')+'</div></div>';
               }).join('')+'</div></div>';
           }).join('')+'</div></div>';
       }).join('')+'</div></div>';

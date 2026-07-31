@@ -20,7 +20,7 @@ function statsInterventionInPeriod(iv,prefix){
 function getStIvs(){
   const annStr=String(stAnnee);
   const prefix=stMois>0?annStr+String(stMois).padStart(2,'0'):annStr;
-  return IVS.filter(function(iv){return !iv._isPilip&&iv.s==='terminee'&&statsInterventionInPeriod(iv,prefix);});
+  return IVS.filter(function(iv){return !iv._isPilip&&isInterventionComptabilisee(iv)&&statsInterventionInPeriod(iv,prefix);});
 }
 
 function rStats(){
@@ -570,7 +570,7 @@ function agentInIV(iv,login){
 function rStatsPersonnel(vue){
   const annStr=String(stAnnee);
   const prefix=stMois>0?annStr+String(stMois).padStart(2,'0'):annStr;
-  const ivsFiltres=IVS.filter(function(iv){return !iv._isPilip&&iv.s==='terminee'&&statsInterventionInPeriod(iv,prefix);});
+  const ivsFiltres=IVS.filter(function(iv){return !iv._isPilip&&isInterventionComptabilisee(iv)&&statsInterventionInPeriod(iv,prefix);});
 
   // Tous les agents connus
   const agents=USERS.slice().sort(function(a,b){
@@ -885,7 +885,7 @@ function rStatsHeader(){
   const annee=String(d.getFullYear());
   const moisStr=annee+String(d.getMonth()+1).padStart(2,'0');
   const todayStr=moisStr+String(d.getDate()).padStart(2,'0');
-  const ivStats=IVS.filter(iv=>!iv._isPilip&&iv.s!=='annulee');
+  const ivStats=IVS.filter(iv=>!iv._isPilip&&iv.s!=='annulee'&&!iv._refugeAnimalier);
   const nbJour=ivStats.filter(iv=>statsInterventionInPeriod(iv,todayStr)).length;
   const nbMois=ivStats.filter(iv=>statsInterventionInPeriod(iv,moisStr)).length;
   const nbAnnee=ivStats.filter(iv=>statsInterventionInPeriod(iv,annee)).length;
@@ -952,7 +952,7 @@ function adminMonthlyData(period){
     return start<=period.end&&realEnd>=period.start;
   };
   const interventions=[].concat(IVS||[],PILP_IVS||[])
-    .filter(function(iv){return iv.s==='terminee'&&adminExportInterventionStartDate(iv).startsWith(period.prefixCompact);});
+    .filter(function(iv){return isInterventionComptabilisee(iv)&&adminExportInterventionStartDate(iv).startsWith(period.prefixCompact);});
   const activites=(actGetData()||[]).filter(function(a){return (a.date||'').startsWith(period.prefixDate)&&(!activityIsFraisAdministratifs(a)||canAccessFraisAdministratifs());});
   const fmpas=(fmpaGetData()||[]).filter(function(f){return (f.date||'').startsWith(period.prefixDate);});
   const stag=(formStagGetData()||[]).filter(function(f){return overlaps(f.ddebut,f.dfin);});

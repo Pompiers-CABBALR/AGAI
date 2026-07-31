@@ -163,6 +163,9 @@ const GLOBAL_ACCOUNTS=[];
 // Helpers
 function isSuperAdmin(){return GLOBAL_ROLE==='superadmin'&&!window._superAdminDisabled;}
 function isChefCorps(){return GLOBAL_ROLE==='chef_corps';}
+function isInterventionComptabilisee(iv){
+  return !!(iv&&iv.s==='terminee'&&!iv._refugeAnimalier);
+}
 function isResponsableFormation(user){
   const account=user||CU;
   if(!account)return false;
@@ -1171,7 +1174,7 @@ function renderSuperAdmin(){
   const casHtml=OP_CASERNES().map(c=>{
     const d=CASERNE_DATA[c.id]||{users:[],ivs:[],pilpIvs:[]};
     const nbUsers=d.users?.length||0;
-    const nbIv=d.ivs?.length||0;
+    const nbIv=(d.ivs||[]).filter(isInterventionComptabilisee).length;
     return `<div style="background:#fff;border-radius:14px;padding:16px;border-left:4px solid ${c.couleur};">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
         <span style="background:${c.couleur};color:#fff;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;">${c.code}</span>
@@ -1222,7 +1225,7 @@ function renderSuperAdmin(){
       ${cc?`<div style="font-size:11px;color:#64748B;font-family:monospace;margin-top:2px;">${escHtml(cc.l||'')}</div>`:''}
     </div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:12px;">
-      <div style="background:#fff;border-radius:8px;padding:8px;text-align:center;"><div style="font-size:22px;font-weight:700;color:${etatMajor.couleur};">${(etatMajorData.ivs||[]).length}</div><div style="color:#666;">Interventions</div></div>
+      <div style="background:#fff;border-radius:8px;padding:8px;text-align:center;"><div style="font-size:22px;font-weight:700;color:${etatMajor.couleur};">${(etatMajorData.ivs||[]).filter(isInterventionComptabilisee).length}</div><div style="color:#666;">Interventions</div></div>
       <div style="background:#fff;border-radius:8px;padding:8px;text-align:center;"><div style="font-size:22px;font-weight:700;">${(etatMajorData.activites||[]).length}</div><div style="color:#666;">Activités</div></div>
       <div style="background:#fff;border-radius:8px;padding:8px;text-align:center;"><div style="font-size:22px;font-weight:700;">${(etatMajorData.formations||[]).length}</div><div style="color:#666;">Formations</div></div>
     </div>
@@ -1611,7 +1614,7 @@ function renderGlobalStats(){
   const globalCasernes=OP_CASERNES();
   const rows=globalCasernes.map(c=>{
     const d=CASERNE_DATA[c.id]||{ivs:[]};
-    const ivs=(d.ivs||[]).filter(iv=>!iv._isPilip&&iv.s==='terminee');
+    const ivs=(d.ivs||[]).filter(iv=>!iv._isPilip&&isInterventionComptabilisee(iv));
     const nbAnn=ivs.filter(iv=>statsInterventionInPeriod(iv,String(annee))).length;
     const nbMois=ivs.filter(iv=>statsInterventionInPeriod(iv,moisStr.replace('-',''))).length;
     const nbJour=ivs.filter(iv=>statsInterventionInPeriod(iv,String(annee)+String(mois).padStart(2,'0')+String(new Date().getDate()).padStart(2,'0'))).length;
@@ -1622,9 +1625,9 @@ function renderGlobalStats(){
       <td style="padding:8px;text-align:center;font-weight:700;">${nbAnn}</td>
     </tr>`;
   }).join('');
-  const totD=globalCasernes.reduce((s,c)=>{const d=CASERNE_DATA[c.id]||{ivs:[]};return s+(d.ivs||[]).filter(iv=>!iv._isPilip&&iv.s==='terminee'&&statsInterventionInPeriod(iv,String(annee)+String(mois).padStart(2,'0')+String(new Date().getDate()).padStart(2,'0'))).length;},0);
-  const totM=globalCasernes.reduce((s,c)=>{const d=CASERNE_DATA[c.id]||{ivs:[]};return s+(d.ivs||[]).filter(iv=>!iv._isPilip&&iv.s==='terminee'&&statsInterventionInPeriod(iv,moisStr.replace('-',''))).length;},0);
-  const totA=globalCasernes.reduce((s,c)=>{const d=CASERNE_DATA[c.id]||{ivs:[]};return s+(d.ivs||[]).filter(iv=>!iv._isPilip&&iv.s==='terminee'&&statsInterventionInPeriod(iv,String(annee))).length;},0);
+  const totD=globalCasernes.reduce((s,c)=>{const d=CASERNE_DATA[c.id]||{ivs:[]};return s+(d.ivs||[]).filter(iv=>!iv._isPilip&&isInterventionComptabilisee(iv)&&statsInterventionInPeriod(iv,String(annee)+String(mois).padStart(2,'0')+String(new Date().getDate()).padStart(2,'0'))).length;},0);
+  const totM=globalCasernes.reduce((s,c)=>{const d=CASERNE_DATA[c.id]||{ivs:[]};return s+(d.ivs||[]).filter(iv=>!iv._isPilip&&isInterventionComptabilisee(iv)&&statsInterventionInPeriod(iv,moisStr.replace('-',''))).length;},0);
+  const totA=globalCasernes.reduce((s,c)=>{const d=CASERNE_DATA[c.id]||{ivs:[]};return s+(d.ivs||[]).filter(iv=>!iv._isPilip&&isInterventionComptabilisee(iv)&&statsInterventionInPeriod(iv,String(annee))).length;},0);
   return `<table style="width:100%;border-collapse:collapse;font-size:12px;">
     <thead><tr style="background:#f5f5f5;">
       <th style="padding:8px;text-align:left;">Caserne</th>
@@ -1663,7 +1666,7 @@ function getIvsForCC(){
   const all=[];
   cas.forEach(function(c){
     const d=CASERNE_DATA[c.id]||{ivs:[]};
-    (d.ivs||[]).filter(function(iv){return !iv._isPilip&&iv.s==='terminee'&&statsInterventionInPeriod(iv,prefix);})
+    (d.ivs||[]).filter(function(iv){return !iv._isPilip&&isInterventionComptabilisee(iv)&&statsInterventionInPeriod(iv,prefix);})
       .forEach(function(iv){all.push(Object.assign({},iv,{_casId:c.id,_casNom:c.nom,_casCouleur:c.couleur}));});
   });
   return all;
@@ -2707,8 +2710,8 @@ function rAccueil(){
   const annee=String(d.getFullYear());
   const moisStr=annee+String(d.getMonth()+1).padStart(2,'0');
   // Exclure les interventions annulées, PILIP et non-terminées des stats
-  const ivStats=IVS.filter(iv=>!iv._isPilip&&iv.s==='terminee');
-  const pilpStats=isTireurPILP()?PILP_IVS.filter(iv=>iv.s==='terminee'):[];
+  const ivStats=IVS.filter(iv=>!iv._isPilip&&isInterventionComptabilisee(iv));
+  const pilpStats=isTireurPILP()?PILP_IVS.filter(isInterventionComptabilisee):[];
   const nbAnnee=ivStats.filter(iv=>statsInterventionInPeriod(iv,annee)).length+pilpStats.filter(iv=>statsInterventionInPeriod(iv,annee)).length;
   const nbMois=ivStats.filter(iv=>statsInterventionInPeriod(iv,moisStr)).length+pilpStats.filter(iv=>statsInterventionInPeriod(iv,moisStr)).length;
   const nbAttente=IVS.filter(iv=>!iv._isPilip&&iv.s==='en-attente').length;
@@ -5377,6 +5380,7 @@ function rHist(){
   const normalIvs=cA?IVS.filter(function(iv){return !['en-attente','selectionne','en-cours'].includes(iv.s)&&!iv._isPilip;}):IVS.filter(function(iv){return (isTdy(iv)||iv.s==='annulee')&&!iv._isPilip;});
   const pilpIvsH=canSeePILP()?(cA?PILP_IVS:PILP_IVS.filter(function(iv){return isTdy(iv);})) : [];
   const pilpMapped=pilpIvsH.map(function(p){return Object.assign({},p,{n:'[PILP] '+p.n,tl:p.tl,_isPilp:true});});
+  const countedTotal=function(list){return list.filter(isInterventionComptabilisee).length;};
   const dateKey=function(value){const digits=String(value||'').replace(/\D/g,'');return digits.length>=8?digits.slice(0,8):'';};
   const dayKey=function(iv){
     const timeline=Array.isArray(iv.tl)?iv.tl:[];
@@ -5411,23 +5415,23 @@ function rHist(){
   if(!years.length){c.innerHTML=tools+'<div style="padding:20px;text-align:center;font-size:13px;color:var(--t2);">Aucun historique.</div>';return;}
   const yearHtml=years.map(function(year,yearIndex){
     const monthKeys=Object.keys(groups[year]).sort(function(a,b){return b-a;});
-    const yearTotal=monthKeys.reduce(function(total,month){return total+Object.values(groups[year][month]).reduce(function(sum,week){return sum+Object.values(week.days).reduce(function(s,list){return s+list.length;},0);},0);},0);
+    const yearTotal=monthKeys.reduce(function(total,month){return total+Object.values(groups[year][month]).reduce(function(sum,week){return sum+Object.values(week.days).reduce(function(s,list){return s+countedTotal(list);},0);},0);},0);
     const yearId='hist-year-'+year,yearOpen=historyGroupOpen(yearId,true);
     return '<div class="hgrp hist-year-block"><div class="hgh" onclick="tg(\''+yearId+'\',\'arr-'+yearId+'\')">\ud83d\udcc5 '+year+'<span class="bdg bgr" style="margin-left:auto;">'+yearTotal+'</span><span id="arr-'+yearId+'">'+(yearOpen?'\u25bc':'\u25b6')+'</span></div><div id="'+yearId+'" class="hgb hist-group-content hist-year-content" style="display:'+(yearOpen?'':'none')+';">'
       +monthKeys.map(function(month,monthIndex){
         const weeks=groups[year][month],weekKeys=Object.keys(weeks).sort().reverse();
-        const monthTotal=weekKeys.reduce(function(total,key){return total+Object.values(weeks[key].days).reduce(function(s,list){return s+list.length;},0);},0);
+        const monthTotal=weekKeys.reduce(function(total,key){return total+Object.values(weeks[key].days).reduce(function(s,list){return s+countedTotal(list);},0);},0);
         const monthId='hist-month-'+year+'-'+month,monthOpen=historyGroupOpen(monthId,true);
         return '<div class="hist-month-block"><div class="hsub" onclick="tg(\''+monthId+'\',\'arr-'+monthId+'\')">'+months[Number(month)]+'<span class="bdg bgr">'+monthTotal+'</span><span id="arr-'+monthId+'" style="margin-left:auto;">'+(monthOpen?'\u25bc':'\u25b6')+'</span></div><div id="'+monthId+'" class="hist-group-content hist-month-content" style="display:'+(monthOpen?'':'none')+';">'
           +weekKeys.map(function(weekKey,weekIndex){
             const week=weeks[weekKey],days=Object.keys(week.days).sort().reverse();
-            const weekTotal=days.reduce(function(sum,day){return sum+week.days[day].length;},0);
+            const weekTotal=days.reduce(function(sum,day){return sum+countedTotal(week.days[day]);},0);
             const weekId='hist-week-'+year+'-'+month+'-'+weekKey,open=historyGroupOpen(weekId,yearIndex===0&&monthIndex===0&&weekIndex===0);
             return '<div class="hist-week-block"><div class="hist-week-header" onclick="tg(\''+weekId+'\',\'arr-'+weekId+'\')"><span>\ud83d\uddd3\ufe0f '+week.info.label+'</span><span class="bdg bgr">'+weekTotal+'</span><span id="arr-'+weekId+'" style="margin-left:auto;">'+(open?'\u25bc':'\u25b6')+'</span></div><div id="'+weekId+'" class="hist-group-content hist-week-content" style="display:'+(open?'':'none')+';">'
               +days.map(function(day){
                 const list=week.days[day],dayId='hist-day-'+day+'-'+weekKey,dayOpen=historyGroupOpen(dayId,true);
                 const dt=new Date(Number(day.slice(0,4)),Number(day.slice(4,6))-1,Number(day.slice(6,8))),dayName=dt.toLocaleDateString('fr-FR',{weekday:'long'});
-                return '<div class="hist-day-block"><div class="hist-day-header" onclick="tg(\''+dayId+'\',\'arr-'+dayId+'\')"><span>'+dayName.charAt(0).toUpperCase()+dayName.slice(1)+' '+day.slice(6,8)+'/'+day.slice(4,6)+'/'+day.slice(0,4)+'</span><span class="bdg bgr">'+list.length+'</span><span id="arr-'+dayId+'" style="margin-left:auto;">'+(dayOpen?'\u25bc':'\u25b6')+'</span></div><div id="'+dayId+'" class="hist-group-content hist-day-content" style="display:'+(dayOpen?'':'none')+';">'+list.map(historyRowHTML).join('')+'</div></div>';
+                return '<div class="hist-day-block"><div class="hist-day-header" onclick="tg(\''+dayId+'\',\'arr-'+dayId+'\')"><span>'+dayName.charAt(0).toUpperCase()+dayName.slice(1)+' '+day.slice(6,8)+'/'+day.slice(4,6)+'/'+day.slice(0,4)+'</span><span class="bdg bgr" title="Interventions comptabilisées">'+countedTotal(list)+'</span><span id="arr-'+dayId+'" style="margin-left:auto;">'+(dayOpen?'\u25bc':'\u25b6')+'</span></div><div id="'+dayId+'" class="hist-group-content hist-day-content" style="display:'+(dayOpen?'':'none')+';">'+list.map(historyRowHTML).join('')+'</div></div>';
               }).join('')+'</div></div>';
           }).join('')+'</div></div>';
       }).join('')+'</div></div>';
@@ -9787,7 +9791,7 @@ function statsInterventionInPeriod(iv,prefix){
 function getStIvs(){
   const annStr=String(stAnnee);
   const prefix=stMois>0?annStr+String(stMois).padStart(2,'0'):annStr;
-  return IVS.filter(function(iv){return !iv._isPilip&&iv.s==='terminee'&&statsInterventionInPeriod(iv,prefix);});
+  return IVS.filter(function(iv){return !iv._isPilip&&isInterventionComptabilisee(iv)&&statsInterventionInPeriod(iv,prefix);});
 }
 
 function rStats(){
@@ -10337,7 +10341,7 @@ function agentInIV(iv,login){
 function rStatsPersonnel(vue){
   const annStr=String(stAnnee);
   const prefix=stMois>0?annStr+String(stMois).padStart(2,'0'):annStr;
-  const ivsFiltres=IVS.filter(function(iv){return !iv._isPilip&&iv.s==='terminee'&&statsInterventionInPeriod(iv,prefix);});
+  const ivsFiltres=IVS.filter(function(iv){return !iv._isPilip&&isInterventionComptabilisee(iv)&&statsInterventionInPeriod(iv,prefix);});
 
   // Tous les agents connus
   const agents=USERS.slice().sort(function(a,b){
@@ -10652,7 +10656,7 @@ function rStatsHeader(){
   const annee=String(d.getFullYear());
   const moisStr=annee+String(d.getMonth()+1).padStart(2,'0');
   const todayStr=moisStr+String(d.getDate()).padStart(2,'0');
-  const ivStats=IVS.filter(iv=>!iv._isPilip&&iv.s!=='annulee');
+  const ivStats=IVS.filter(iv=>!iv._isPilip&&iv.s!=='annulee'&&!iv._refugeAnimalier);
   const nbJour=ivStats.filter(iv=>statsInterventionInPeriod(iv,todayStr)).length;
   const nbMois=ivStats.filter(iv=>statsInterventionInPeriod(iv,moisStr)).length;
   const nbAnnee=ivStats.filter(iv=>statsInterventionInPeriod(iv,annee)).length;
@@ -10719,7 +10723,7 @@ function adminMonthlyData(period){
     return start<=period.end&&realEnd>=period.start;
   };
   const interventions=[].concat(IVS||[],PILP_IVS||[])
-    .filter(function(iv){return iv.s==='terminee'&&adminExportInterventionStartDate(iv).startsWith(period.prefixCompact);});
+    .filter(function(iv){return isInterventionComptabilisee(iv)&&adminExportInterventionStartDate(iv).startsWith(period.prefixCompact);});
   const activites=(actGetData()||[]).filter(function(a){return (a.date||'').startsWith(period.prefixDate)&&(!activityIsFraisAdministratifs(a)||canAccessFraisAdministratifs());});
   const fmpas=(fmpaGetData()||[]).filter(function(f){return (f.date||'').startsWith(period.prefixDate);});
   const stag=(formStagGetData()||[]).filter(function(f){return overlaps(f.ddebut,f.dfin);});
@@ -11101,7 +11105,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260801-email-generique-etat-major-88';
+const APP_VERSION='20260801-interventions-non-comptabilisees-89';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne

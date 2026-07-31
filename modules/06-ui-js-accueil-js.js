@@ -14,8 +14,8 @@ function rAccueil(){
   const annee=String(d.getFullYear());
   const moisStr=annee+String(d.getMonth()+1).padStart(2,'0');
   // Exclure les interventions annulées, PILIP et non-terminées des stats
-  const ivStats=IVS.filter(iv=>!iv._isPilip&&iv.s==='terminee');
-  const pilpStats=isTireurPILP()?PILP_IVS.filter(iv=>iv.s==='terminee'):[];
+  const ivStats=IVS.filter(iv=>!iv._isPilip&&isInterventionComptabilisee(iv));
+  const pilpStats=isTireurPILP()?PILP_IVS.filter(isInterventionComptabilisee):[];
   const nbAnnee=ivStats.filter(iv=>statsInterventionInPeriod(iv,annee)).length+pilpStats.filter(iv=>statsInterventionInPeriod(iv,annee)).length;
   const nbMois=ivStats.filter(iv=>statsInterventionInPeriod(iv,moisStr)).length+pilpStats.filter(iv=>statsInterventionInPeriod(iv,moisStr)).length;
   const nbAttente=IVS.filter(iv=>!iv._isPilip&&iv.s==='en-attente').length;

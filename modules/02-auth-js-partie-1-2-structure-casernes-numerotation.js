@@ -10,6 +10,9 @@ const GLOBAL_ACCOUNTS=[];
 // Helpers
 function isSuperAdmin(){return GLOBAL_ROLE==='superadmin'&&!window._superAdminDisabled;}
 function isChefCorps(){return GLOBAL_ROLE==='chef_corps';}
+function isInterventionComptabilisee(iv){
+  return !!(iv&&iv.s==='terminee'&&!iv._refugeAnimalier);
+}
 function isResponsableFormation(user){
   const account=user||CU;
   if(!account)return false;
