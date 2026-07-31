@@ -13,19 +13,20 @@ function rAccueil(){
   document.getElementById('acc-date').textContent=`${jours[d.getDay()]} ${d.getDate()} ${mois[d.getMonth()]} ${d.getFullYear()}`;
   const annee=String(d.getFullYear());
   const moisStr=annee+String(d.getMonth()+1).padStart(2,'0');
+  const jourStr=moisStr+String(d.getDate()).padStart(2,'0');
   // Exclure les interventions annulées, PILIP et non-terminées des stats
   const ivStats=IVS.filter(iv=>!iv._isPilip&&isInterventionComptabilisee(iv));
   const pilpStats=isTireurPILP()?PILP_IVS.filter(isInterventionComptabilisee):[];
   const nbAnnee=ivStats.filter(iv=>statsInterventionInPeriod(iv,annee)).length+pilpStats.filter(iv=>statsInterventionInPeriod(iv,annee)).length;
   const nbMois=ivStats.filter(iv=>statsInterventionInPeriod(iv,moisStr)).length+pilpStats.filter(iv=>statsInterventionInPeriod(iv,moisStr)).length;
+  const nbJour=ivStats.filter(iv=>statsInterventionInPeriod(iv,jourStr)).length+pilpStats.filter(iv=>statsInterventionInPeriod(iv,jourStr)).length;
   const nbAttente=IVS.filter(iv=>!iv._isPilip&&iv.s==='en-attente').length;
   const nbPilpAtt=PILP_IVS.filter(iv=>iv.s==='en-attente').length;
-  const nbAppelsCaserne=getCallCount(CURRENT_CASERNE_ID);
   let statsHtml=`
     <div class="acc-stat"><div class="acc-stat-val">${nbAttente}</div><div class="acc-stat-lbl">En attente</div></div>
     <div class="acc-stat"><div class="acc-stat-val">${nbMois}</div><div class="acc-stat-lbl">Ce mois de ${['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'][d.getMonth()]}</div></div>
     <div class="acc-stat"><div class="acc-stat-val">${nbAnnee}</div><div class="acc-stat-lbl">Depuis le début de l'année ${annee}</div></div>
-    <div class="acc-stat"><div class="acc-stat-val" style="color:var(--blu);">${nbAppelsCaserne}</div><div class="acc-stat-lbl">Appels enregistrés (session)</div></div>`;
+    <div class="acc-stat"><div class="acc-stat-val" style="color:var(--blu);">${nbJour}</div><div class="acc-stat-lbl">Interventions aujourd'hui</div></div>`;
   if(canSeePILP()){
     statsHtml+=`<div class="acc-stat pilp" style="grid-column:1/-1;"><div class="acc-stat-val">${nbPilpAtt}</div><div class="acc-stat-lbl">Interventions PILP en attente</div></div>`;
   }

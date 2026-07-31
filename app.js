@@ -2716,19 +2716,20 @@ function rAccueil(){
   document.getElementById('acc-date').textContent=`${jours[d.getDay()]} ${d.getDate()} ${mois[d.getMonth()]} ${d.getFullYear()}`;
   const annee=String(d.getFullYear());
   const moisStr=annee+String(d.getMonth()+1).padStart(2,'0');
+  const jourStr=moisStr+String(d.getDate()).padStart(2,'0');
   // Exclure les interventions annulées, PILIP et non-terminées des stats
   const ivStats=IVS.filter(iv=>!iv._isPilip&&isInterventionComptabilisee(iv));
   const pilpStats=isTireurPILP()?PILP_IVS.filter(isInterventionComptabilisee):[];
   const nbAnnee=ivStats.filter(iv=>statsInterventionInPeriod(iv,annee)).length+pilpStats.filter(iv=>statsInterventionInPeriod(iv,annee)).length;
   const nbMois=ivStats.filter(iv=>statsInterventionInPeriod(iv,moisStr)).length+pilpStats.filter(iv=>statsInterventionInPeriod(iv,moisStr)).length;
+  const nbJour=ivStats.filter(iv=>statsInterventionInPeriod(iv,jourStr)).length+pilpStats.filter(iv=>statsInterventionInPeriod(iv,jourStr)).length;
   const nbAttente=IVS.filter(iv=>!iv._isPilip&&iv.s==='en-attente').length;
   const nbPilpAtt=PILP_IVS.filter(iv=>iv.s==='en-attente').length;
-  const nbAppelsCaserne=getCallCount(CURRENT_CASERNE_ID);
   let statsHtml=`
     <div class="acc-stat"><div class="acc-stat-val">${nbAttente}</div><div class="acc-stat-lbl">En attente</div></div>
     <div class="acc-stat"><div class="acc-stat-val">${nbMois}</div><div class="acc-stat-lbl">Ce mois de ${['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'][d.getMonth()]}</div></div>
     <div class="acc-stat"><div class="acc-stat-val">${nbAnnee}</div><div class="acc-stat-lbl">Depuis le début de l'année ${annee}</div></div>
-    <div class="acc-stat"><div class="acc-stat-val" style="color:var(--blu);">${nbAppelsCaserne}</div><div class="acc-stat-lbl">Appels enregistrés (session)</div></div>`;
+    <div class="acc-stat"><div class="acc-stat-val" style="color:var(--blu);">${nbJour}</div><div class="acc-stat-lbl">Interventions aujourd'hui</div></div>`;
   if(canSeePILP()){
     statsHtml+=`<div class="acc-stat pilp" style="grid-column:1/-1;"><div class="acc-stat-val">${nbPilpAtt}</div><div class="acc-stat-lbl">Interventions PILP en attente</div></div>`;
   }
@@ -9784,6 +9785,7 @@ function saveAdresse(ivId){
 let stAnnee=new Date().getFullYear();
 let stMois=0;
 let stVue='annuel';
+let stAppelsDate='';
 const ST_MOIS=['Janvier','F\u00e9vrier','Mars','Avril','Mai','Juin','Juillet','Ao\u00fbt','Septembre','Octobre','Novembre','D\u00e9cembre'];
 
 function statsInterventionDateKey(iv){
@@ -9794,6 +9796,21 @@ function statsInterventionDateKey(iv){
 }
 function statsInterventionInPeriod(iv,prefix){
   return statsInterventionDateKey(iv).startsWith(String(prefix||''));
+}
+
+function statsAppelDateKey(iv){
+  const digits=String(iv&&iv.h||'').replace(/\D/g,'');
+  return digits.length>=8?digits.slice(0,8):'';
+}
+function statsAppelsEnregistres(interventions){
+  const seen=new Set();
+  return (interventions||[]).filter(function(iv){
+    if(!iv||iv._transfertDe||!statsAppelDateKey(iv))return false;
+    const apl=String(iv._numApl||(/^APL_/.test(String(iv.id||''))?iv.id:'')||iv.id||'');
+    if(!apl||seen.has(apl))return false;
+    seen.add(apl);
+    return true;
+  });
 }
 
 function getStIvs(){
@@ -9807,7 +9824,7 @@ function rStats(){
   const nav=document.getElementById('stats-nav');
   if(nav){
     const showPersonnel=hasRight('Administration')||isSuperAdmin();
-    const vues=[['annuel','Annuel'],['nat-mois','Nature/mois'],['com-mois','Commune/mois'],['nat-com','Commune\u00d7Nature']].concat(showPersonnel?[['pers-ivs','Personnel'],['pers-heures','Personnel/Heures'],['pers-act','Activités serv.'],['pers-form','Formations'],['pers-dispos','Dispos/Semaine']]:[]);
+    const vues=[['annuel','Annuel'],['nat-mois','Nature/mois'],['com-mois','Commune/mois'],['nat-com','Commune\u00d7Nature']].concat(showPersonnel?[['appels','Appels'],['pers-ivs','Personnel'],['pers-heures','Personnel/Heures'],['pers-act','Activités serv.'],['pers-form','Formations'],['pers-dispos','Dispos/Semaine']]:[]);
     const btnHtml=vues.map(function(vl){
       const v=vl[0],l=vl[1],actif=stVue===v;
       return '<button onclick="stVue=\''+v+'\';if(stVue===\'annuel\')stMois=0;rStats()" style="padding:5px 10px;border-radius:8px;border:1px solid #ccc;cursor:pointer;font-size:11px;font-weight:'+(actif?'700':'400')+';background:'+(actif?'#C0392B':'#f5f5f5')+';color:'+(actif?'#fff':'#333')+';">'+l+'</button>';
@@ -9828,6 +9845,72 @@ function rStats(){
   rStatsContent();
 }
 
+function rStatsAppels(){
+  const now=N();
+  const today=[now.getFullYear(),String(now.getMonth()+1).padStart(2,'0'),String(now.getDate()).padStart(2,'0')].join('-');
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(stAppelsDate))stAppelsDate=today;
+  const parts=stAppelsDate.split('-');
+  const yearKey=parts[0],monthKey=parts[0]+parts[1],dayKey=monthKey+parts[2];
+  const refDate=new Date(Number(parts[0]),Number(parts[1])-1,Number(parts[2]));
+  const dayLabel=refDate.toLocaleDateString('fr-FR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
+  const monthLabel=refDate.toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
+  const calls=statsAppelsEnregistres(IVS);
+  const operators=new Map();
+  (USERS||[]).filter(function(user){return user&&user.l&&!user._isSA;}).forEach(function(user){
+    operators.set(user.l,{login:user.l,label:fullName(user)||user.l});
+  });
+  calls.forEach(function(call){
+    const login=String(call.op||'').trim()||'__non_renseigne__';
+    if(!operators.has(login))operators.set(login,{login:login,label:login==='__non_renseigne__'?'Opérateur non renseigné':login});
+  });
+  function countFor(login,prefix){
+    return calls.filter(function(call){
+      const operator=String(call.op||'').trim()||'__non_renseigne__';
+      return operator===login&&statsAppelDateKey(call).startsWith(prefix);
+    }).length;
+  }
+  const rows=Array.from(operators.values()).map(function(operator){
+    return {login:operator.login,label:operator.label,day:countFor(operator.login,dayKey),month:countFor(operator.login,monthKey),year:countFor(operator.login,yearKey)};
+  }).sort(function(a,b){
+    if(b.year!==a.year)return b.year-a.year;
+    if(b.month!==a.month)return b.month-a.month;
+    if(b.day!==a.day)return b.day-a.day;
+    return a.label.localeCompare(b.label,'fr',{sensitivity:'base'});
+  });
+  const totalDay=calls.filter(function(call){return statsAppelDateKey(call)===dayKey;}).length;
+  const totalMonth=calls.filter(function(call){return statsAppelDateKey(call).startsWith(monthKey);}).length;
+  const totalYear=calls.filter(function(call){return statsAppelDateKey(call).startsWith(yearKey);}).length;
+  const cards=[
+    ['Jour sélectionné',totalDay,'#C0392B'],
+    ['Mois sélectionné',totalMonth,'#2563EB'],
+    ["Depuis le 01/01/"+yearKey,totalYear,'#166534']
+  ].map(function(card){
+    return '<div style="background:#fff;border:1px solid var(--brd);border-top:4px solid '+card[2]+';border-radius:11px;padding:12px;text-align:center;min-width:150px;flex:1;">'
+      +'<div style="font-size:28px;font-weight:700;color:'+card[2]+';">'+card[1]+'</div>'
+      +'<div style="font-size:11px;color:var(--t2);margin-top:2px;">'+card[0]+'</div></div>';
+  }).join('');
+  const tableRows=rows.map(function(row){
+    return '<tr style="border-bottom:1px solid #eee;">'
+      +'<td style="padding:8px 10px;font-weight:600;">'+escHtml(row.label)+'</td>'
+      +'<td style="padding:8px;text-align:center;font-weight:'+(row.day?'700':'400')+';">'+row.day+'</td>'
+      +'<td style="padding:8px;text-align:center;font-weight:'+(row.month?'700':'400')+';">'+row.month+'</td>'
+      +'<td style="padding:8px;text-align:center;font-weight:'+(row.year?'700':'400')+';">'+row.year+'</td></tr>';
+  }).join('');
+  return '<div style="background:#fff;border-radius:12px;padding:14px;">'
+    +'<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;">'
+      +'<div><div style="font-size:16px;font-weight:700;">☎️ Appels enregistrés par utilisateur</div>'
+      +'<div style="font-size:11px;color:var(--t2);margin-top:3px;">Les appels annulés sont inclus. Les copies reçues lors d’un transfert ne sont pas recomptées.</div></div>'
+      +'<label style="font-size:11px;font-weight:600;">Date de référence<br><input type="date" value="'+stAppelsDate+'" onchange="stAppelsDate=this.value;rStatsContent()" style="margin-top:4px;padding:6px 9px;border:1px solid var(--brd);border-radius:8px;font-size:12px;"></label>'
+    +'</div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'+cards+'</div>'
+    +'<div style="font-size:11px;color:var(--t2);margin:0 0 7px;">Jour : <strong>'+escHtml(dayLabel)+'</strong> · Mois : <strong>'+escHtml(monthLabel)+'</strong></div>'
+    +'<div style="overflow-x:auto;border:1px solid var(--brd);border-radius:10px;"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:540px;">'
+      +'<thead><tr style="background:#f5f5f5;"><th style="padding:8px 10px;text-align:left;">Utilisateur</th><th style="padding:8px;text-align:center;">Jour</th><th style="padding:8px;text-align:center;">Mois</th><th style="padding:8px;text-align:center;">Depuis le 01/01</th></tr></thead>'
+      +'<tbody>'+tableRows+'</tbody>'
+      +'<tfoot><tr style="background:var(--t);color:#fff;font-weight:700;"><td style="padding:8px 10px;">TOTAL</td><td style="padding:8px;text-align:center;">'+totalDay+'</td><td style="padding:8px;text-align:center;">'+totalMonth+'</td><td style="padding:8px;text-align:center;">'+totalYear+'</td></tr></tfoot>'
+    +'</table></div></div>';
+}
+
 function rStatsContent(){
   const body=document.getElementById('stats-body');
   if(!body)return;
@@ -9840,6 +9923,11 @@ function rStatsContent(){
       btn.style.color=actif?'#fff':'#333';
       btn.style.fontWeight=actif?'700':'400';
     });
+  }
+  if(stVue==='appels'){
+    if(!hasRight('Administration')&&!isSuperAdmin()){body.innerHTML='<div style="padding:24px;text-align:center;color:var(--t2);">Accès restreint.</div>';return;}
+    body.innerHTML=rStatsAppels();
+    return;
   }
   const ivs=getStIvs();
   const total=ivs.length;
@@ -11113,7 +11201,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260801-communes-intervenues-en-premier-91';
+const APP_VERSION='20260801-statistiques-appels-utilisateurs-93';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
