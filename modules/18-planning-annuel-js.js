@@ -45,7 +45,7 @@ function rAstrGarde(){
   /* ── Légende équipes ── */
   if(EQUIPES.length){
     nav+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">'
-      +EQUIPES.map(e=>'<span style="background:'+e.color+';color:#fff;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600;">'+e.nom+'</span>').join('')
+      +sortEquipes(EQUIPES).map(e=>'<span style="background:'+e.color+';color:#fff;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600;">'+e.nom+'</span>').join('')
       +'</div>';
   }
 
@@ -95,7 +95,7 @@ function rAstrGarde(){
           +'<select onchange="setGardeSlot(\''+s.wk+'\','+si+',this.value)" '
           +'style="padding:3px 7px;border-radius:8px;border:1px solid var(--brd);font-size:11px;width:100%;background:'+(eq?eq.color+'22':'')+';" data-wk="'+s.wk+'" data-si="'+si+'">'
           +'<option value="">—</option>'
-          +EQUIPES.map(function(e){return '<option value="'+e.id+'"'+(eqId===e.id?' selected':'')+'>'+e.nom+'</option>';}).join('')
+          +sortEquipes(EQUIPES).map(function(e){return '<option value="'+e.id+'"'+(eqId===e.id?' selected':'')+'>'+e.nom+'</option>';}).join('')
           +'</select></td>';
       } else {
         slotCells+='<td style="padding:4px 8px;">'

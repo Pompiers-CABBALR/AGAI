@@ -5393,6 +5393,11 @@ function getSlotsForDay(dayIdx,granularity){
 }
 function getEquipeOfUser(login){return EQUIPES.find(e=>e.membres.includes(login));}
 function getEquipeById(id){return EQUIPES.find(e=>e.id===id);}
+function sortEquipes(list){
+  return [...(list||[])].sort(function(a,b){
+    return String(a&&a.nom||a&&a.id||'').localeCompare(String(b&&b.nom||b&&b.id||''),'fr',{numeric:true,sensitivity:'base'});
+  });
+}
 
 // ── Planning rotation : assigner équipe par semaine ──
 function getEquipeSemaine(wKey){
@@ -5477,7 +5482,7 @@ function rAstrPlanning(){
   if(filterDiv){
     filterDiv.innerHTML=`<button class="fb${astrPlanningFilter.has('all')?' active':''}" onclick="setAstrFilter('all',this)">Toutes</button>`
       +(sansEqAll.length?`<button class="fb${astrPlanningFilter.has('sans-equipe')?' active':''}" onclick="setAstrFilter('sans-equipe',this)">Sans équipe</button>`:'')
-      +EQUIPES.map(e=>`<button class="fb${astrPlanningFilter.has(e.id)?' active':''}" style="border-left:3px solid ${e.color};" onclick="setAstrFilter('${e.id}',this)">${e.nom}</button>`).join('');
+      +sortEquipes(EQUIPES).map(e=>`<button class="fb${astrPlanningFilter.has(e.id)?' active':''}" style="border-left:3px solid ${e.color};" onclick="setAstrFilter('${e.id}',this)">${e.nom}</button>`).join('');
   }
 
   // Agents à afficher selon les filtres sélectionnés
@@ -5485,7 +5490,7 @@ function rAstrPlanning(){
   let allRows=[];
   if(showAll||astrPlanningFilter.has('sans-equipe'))
     sortByGradeThenName(sansEqAll).forEach(u=>allRows.push({u,eqColor:'#888',eqNom:'Sans équipe'}));
-  EQUIPES.forEach(function(eq){
+  sortEquipes(EQUIPES).forEach(function(eq){
     if(showAll||astrPlanningFilter.has(eq.id)){
       sortByGradeThenName(eq.membres.map(l=>USERS.find(x=>x.l===l)).filter(Boolean))
         .forEach(u=>allRows.push({u,eqColor:eq.color,eqNom:eq.nom}));
@@ -5765,7 +5770,7 @@ function rAstrPlanning(){
     +'<div style="display:flex;align-items:center;gap:5px;font-size:11px;"><div style="width:20px;height:12px;border-radius:2px;background:#EF4444;border:1px solid #DC2626;"></div>Indisponible</div>'
     +'<div style="display:flex;align-items:center;gap:5px;font-size:11px;"><div style="width:20px;height:12px;border-radius:2px;background:#fff;border:1px solid #e5e7eb;"></div>Non renseign\u00e9</div>'
     +'<div style="font-size:11px;color:var(--t2);margin-left:8px;"><span style="color:#854F0B;font-weight:700;">x</span> = piquets &nbsp;/&nbsp; <span style="color:#0369A1;font-weight:700;">y</span> = dispos</div>'
-    +EQUIPES.map(e=>`<div style="display:flex;align-items:center;gap:5px;font-size:11px;"><div style="width:20px;height:12px;border-radius:2px;background:${e.color};"></div>${e.nom}</div>`).join('');
+    +sortEquipes(EQUIPES).map(e=>`<div style="display:flex;align-items:center;gap:5px;font-size:11px;"><div style="width:20px;height:12px;border-radius:2px;background:${e.color};"></div>${e.nom}</div>`).join('');
 }
 
 function oAstrCellDetailSansEq(wk,dayIdx,slotIdx){
@@ -5793,7 +5798,7 @@ function hexAlpha(hex,alpha){
 }
 
 function changerEquipeSemaine(wk){
-  const opts=EQUIPES.map(e=>`<option value="${e.id}">${e.nom}</option>`).join('');
+  const opts=sortEquipes(EQUIPES).map(e=>`<option value="${e.id}">${e.nom}</option>`).join('');
   const cur=getEquipeSemaine(wk);
   document.getElementById('mt').textContent='Équipe de garde';
   document.getElementById('mi').textContent='';
@@ -6752,7 +6757,7 @@ function rAstrPiquets(){
     +'<div style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:11px;height:8px;border-radius:3px;background:#7F77DD;flex-shrink:0;"></span><b>Occupation</b>&nbsp;: part des heures de piquet de l\'agent sur les 168&nbsp;h de la semaine.</div>'
     +'</div>';
   const dispoPlanSlots=!PLANNING_ROTATIONS[wk]?[]:(typeof PLANNING_ROTATIONS[wk]==='string'?[PLANNING_ROTATIONS[wk]]:(Array.isArray(PLANNING_ROTATIONS[wk])?PLANNING_ROTATIONS[wk]:[]));
-  EQUIPES.forEach(function(eq){
+  sortEquipes(EQUIPES).forEach(function(eq){
     if(!eq.membres.length)return;
     const isEq1=dispoPlanSlots[0]===eq.id,isEq2=dispoPlanSlots[1]===eq.id;
     const labelSuffix=isEq1?' <span style="background:#E24B4A;color:#fff;border-radius:4px;padding:1px 5px;font-size:9px;">Astr. forte</span>':isEq2?' <span style="background:#F59E0B;color:#fff;border-radius:4px;padding:1px 5px;font-size:9px;">2&egrave;me astr.</span>':'';
@@ -7218,7 +7223,7 @@ function rAstrEquipes(){
   // Liste équipes
   const list=document.getElementById('astr-equipes-list');
   if(!list)return;
-  list.innerHTML=EQUIPES.map(eq=>`
+  list.innerHTML=sortEquipes(EQUIPES).map(eq=>`
     <div style="background:${eq.color}18;border:1.5px solid ${eq.color}44;border-radius:12px;padding:12px;margin-bottom:10px;">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
         <span class="eq-badge" style="background:${eq.color};">${eq.nom}</span>
@@ -10615,7 +10620,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260731-astreintes-admin-direct-77';
+const APP_VERSION='20260731-ordre-equipes-78';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -13993,7 +13998,7 @@ function rAstrGarde(){
   /* ── Légende équipes ── */
   if(EQUIPES.length){
     nav+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">'
-      +EQUIPES.map(e=>'<span style="background:'+e.color+';color:#fff;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600;">'+e.nom+'</span>').join('')
+      +sortEquipes(EQUIPES).map(e=>'<span style="background:'+e.color+';color:#fff;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600;">'+e.nom+'</span>').join('')
       +'</div>';
   }
 
@@ -14043,7 +14048,7 @@ function rAstrGarde(){
           +'<select onchange="setGardeSlot(\''+s.wk+'\','+si+',this.value)" '
           +'style="padding:3px 7px;border-radius:8px;border:1px solid var(--brd);font-size:11px;width:100%;background:'+(eq?eq.color+'22':'')+';" data-wk="'+s.wk+'" data-si="'+si+'">'
           +'<option value="">—</option>'
-          +EQUIPES.map(function(e){return '<option value="'+e.id+'"'+(eqId===e.id?' selected':'')+'>'+e.nom+'</option>';}).join('')
+          +sortEquipes(EQUIPES).map(function(e){return '<option value="'+e.id+'"'+(eqId===e.id?' selected':'')+'>'+e.nom+'</option>';}).join('')
           +'</select></td>';
       } else {
         slotCells+='<td style="padding:4px 8px;">'
@@ -14676,7 +14681,7 @@ function piquetAgentOpts(agents,exclude,includeNone){
 
     function addGroup(grpList, prefix){
       // Par équipe dans l'ordre, puis sans équipe
-      EQUIPES.forEach(function(eq){
+      sortEquipes(EQUIPES).forEach(function(eq){
         const m=sortByGradeThenName(grpList.filter(function(u){
           const ueq=getEquipeOfUser(u.l);return ueq&&ueq.id===eq.id;
         }));
@@ -14714,7 +14719,7 @@ function piquetAgentOpts(agents,exclude,includeNone){
     const orderedEquipes=[
       ...EQUIPES.filter(function(e){return e.id===eq1Id;}),
       ...EQUIPES.filter(function(e){return e.id===eq2Id&&e.id!==eq1Id;}),
-      ...EQUIPES.filter(function(e){return e.id!==eq1Id&&e.id!==eq2Id;})
+      ...sortEquipes(EQUIPES.filter(function(e){return e.id!==eq1Id&&e.id!==eq2Id;}))
     ];
 
     orderedEquipes.forEach(function(eq){

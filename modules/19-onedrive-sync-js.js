@@ -495,7 +495,7 @@ function piquetAgentOpts(agents,exclude,includeNone){
 
     function addGroup(grpList, prefix){
       // Par équipe dans l'ordre, puis sans équipe
-      EQUIPES.forEach(function(eq){
+      sortEquipes(EQUIPES).forEach(function(eq){
         const m=sortByGradeThenName(grpList.filter(function(u){
           const ueq=getEquipeOfUser(u.l);return ueq&&ueq.id===eq.id;
         }));
@@ -533,7 +533,7 @@ function piquetAgentOpts(agents,exclude,includeNone){
     const orderedEquipes=[
       ...EQUIPES.filter(function(e){return e.id===eq1Id;}),
       ...EQUIPES.filter(function(e){return e.id===eq2Id&&e.id!==eq1Id;}),
-      ...EQUIPES.filter(function(e){return e.id!==eq1Id&&e.id!==eq2Id;})
+      ...sortEquipes(EQUIPES.filter(function(e){return e.id!==eq1Id&&e.id!==eq2Id;}))
     ];
 
     orderedEquipes.forEach(function(eq){
