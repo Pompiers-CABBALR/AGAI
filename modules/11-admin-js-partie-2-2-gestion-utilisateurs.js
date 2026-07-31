@@ -82,7 +82,7 @@ function rAdm(){
       </div>
     </td>`;
     const rightsCell=(isSA&&!saEditable)?RIGHTS_SHORT.map(()=>'<td style="text-align:center;"><input type="checkbox" checked disabled></td>').join('')
-      :RIGHTS_SHORT.map(r=>`<td style="text-align:center;"><input type="checkbox" ${u.rights.includes(r)?'checked':''} onchange="updateRight('${u.l}','${r.replace(/'/g,"\\'")}',this.checked)" ${(u.l===CU.l&&r==='Administration')||isSA?'disabled':''}></td>`).join('');
+      :RIGHTS_SHORT.map(r=>`<td style="text-align:center;"><input type="checkbox" ${u.rights.includes(r)?'checked':''} onchange="updateRight('${u.l}','${r.replace(/'/g,"\\'")}',this.checked)" ${(r==='Administration'&&!isSuperAdmin())||isSA?'disabled':''}></td>`).join('');
     const delCell=(isSA)?'<td></td>':`<td><button class="del-btn" onclick="delUser('${u.l}')" ${u.l===CU.l?'disabled':''}>✕</button></td>`;
     const matriculeCell=(isSA&&!saEditable)?`<td style="font-size:11px;color:var(--t2);">${u.matricule||'—'}</td>`:`<td><input type="text" value="${u.matricule||''}" data-login="${u.l}" data-field="matricule" onchange="updateUser(this.dataset.login,this.dataset.field,this.value)" placeholder="Matricule" style="width:70px;padding:3px 6px;border:1px solid var(--brd);border-radius:5px;font-size:12px;"/></td>`;
     // Cellule Fonctions formateur
@@ -195,6 +195,9 @@ function updateFormateurFn(login,fn,checked){
   if(profPanel&&profPanel.style.display!=='none'&&CU&&CU.l===login)rProfil();
 }
 function updateRight(login,right,checked){
+  if(right==='Administration'&&!isSuperAdmin()){
+    showToast('La d\u00e9signation des administrateurs est r\u00e9serv\u00e9e au super-administrateur.','warn');rAdm();return;
+  }
   const u=USERS.find(x=>x.l===login);if(!u)return;
   if(checked&&!u.rights.includes(right))u.rights.push(right);
   else if(!checked)u.rights=u.rights.filter(r=>r!==right);

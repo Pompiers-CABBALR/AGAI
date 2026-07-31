@@ -259,7 +259,7 @@ function rProfil(){
   }
   // Bouton d'édition réservé au chef de corps (il modifie son compte global lui-même)
   const ccBtn=document.getElementById('prof-cc-edit-btn');
-  if(ccBtn)ccBtn.style.display=(GLOBAL_ROLE==='chef_corps')?'':'none';
+  if(ccBtn)ccBtn.style.display='none';
 }
 async function saveProfil(){
   const mdp=document.getElementById('prof-mdp').value;

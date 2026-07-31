@@ -24,6 +24,46 @@ function canAccessFraisAdministratifs(){
 }
 function getSuperAdminAccount(){return GLOBAL_ACCOUNTS.find(a=>a.role==='superadmin');}
 function getChefCorpsAccount(){return GLOBAL_ACCOUNTS.find(a=>a.role==='chef_corps');}
+function repairKnownChefCorpsAssignment(){
+  const account=getChefCorpsAccount();
+  if(!account||account._assignmentProtectedV85===true)return false;
+  account.prenom='Vincent';account.nom='Fabre';
+  const desiredLogin='fabre.vincent';
+  const collision=GLOBAL_ACCOUNTS.some(function(other){return other!==account&&other.l===desiredLogin;});
+  if(!collision)account.l=desiredLogin;
+  account.role='chef_corps';account.appRole='chef_corps';account.caserneId='EMAJ';account._assignmentProtectedV85=true;
+  return true;
+}
+function accountNameKey(account){
+  return String((account&&account.prenom||'')+' '+(account&&account.nom||'')).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z]/g,'');
+}
+function getCaserneAdmin(caserneId){
+  const data=CASERNE_DATA[caserneId];
+  if(!data||!Array.isArray(data.users))return null;
+  let admin=data.adminLogin&&data.users.find(function(user){return user&&user.l===data.adminLogin&&!user._isSA;});
+  // Migration corrective connue : l'administrateur désigné de Lapugnoy est Pascal Douvrin.
+  if(!admin&&caserneId==='CIS05')admin=data.users.find(function(user){return accountNameKey(user)==='pascaldouvrin';});
+  if(!admin){
+    const candidates=data.users.filter(function(user){return user&&!user._isSA&&Array.isArray(user.rights)&&user.rights.includes('Administration');});
+    candidates.sort(function(a,b){return String(a.nom||'').localeCompare(String(b.nom||''),'fr')||String(a.prenom||'').localeCompare(String(b.prenom||''),'fr');});
+    admin=candidates[0]||null;
+  }
+  if(admin)data.adminLogin=admin.l;
+  return admin;
+}
+function normalizeCaserneAdminAssignments(){
+  OP_CASERNES().forEach(function(caserne){
+    const data=CASERNE_DATA[caserne.id];if(!data||!Array.isArray(data.users))return;
+    const admin=getCaserneAdmin(caserne.id);if(!admin)return;
+    data.adminLogin=admin.l;
+    data.users.forEach(function(user){
+      user.rights=Array.isArray(user.rights)?user.rights:[];
+      if(user.l===admin.l){if(!user.rights.includes('Administration'))user.rights.push('Administration');}
+      else user.rights=user.rights.filter(function(right){return right!=='Administration';});
+      user.appRole=deriveAccountRole(user);
+    });
+  });
+}
 
 function deriveAccountRole(account){
   if(!account)return 'agent';
@@ -49,6 +89,7 @@ function normalizeAllAccountMetadata(){
       user.appRole=deriveAccountRole(user);
     });
   });
+  normalizeCaserneAdminAssignments();
 }
 
 function getCurrentAccessScope(){

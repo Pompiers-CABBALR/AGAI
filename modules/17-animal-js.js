@@ -770,6 +770,7 @@ function _buildDataObject(){
       astrTelData:JSON.parse(JSON.stringify(d.astrTelData||{})),
       astrTelParams:{...(d.astrTelParams||{})},
       statsTaux:{...(d.statsTaux||{})},
+      adminLogin:d.adminLogin||'',
       formations:JSON.parse(JSON.stringify(d.formations||[])),
     };
   });
@@ -833,6 +834,7 @@ function _applyDataObject(data){
         if(src.astrTelData&&!dispoLocked)dst.astrTelData=src.astrTelData;
         if(src.astrTelParams)dst.astrTelParams=src.astrTelParams;
         if(src.statsTaux)dst.statsTaux=src.statsTaux;
+        if(src.adminLogin!==undefined)dst.adminLogin=src.adminLogin;
         if(src._initCompteurs!==undefined)dst._initCompteurs=src._initCompteurs;
       }
     });
@@ -1698,7 +1700,8 @@ function _rcSplitCaserne(cid, d){
     astrConfig: d.astrConfig||{},
     astrTelData: JSON.parse(JSON.stringify(d.astrTelData||{})),
     astrTelParams: Object.assign({},d.astrTelParams||{}),
-    statsTaux: Object.assign({},d.statsTaux||{})
+    statsTaux: Object.assign({},d.statsTaux||{}),
+    adminLogin: d.adminLogin||''
   };
   rows.push({ id:_rcId(cid,'config','main'), caserne:cid, type:'config', data:cfg, deleted:false });
   return rows;
@@ -1727,6 +1730,7 @@ function _rcAssembleCaserne(rows){
       out.astrTelData=c.astrTelData||{};
       out.astrTelParams=c.astrTelParams||{};
       out.statsTaux=c.statsTaux||{};
+      out.adminLogin=c.adminLogin||'';
     }
   });
   return out;
@@ -1847,6 +1851,28 @@ function _rcPushGlobalRowKeepalive(){
   }catch(e){}
 }
 
+async function _rcProtectSensitiveGlobalRow(rows){
+  if(typeof isSuperAdmin==='function'&&isSuperAdmin())return rows;
+  const globalRow=(rows||[]).find(function(row){return row&&row.type==='global'&&row.caserne==='_GLOBAL';});
+  if(!globalRow)return rows;
+  try{
+    const globalId=_rcId('_GLOBAL','global','main');
+    const resp=await fetch(RC_REST+'?id=eq.'+encodeURIComponent(globalId)+'&select=data&limit=1',{headers:_sbHeaders});
+    if(!resp.ok)throw new Error('global GET HTTP '+resp.status);
+    const records=await resp.json();
+    const remote=Array.isArray(records)&&records[0]&&records[0].data||null;
+    if(!remote||!Array.isArray(remote.GLOBAL_ACCOUNTS))throw new Error('comptes globaux distants absents');
+    const protectedKeys=['GLOBAL_ACCOUNTS','CASERNES','NAT','ACT_TYPES','REPORT_TYPES','COM','ENGIN_TYPES','_cabbalrActif','_initCabbalr'];
+    protectedKeys.forEach(function(key){if(remote[key]!==undefined)globalRow.data[key]=remote[key];});
+    globalRow.data.LOGIN_HISTORY_DELETED=Object.assign({},remote.LOGIN_HISTORY_DELETED||{},globalRow.data.LOGIN_HISTORY_DELETED||{});
+    globalRow.data.LOGIN_HISTORY=_mergeLoginHistory(globalRow.data.LOGIN_HISTORY||[],remote.LOGIN_HISTORY||[],globalRow.data.LOGIN_HISTORY_DELETED);
+    return rows;
+  }catch(error){
+    console.warn('[AGAI][RC] Protection comptes privil\u00e9gi\u00e9s : ligne globale non envoy\u00e9e',error);
+    return (rows||[]).filter(function(row){return !(row&&row.type==='global'&&row.caserne==='_GLOBAL');});
+  }
+}
+
 async function _rcPush(fullPush){
   if(_rcSaving){ _rcScheduleRetry(800); return; }
   _rcSaving = true; _jbSetStatus('saving');
@@ -1884,6 +1910,8 @@ async function _rcPush(fullPush){
       if(r.type==='iv' && r.data){ const lite=Object.assign({},r.data); delete lite.frelonPhotos; delete lite._pdfCache; return Object.assign({},r,{data:lite}); }
       return r;
     });
+    rows=await _rcProtectSensitiveGlobalRow(rows);
+    if(!rows.length){_jbSetStatus(_rcPendingDirty.size?'pending':'ok');return;}
     const currentUser = (typeof CU!=='undefined' && CU) ? (CU.l||'') : '';
     const payload = rows.map(function(r){ return { id:r.id, caserne:r.caserne, type:r.type, data:r.data, deleted:r.deleted, updated_by:currentUser }; });
     const resp = await fetch(RC_REST, {

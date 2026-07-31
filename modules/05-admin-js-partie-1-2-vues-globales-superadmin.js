@@ -187,6 +187,11 @@ function renderLoginHistoryByCaserne(){
 }
 
 function renderSuperAdmin(){
+  const repairedChefCorps=repairKnownChefCorpsAssignment();
+  if(repairedChefCorps){
+    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+    window.setTimeout(function(){saveData(true);showToast('Affectation du chef de corps restaur\u00e9e : Vincent Fabre.','success');},0);
+  }
   const body=document.getElementById('gv-body');
   // Section gestion des comptes (admins casernes + chef de corps)
   const sa=getSuperAdminAccount();
@@ -221,7 +226,7 @@ function renderSuperAdmin(){
         <!-- Admins casernes -->
         ${OP_CASERNES().map(c=>{
           const d=CASERNE_DATA[c.id]||{users:[]};
-          const admin=d.users?.find(u=>u.rights?.includes('Administration'));
+          const admin=getCaserneAdmin(c.id);
           const responsableFormation=d.users?.find(u=>u.responsableFormation===true);
           return `<div style="background:${c.couleur}11;border-radius:10px;padding:12px;border:1px solid ${c.couleur}33;">
             <div style="font-size:11px;font-weight:700;color:${c.couleur};margin-bottom:6px;text-transform:uppercase;">&#x1F6E1;️ Admin ${c.nom}</div>
@@ -229,6 +234,11 @@ function renderSuperAdmin(){
               <div style="font-size:11px;color:#666;font-family:monospace;margin:3px 0;">${admin.l}</div>
               <button class="btn sm" style="font-size:11px;margin-top:6px;" onclick="editAdminCaserne('${c.id}')">&#x1F511; Modifier mot de passe</button>`
             :`<div style="font-size:12px;color:#999;">Aucun admin défini</div>`}
+            <select class="fi" style="font-size:11px;padding:4px 6px;width:100%;margin-top:7px;" onchange="setCaserneAdmin('${c.id}',this.value)">
+              <option value="">— Désigner l'administrateur —</option>
+              ${[...(d.users||[])].filter(u=>!u._isSA).sort((a,b)=>(a.nom+' '+a.prenom).localeCompare(b.nom+' '+b.prenom,'fr')).map(u=>`<option value="${u.l}"${admin&&admin.l===u.l?' selected':''}>${u.nom} ${u.prenom}</option>`).join('')}
+            </select>
+            <div style="font-size:10px;color:#777;margin-top:4px;">Désignation unique, modifiable uniquement par le superadmin.</div>
             <div style="border-top:1px solid ${c.couleur}33;margin-top:10px;padding-top:9px;">
               <div style="font-size:10px;font-weight:700;color:#6D28D9;text-transform:uppercase;margin-bottom:5px;">🎓 Responsable formation</div>
               <select class="fi" style="font-size:11px;padding:4px 6px;width:100%;" onchange="setResponsableFormation('${c.id}',this.value)">
@@ -848,6 +858,24 @@ function renderChefCorpsBody(){
 
 
 // Gestion comptes spéciaux
+function setCaserneAdmin(caserneId,login){
+  if(!isSuperAdmin()){showToast('Seul le super-administrateur peut d\u00e9signer un administrateur de caserne.','warn');return;}
+  const data=CASERNE_DATA[caserneId];
+  if(!data||!Array.isArray(data.users))return;
+  const selected=login&&data.users.find(function(user){return user&&user.l===login&&!user._isSA;});
+  if(login&&!selected){showToast('Compte introuvable dans cette caserne.','warn');renderSuperAdmin();return;}
+  data.adminLogin=selected?selected.l:'';
+  data.users.forEach(function(user){
+    user.rights=Array.isArray(user.rights)?user.rights:[];
+    if(selected&&user.l===selected.l){if(!user.rights.includes('Administration'))user.rights.push('Administration');}
+    else user.rights=user.rights.filter(function(right){return right!=='Administration';});
+    user.caserneId=caserneId;user.appRole=deriveAccountRole(user);
+  });
+  if(CURRENT_CASERNE_ID===caserneId)syncCaserneContext();
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);renderSuperAdmin();
+  showToast(selected?'Administrateur de caserne enregistr\u00e9 : '+fullName(selected):'Administrateur de caserne retir\u00e9','success');
+}
 function setResponsableFormation(caserneId,login){
   if(!isSuperAdmin()){showToast('Seul le super-administrateur peut d\u00e9finir le responsable formation.','warn');return;}
   const data=CASERNE_DATA[caserneId];
@@ -992,6 +1020,7 @@ function ccRetourTableauBord(){
 
 // ── Chef de corps : éditer ses propres informations (compte global) ──
 function ccEditMesInfos(){
+  if(!isSuperAdmin()){showToast('Le compte du chef de corps est g\u00e9r\u00e9 uniquement par le super-administrateur.','warn');return;}
   const acc=GLOBAL_ACCOUNTS.find(a=>a.role==='chef_corps');
   if(!acc)return;
   const ff=acc.fonctionsFormateur||[];
@@ -1024,6 +1053,7 @@ function ccEditMesInfos(){
 }
 
 function ccSaveMesInfos(){
+  if(!isSuperAdmin()){showToast('Le compte du chef de corps est g\u00e9r\u00e9 uniquement par le super-administrateur.','warn');return;}
   const acc=GLOBAL_ACCOUNTS.find(a=>a.role==='chef_corps');
   if(!acc)return;
   const prenom=document.getElementById('cc-prenom').value.trim();
@@ -1046,6 +1076,7 @@ function ccSaveMesInfos(){
 }
 
 function editCompteSpecial(role){
+  if(!isSuperAdmin()){showToast('Modification r\u00e9serv\u00e9e au super-administrateur.','warn');return;}
   const acc=GLOBAL_ACCOUNTS.find(a=>a.role===role);
   if(!acc)return;
   const label=role==='superadmin'?'Super Administrateur':'Chef de Corps';
@@ -1082,6 +1113,7 @@ function prevEcLogin(){
   if(p&&n&&el)el.value=n+'.'+p;
 }
 async function saveCompteSpecial(role){
+  if(!isSuperAdmin()){showToast('Modification r\u00e9serv\u00e9e au super-administrateur.','warn');return;}
   const acc=GLOBAL_ACCOUNTS.find(a=>a.role===role);
   if(!acc)return;
   const prenom=document.getElementById('ec-prenom').value.trim();
@@ -1109,7 +1141,7 @@ async function saveCompteSpecial(role){
 }
 function editAdminCaserne(cid){
   const d=CASERNE_DATA[cid]||{users:[]};
-  const admin=d.users?.find(u=>u.rights?.includes('Administration'));
+  const admin=getCaserneAdmin(cid);
   const cas=CASERNES.find(c=>c.id===cid);
   if(!admin||!cas)return;
   document.getElementById('mt').textContent='Admin — '+cas.nom;
@@ -1150,7 +1182,7 @@ function editAdminCaserne(cid){
 }
 async function saveAdminCaserne(cid){
   const d=CASERNE_DATA[cid]||{users:[]};
-  const admin=d.users?.find(u=>u.rights?.includes('Administration'));
+  const admin=getCaserneAdmin(cid);
   const cas=CASERNES.find(c=>c.id===cid);
   if(!admin||!cas)return;
   const prenom=document.getElementById('adm-prenom').value.trim();
@@ -1165,6 +1197,7 @@ async function saveAdminCaserne(cid){
   if(pwdErr){err.style.display='block';err.textContent=pwdErr;return;}
   const oldLogin=admin.l;
   admin.prenom=prenom;admin.nom=nom;admin.grade=grade;admin.l=login;
+  d.adminLogin=login;
   if(mdp){admin.p=await hashPassword(mdp);} // P1
   cas.couleur=couleur;
   if(oldLogin!==login){

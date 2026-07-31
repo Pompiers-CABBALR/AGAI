@@ -177,6 +177,46 @@ function canAccessFraisAdministratifs(){
 }
 function getSuperAdminAccount(){return GLOBAL_ACCOUNTS.find(a=>a.role==='superadmin');}
 function getChefCorpsAccount(){return GLOBAL_ACCOUNTS.find(a=>a.role==='chef_corps');}
+function repairKnownChefCorpsAssignment(){
+  const account=getChefCorpsAccount();
+  if(!account||account._assignmentProtectedV85===true)return false;
+  account.prenom='Vincent';account.nom='Fabre';
+  const desiredLogin='fabre.vincent';
+  const collision=GLOBAL_ACCOUNTS.some(function(other){return other!==account&&other.l===desiredLogin;});
+  if(!collision)account.l=desiredLogin;
+  account.role='chef_corps';account.appRole='chef_corps';account.caserneId='EMAJ';account._assignmentProtectedV85=true;
+  return true;
+}
+function accountNameKey(account){
+  return String((account&&account.prenom||'')+' '+(account&&account.nom||'')).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z]/g,'');
+}
+function getCaserneAdmin(caserneId){
+  const data=CASERNE_DATA[caserneId];
+  if(!data||!Array.isArray(data.users))return null;
+  let admin=data.adminLogin&&data.users.find(function(user){return user&&user.l===data.adminLogin&&!user._isSA;});
+  // Migration corrective connue : l'administrateur désigné de Lapugnoy est Pascal Douvrin.
+  if(!admin&&caserneId==='CIS05')admin=data.users.find(function(user){return accountNameKey(user)==='pascaldouvrin';});
+  if(!admin){
+    const candidates=data.users.filter(function(user){return user&&!user._isSA&&Array.isArray(user.rights)&&user.rights.includes('Administration');});
+    candidates.sort(function(a,b){return String(a.nom||'').localeCompare(String(b.nom||''),'fr')||String(a.prenom||'').localeCompare(String(b.prenom||''),'fr');});
+    admin=candidates[0]||null;
+  }
+  if(admin)data.adminLogin=admin.l;
+  return admin;
+}
+function normalizeCaserneAdminAssignments(){
+  OP_CASERNES().forEach(function(caserne){
+    const data=CASERNE_DATA[caserne.id];if(!data||!Array.isArray(data.users))return;
+    const admin=getCaserneAdmin(caserne.id);if(!admin)return;
+    data.adminLogin=admin.l;
+    data.users.forEach(function(user){
+      user.rights=Array.isArray(user.rights)?user.rights:[];
+      if(user.l===admin.l){if(!user.rights.includes('Administration'))user.rights.push('Administration');}
+      else user.rights=user.rights.filter(function(right){return right!=='Administration';});
+      user.appRole=deriveAccountRole(user);
+    });
+  });
+}
 
 function deriveAccountRole(account){
   if(!account)return 'agent';
@@ -202,6 +242,7 @@ function normalizeAllAccountMetadata(){
       user.appRole=deriveAccountRole(user);
     });
   });
+  normalizeCaserneAdminAssignments();
 }
 
 function getCurrentAccessScope(){
@@ -1039,6 +1080,11 @@ function renderLoginHistoryByCaserne(){
 }
 
 function renderSuperAdmin(){
+  const repairedChefCorps=repairKnownChefCorpsAssignment();
+  if(repairedChefCorps){
+    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+    window.setTimeout(function(){saveData(true);showToast('Affectation du chef de corps restaur\u00e9e : Vincent Fabre.','success');},0);
+  }
   const body=document.getElementById('gv-body');
   // Section gestion des comptes (admins casernes + chef de corps)
   const sa=getSuperAdminAccount();
@@ -1073,7 +1119,7 @@ function renderSuperAdmin(){
         <!-- Admins casernes -->
         ${OP_CASERNES().map(c=>{
           const d=CASERNE_DATA[c.id]||{users:[]};
-          const admin=d.users?.find(u=>u.rights?.includes('Administration'));
+          const admin=getCaserneAdmin(c.id);
           const responsableFormation=d.users?.find(u=>u.responsableFormation===true);
           return `<div style="background:${c.couleur}11;border-radius:10px;padding:12px;border:1px solid ${c.couleur}33;">
             <div style="font-size:11px;font-weight:700;color:${c.couleur};margin-bottom:6px;text-transform:uppercase;">&#x1F6E1;️ Admin ${c.nom}</div>
@@ -1081,6 +1127,11 @@ function renderSuperAdmin(){
               <div style="font-size:11px;color:#666;font-family:monospace;margin:3px 0;">${admin.l}</div>
               <button class="btn sm" style="font-size:11px;margin-top:6px;" onclick="editAdminCaserne('${c.id}')">&#x1F511; Modifier mot de passe</button>`
             :`<div style="font-size:12px;color:#999;">Aucun admin défini</div>`}
+            <select class="fi" style="font-size:11px;padding:4px 6px;width:100%;margin-top:7px;" onchange="setCaserneAdmin('${c.id}',this.value)">
+              <option value="">— Désigner l'administrateur —</option>
+              ${[...(d.users||[])].filter(u=>!u._isSA).sort((a,b)=>(a.nom+' '+a.prenom).localeCompare(b.nom+' '+b.prenom,'fr')).map(u=>`<option value="${u.l}"${admin&&admin.l===u.l?' selected':''}>${u.nom} ${u.prenom}</option>`).join('')}
+            </select>
+            <div style="font-size:10px;color:#777;margin-top:4px;">Désignation unique, modifiable uniquement par le superadmin.</div>
             <div style="border-top:1px solid ${c.couleur}33;margin-top:10px;padding-top:9px;">
               <div style="font-size:10px;font-weight:700;color:#6D28D9;text-transform:uppercase;margin-bottom:5px;">🎓 Responsable formation</div>
               <select class="fi" style="font-size:11px;padding:4px 6px;width:100%;" onchange="setResponsableFormation('${c.id}',this.value)">
@@ -1700,6 +1751,24 @@ function renderChefCorpsBody(){
 
 
 // Gestion comptes spéciaux
+function setCaserneAdmin(caserneId,login){
+  if(!isSuperAdmin()){showToast('Seul le super-administrateur peut d\u00e9signer un administrateur de caserne.','warn');return;}
+  const data=CASERNE_DATA[caserneId];
+  if(!data||!Array.isArray(data.users))return;
+  const selected=login&&data.users.find(function(user){return user&&user.l===login&&!user._isSA;});
+  if(login&&!selected){showToast('Compte introuvable dans cette caserne.','warn');renderSuperAdmin();return;}
+  data.adminLogin=selected?selected.l:'';
+  data.users.forEach(function(user){
+    user.rights=Array.isArray(user.rights)?user.rights:[];
+    if(selected&&user.l===selected.l){if(!user.rights.includes('Administration'))user.rights.push('Administration');}
+    else user.rights=user.rights.filter(function(right){return right!=='Administration';});
+    user.caserneId=caserneId;user.appRole=deriveAccountRole(user);
+  });
+  if(CURRENT_CASERNE_ID===caserneId)syncCaserneContext();
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);renderSuperAdmin();
+  showToast(selected?'Administrateur de caserne enregistr\u00e9 : '+fullName(selected):'Administrateur de caserne retir\u00e9','success');
+}
 function setResponsableFormation(caserneId,login){
   if(!isSuperAdmin()){showToast('Seul le super-administrateur peut d\u00e9finir le responsable formation.','warn');return;}
   const data=CASERNE_DATA[caserneId];
@@ -1844,6 +1913,7 @@ function ccRetourTableauBord(){
 
 // ── Chef de corps : éditer ses propres informations (compte global) ──
 function ccEditMesInfos(){
+  if(!isSuperAdmin()){showToast('Le compte du chef de corps est g\u00e9r\u00e9 uniquement par le super-administrateur.','warn');return;}
   const acc=GLOBAL_ACCOUNTS.find(a=>a.role==='chef_corps');
   if(!acc)return;
   const ff=acc.fonctionsFormateur||[];
@@ -1876,6 +1946,7 @@ function ccEditMesInfos(){
 }
 
 function ccSaveMesInfos(){
+  if(!isSuperAdmin()){showToast('Le compte du chef de corps est g\u00e9r\u00e9 uniquement par le super-administrateur.','warn');return;}
   const acc=GLOBAL_ACCOUNTS.find(a=>a.role==='chef_corps');
   if(!acc)return;
   const prenom=document.getElementById('cc-prenom').value.trim();
@@ -1898,6 +1969,7 @@ function ccSaveMesInfos(){
 }
 
 function editCompteSpecial(role){
+  if(!isSuperAdmin()){showToast('Modification r\u00e9serv\u00e9e au super-administrateur.','warn');return;}
   const acc=GLOBAL_ACCOUNTS.find(a=>a.role===role);
   if(!acc)return;
   const label=role==='superadmin'?'Super Administrateur':'Chef de Corps';
@@ -1934,6 +2006,7 @@ function prevEcLogin(){
   if(p&&n&&el)el.value=n+'.'+p;
 }
 async function saveCompteSpecial(role){
+  if(!isSuperAdmin()){showToast('Modification r\u00e9serv\u00e9e au super-administrateur.','warn');return;}
   const acc=GLOBAL_ACCOUNTS.find(a=>a.role===role);
   if(!acc)return;
   const prenom=document.getElementById('ec-prenom').value.trim();
@@ -1961,7 +2034,7 @@ async function saveCompteSpecial(role){
 }
 function editAdminCaserne(cid){
   const d=CASERNE_DATA[cid]||{users:[]};
-  const admin=d.users?.find(u=>u.rights?.includes('Administration'));
+  const admin=getCaserneAdmin(cid);
   const cas=CASERNES.find(c=>c.id===cid);
   if(!admin||!cas)return;
   document.getElementById('mt').textContent='Admin — '+cas.nom;
@@ -2002,7 +2075,7 @@ function editAdminCaserne(cid){
 }
 async function saveAdminCaserne(cid){
   const d=CASERNE_DATA[cid]||{users:[]};
-  const admin=d.users?.find(u=>u.rights?.includes('Administration'));
+  const admin=getCaserneAdmin(cid);
   const cas=CASERNES.find(c=>c.id===cid);
   if(!admin||!cas)return;
   const prenom=document.getElementById('adm-prenom').value.trim();
@@ -2017,6 +2090,7 @@ async function saveAdminCaserne(cid){
   if(pwdErr){err.style.display='block';err.textContent=pwdErr;return;}
   const oldLogin=admin.l;
   admin.prenom=prenom;admin.nom=nom;admin.grade=grade;admin.l=login;
+  d.adminLogin=login;
   if(mdp){admin.p=await hashPassword(mdp);} // P1
   cas.couleur=couleur;
   if(oldLogin!==login){
@@ -5319,7 +5393,7 @@ function rProfil(){
   }
   // Bouton d'édition réservé au chef de corps (il modifie son compte global lui-même)
   const ccBtn=document.getElementById('prof-cc-edit-btn');
-  if(ccBtn)ccBtn.style.display=(GLOBAL_ROLE==='chef_corps')?'':'none';
+  if(ccBtn)ccBtn.style.display='none';
 }
 async function saveProfil(){
   const mdp=document.getElementById('prof-mdp').value;
@@ -5429,7 +5503,7 @@ function rAdm(){
       </div>
     </td>`;
     const rightsCell=(isSA&&!saEditable)?RIGHTS_SHORT.map(()=>'<td style="text-align:center;"><input type="checkbox" checked disabled></td>').join('')
-      :RIGHTS_SHORT.map(r=>`<td style="text-align:center;"><input type="checkbox" ${u.rights.includes(r)?'checked':''} onchange="updateRight('${u.l}','${r.replace(/'/g,"\\'")}',this.checked)" ${(u.l===CU.l&&r==='Administration')||isSA?'disabled':''}></td>`).join('');
+      :RIGHTS_SHORT.map(r=>`<td style="text-align:center;"><input type="checkbox" ${u.rights.includes(r)?'checked':''} onchange="updateRight('${u.l}','${r.replace(/'/g,"\\'")}',this.checked)" ${(r==='Administration'&&!isSuperAdmin())||isSA?'disabled':''}></td>`).join('');
     const delCell=(isSA)?'<td></td>':`<td><button class="del-btn" onclick="delUser('${u.l}')" ${u.l===CU.l?'disabled':''}>✕</button></td>`;
     const matriculeCell=(isSA&&!saEditable)?`<td style="font-size:11px;color:var(--t2);">${u.matricule||'—'}</td>`:`<td><input type="text" value="${u.matricule||''}" data-login="${u.l}" data-field="matricule" onchange="updateUser(this.dataset.login,this.dataset.field,this.value)" placeholder="Matricule" style="width:70px;padding:3px 6px;border:1px solid var(--brd);border-radius:5px;font-size:12px;"/></td>`;
     // Cellule Fonctions formateur
@@ -5542,6 +5616,9 @@ function updateFormateurFn(login,fn,checked){
   if(profPanel&&profPanel.style.display!=='none'&&CU&&CU.l===login)rProfil();
 }
 function updateRight(login,right,checked){
+  if(right==='Administration'&&!isSuperAdmin()){
+    showToast('La d\u00e9signation des administrateurs est r\u00e9serv\u00e9e au super-administrateur.','warn');rAdm();return;
+  }
   const u=USERS.find(x=>x.l===login);if(!u)return;
   if(checked&&!u.rights.includes(right))u.rights.push(right);
   else if(!checked)u.rights=u.rights.filter(r=>r!==right);
@@ -10940,7 +11017,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260731-historique-etat-replie-84';
+const APP_VERSION='20260731-affectations-comptes-protegees-85';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -13059,6 +13136,7 @@ function _buildDataObject(){
       astrTelData:JSON.parse(JSON.stringify(d.astrTelData||{})),
       astrTelParams:{...(d.astrTelParams||{})},
       statsTaux:{...(d.statsTaux||{})},
+      adminLogin:d.adminLogin||'',
       formations:JSON.parse(JSON.stringify(d.formations||[])),
     };
   });
@@ -13122,6 +13200,7 @@ function _applyDataObject(data){
         if(src.astrTelData&&!dispoLocked)dst.astrTelData=src.astrTelData;
         if(src.astrTelParams)dst.astrTelParams=src.astrTelParams;
         if(src.statsTaux)dst.statsTaux=src.statsTaux;
+        if(src.adminLogin!==undefined)dst.adminLogin=src.adminLogin;
         if(src._initCompteurs!==undefined)dst._initCompteurs=src._initCompteurs;
       }
     });
@@ -13987,7 +14066,8 @@ function _rcSplitCaserne(cid, d){
     astrConfig: d.astrConfig||{},
     astrTelData: JSON.parse(JSON.stringify(d.astrTelData||{})),
     astrTelParams: Object.assign({},d.astrTelParams||{}),
-    statsTaux: Object.assign({},d.statsTaux||{})
+    statsTaux: Object.assign({},d.statsTaux||{}),
+    adminLogin: d.adminLogin||''
   };
   rows.push({ id:_rcId(cid,'config','main'), caserne:cid, type:'config', data:cfg, deleted:false });
   return rows;
@@ -14016,6 +14096,7 @@ function _rcAssembleCaserne(rows){
       out.astrTelData=c.astrTelData||{};
       out.astrTelParams=c.astrTelParams||{};
       out.statsTaux=c.statsTaux||{};
+      out.adminLogin=c.adminLogin||'';
     }
   });
   return out;
@@ -14136,6 +14217,28 @@ function _rcPushGlobalRowKeepalive(){
   }catch(e){}
 }
 
+async function _rcProtectSensitiveGlobalRow(rows){
+  if(typeof isSuperAdmin==='function'&&isSuperAdmin())return rows;
+  const globalRow=(rows||[]).find(function(row){return row&&row.type==='global'&&row.caserne==='_GLOBAL';});
+  if(!globalRow)return rows;
+  try{
+    const globalId=_rcId('_GLOBAL','global','main');
+    const resp=await fetch(RC_REST+'?id=eq.'+encodeURIComponent(globalId)+'&select=data&limit=1',{headers:_sbHeaders});
+    if(!resp.ok)throw new Error('global GET HTTP '+resp.status);
+    const records=await resp.json();
+    const remote=Array.isArray(records)&&records[0]&&records[0].data||null;
+    if(!remote||!Array.isArray(remote.GLOBAL_ACCOUNTS))throw new Error('comptes globaux distants absents');
+    const protectedKeys=['GLOBAL_ACCOUNTS','CASERNES','NAT','ACT_TYPES','REPORT_TYPES','COM','ENGIN_TYPES','_cabbalrActif','_initCabbalr'];
+    protectedKeys.forEach(function(key){if(remote[key]!==undefined)globalRow.data[key]=remote[key];});
+    globalRow.data.LOGIN_HISTORY_DELETED=Object.assign({},remote.LOGIN_HISTORY_DELETED||{},globalRow.data.LOGIN_HISTORY_DELETED||{});
+    globalRow.data.LOGIN_HISTORY=_mergeLoginHistory(globalRow.data.LOGIN_HISTORY||[],remote.LOGIN_HISTORY||[],globalRow.data.LOGIN_HISTORY_DELETED);
+    return rows;
+  }catch(error){
+    console.warn('[AGAI][RC] Protection comptes privil\u00e9gi\u00e9s : ligne globale non envoy\u00e9e',error);
+    return (rows||[]).filter(function(row){return !(row&&row.type==='global'&&row.caserne==='_GLOBAL');});
+  }
+}
+
 async function _rcPush(fullPush){
   if(_rcSaving){ _rcScheduleRetry(800); return; }
   _rcSaving = true; _jbSetStatus('saving');
@@ -14173,6 +14276,8 @@ async function _rcPush(fullPush){
       if(r.type==='iv' && r.data){ const lite=Object.assign({},r.data); delete lite.frelonPhotos; delete lite._pdfCache; return Object.assign({},r,{data:lite}); }
       return r;
     });
+    rows=await _rcProtectSensitiveGlobalRow(rows);
+    if(!rows.length){_jbSetStatus(_rcPendingDirty.size?'pending':'ok');return;}
     const currentUser = (typeof CU!=='undefined' && CU) ? (CU.l||'') : '';
     const payload = rows.map(function(r){ return { id:r.id, caserne:r.caserne, type:r.type, data:r.data, deleted:r.deleted, updated_by:currentUser }; });
     const resp = await fetch(RC_REST, {
