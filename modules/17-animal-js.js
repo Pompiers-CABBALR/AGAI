@@ -1531,6 +1531,11 @@ let _rcLastPush = 0;
 let _rcRetryTimer = null;
 let _rcRetryDelay = 2500;
 let _rcDirtyGeneration = 0;
+let _rcRealtimeReady = false;
+let _rcRealtimePullTimer = null;
+let _rcRealtimePullPending = false;
+let _rcRealtimeReconnectTimer = null;
+let _rcRealtimeJoinSequence = 0;
 const RC_PENDING_DIRTY_KEY = 'agai_rc_pending_dirty';
 function _rcLoadPendingDirty(){
   try{
@@ -1566,8 +1571,76 @@ function _rcTrackChangedRecords(previousData,nextData){
   if(changed)_rcDirtyGeneration++;
   _rcPersistPendingDirty();
 }
+function _rcRenderRealtimeViews(){
+  try{rI();}catch(e){}
+  try{rAccueil();}catch(e){}
+  try{rHist();}catch(e){}
+  try{rPilp();}catch(e){}
+}
+function _rcRequestRealtimePull(delay){
+  _rcRealtimePullPending=true;
+  if(_rcRealtimePullTimer)clearTimeout(_rcRealtimePullTimer);
+  const wait=typeof delay==='number'?Math.max(0,delay):0;
+  _rcRealtimePullTimer=window.setTimeout(function attemptRealtimePull(){
+    _rcRealtimePullTimer=null;
+    if(!_rcRealtimePullPending)return;
+    const lockRemaining=Math.max(0,12000-(Date.now()-_jbEditLock));
+    if(_rcSaving||_rcPendingDirty.size||lockRemaining>0){
+      if(_rcPendingDirty.size)_rcScheduleRetry(0);
+      const retryIn=lockRemaining>0?Math.min(1200,Math.max(250,lockRemaining+30)):600;
+      _rcRealtimePullTimer=window.setTimeout(attemptRealtimePull,retryIn);
+      return;
+    }
+    _rcRealtimePullPending=false;
+    Promise.resolve(_rcPull(true)).then(function(ok){
+      if(ok===false)_rcRequestRealtimePull(1500);
+    });
+  },wait);
+}
+function _rcRealtimeRecordFromMessage(message){
+  const change=message&&message.payload&&message.payload.data;
+  return change&&change.record?change.record:null;
+}
+function _rcApplyRealtimeInterventionRecord(record){
+  if(!record||!record.caserne||!record.type)return false;
+  if(record.caserne!==CURRENT_CASERNE_ID)return false;
+  const listKey=record.type==='iv'?'ivs':(record.type==='pilp'?'pilpIvs':'');
+  if(!listKey)return false;
+  if(_rcPendingDirty.has(record.id))return false;
+  let incoming=record.data;
+  if(typeof incoming==='string'){
+    try{incoming=JSON.parse(incoming);}catch(e){return false;}
+  }
+  if(!incoming||!incoming.id)return false;
+  if(window._activeReportDraftIvId===incoming.id)return false;
+  initCaserneData(record.caserne);
+  const list=CASERNE_DATA[record.caserne][listKey]||(CASERNE_DATA[record.caserne][listKey]=[]);
+  const index=list.findIndex(function(item){return item&&item.id===incoming.id;});
+  if(record.deleted===true){
+    if(index>=0)list.splice(index,1);
+  }else{
+    const current=index>=0?list[index]:null;
+    const next=Object.assign({},incoming);
+    if(current&&current.frelonPhotos&&!next.frelonPhotos)next.frelonPhotos=current.frelonPhotos;
+    if(current&&current._pdfCache&&!next._pdfCache)next._pdfCache=current._pdfCache;
+    if(index>=0)list[index]=next;else list.push(next);
+  }
+  syncCaserneContext();
+  try{localStorage.setItem(JB_CACHE_KEY,JSON.stringify(_buildDataObject()));}catch(e){}
+  _rcRenderRealtimeViews();
+  _jbSetStatus('ok');
+  return true;
+}
 window.addEventListener('online',function(){
-  if(USE_RECORDS&&_rcPendingDirty.size)_rcScheduleRetry(0);
+  if(!USE_RECORDS)return;
+  if(_rcPendingDirty.size)_rcScheduleRetry(0);
+  _rcRequestRealtimePull(0);
+  if(!_rcRealtime||_rcRealtime.readyState!==WebSocket.OPEN)_rcStartRealtime();
+});
+document.addEventListener('visibilitychange',function(){
+  if(!USE_RECORDS||document.visibilityState!=='visible')return;
+  _rcRequestRealtimePull(0);
+  if(!_rcRealtime||_rcRealtime.readyState!==WebSocket.OPEN)_rcStartRealtime();
 });
 
 // Construit un id global unique
@@ -1916,27 +1989,70 @@ async function _rcPull(silent){
 // ── Temps réel records ──
 function _rcStartRealtime(){
   try {
-    if(_rcRealtime){ try{_rcRealtime.close();}catch(e){} _rcRealtime=null; }
+    if(_rcRealtimeReconnectTimer){clearTimeout(_rcRealtimeReconnectTimer);_rcRealtimeReconnectTimer=null;}
+    if(_rcRealtime){
+      _rcRealtime._agaiManualClose=true;
+      try{_rcRealtime.close();}catch(e){}
+      _rcRealtime=null;
+    }
+    _rcRealtimeReady=false;
     const wsUrl = SB_URL.replace('https://','wss://') + '/realtime/v1/websocket?apikey=' + SB_KEY + '&vsn=1.0.0';
     const ws = new WebSocket(wsUrl);
     _rcRealtime = ws;
     ws.onopen = function(){
+      const joinRef=String(++_rcRealtimeJoinSequence);
+      ws._agaiJoinRef=joinRef;
       ws.send(JSON.stringify({ topic:'realtime:public:records', event:'phx_join',
-        payload:{ config:{ postgres_changes:[{ event:'*', schema:'public', table:'records' }] } }, ref:'1' }));
-      ws._hb = setInterval(function(){ try{ ws.send(JSON.stringify({topic:'phoenix',event:'heartbeat',payload:{},ref:'hb'})); }catch(e){} }, 25000);
+        payload:{ config:{ postgres_changes:[{ event:'*', schema:'public', table:'records' }] }, access_token:SB_KEY },
+        ref:joinRef, join_ref:joinRef }));
+      ws._agaiJoinTimer=window.setTimeout(function(){
+        if(!_rcRealtimeReady&&ws.readyState===WebSocket.OPEN)try{ws.close();}catch(e){}
+      },8000);
+      ws._hb=setInterval(function(){
+        try{ws.send(JSON.stringify({topic:'phoenix',event:'heartbeat',payload:{},ref:'hb-'+Date.now()}));}catch(e){}
+      },25000);
     };
     ws.onmessage = function(msg){
       try {
         const m = JSON.parse(msg.data);
+        if(m.event==='phx_reply'&&m.ref===ws._agaiJoinRef){
+          if(ws._agaiJoinTimer){clearTimeout(ws._agaiJoinTimer);ws._agaiJoinTimer=null;}
+          const subscriptions=m.payload&&m.payload.response&&m.payload.response.postgres_changes;
+          if(m.payload&&m.payload.status==='ok'&&Array.isArray(subscriptions)&&subscriptions.length){
+            ws._agaiSubscriptionIds=subscriptions.map(function(subscription){return subscription.id;});
+            _rcRealtimeReady=true;
+            _rcRequestRealtimePull(0);
+          }else{
+            ws._agaiJoinRejected=true;
+            try{ws.close();}catch(e){}
+          }
+          return;
+        }
         if(m.event==='postgres_changes'){
-          if(_rcSaving) return;
+          if(Array.isArray(m.payload&&m.payload.ids)&&Array.isArray(ws._agaiSubscriptionIds)
+            &&!m.payload.ids.some(function(id){return ws._agaiSubscriptionIds.includes(id);})){
+            try{ws.close();}catch(e){}
+            return;
+          }
           if(Date.now()-_rcLastPush < 2000) return; // ignorer notre propre écho
-          if(Date.now()-_jbEditLock < 12000) return; // édition en cours
-          _rcPull(true);
+          const applied=_rcApplyRealtimeInterventionRecord(_rcRealtimeRecordFromMessage(m));
+          if(!applied)_rcRequestRealtimePull(0);
+        }else if(m.event==='system'&&m.payload&&m.payload.status==='error'){
+          try{ws.close();}catch(e){}
         }
       } catch(e){}
     };
-    ws.onclose = function(){ if(ws._hb) clearInterval(ws._hb); if(USE_RECORDS) window.setTimeout(_rcStartRealtime, 5000); };
+    ws.onclose = function(){
+      if(ws._hb)clearInterval(ws._hb);
+      if(ws._agaiJoinTimer)clearTimeout(ws._agaiJoinTimer);
+      if(_rcRealtime===ws)_rcRealtime=null;
+      _rcRealtimeReady=false;
+      if(USE_RECORDS&&!ws._agaiManualClose){
+        _rcRequestRealtimePull(0);
+        if(_rcRealtimeReconnectTimer)clearTimeout(_rcRealtimeReconnectTimer);
+        _rcRealtimeReconnectTimer=window.setTimeout(_rcStartRealtime,ws._agaiJoinRejected?15000:3000);
+      }
+    };
     ws.onerror = function(){ try{ws.close();}catch(e){} };
   } catch(e){
     console.warn('[AGAI][RC] Realtime error:', e); _rcStartPolling();
@@ -1950,7 +2066,7 @@ function _rcStartPolling(){
     if(Date.now()-_rcLastPush < 10000) return;
     if(Date.now()-_jbEditLock < 12000) return;
     _rcPull(true);
-  }, 30000);
+  }, 10000);
 }
 
 // ── Migration : copie les données actuelles (cache local) vers la table records ──
