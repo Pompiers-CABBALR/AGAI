@@ -711,7 +711,7 @@ function cM(){
   if(mo&&mo.classList.contains('cr-modal-overlay'))window._activeReportDraftIvId=null;
   deactivateMobileModalField();
   if(mo)mo.style.display='none';
-  if(mo)mo.classList.remove('cr-modal-overlay');
+  if(mo)mo.classList.remove('cr-modal-overlay','pec-modal-overlay','pec-form-active');
   if(panel)panel.scrollTop=0;
 }
 window._activeMobileModalFieldId='';
@@ -720,6 +720,17 @@ function keepMobileModalFieldVisible(){
   const field=fieldId&&document.getElementById(fieldId);
   const overlay=document.getElementById('mo');
   if(!field||!overlay||!overlay.classList.contains('keyboard-aware-modal'))return;
+  const scrollHost=field.closest&&field.closest('.pec-form-scroll');
+  if(scrollHost){
+    const fieldRect=field.getBoundingClientRect(),hostRect=scrollHost.getBoundingClientRect();
+    const margin=16;
+    if(fieldRect.bottom>hostRect.bottom-margin){
+      scrollHost.scrollTop+=fieldRect.bottom-(hostRect.bottom-margin);
+    }else if(fieldRect.top<hostRect.top+margin){
+      scrollHost.scrollTop-=hostRect.top+margin-fieldRect.top;
+    }
+    return;
+  }
   try{field.scrollIntoView({block:'center',inline:'nearest',behavior:'auto'});}catch(e){field.scrollIntoView();}
 }
 function activateMobileModalField(fieldId){
@@ -737,6 +748,28 @@ function deactivateMobileModalField(){
   const overlay=document.getElementById('mo');
   window._activeMobileModalFieldId='';
   if(overlay)overlay.classList.remove('keyboard-aware-modal');
+}
+function registerMobileModalFields(root){
+  const overlay=document.getElementById('mo');
+  if(!overlay||!root)return;
+  overlay.classList.add('keyboard-aware-modal');
+  root.querySelectorAll('input:not([type="checkbox"]):not([type="radio"]),textarea,select').forEach(function(field){
+    if(!field.id)return;
+    const keep=function(){
+      window._activeMobileModalFieldId=field.id;
+      setTimeout(keepMobileModalFieldVisible,80);
+    };
+    field.addEventListener('focus',keep,{passive:true});
+    field.addEventListener('input',keep,{passive:true});
+  });
+}
+function prepareAnimalModal(formActive){
+  const overlay=document.getElementById('mo');
+  if(!overlay)return;
+  deactivateMobileModalField();
+  overlay.classList.add('pec-modal-overlay');
+  overlay.classList.toggle('pec-form-active',!!formActive);
+  if(formActive)overlay.classList.add('keyboard-aware-modal');
 }
 function openModalAtTop(focusId){
   const mo=document.getElementById('mo'),panel=mo&&mo.querySelector('.mod');

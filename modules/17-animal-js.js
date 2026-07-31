@@ -35,7 +35,8 @@ function showPrisesEnChargeManager(ivId){
         +'</div>';
     }).join('')
     +'</div><button class="btn sm" style="width:100%;margin-top:10px;color:#E67E22;border-color:#E67E22;" onclick="addPriseEnChargeAnimal(\''+ivId+'\')">＋ Nouvelle fiche animal</button>';
-  document.getElementById('mo').style.display='flex';
+  prepareAnimalModal(false);
+  openModalAtTop();
 }
 function addPriseEnChargeAnimal(ivId){
   const iv=IVS.find(function(v){return v.id===ivId;});if(!iv)return;
@@ -152,7 +153,9 @@ function showPriseEnChargeModal(ivId,ficheIndex) {
     + '<button class="btn sm" onclick="showPrisesEnChargeManager(\''+ivId+'\')">← Toutes les fiches</button>'
     + '</div></div>';
 
+  prepareAnimalModal(true);
   openModalAtTop();
+  registerMobileModalFields(document.querySelector('#mb .pec-form-scroll'));
 
   // Listeners dynamiques
   setTimeout(function(){
