@@ -590,7 +590,7 @@ body{min-height:var(--app-height);}
   scroll-margin-top:90px;
   scroll-margin-bottom:140px;
 }
-.cr-teammate-grid{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end;}
+.cr-teammate-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr)) auto;gap:8px;align-items:end;}
 @media(min-width:901px) and (pointer:fine){
   .mov.cr-modal-overlay{
     inset:0;

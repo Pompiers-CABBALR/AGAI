@@ -802,9 +802,8 @@ function genRapportInterventionHTML(ivId) {
     const u=USERS.find(function(x){return x.l===login;});
     agents.push({role:role,grade:u?(u.grade||''):'',nom:u?(u.nom+' '+u.prenom):login});
   }
-  addA(iv.agr,"Chef d'agr\u00e8s");
+  interventionMainReportCrew(iv).forEach(function(member){addA(member.login,member.role);});
   if(iv._agr2)addA(iv._agr2,"Chef d'agr\u00e8s");
-  if(iv._equipage1)iv._equipage1.forEach(function(e){addA(e.login,e.role);});
   if(iv._equipage2)iv._equipage2.forEach(function(e){addA(e.login,e.role);});
   if(iv._releves)iv._releves.forEach(function(r){if(r.nouvelEquipage)r.nouvelEquipage.forEach(function(e){addA(e.login,e.role);});});
 
