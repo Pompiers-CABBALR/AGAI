@@ -347,14 +347,15 @@ function applyNavRights(){
   document.getElementById('fb-mes-sel').style.display=(isAgres()||isTireurPILP())?'':'none';
   const fbResp=document.getElementById('fb-mes-resp');
   if(fbResp)fbResp.style.display=(isChef()||isAgres()||hasRight('Administration'))?'':'none';
-  const isAdmin=hasRight('Administration');
+  const isAdminActive=hasRight('Administration');
+  const isAdminAccount=hasAdministrativeAccount();
   const isResp=isRespEquipe();
   const piquetsBtn=document.getElementById('astr-btn-piquets');
   const equipesBtn=document.getElementById('astr-btn-equipes');
   if(piquetsBtn)piquetsBtn.style.display=''; // visible pour tous
-    if(equipesBtn)equipesBtn.style.display=isAdmin?'':'none';
+  if(equipesBtn)equipesBtn.style.display=isAdminAccount?'':'none';
   const gardeBtn=document.getElementById('astr-btn-garde');
-  if(gardeBtn)gardeBtn.style.display=isAdmin?'':'none';  // Bouton accès global visible uniquement pour le superadmin
+  if(gardeBtn)gardeBtn.style.display=isAdminActive?'':'none';
   const navGlobal=document.getElementById('nav-global');
   if(navGlobal)navGlobal.classList.toggle('hidden',!isSuperAdmin());
   const navFormation=document.getElementById('nav-formation');

@@ -120,22 +120,22 @@ function getEquipeSemaine(wKey){
 // ══════════════════════════════════════════════════════
 function isChefOuAdjoint(){
   if(!CU)return false;
-  if(isSuperAdmin()||isAdminModeActive())return true;
+  if(hasAdministrativeAccount())return true;
   return CU.fonction==='Chef de centre'||CU.fonction==='Adjoint au chef de centre';
 }
 function rAstreintes(){
   applyNavRights();
   const btnTel=document.getElementById('astr-btn-tel');
-  if(btnTel)btnTel.style.display=isAdminModeActive()?'':'none';
+  if(btnTel)btnTel.style.display=isChefOuAdjoint()?'':'none';
   const activeBtn=document.querySelector('#astr-subtabs .subtab-btn.active');
   let sub='planning';
   if(activeBtn){const m=activeBtn.getAttribute('onclick').match(/'([^']+)'/);if(m)sub=m[1];}
-  if(sub==='tel'&&!isAdminModeActive())sub='planning';
+  if(sub==='tel'&&!isChefOuAdjoint())sub='planning';
   showAstrTab(sub,activeBtn||document.getElementById('astr-btn-planning'));
 }
 function showAstrTab(sub,btn){
-  // L'astreinte téléphonique n'est accessible qu'en mode admin actif.
-  if(sub==='tel'&&!isAdminModeActive()){
+  // Les comptes administrateurs y accèdent sans activer leurs pouvoirs.
+  if(sub==='tel'&&!isChefOuAdjoint()){
     sub='planning';
     btn=document.getElementById('astr-btn-planning');
   }

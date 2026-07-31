@@ -500,14 +500,15 @@ function applyNavRights(){
   document.getElementById('fb-mes-sel').style.display=(isAgres()||isTireurPILP())?'':'none';
   const fbResp=document.getElementById('fb-mes-resp');
   if(fbResp)fbResp.style.display=(isChef()||isAgres()||hasRight('Administration'))?'':'none';
-  const isAdmin=hasRight('Administration');
+  const isAdminActive=hasRight('Administration');
+  const isAdminAccount=hasAdministrativeAccount();
   const isResp=isRespEquipe();
   const piquetsBtn=document.getElementById('astr-btn-piquets');
   const equipesBtn=document.getElementById('astr-btn-equipes');
   if(piquetsBtn)piquetsBtn.style.display=''; // visible pour tous
-    if(equipesBtn)equipesBtn.style.display=isAdmin?'':'none';
+  if(equipesBtn)equipesBtn.style.display=isAdminAccount?'':'none';
   const gardeBtn=document.getElementById('astr-btn-garde');
-  if(gardeBtn)gardeBtn.style.display=isAdmin?'':'none';  // Bouton accès global visible uniquement pour le superadmin
+  if(gardeBtn)gardeBtn.style.display=isAdminActive?'':'none';
   const navGlobal=document.getElementById('nav-global');
   if(navGlobal)navGlobal.classList.toggle('hidden',!isSuperAdmin());
   const navFormation=document.getElementById('nav-formation');
@@ -5408,22 +5409,22 @@ function getEquipeSemaine(wKey){
 // ══════════════════════════════════════════════════════
 function isChefOuAdjoint(){
   if(!CU)return false;
-  if(isSuperAdmin()||isAdminModeActive())return true;
+  if(hasAdministrativeAccount())return true;
   return CU.fonction==='Chef de centre'||CU.fonction==='Adjoint au chef de centre';
 }
 function rAstreintes(){
   applyNavRights();
   const btnTel=document.getElementById('astr-btn-tel');
-  if(btnTel)btnTel.style.display=isAdminModeActive()?'':'none';
+  if(btnTel)btnTel.style.display=isChefOuAdjoint()?'':'none';
   const activeBtn=document.querySelector('#astr-subtabs .subtab-btn.active');
   let sub='planning';
   if(activeBtn){const m=activeBtn.getAttribute('onclick').match(/'([^']+)'/);if(m)sub=m[1];}
-  if(sub==='tel'&&!isAdminModeActive())sub='planning';
+  if(sub==='tel'&&!isChefOuAdjoint())sub='planning';
   showAstrTab(sub,activeBtn||document.getElementById('astr-btn-planning'));
 }
 function showAstrTab(sub,btn){
-  // L'astreinte téléphonique n'est accessible qu'en mode admin actif.
-  if(sub==='tel'&&!isAdminModeActive()){
+  // Les comptes administrateurs y accèdent sans activer leurs pouvoirs.
+  if(sub==='tel'&&!isChefOuAdjoint()){
     sub='planning';
     btn=document.getElementById('astr-btn-planning');
   }
@@ -10614,7 +10615,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260731-equipier-session-76';
+const APP_VERSION='20260731-astreintes-admin-direct-77';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
