@@ -66,14 +66,7 @@ function rStats(){
 }
 
 function rStatsAppels(){
-  const now=N();
-  const today=[now.getFullYear(),String(now.getMonth()+1).padStart(2,'0'),String(now.getDate()).padStart(2,'0')].join('-');
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(stAppelsDate))stAppelsDate=today;
-  const parts=stAppelsDate.split('-');
-  const yearKey=parts[0],monthKey=parts[0]+parts[1],dayKey=monthKey+parts[2];
-  const refDate=new Date(Number(parts[0]),Number(parts[1])-1,Number(parts[2]));
-  const dayLabel=refDate.toLocaleDateString('fr-FR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
-  const monthLabel=refDate.toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
+  const yearKey=String(stAnnee);
   const calls=statsAppelsEnregistres(IVS);
   const operators=new Map();
   (USERS||[]).filter(function(user){return user&&user.l&&!user._isSA;}).forEach(function(user){
@@ -81,7 +74,11 @@ function rStatsAppels(){
   });
   calls.forEach(function(call){
     const login=String(call.op||'').trim()||'__non_renseigne__';
-    if(!operators.has(login))operators.set(login,{login:login,label:login==='__non_renseigne__'?'Opérateur non renseigné':login});
+    if(!operators.has(login)){
+      const historical=login==='__non_renseigne__'?null:findHistoricalAccountByLogin(login);
+      const historicalName=historical?fullName(historical):'';
+      operators.set(login,{login:login,label:historicalName||(login==='__non_renseigne__'?'Opérateur non renseigné':login)});
+    }
   });
   function countFor(login,prefix){
     return calls.filter(function(call){
@@ -90,44 +87,36 @@ function rStatsAppels(){
     }).length;
   }
   const rows=Array.from(operators.values()).map(function(operator){
-    return {login:operator.login,label:operator.label,day:countFor(operator.login,dayKey),month:countFor(operator.login,monthKey),year:countFor(operator.login,yearKey)};
+    const months=ST_MOIS.map(function(_,index){return countFor(operator.login,yearKey+String(index+1).padStart(2,'0'));});
+    return {login:operator.login,label:operator.label,months:months,year:months.reduce(function(sum,value){return sum+value;},0)};
   }).sort(function(a,b){
     if(b.year!==a.year)return b.year-a.year;
-    if(b.month!==a.month)return b.month-a.month;
-    if(b.day!==a.day)return b.day-a.day;
     return a.label.localeCompare(b.label,'fr',{sensitivity:'base'});
   });
-  const totalDay=calls.filter(function(call){return statsAppelDateKey(call)===dayKey;}).length;
-  const totalMonth=calls.filter(function(call){return statsAppelDateKey(call).startsWith(monthKey);}).length;
   const totalYear=calls.filter(function(call){return statsAppelDateKey(call).startsWith(yearKey);}).length;
-  const cards=[
-    ['Jour sélectionné',totalDay,'#C0392B'],
-    ['Mois sélectionné',totalMonth,'#2563EB'],
-    ["Depuis le 01/01/"+yearKey,totalYear,'#166534']
-  ].map(function(card){
-    return '<div style="background:#fff;border:1px solid var(--brd);border-top:4px solid '+card[2]+';border-radius:11px;padding:12px;text-align:center;min-width:150px;flex:1;">'
-      +'<div style="font-size:28px;font-weight:700;color:'+card[2]+';">'+card[1]+'</div>'
-      +'<div style="font-size:11px;color:var(--t2);margin-top:2px;">'+card[0]+'</div></div>';
-  }).join('');
+  const monthTotals=ST_MOIS.map(function(_,index){
+    const prefix=yearKey+String(index+1).padStart(2,'0');
+    return calls.filter(function(call){return statsAppelDateKey(call).startsWith(prefix);}).length;
+  });
+  const monthHeaders=ST_MOIS.map(function(month){return '<th style="padding:8px 5px;text-align:center;min-width:48px;">'+month.slice(0,3)+'</th>';}).join('');
   const tableRows=rows.map(function(row){
+    const monthCells=row.months.map(function(value){return '<td style="padding:8px 5px;text-align:center;font-weight:'+(value?'700':'400')+';">'+value+'</td>';}).join('');
     return '<tr style="border-bottom:1px solid #eee;">'
       +'<td style="padding:8px 10px;font-weight:600;">'+escHtml(row.label)+'</td>'
-      +'<td style="padding:8px;text-align:center;font-weight:'+(row.day?'700':'400')+';">'+row.day+'</td>'
-      +'<td style="padding:8px;text-align:center;font-weight:'+(row.month?'700':'400')+';">'+row.month+'</td>'
-      +'<td style="padding:8px;text-align:center;font-weight:'+(row.year?'700':'400')+';">'+row.year+'</td></tr>';
+      +monthCells
+      +'<td style="padding:8px;text-align:center;font-weight:700;background:#f5f5f5;">'+row.year+'</td></tr>';
   }).join('');
+  const totalCells=monthTotals.map(function(value){return '<td style="padding:8px 5px;text-align:center;">'+value+'</td>';}).join('');
   return '<div style="background:#fff;border-radius:12px;padding:14px;">'
-    +'<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;">'
       +'<div><div style="font-size:16px;font-weight:700;">☎️ Appels enregistrés par utilisateur</div>'
       +'<div style="font-size:11px;color:var(--t2);margin-top:3px;">Les appels annulés sont inclus. Les copies reçues lors d’un transfert ne sont pas recomptées.</div></div>'
-      +'<label style="font-size:11px;font-weight:600;">Date de référence<br><input type="date" value="'+stAppelsDate+'" onchange="stAppelsDate=this.value;rStatsContent()" style="margin-top:4px;padding:6px 9px;border:1px solid var(--brd);border-radius:8px;font-size:12px;"></label>'
+      +'<div style="background:#EAF3DE;border:1px solid #A9D18E;border-radius:10px;padding:8px 18px;text-align:center;"><div style="font-size:25px;font-weight:700;color:#166534;">'+totalYear+'</div><div style="font-size:11px;color:#166534;">Total annuel '+yearKey+'</div></div>'
     +'</div>'
-    +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'+cards+'</div>'
-    +'<div style="font-size:11px;color:var(--t2);margin:0 0 7px;">Jour : <strong>'+escHtml(dayLabel)+'</strong> · Mois : <strong>'+escHtml(monthLabel)+'</strong></div>'
-    +'<div style="overflow-x:auto;border:1px solid var(--brd);border-radius:10px;"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:540px;">'
-      +'<thead><tr style="background:#f5f5f5;"><th style="padding:8px 10px;text-align:left;">Utilisateur</th><th style="padding:8px;text-align:center;">Jour</th><th style="padding:8px;text-align:center;">Mois</th><th style="padding:8px;text-align:center;">Depuis le 01/01</th></tr></thead>'
+    +'<div style="overflow-x:auto;border:1px solid var(--brd);border-radius:10px;"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:980px;">'
+      +'<thead><tr style="background:#f5f5f5;"><th style="padding:8px 10px;text-align:left;min-width:170px;">Utilisateur</th>'+monthHeaders+'<th style="padding:8px;text-align:center;background:#e9e9e9;min-width:60px;">Année</th></tr></thead>'
       +'<tbody>'+tableRows+'</tbody>'
-      +'<tfoot><tr style="background:var(--t);color:#fff;font-weight:700;"><td style="padding:8px 10px;">TOTAL</td><td style="padding:8px;text-align:center;">'+totalDay+'</td><td style="padding:8px;text-align:center;">'+totalMonth+'</td><td style="padding:8px;text-align:center;">'+totalYear+'</td></tr></tfoot>'
+      +'<tfoot><tr style="background:var(--t);color:#fff;font-weight:700;"><td style="padding:8px 10px;">TOTAL</td>'+totalCells+'<td style="padding:8px;text-align:center;">'+totalYear+'</td></tr></tfoot>'
     +'</table></div></div>';
 }
 
