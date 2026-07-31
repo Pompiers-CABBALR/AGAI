@@ -24,6 +24,22 @@ function canAccessFraisAdministratifs(){
 }
 function getSuperAdminAccount(){return GLOBAL_ACCOUNTS.find(a=>a.role==='superadmin');}
 function getChefCorpsAccount(){return GLOBAL_ACCOUNTS.find(a=>a.role==='chef_corps');}
+function getChefCorpsCandidates(){
+  const candidates=[];const seen={};
+  OP_CASERNES().forEach(function(caserne){
+    const data=CASERNE_DATA[caserne.id];
+    (data&&Array.isArray(data.users)?data.users:[]).forEach(function(user){
+      if(!user||!user.l||user._isSA||seen[user.l])return;
+      seen[user.l]=true;
+      candidates.push(Object.assign({},user,{_sourceCaserneId:caserne.id,_sourceCaserneNom:caserne.nom}));
+    });
+  });
+  const current=getChefCorpsAccount();
+  if(current&&current.l&&!seen[current.l]){
+    candidates.push(Object.assign({},current,{_sourceCaserneId:current.homeCaserneId||'EMAJ',_sourceCaserneNom:current.homeCaserneNom||'État-Major'}));
+  }
+  return candidates.sort(function(a,b){return String(a.nom||'').localeCompare(String(b.nom||''),'fr')||String(a.prenom||'').localeCompare(String(b.prenom||''),'fr');});
+}
 function repairKnownChefCorpsAssignment(){
   const account=getChefCorpsAccount();
   if(!account||account._assignmentProtectedV85===true)return false;

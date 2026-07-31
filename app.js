@@ -177,6 +177,22 @@ function canAccessFraisAdministratifs(){
 }
 function getSuperAdminAccount(){return GLOBAL_ACCOUNTS.find(a=>a.role==='superadmin');}
 function getChefCorpsAccount(){return GLOBAL_ACCOUNTS.find(a=>a.role==='chef_corps');}
+function getChefCorpsCandidates(){
+  const candidates=[];const seen={};
+  OP_CASERNES().forEach(function(caserne){
+    const data=CASERNE_DATA[caserne.id];
+    (data&&Array.isArray(data.users)?data.users:[]).forEach(function(user){
+      if(!user||!user.l||user._isSA||seen[user.l])return;
+      seen[user.l]=true;
+      candidates.push(Object.assign({},user,{_sourceCaserneId:caserne.id,_sourceCaserneNom:caserne.nom}));
+    });
+  });
+  const current=getChefCorpsAccount();
+  if(current&&current.l&&!seen[current.l]){
+    candidates.push(Object.assign({},current,{_sourceCaserneId:current.homeCaserneId||'EMAJ',_sourceCaserneNom:current.homeCaserneNom||'État-Major'}));
+  }
+  return candidates.sort(function(a,b){return String(a.nom||'').localeCompare(String(b.nom||''),'fr')||String(a.prenom||'').localeCompare(String(b.prenom||''),'fr');});
+}
 function repairKnownChefCorpsAssignment(){
   const account=getChefCorpsAccount();
   if(!account||account._assignmentProtectedV85===true)return false;
@@ -1089,6 +1105,7 @@ function renderSuperAdmin(){
   // Section gestion des comptes (admins casernes + chef de corps)
   const sa=getSuperAdminAccount();
   const cc=getChefCorpsAccount();
+  const chefCorpsCandidates=getChefCorpsCandidates();
   const comptesHtml=`
     <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;border:1px solid #eee;">
       <div style="font-size:14px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px;">&#x1F511; Gestion des accès
@@ -1111,11 +1128,18 @@ function renderSuperAdmin(){
         <!-- Compte chef de corps -->
         <div style="background:#EFF6FF;border-radius:10px;padding:12px;border:1px solid #BFDBFE;">
           <div style="font-size:11px;font-weight:700;color:#1D4ED8;margin-bottom:6px;text-transform:uppercase;">&#x1F396;️ Chef de Corps</div>
-          <div style="font-size:13px;font-weight:600;">${cc.prenom} ${cc.nom}</div>
-          <div style="font-size:11px;color:#666;font-family:monospace;margin:3px 0;">${cc.l}</div>
-          <div style="font-size:11px;color:#999;">Accès : statistiques consolidées (lecture seule)</div>
-          <button class="btn sm" style="font-size:11px;margin-top:8px;" onclick="editCompteSpecial('chef_corps')">✏️ Modifier</button>
-        </div>
+           <div style="font-size:13px;font-weight:600;">${cc.prenom} ${cc.nom}</div>
+           <div style="font-size:11px;color:#666;font-family:monospace;margin:3px 0;">${cc.l}</div>
+           <div style="font-size:11px;color:#999;">Espace : État-Major · Statistiques consolidées</div>
+           <select class="fi" style="font-size:11px;padding:4px 6px;width:100%;margin-top:7px;" onchange="setChefCorpsAccount(this.value)">
+             <option value="">— Désigner le chef de corps —</option>
+             ${chefCorpsCandidates.map(u=>`<option value="${escHtml(u.l)}"${cc&&cc.l===u.l?' selected':''}>${escHtml((u.nom||'')+' '+(u.prenom||''))} · ${escHtml(u._sourceCaserneNom||'État-Major')}</option>`).join('')}
+           </select>
+           <div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
+             <button class="btn sm" style="font-size:11px;" onclick="editCompteSpecial('chef_corps')">&#x1F511; Modifier le mot de passe</button>
+           </div>
+           <div style="font-size:10px;color:#777;margin-top:4px;">Désignation unique, modifiable uniquement par le superadmin. Les identifiants actuels sont conservés.</div>
+         </div>
         <!-- Admins casernes -->
         ${OP_CASERNES().map(c=>{
           const d=CASERNE_DATA[c.id]||{users:[]};
@@ -1751,6 +1775,25 @@ function renderChefCorpsBody(){
 
 
 // Gestion comptes spéciaux
+function setChefCorpsAccount(login){
+  if(!isSuperAdmin()){showToast('Seul le super-administrateur peut d\u00e9signer le chef de corps.','warn');return;}
+  if(!login){showToast('Le chef de corps ne peut pas \u00eatre retir\u00e9 sans rempla\u00e7ant.','warn');renderSuperAdmin();return;}
+  const selected=getChefCorpsCandidates().find(function(user){return user&&user.l===login;});
+  if(!selected){showToast('Compte introuvable.','warn');renderSuperAdmin();return;}
+  let account=getChefCorpsAccount();
+  if(!account){account={};GLOBAL_ACCOUNTS.push(account);}
+  const rightsCC=Array.isArray(account.rightsCC)?account.rightsCC.slice():["Interventions","Formation","Chef d'agrès","Historique complet"];
+  ['l','p','prenom','nom','grade','fonction','fonction2','matricule','fonctionsFormateur'].forEach(function(key){
+    if(selected[key]!==undefined)account[key]=Array.isArray(selected[key])?selected[key].slice():selected[key];
+  });
+  account.role='chef_corps';account.appRole='chef_corps';account.caserneId='EMAJ';
+  account.homeCaserneId=selected._sourceCaserneId||selected.homeCaserneId||'EMAJ';
+  account.homeCaserneNom=selected._sourceCaserneNom||selected.homeCaserneNom||'État-Major';
+  account.rightsCC=rightsCC;account._assignmentProtectedV85=true;
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);renderSuperAdmin();
+  showToast('Chef de corps enregistr\u00e9 : '+fullName(account),'success');
+}
 function setCaserneAdmin(caserneId,login){
   if(!isSuperAdmin()){showToast('Seul le super-administrateur peut d\u00e9signer un administrateur de caserne.','warn');return;}
   const data=CASERNE_DATA[caserneId];
@@ -1865,7 +1908,7 @@ function ccAccederEspaceSaisie(){
   const c=CASERNES.find(x=>x.id==='EMAJ');
   const t2u=document.getElementById('t2u'),t2r=document.getElementById('t2r');
   if(t2u)t2u.textContent=(CU?CU.l:'')+' — '+(c?c.nom:'État-Major');
-  if(t2r)t2r.textContent='Chef de Corps · '+(c?c.code:'EMA');
+  if(t2r)t2r.textContent='Chef de Corps · '+(c?c.nom:'État-Major');
   // Basculer de la vue globale vers l'app
   document.getElementById('global-view').style.display='none';
   const ap=document.getElementById('app');ap.style.display='flex';
@@ -11017,7 +11060,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260731-affectations-comptes-protegees-85';
+const APP_VERSION='20260801-gestion-chef-corps-etat-major-86';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
