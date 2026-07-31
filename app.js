@@ -5137,10 +5137,14 @@ function rHistLegacy(){
     }).join('')}</div></div>`;
   }).join('');
 }
-function tg(id,aid){const el=document.getElementById(id);if(!el)return;const v=el.style.display!=='none';el.style.display=v?'none':'';const a=document.getElementById(aid);if(a)a.textContent=v?'▶':'▼';}
+function tgLegacy(id,aid){const el=document.getElementById(id);if(!el)return;const v=el.style.display!=='none';el.style.display=v?'none':'';const a=document.getElementById(aid);if(a)a.textContent=v?'▶':'▼';}
 
 // ────────────────── PROFIL ──────────────────
 let HIST_SEARCH='';
+const HIST_GROUP_STATE={};
+function historyGroupOpen(id,defaultOpen){
+  return Object.prototype.hasOwnProperty.call(HIST_GROUP_STATE,id)?HIST_GROUP_STATE[id]:!!defaultOpen;
+}
 function historyNormalizeSearch(value){
   return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
 }
@@ -5250,28 +5254,37 @@ function rHist(){
   const yearHtml=years.map(function(year,yearIndex){
     const monthKeys=Object.keys(groups[year]).sort(function(a,b){return b-a;});
     const yearTotal=monthKeys.reduce(function(total,month){return total+Object.values(groups[year][month]).reduce(function(sum,week){return sum+Object.values(week.days).reduce(function(s,list){return s+list.length;},0);},0);},0);
-    const yearId='hist-year-'+year;
-    return '<div class="hgrp hist-year-block"><div class="hgh" onclick="tg(\''+yearId+'\',\'arr-'+yearId+'\')">\ud83d\udcc5 '+year+'<span class="bdg bgr" style="margin-left:auto;">'+yearTotal+'</span><span id="arr-'+yearId+'">\u25bc</span></div><div id="'+yearId+'" class="hgb hist-group-content hist-year-content">'
+    const yearId='hist-year-'+year,yearOpen=historyGroupOpen(yearId,true);
+    return '<div class="hgrp hist-year-block"><div class="hgh" onclick="tg(\''+yearId+'\',\'arr-'+yearId+'\')">\ud83d\udcc5 '+year+'<span class="bdg bgr" style="margin-left:auto;">'+yearTotal+'</span><span id="arr-'+yearId+'">'+(yearOpen?'\u25bc':'\u25b6')+'</span></div><div id="'+yearId+'" class="hgb hist-group-content hist-year-content" style="display:'+(yearOpen?'':'none')+';">'
       +monthKeys.map(function(month,monthIndex){
         const weeks=groups[year][month],weekKeys=Object.keys(weeks).sort().reverse();
         const monthTotal=weekKeys.reduce(function(total,key){return total+Object.values(weeks[key].days).reduce(function(s,list){return s+list.length;},0);},0);
-        const monthId='hist-month-'+year+'-'+month;
-        return '<div class="hist-month-block"><div class="hsub" onclick="tg(\''+monthId+'\',\'arr-'+monthId+'\')">'+months[Number(month)]+'<span class="bdg bgr">'+monthTotal+'</span><span id="arr-'+monthId+'" style="margin-left:auto;">\u25bc</span></div><div id="'+monthId+'" class="hist-group-content hist-month-content">'
+        const monthId='hist-month-'+year+'-'+month,monthOpen=historyGroupOpen(monthId,true);
+        return '<div class="hist-month-block"><div class="hsub" onclick="tg(\''+monthId+'\',\'arr-'+monthId+'\')">'+months[Number(month)]+'<span class="bdg bgr">'+monthTotal+'</span><span id="arr-'+monthId+'" style="margin-left:auto;">'+(monthOpen?'\u25bc':'\u25b6')+'</span></div><div id="'+monthId+'" class="hist-group-content hist-month-content" style="display:'+(monthOpen?'':'none')+';">'
           +weekKeys.map(function(weekKey,weekIndex){
             const week=weeks[weekKey],days=Object.keys(week.days).sort().reverse();
             const weekTotal=days.reduce(function(sum,day){return sum+week.days[day].length;},0);
-            const weekId='hist-week-'+year+'-'+month+'-'+weekKey,open=yearIndex===0&&monthIndex===0&&weekIndex===0;
+            const weekId='hist-week-'+year+'-'+month+'-'+weekKey,open=historyGroupOpen(weekId,yearIndex===0&&monthIndex===0&&weekIndex===0);
             return '<div class="hist-week-block"><div class="hist-week-header" onclick="tg(\''+weekId+'\',\'arr-'+weekId+'\')"><span>\ud83d\uddd3\ufe0f '+week.info.label+'</span><span class="bdg bgr">'+weekTotal+'</span><span id="arr-'+weekId+'" style="margin-left:auto;">'+(open?'\u25bc':'\u25b6')+'</span></div><div id="'+weekId+'" class="hist-group-content hist-week-content" style="display:'+(open?'':'none')+';">'
               +days.map(function(day){
-                const list=week.days[day],dayId='hist-day-'+day+'-'+weekKey;
+                const list=week.days[day],dayId='hist-day-'+day+'-'+weekKey,dayOpen=historyGroupOpen(dayId,true);
                 const dt=new Date(Number(day.slice(0,4)),Number(day.slice(4,6))-1,Number(day.slice(6,8))),dayName=dt.toLocaleDateString('fr-FR',{weekday:'long'});
-                return '<div class="hist-day-block"><div class="hist-day-header" onclick="tg(\''+dayId+'\',\'arr-'+dayId+'\')"><span>'+dayName.charAt(0).toUpperCase()+dayName.slice(1)+' '+day.slice(6,8)+'/'+day.slice(4,6)+'/'+day.slice(0,4)+'</span><span class="bdg bgr">'+list.length+'</span><span id="arr-'+dayId+'" style="margin-left:auto;">\u25bc</span></div><div id="'+dayId+'" class="hist-group-content hist-day-content">'+list.map(historyRowHTML).join('')+'</div></div>';
+                return '<div class="hist-day-block"><div class="hist-day-header" onclick="tg(\''+dayId+'\',\'arr-'+dayId+'\')"><span>'+dayName.charAt(0).toUpperCase()+dayName.slice(1)+' '+day.slice(6,8)+'/'+day.slice(4,6)+'/'+day.slice(0,4)+'</span><span class="bdg bgr">'+list.length+'</span><span id="arr-'+dayId+'" style="margin-left:auto;">'+(dayOpen?'\u25bc':'\u25b6')+'</span></div><div id="'+dayId+'" class="hist-group-content hist-day-content" style="display:'+(dayOpen?'':'none')+';">'+list.map(historyRowHTML).join('')+'</div></div>';
               }).join('')+'</div></div>';
           }).join('')+'</div></div>';
       }).join('')+'</div></div>';
   }).join('');
   c.innerHTML=tools+'<div id="hist-no-results" style="display:none;padding:18px;text-align:center;color:var(--t2);">Aucune intervention ne correspond \u00e0 cette recherche.</div>'+yearHtml;
   if(HIST_SEARCH)filterHistoryRows(HIST_SEARCH);
+}
+
+function tg(id,aid){
+  const el=document.getElementById(id);if(!el)return;
+  const isOpen=el.style.display!=='none';
+  const nextOpen=!isOpen;
+  el.style.display=nextOpen?'':'none';
+  if(String(id).startsWith('hist-'))HIST_GROUP_STATE[id]=nextOpen;
+  const arrow=document.getElementById(aid);if(arrow)arrow.textContent=nextOpen?'\u25bc':'\u25b6';
 }
 
 function rProfil(){
@@ -10927,7 +10940,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260731-historique-recherche-impression-83';
+const APP_VERSION='20260731-historique-etat-replie-84';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
