@@ -122,7 +122,10 @@ function isInterventionReportChef(iv,login){
 }
 
 function interventionRoleKey(role){
-  return String(role||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z]/g,'');
+  const key=String(role||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z]/g,'');
+  if(key==='cond'||key==='conductrice'||key.startsWith('conducteur'))return 'conducteur';
+  if(key==='eq'||key==='equ'||key==='equipiere'||key.startsWith('equipier'))return 'equipier';
+  return key;
 }
 function interventionMainReportCrew(iv){
   if(!iv)return[];
