@@ -560,7 +560,7 @@ function enr(){
   exPilp.forEach(iv=>iv.rappels=(iv.rappels||0)+1);
   // Numérotation appel (APL) et intervention (INT, seulement quand terminée)
   const numApl=nextAplNum(annee);
-  const nums=nextIntNum(annee); // Réservé pour quand l'intervention sera terminée
+  const nums=nextIntNum(annee,h); // Réservé pour quand l'intervention sera terminée
   let det=document.getElementById('fo').value.trim();
   const appelDetails=_captureAppelDetails();
   const tels=getAppelPhones();
@@ -572,7 +572,7 @@ function enr(){
 
   if(pilpDirect&&selNat==='Nid de frelons asiatiques'){
     // Attribuer numéro INT à l'IVS de base qui sera comptabilisée
-    const numsInt=nextIntNum(annee);
+    const numsInt=nextIntNum(annee,h);
     const ivBase={id:numsInt.idCas,_numApl:numApl,_numCaserne:numsInt.numCas,_numGlobal:numsInt.numGlobal,
       n:selNat,addr,com,h,op:CU.l,s:'terminee',det,eng:null,
       req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,

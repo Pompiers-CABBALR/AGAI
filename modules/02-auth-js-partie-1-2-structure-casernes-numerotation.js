@@ -264,15 +264,28 @@ function nextRenfortNum(annee){
   return maxR+1;
 }
 
+function interventionNumberingDateKey(reference,annee){
+  if(reference&&typeof reference==='object'&&typeof adminExportInterventionStartDate==='function'){
+    const actual=adminExportInterventionStartDate(reference);
+    if(/^\d{8}$/.test(actual))return actual;
+  }
+  const raw=typeof reference==='string'?reference:String(reference&&reference.h||'');
+  const digits=raw.replace(/\D/g,'');
+  if(digits.length>=8)return digits.slice(0,8);
+  const now=N();
+  const year=String(annee||now.getFullYear());
+  return year+String(now.getMonth()+1).padStart(2,'0')+String(now.getDate()).padStart(2,'0');
+}
+
 // Numérotation INT — 4 compteurs attribués à la clôture
 // numGlobal  : Intercommunale (toutes casernes, début d'année)
 // numCas     : UT (caserne courante, début d'année)
 // numMois    : Du mois (caserne courante, repart à 0 chaque mois)
 // _numSDIS   : saisi manuellement dans le CR SDIS
-function nextIntNum(annee){
-  const y=String(annee);
-  const mo=String(new Date().getMonth()+1).padStart(2,'0');
-  const ymo=y+mo;
+function nextIntNum(annee,reference){
+  const referenceDate=interventionNumberingDateKey(reference,annee);
+  const y=referenceDate.slice(0,4)||String(annee);
+  const ymo=referenceDate.slice(0,6);
   const cid=CURRENT_CASERNE_ID;
   const initGlobal=CASERNE_DATA._initCabbalr||0;
   const initCas=(CASERNE_DATA[cid]&&CASERNE_DATA[cid]._initCompteurs&&CASERNE_DATA[cid]._initCompteurs.ut)||0;
@@ -281,7 +294,7 @@ function nextIntNum(annee){
   let maxGlobal=initGlobal;
   Object.values(CASERNE_DATA).forEach(function(cd){
     [...(cd.ivs||[]),...(cd.pilpIvs||[])].forEach(function(iv){
-      if(iv.s==='terminee'&&(iv.h||'').startsWith(y)&&iv._numGlobal){
+      if(iv.s==='terminee'&&interventionNumberingDateKey(iv).startsWith(y)&&iv._numGlobal){
         const n=parseInt(iv._numGlobal)||0;if(n>maxGlobal)maxGlobal=n;
       }
     });
@@ -290,8 +303,8 @@ function nextIntNum(annee){
   const ivsCas=[...(CASERNE_DATA[cid]&&CASERNE_DATA[cid].ivs||[]),...(CASERNE_DATA[cid]&&CASERNE_DATA[cid].pilpIvs||[])];
   let maxCas=initCas,maxMois=initMois;
   ivsCas.forEach(function(iv){
-    if(iv.s==='terminee'&&!iv._isRenfort&&(iv.h||'').startsWith(y)&&iv._numCaserne){const n=parseInt(iv._numCaserne)||0;if(n>maxCas)maxCas=n;}
-    if(iv.s==='terminee'&&!iv._isRenfort&&(iv.h||'').startsWith(ymo)&&iv._numMois){const n=parseInt(iv._numMois)||0;if(n>maxMois)maxMois=n;}
+    if(iv.s==='terminee'&&!iv._isRenfort&&interventionNumberingDateKey(iv).startsWith(y)&&iv._numCaserne){const n=parseInt(iv._numCaserne)||0;if(n>maxCas)maxCas=n;}
+    if(iv.s==='terminee'&&!iv._isRenfort&&interventionNumberingDateKey(iv).startsWith(ymo)&&iv._numMois){const n=parseInt(iv._numMois)||0;if(n>maxMois)maxMois=n;}
   });
   return {numGlobal:maxGlobal+1,numCas:maxCas+1,numMois:maxMois+1};
 }
@@ -315,8 +328,9 @@ function agaiCheckNumberingConflicts(notify){
       const identity=cid+'|'+String(iv.id||'');
       if(seenRecords.has(identity))return;
       seenRecords.add(identity);
-      const year=String(iv.h||'').slice(0,4);
-      const month=String(iv.h||'').slice(0,6);
+      const numberingDate=interventionNumberingDateKey(iv);
+      const year=numberingDate.slice(0,4);
+      const month=numberingDate.slice(0,6);
       const record={identity:identity,caserneId:cid,id:String(iv.id||''),nature:String(iv.n||'')};
       if(iv._numGlobal)add(indexes.global,year+'|'+String(iv._numGlobal),'CABBALR',record);
       if(iv._numCaserne)add(indexes.caserne,cid+'|'+year+'|'+String(iv._numCaserne),'UT',record);
@@ -333,6 +347,40 @@ function agaiCheckNumberingConflicts(notify){
     }
   }
   return conflicts;
+}
+function agaiRepairMonthlyNumberingConflicts(){
+  const cid=CURRENT_CASERNE_ID;
+  const data=cid&&CASERNE_DATA[cid];
+  if(!data)return [];
+  const groups={};
+  const seen=new Set();
+  [...(data.ivs||[]),...(data.pilpIvs||[])].forEach(function(iv){
+    if(!iv||iv._isRenfort||iv.s!=='terminee'||!iv._numMois)return;
+    const identity=String(iv.id||'');if(!identity||seen.has(identity))return;seen.add(identity);
+    const month=interventionNumberingDateKey(iv).slice(0,6);if(month.length!==6)return;
+    if(!groups[month])groups[month]=[];groups[month].push(iv);
+  });
+  const changes=[];
+  Object.keys(groups).forEach(function(month){
+    const records=groups[month];
+    const numbers=records.map(function(iv){return parseInt(iv._numMois,10)||0;}).filter(function(value){return value>0;});
+    if(new Set(numbers).size===numbers.length)return;
+    const firstNumber=Math.min.apply(Math,numbers);
+    records.sort(function(a,b){
+      const aTime=String(a._hDebut||'').replace(/\D/g,'').padStart(4,'0').slice(0,4);
+      const bTime=String(b._hDebut||'').replace(/\D/g,'').padStart(4,'0').slice(0,4);
+      const dateOrder=(interventionNumberingDateKey(a)+aTime).localeCompare(interventionNumberingDateKey(b)+bTime);
+      if(dateOrder)return dateOrder;
+      return String(a.id||'').localeCompare(String(b.id||''),'fr',{numeric:true});
+    });
+    records.forEach(function(iv,index){
+      const next=firstNumber+index;
+      if(parseInt(iv._numMois,10)===next)return;
+      changes.push({id:iv.id,avant:iv._numMois,apres:next,mois:month});
+      iv._numMois=next;
+    });
+  });
+  return changes;
 }
 // setCaserneTheme désactivé — couleur bandeau fixe (--red original)
 function setCaserneTheme(couleur){/* no-op : couleur bandeau fixe */}

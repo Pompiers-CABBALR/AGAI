@@ -33,7 +33,7 @@ function creerPILP(ivId){
   const annee=new Date().getFullYear();
   // L'intervention parente (frelons) reçoit son numéro INT à la clôture
   if(!iv._numCaserne){
-    const nums=nextIntNum(annee);
+    const nums=nextIntNum(annee,iv);
     iv._numCaserne=nums.numCas;iv._numGlobal=nums.numGlobal;
     iv.id=nums.idCas;
   }
@@ -229,7 +229,7 @@ function clotPilp(id){
     iv.s='terminee';iv._hFin=getHHMM(N());iv.tl.push({s:'terminee',h,who:CU.l});
     // Attribuer numéros INT
     if(!iv._numGlobal||!iv._numCaserne||!iv._numMois){
-      const nums=nextIntNum(new Date().getFullYear());
+      const nums=nextIntNum(new Date().getFullYear(),iv);
       if(!iv._numGlobal)  iv._numGlobal=nums.numGlobal;
       if(!iv._numCaserne) iv._numCaserne=nums.numCas;
       if(!iv._numMois)    iv._numMois=nums.numMois;
@@ -245,7 +245,7 @@ function clotAvisPilp(id){
   const h=getH(N());iv.s='terminee';iv.tl.push({s:'terminee',h,who:CU.l});
   if(!iv._numCaserne){
     const annee=new Date().getFullYear();
-    const nums=nextIntNum(annee);
+    const nums=nextIntNum(annee,iv);
     iv._numCaserne=nums.numCas;iv._numGlobal=nums.numGlobal;
     IVS.unshift({id:nums.idCas,_numApl:iv._numApl||iv.id,_numCaserne:nums.numCas,_numGlobal:nums.numGlobal,
       n:iv.n.replace(' — PILP',''),addr:iv.addr,com:iv.com,h:iv.h,op:iv.agr||CU.l,

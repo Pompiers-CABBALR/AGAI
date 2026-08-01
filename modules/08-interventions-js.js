@@ -1077,12 +1077,12 @@ function clot(id){
       if(!iv._numGlobal){
         const ivSrc=IVS.find(function(x){return x.id===iv._ivSourceId;})||
           Object.values(CASERNE_DATA).flatMap(function(cd){return cd.ivs||[];}).find(function(x){return x.id===iv._ivSourceId;});
-        iv._numGlobal=ivSrc&&ivSrc._numGlobal?ivSrc._numGlobal:nextIntNum(annee).numGlobal;
+        iv._numGlobal=ivSrc&&ivSrc._numGlobal?ivSrc._numGlobal:nextIntNum(annee,iv).numGlobal;
       }
       if(!iv._numRenfort) iv._numRenfort=nextRenfortNum(annee);
       iv._numCaserne=null; iv._numMois=null;
     } else {
-      const nums=nextIntNum(annee);
+      const nums=nextIntNum(annee,iv);
       if(!iv._numGlobal&&cabbalrActif())  iv._numGlobal=nums.numGlobal;
       if(!iv._numCaserne) iv._numCaserne=nums.numCas;
       if(!iv._numMois)    iv._numMois=nums.numMois;
