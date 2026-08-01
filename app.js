@@ -11248,7 +11248,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260801-sync-mobile-appels-deblocage-98';
+const APP_VERSION='20260801-sync-appel-envoi-isole-99';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -13520,7 +13520,12 @@ function _jbSetStatus(state){
   const queued=typeof _rcPendingDirty!=='undefined'?_rcPendingDirty.size:0;
   el.textContent=c.txt+((state==='pending'||state==='error')&&queued?' ('+queued+' en attente)':'');
   el.style.cssText='position:fixed;bottom:8px;right:8px;z-index:9999;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;background:'+c.bg+';color:'+c.color+';box-shadow:0 1px 4px rgba(0,0,0,.15);cursor:pointer;';
-  el.onclick=function(){jbSyncNow();};
+  const syncError=typeof _rcLastSyncError!=='undefined'?_rcLastSyncError:'';
+  el.title=state==='error'&&syncError?syncError:'Cliquer pour synchroniser maintenant';
+  el.onclick=function(){
+    if(state==='error'&&syncError)showToast('Synchronisation : '+syncError,'error');
+    jbSyncNow();
+  };
 }
 
 function saveData(immediate){
@@ -14148,6 +14153,7 @@ let _rcLastPush = 0;
 let _rcRetryTimer = null;
 let _rcRetryDelay = 2500;
 let _rcDirtyGeneration = 0;
+let _rcLastSyncError = '';
 let _rcRealtimeReady = false;
 let _rcRealtimePullTimer = null;
 let _rcRealtimePullPending = false;
@@ -14506,9 +14512,10 @@ async function _rcPush(fullPush){
       rows = candidate;
     } else {
       // Ne pousser que la caserne active + les enregistrements marqués dirty
-      // Si des ids dirty sont connus, restreindre à ceux-là (+ global toujours poussé léger)
+      // Si des ids dirty sont connus, envoyer uniquement ces lignes. Ajouter la
+      // configuration à chaque appel rendait tout le lot vulnérable à une erreur annexe.
       if(_rcPendingDirty.size>0){
-        rows = candidate.filter(function(r){ return _rcPendingDirty.has(r.id) || r.type==='global' || r.type==='config'; });
+        rows = candidate.filter(function(r){ return _rcPendingDirty.has(r.id); });
       } else {
         rows = candidate;
       }
@@ -14534,19 +14541,24 @@ async function _rcPush(fullPush){
       headers:Object.assign({}, _sbHeaders, { 'Prefer':'resolution=merge-duplicates,return=minimal' }),
       body:JSON.stringify(payload)
     });
-    if(!resp.ok) throw new Error('records POST HTTP '+resp.status);
+    if(!resp.ok){
+      let detail='';try{detail=String(await resp.text()||'').replace(/\s+/g,' ').slice(0,180);}catch(readError){}
+      throw new Error('HTTP '+resp.status+(detail?' — '+detail:''));
+    }
     localStorage.setItem(JB_CACHE_KEY, JSON.stringify(data));
     _rcLastPush = Date.now();
     if(_rcDirtyGeneration===generationAtStart){
       rows.forEach(function(row){_rcPendingDirty.delete(row.id);});
     }
     _rcPersistPendingDirty();
+    _rcLastSyncError='';
     _rcRetryDelay=2500;
     if(_rcRetryTimer){clearTimeout(_rcRetryTimer);_rcRetryTimer=null;}
     _jbSetStatus(_rcPendingDirty.size?'pending':'ok');
     if(_rcPendingDirty.size)_rcScheduleRetry();
   } catch(e){
     console.warn('[AGAI][RC] Push error:', e);
+    _rcLastSyncError=String(e&&e.message||e||'Erreur inconnue');
     _rcPersistPendingDirty();
     _jbSetStatus('error');
     _rcRetryDelay=Math.min(30000,Math.max(2500,_rcRetryDelay*2));
