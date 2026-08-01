@@ -920,7 +920,8 @@ function _jbSetStatus(state){
   if(!el){el=document.createElement('div');el.id='jb-status';document.body.appendChild(el);}
   const cfg={ok:{txt:'☁️ Sync OK',bg:'#ECFDF5',color:'#065F46'},saving:{txt:'⏳ Sync...',bg:'#FFF7ED',color:'#92400E'},pending:{txt:'⏳ Sync en attente',bg:'#FFF7ED',color:'#92400E'},error:{txt:'⚠️ Sync KO',bg:'#FEF2F2',color:'#991B1B'},loading:{txt:'⏳ Chargement',bg:'#EFF6FF',color:'#1D4ED8'}};
   const c=cfg[state]||cfg.ok;
-  el.textContent=c.txt+(state==='pending'&&typeof _rcPendingDirty!=='undefined'?' ('+_rcPendingDirty.size+')':'');
+  const queued=typeof _rcPendingDirty!=='undefined'?_rcPendingDirty.size:0;
+  el.textContent=c.txt+((state==='pending'||state==='error')&&queued?' ('+queued+' en attente)':'');
   el.style.cssText='position:fixed;bottom:8px;right:8px;z-index:9999;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;background:'+c.bg+';color:'+c.color+';box-shadow:0 1px 4px rgba(0,0,0,.15);cursor:pointer;';
   el.onclick=function(){jbSyncNow();};
 }
@@ -1566,6 +1567,20 @@ const _rcPendingDirty = new Set(_rcLoadPendingDirty());
 function _rcPersistPendingDirty(){
   try{localStorage.setItem(RC_PENDING_DIRTY_KEY,JSON.stringify(Array.from(_rcPendingDirty)));}catch(e){}
 }
+function _rcRowWritableHere(row){
+  if(!row)return false;
+  if(typeof isSuperAdmin==='function'&&isSuperAdmin())return true;
+  return row.caserne==='_GLOBAL'||(CURRENT_CASERNE_ID&&row.caserne===CURRENT_CASERNE_ID);
+}
+function _rcPrunePendingDirty(candidateRows){
+  const validIds=new Set((candidateRows||[]).map(function(row){return row&&row.id;}).filter(Boolean));
+  let changed=false;
+  Array.from(_rcPendingDirty).forEach(function(id){
+    if(!validIds.has(id)){_rcPendingDirty.delete(id);changed=true;}
+  });
+  if(changed)_rcPersistPendingDirty();
+  return changed;
+}
 function _rcScheduleRetry(delay){
   if(!USE_RECORDS||!_rcPendingDirty.size)return;
   if(_rcRetryTimer)clearTimeout(_rcRetryTimer);
@@ -1583,7 +1598,7 @@ function _rcTrackChangedRecords(previousData,nextData){
     previousMap[row.id]=JSON.stringify({data:row.data,deleted:!!row.deleted});
   });
   let changed=false;
-  _rcSplitAll(nextData).forEach(function(row){
+  _rcSplitAll(nextData).filter(_rcRowWritableHere).forEach(function(row){
     const serialized=JSON.stringify({data:row.data,deleted:!!row.deleted});
     if(previousMap[row.id]!==serialized){_rcPendingDirty.add(row.id);changed=true;}
   });
@@ -1880,19 +1895,18 @@ async function _rcPush(fullPush){
   try {
     const data = _buildDataObject();
     let rows;
+    const allRows=_rcSplitAll(data);
+    const candidate=fullPush?allRows:allRows.filter(_rcRowWritableHere);
+    const pendingBeforePrune=_rcPendingDirty.size;
+    _rcPrunePendingDirty(candidate);
+    if(!fullPush&&pendingBeforePrune>0&&!_rcPendingDirty.size){
+      _jbSetStatus('ok');
+      return;
+    }
     if(fullPush){
-      rows = _rcSplitAll(data);
+      rows = candidate;
     } else {
       // Ne pousser que la caserne active + les enregistrements marqués dirty
-      const activeCid = CURRENT_CASERNE_ID;
-      let candidate = [];
-      if(isSuperAdmin()){
-        candidate = _rcSplitAll(data);
-      } else {
-        // ligne globale + caserne active
-        const all = _rcSplitAll(data);
-        candidate = all.filter(function(r){ return r.caserne==='_GLOBAL' || r.caserne===activeCid; });
-      }
       // Si des ids dirty sont connus, restreindre à ceux-là (+ global toujours poussé léger)
       if(_rcPendingDirty.size>0){
         rows = candidate.filter(function(r){ return _rcPendingDirty.has(r.id) || r.type==='global' || r.type==='config'; });
@@ -1910,7 +1924,9 @@ async function _rcPush(fullPush){
       if(r.type==='iv' && r.data){ const lite=Object.assign({},r.data); delete lite.frelonPhotos; delete lite._pdfCache; return Object.assign({},r,{data:lite}); }
       return r;
     });
+    const hadGlobalRow=rows.some(function(row){return row&&row.type==='global'&&row.caserne==='_GLOBAL';});
     rows=await _rcProtectSensitiveGlobalRow(rows);
+    if(hadGlobalRow&&!rows.some(function(row){return row&&row.type==='global'&&row.caserne==='_GLOBAL';}))throw new Error('protection de la ligne globale indisponible');
     if(!rows.length){_jbSetStatus(_rcPendingDirty.size?'pending':'ok');return;}
     const currentUser = (typeof CU!=='undefined' && CU) ? (CU.l||'') : '';
     const payload = rows.map(function(r){ return { id:r.id, caserne:r.caserne, type:r.type, data:r.data, deleted:r.deleted, updated_by:currentUser }; });
@@ -1933,7 +1949,7 @@ async function _rcPush(fullPush){
   } catch(e){
     console.warn('[AGAI][RC] Push error:', e);
     _rcPersistPendingDirty();
-    _jbSetStatus(_rcPendingDirty.size?'pending':'error');
+    _jbSetStatus('error');
     _rcRetryDelay=Math.min(30000,Math.max(2500,_rcRetryDelay*2));
     _rcScheduleRetry();
   } finally {
