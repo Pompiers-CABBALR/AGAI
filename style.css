@@ -499,12 +499,14 @@ select.fi{min-width:0;width:100%;max-width:100%;}
 }
 /* Planning compact : s'applique aussi en mode paysage du téléphone (jusqu'à 1024px) */
 @media(max-width:1024px){
-  #astr-planning-grid table{font-size:10px;}
-  #astr-planning-grid th[style*="min-width:130px"]{min-width:78px!important;font-size:9px;padding:3px 3px!important;}
+  #astr-planning-grid{overflow-x:hidden;}
+  #astr-planning-grid table{font-size:10px;width:100%!important;min-width:100%!important;table-layout:fixed;}
+  #astr-planning-grid th[style*="min-width:130px"]{width:78px!important;min-width:78px!important;max-width:78px!important;font-size:9px;padding:3px 3px!important;}
   #astr-planning-grid .astr-fct-col{width:30px!important;min-width:30px!important;max-width:30px!important;font-size:7px!important;padding:3px 1px!important;}
+  #astr-planning-grid .astr-slot-col{width:auto!important;min-width:0!important;max-width:none!important;font-size:7px!important;padding-left:0!important;padding-right:0!important;}
   #astr-planning-grid thead th{min-width:12px!important;padding:2px 0!important;}
   #astr-planning-grid tbody td{padding:2px 0!important;}
-  #astr-planning-grid tbody td[style*="sticky"]{font-size:9px!important;padding:3px 3px!important;}
+  #astr-planning-grid tbody td[style*="sticky"]{width:78px!important;max-width:78px!important;font-size:9px!important;padding:3px 3px!important;overflow:hidden;text-overflow:ellipsis;}
   #astr-planning-grid tbody td[style*="var(--t2)"]{font-size:7px!important;padding:3px 1px!important;}
 }
 @media(pointer:coarse){
