@@ -11248,7 +11248,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260801-numerotation-mensuelle-date-reelle-97';
+const APP_VERSION='20260801-sync-mobile-appels-deblocage-98';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -14167,7 +14167,9 @@ function _rcPersistPendingDirty(){
 function _rcRowWritableHere(row){
   if(!row)return false;
   if(typeof isSuperAdmin==='function'&&isSuperAdmin())return true;
-  return row.caserne==='_GLOBAL'||(CURRENT_CASERNE_ID&&row.caserne===CURRENT_CASERNE_ID);
+  // La politique Supabase réserve _GLOBAL au superadmin. Un utilisateur de caserne
+  // ne doit jamais laisser cette ligne bloquer l'envoi de ses interventions.
+  return !!(CURRENT_CASERNE_ID&&row.caserne===CURRENT_CASERNE_ID);
 }
 function _rcPrunePendingDirty(candidateRows){
   const validIds=new Set((candidateRows||[]).map(function(row){return row&&row.id;}).filter(Boolean));

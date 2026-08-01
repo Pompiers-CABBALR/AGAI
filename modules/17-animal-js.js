@@ -1570,7 +1570,9 @@ function _rcPersistPendingDirty(){
 function _rcRowWritableHere(row){
   if(!row)return false;
   if(typeof isSuperAdmin==='function'&&isSuperAdmin())return true;
-  return row.caserne==='_GLOBAL'||(CURRENT_CASERNE_ID&&row.caserne===CURRENT_CASERNE_ID);
+  // La politique Supabase réserve _GLOBAL au superadmin. Un utilisateur de caserne
+  // ne doit jamais laisser cette ligne bloquer l'envoi de ses interventions.
+  return !!(CURRENT_CASERNE_ID&&row.caserne===CURRENT_CASERNE_ID);
 }
 function _rcPrunePendingDirty(candidateRows){
   const validIds=new Set((candidateRows||[]).map(function(row){return row&&row.id;}).filter(Boolean));
