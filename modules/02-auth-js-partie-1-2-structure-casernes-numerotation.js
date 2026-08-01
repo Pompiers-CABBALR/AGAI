@@ -245,9 +245,31 @@ function nextPilpId(annee){
 // APL_2026_000001 — numéro d'appel global
 function nextAplNum(annee){
   const y=String(annee);
-  if(!APL_COUNTER[y])APL_COUNTER[y]=0;
-  APL_COUNTER[y]++;
+  let max=Number(APL_COUNTER[y])||0;
+  const prefix='APL_'+y+'_';
+  Object.keys(CASERNE_DATA||{}).forEach(function(cid){
+    const d=CASERNE_DATA[cid]||{};
+    [].concat(d.ivs||[],d.pilpIvs||[]).forEach(function(iv){
+      const visible=String(iv&&(iv._numApl||iv.id)||'');
+      if(visible.indexOf(prefix)!==0)return;
+      const n=parseInt(visible.slice(prefix.length),10);
+      if(Number.isFinite(n)&&n>max)max=n;
+    });
+  });
+  APL_COUNTER[y]=max+1;
   return 'APL_'+y+'_'+String(APL_COUNTER[y]).padStart(APL_NUM_DIGITS,'0');
+}
+
+// Le numero APL reste lisible par les utilisateurs, mais ne sert plus de cle
+// technique : deux appareils peuvent calculer le meme APL avant synchronisation.
+function makeInterventionRecordId(displayNum){
+  let random='';
+  try{
+    random=crypto.randomUUID().replace(/-/g,'').slice(0,10);
+  }catch(e){
+    random=Math.random().toString(36).slice(2,12);
+  }
+  return String(displayNum||'APL')+'-R'+Date.now().toString(36)+'-'+random;
 }
 
 // Compteur Inter Renfort : par caserne, depuis début d'année

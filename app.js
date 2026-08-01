@@ -398,9 +398,31 @@ function nextPilpId(annee){
 // APL_2026_000001 — numéro d'appel global
 function nextAplNum(annee){
   const y=String(annee);
-  if(!APL_COUNTER[y])APL_COUNTER[y]=0;
-  APL_COUNTER[y]++;
+  let max=Number(APL_COUNTER[y])||0;
+  const prefix='APL_'+y+'_';
+  Object.keys(CASERNE_DATA||{}).forEach(function(cid){
+    const d=CASERNE_DATA[cid]||{};
+    [].concat(d.ivs||[],d.pilpIvs||[]).forEach(function(iv){
+      const visible=String(iv&&(iv._numApl||iv.id)||'');
+      if(visible.indexOf(prefix)!==0)return;
+      const n=parseInt(visible.slice(prefix.length),10);
+      if(Number.isFinite(n)&&n>max)max=n;
+    });
+  });
+  APL_COUNTER[y]=max+1;
   return 'APL_'+y+'_'+String(APL_COUNTER[y]).padStart(APL_NUM_DIGITS,'0');
+}
+
+// Le numero APL reste lisible par les utilisateurs, mais ne sert plus de cle
+// technique : deux appareils peuvent calculer le meme APL avant synchronisation.
+function makeInterventionRecordId(displayNum){
+  let random='';
+  try{
+    random=crypto.randomUUID().replace(/-/g,'').slice(0,10);
+  }catch(e){
+    random=Math.random().toString(36).slice(2,12);
+  }
+  return String(displayNum||'APL')+'-R'+Date.now().toString(36)+'-'+random;
 }
 
 // Compteur Inter Renfort : par caserne, depuis début d'année
@@ -3754,7 +3776,7 @@ function enr(){
     return;
   }
   // Enregistrement normal — id = numéro APL, numéro INT attribué à la clôture
-  const newIv={id:numApl,_numApl:numApl,
+  const newIv={id:makeInterventionRecordId(numApl),_numApl:numApl,
     n:selNat,addr,com,h,op:CU.l,s:'en-attente',det,eng:null,_sdis:document.getElementById('chk-sdis')?.checked||false,_erp:erp,_urgence:erp,_animauxAppel:animauxAppel,
     req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,reqDispo,
     obs:'',agr:null,rappels:exIv.length,avisIds:exIv.map(iv=>iv.id),_appelDetails:appelDetails,
@@ -3766,7 +3788,7 @@ function enr(){
   const cm=document.getElementById('cm');cm.style.display='block';
   cm.innerHTML=`✅ Appel enregistré — <strong>${numApl}</strong>
     <br><span style="font-family:monospace;font-size:11px;">&#x1F4C5; ${h} | ${CU.l}</span>
-    <br><button class="btn sm" style="margin-top:6px;font-size:11px;color:#E24B4A;" onclick="annulerAppel('${numApl}')">✕ Annuler cet appel</button>`;
+    <br><button class="btn sm" style="margin-top:6px;font-size:11px;color:#E24B4A;" onclick="annulerAppel('${newIv.id}')">✕ Annuler cet appel</button>`;
   // Réinitialiser immédiatement le formulaire pour prendre un nouvel appel
   rF();rI();rAccueil();
   gS(1);
@@ -3777,7 +3799,7 @@ function annulerAppel(ivId){
   const iv=IVS.find(v=>v.id===ivId);
   if(!iv||iv.s!=='en-attente')return;
   document.getElementById('mt').textContent='Annuler l’appel';
-  document.getElementById('mi').textContent=ivId;
+  document.getElementById('mi').textContent=iv._numApl||ivId;
   document.getElementById('mb').innerHTML=`<div>
     <div style="font-size:13px;margin-bottom:10px;">Motif d’annulation <span style="color:#E24B4A;">*</span></div>
     <textarea class="fta" id="cancel-appel-motif" placeholder="ex. Faux appel, requérant a raccroché, doublon…" style="height:70px;"></textarea>
@@ -7933,7 +7955,7 @@ function confirmerTransfert(id){
   const annee=new Date().getFullYear();
   const anneeT=new Date().getFullYear();
   ivCopie._numApl=nextAplNum(anneeT); // Compteur atomique global
-  ivCopie.id=ivCopie._numApl;
+  ivCopie.id=makeInterventionRecordId(ivCopie._numApl);
   CASERNE_DATA[destId].ivs.unshift(ivCopie);
   // Marquer l'original comme transféré
   iv._transfertVers=destId;
@@ -8041,7 +8063,7 @@ function confirmerEchelleToiture(ivId){
   const h=getH(N());const annee=new Date().getFullYear();
   const numApl=nextAplNum(annee);
   incCallCounter();
-  IVS.unshift({id:numApl,_numApl:numApl,n:iv.n,addr:iv.addr,addrComp:iv.addrComp||'',com:iv.com,
+  IVS.unshift({id:makeInterventionRecordId(numApl),_numApl:numApl,n:iv.n,addr:iv.addr,addrComp:iv.addrComp||'',com:iv.com,
     h,op:CU.l,s:'en-attente',det:obs,eng:null,req:iv.req,tel:iv.tel,obs:'',agr:null,
     rappels:0,avisIds:[],_echelleToiture:true,tl:[mkTL('en-attente',h,CU.l)]});
   cM();rI();rAccueil();
@@ -8067,7 +8089,7 @@ function confirmerEPA(ivId){
   const h=getH(N());const annee=new Date().getFullYear();
   const numApl=nextAplNum(annee);
   incCallCounter();
-  IVS.unshift({id:numApl,_numApl:numApl,n:iv.n,addr:iv.addr,addrComp:iv.addrComp||'',com:iv.com,
+  IVS.unshift({id:makeInterventionRecordId(numApl),_numApl:numApl,n:iv.n,addr:iv.addr,addrComp:iv.addrComp||'',com:iv.com,
     h,op:CU.l,s:'en-attente',det:obs,eng:null,req:iv.req,tel:iv.tel,obs:'',agr:null,
     rappels:0,avisIds:[],_epa:true,tl:[mkTL('en-attente',h,CU.l)]});
   cM();rI();rAccueil();
@@ -8099,7 +8121,7 @@ function confirmerSDIS(ivId){
   const numApl=nextAplNum(annee);
   incCallCounter();
   const newIv={
-    id:numApl,_numApl:numApl,n:iv.n,addr:iv.addr,addrComp:iv.addrComp||'',com:iv.com,
+    id:makeInterventionRecordId(numApl),_numApl:numApl,n:iv.n,addr:iv.addr,addrComp:iv.addrComp||'',com:iv.com,
     h,op:CU.l,s:'en-cours',det:iv.det,eng:iv.eng,req:iv.req,tel:iv.tel,obs:'',
     agr:iv.agr||CU.l,rappels:0,avisIds:[],_sdis:true,_refOrig:iv.id,
     tl:[mkTL('en-attente',h,CU.l),mkTL('en-cours',h,CU.l+' (SDIS)')]
@@ -8107,7 +8129,7 @@ function confirmerSDIS(ivId){
   IVS.unshift(newIv);
   cM();rI();rAccueil();
   // Ouvrir directement la nouvelle intervention
-  setTimeout(()=>oM(numApl),100);
+  setTimeout(()=>oM(newIv.id),100);
 }
 // ── Heure affichage HH:MM ──
 function getHHMM(d){return pad(d.getHours())+':'+pad(d.getMinutes());}
@@ -11248,7 +11270,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260801-sync-doublon-requete-100';
+const APP_VERSION='20260801-identifiants-interventions-uniques-101';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -13532,6 +13554,11 @@ function saveData(immediate){
   try{
     // Forcer la resynchronisation des variables globales avant sauvegarde
     if(CURRENT_CASERNE_ID&&typeof syncCaserneContext==='function')syncCaserneContext();
+    // Reparer avant la mise en cache un ancien doublon d'id qui ferait fusionner
+    // deux interventions distinctes lors de la synchronisation Supabase.
+    if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcRepairDuplicateLocalRecordIds==='function'){
+      _rcRepairDuplicateLocalRecordIds();
+    }
     const data=_buildDataObject();
     if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcTrackChangedRecords==='function'){
       let previous=null;
@@ -14193,6 +14220,54 @@ function _rcUniqueRowsById(rows){
   });
   return Array.from(unique.values());
 }
+
+// Migration locale pour les appels crees avant les identifiants techniques
+// uniques. L'intervention la plus ancienne conserve l'ancien id ; chaque
+// doublon plus recent recoit une nouvelle cle avant tout envoi a Supabase.
+function _rcRepairDuplicateLocalRecordIds(){
+  const cid=CURRENT_CASERNE_ID;
+  const d=cid&&CASERNE_DATA&&CASERNE_DATA[cid];
+  if(!cid||!d)return [];
+  const repairs=[];
+  const listTypes={ivs:'iv',pilpIvs:'pilp'};
+  Object.keys(listTypes).forEach(function(listKey){
+    const list=Array.isArray(d[listKey])?d[listKey]:[];
+    const groups={};
+    list.forEach(function(item,index){
+      if(!item||!item.id)return;
+      (groups[item.id]||(groups[item.id]=[])).push({item:item,index:index});
+    });
+    Object.keys(groups).forEach(function(oldId){
+      const group=groups[oldId];
+      if(group.length<2)return;
+      group.sort(function(a,b){
+        const ah=String(a.item.h||'');
+        const bh=String(b.item.h||'');
+        if(ah!==bh)return ah.localeCompare(bh);
+        // Les nouveaux appels sont ajoutes au debut de la liste.
+        return b.index-a.index;
+      });
+      group.slice(1).forEach(function(entry){
+        const item=entry.item;
+        if(!item._numApl&&String(oldId).indexOf('APL_')===0)item._numApl=oldId;
+        const newId=makeInterventionRecordId(item._numApl||oldId);
+        item.id=newId;
+        repairs.push({type:listTypes[listKey],oldId:oldId,newId:newId});
+      });
+    });
+  });
+  if(!repairs.length)return repairs;
+  repairs.forEach(function(repair){
+    const oldRowId=_rcId(cid,repair.type,repair.oldId);
+    const newRowId=_rcId(cid,repair.type,repair.newId);
+    _rcPendingDirty.delete(oldRowId);
+    _rcPendingDirty.add(newRowId);
+  });
+  _rcDirtyGeneration++;
+  _rcPersistPendingDirty();
+  console.warn('[AGAI][RC] Identifiants d interventions dupliques repares :',repairs.length);
+  return repairs;
+}
 function _rcScheduleRetry(delay){
   if(!USE_RECORDS||!_rcPendingDirty.size)return;
   if(_rcRetryTimer)clearTimeout(_rcRetryTimer);
@@ -14504,8 +14579,10 @@ async function _rcProtectSensitiveGlobalRow(rows){
 async function _rcPush(fullPush){
   if(_rcSaving){ _rcScheduleRetry(800); return; }
   _rcSaving = true; _jbSetStatus('saving');
-  const generationAtStart=_rcDirtyGeneration;
+  let generationAtStart=_rcDirtyGeneration;
   try {
+    _rcRepairDuplicateLocalRecordIds();
+    generationAtStart=_rcDirtyGeneration;
     const data = _buildDataObject();
     let rows;
     const allRows=_rcSplitAll(data);

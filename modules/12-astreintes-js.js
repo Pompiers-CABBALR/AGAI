@@ -2098,7 +2098,7 @@ function confirmerTransfert(id){
   const annee=new Date().getFullYear();
   const anneeT=new Date().getFullYear();
   ivCopie._numApl=nextAplNum(anneeT); // Compteur atomique global
-  ivCopie.id=ivCopie._numApl;
+  ivCopie.id=makeInterventionRecordId(ivCopie._numApl);
   CASERNE_DATA[destId].ivs.unshift(ivCopie);
   // Marquer l'original comme transféré
   iv._transfertVers=destId;
@@ -2206,7 +2206,7 @@ function confirmerEchelleToiture(ivId){
   const h=getH(N());const annee=new Date().getFullYear();
   const numApl=nextAplNum(annee);
   incCallCounter();
-  IVS.unshift({id:numApl,_numApl:numApl,n:iv.n,addr:iv.addr,addrComp:iv.addrComp||'',com:iv.com,
+  IVS.unshift({id:makeInterventionRecordId(numApl),_numApl:numApl,n:iv.n,addr:iv.addr,addrComp:iv.addrComp||'',com:iv.com,
     h,op:CU.l,s:'en-attente',det:obs,eng:null,req:iv.req,tel:iv.tel,obs:'',agr:null,
     rappels:0,avisIds:[],_echelleToiture:true,tl:[mkTL('en-attente',h,CU.l)]});
   cM();rI();rAccueil();
@@ -2232,7 +2232,7 @@ function confirmerEPA(ivId){
   const h=getH(N());const annee=new Date().getFullYear();
   const numApl=nextAplNum(annee);
   incCallCounter();
-  IVS.unshift({id:numApl,_numApl:numApl,n:iv.n,addr:iv.addr,addrComp:iv.addrComp||'',com:iv.com,
+  IVS.unshift({id:makeInterventionRecordId(numApl),_numApl:numApl,n:iv.n,addr:iv.addr,addrComp:iv.addrComp||'',com:iv.com,
     h,op:CU.l,s:'en-attente',det:obs,eng:null,req:iv.req,tel:iv.tel,obs:'',agr:null,
     rappels:0,avisIds:[],_epa:true,tl:[mkTL('en-attente',h,CU.l)]});
   cM();rI();rAccueil();
@@ -2264,7 +2264,7 @@ function confirmerSDIS(ivId){
   const numApl=nextAplNum(annee);
   incCallCounter();
   const newIv={
-    id:numApl,_numApl:numApl,n:iv.n,addr:iv.addr,addrComp:iv.addrComp||'',com:iv.com,
+    id:makeInterventionRecordId(numApl),_numApl:numApl,n:iv.n,addr:iv.addr,addrComp:iv.addrComp||'',com:iv.com,
     h,op:CU.l,s:'en-cours',det:iv.det,eng:iv.eng,req:iv.req,tel:iv.tel,obs:'',
     agr:iv.agr||CU.l,rappels:0,avisIds:[],_sdis:true,_refOrig:iv.id,
     tl:[mkTL('en-attente',h,CU.l),mkTL('en-cours',h,CU.l+' (SDIS)')]
@@ -2272,7 +2272,7 @@ function confirmerSDIS(ivId){
   IVS.unshift(newIv);
   cM();rI();rAccueil();
   // Ouvrir directement la nouvelle intervention
-  setTimeout(()=>oM(numApl),100);
+  setTimeout(()=>oM(newIv.id),100);
 }
 // ── Heure affichage HH:MM ──
 function getHHMM(d){return pad(d.getHours())+':'+pad(d.getMinutes());}

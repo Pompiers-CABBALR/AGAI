@@ -935,6 +935,11 @@ function saveData(immediate){
   try{
     // Forcer la resynchronisation des variables globales avant sauvegarde
     if(CURRENT_CASERNE_ID&&typeof syncCaserneContext==='function')syncCaserneContext();
+    // Reparer avant la mise en cache un ancien doublon d'id qui ferait fusionner
+    // deux interventions distinctes lors de la synchronisation Supabase.
+    if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcRepairDuplicateLocalRecordIds==='function'){
+      _rcRepairDuplicateLocalRecordIds();
+    }
     const data=_buildDataObject();
     if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcTrackChangedRecords==='function'){
       let previous=null;
@@ -1596,6 +1601,54 @@ function _rcUniqueRowsById(rows){
   });
   return Array.from(unique.values());
 }
+
+// Migration locale pour les appels crees avant les identifiants techniques
+// uniques. L'intervention la plus ancienne conserve l'ancien id ; chaque
+// doublon plus recent recoit une nouvelle cle avant tout envoi a Supabase.
+function _rcRepairDuplicateLocalRecordIds(){
+  const cid=CURRENT_CASERNE_ID;
+  const d=cid&&CASERNE_DATA&&CASERNE_DATA[cid];
+  if(!cid||!d)return [];
+  const repairs=[];
+  const listTypes={ivs:'iv',pilpIvs:'pilp'};
+  Object.keys(listTypes).forEach(function(listKey){
+    const list=Array.isArray(d[listKey])?d[listKey]:[];
+    const groups={};
+    list.forEach(function(item,index){
+      if(!item||!item.id)return;
+      (groups[item.id]||(groups[item.id]=[])).push({item:item,index:index});
+    });
+    Object.keys(groups).forEach(function(oldId){
+      const group=groups[oldId];
+      if(group.length<2)return;
+      group.sort(function(a,b){
+        const ah=String(a.item.h||'');
+        const bh=String(b.item.h||'');
+        if(ah!==bh)return ah.localeCompare(bh);
+        // Les nouveaux appels sont ajoutes au debut de la liste.
+        return b.index-a.index;
+      });
+      group.slice(1).forEach(function(entry){
+        const item=entry.item;
+        if(!item._numApl&&String(oldId).indexOf('APL_')===0)item._numApl=oldId;
+        const newId=makeInterventionRecordId(item._numApl||oldId);
+        item.id=newId;
+        repairs.push({type:listTypes[listKey],oldId:oldId,newId:newId});
+      });
+    });
+  });
+  if(!repairs.length)return repairs;
+  repairs.forEach(function(repair){
+    const oldRowId=_rcId(cid,repair.type,repair.oldId);
+    const newRowId=_rcId(cid,repair.type,repair.newId);
+    _rcPendingDirty.delete(oldRowId);
+    _rcPendingDirty.add(newRowId);
+  });
+  _rcDirtyGeneration++;
+  _rcPersistPendingDirty();
+  console.warn('[AGAI][RC] Identifiants d interventions dupliques repares :',repairs.length);
+  return repairs;
+}
 function _rcScheduleRetry(delay){
   if(!USE_RECORDS||!_rcPendingDirty.size)return;
   if(_rcRetryTimer)clearTimeout(_rcRetryTimer);
@@ -1907,8 +1960,10 @@ async function _rcProtectSensitiveGlobalRow(rows){
 async function _rcPush(fullPush){
   if(_rcSaving){ _rcScheduleRetry(800); return; }
   _rcSaving = true; _jbSetStatus('saving');
-  const generationAtStart=_rcDirtyGeneration;
+  let generationAtStart=_rcDirtyGeneration;
   try {
+    _rcRepairDuplicateLocalRecordIds();
+    generationAtStart=_rcDirtyGeneration;
     const data = _buildDataObject();
     let rows;
     const allRows=_rcSplitAll(data);

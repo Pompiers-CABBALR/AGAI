@@ -599,7 +599,7 @@ function enr(){
     return;
   }
   // Enregistrement normal — id = numéro APL, numéro INT attribué à la clôture
-  const newIv={id:numApl,_numApl:numApl,
+  const newIv={id:makeInterventionRecordId(numApl),_numApl:numApl,
     n:selNat,addr,com,h,op:CU.l,s:'en-attente',det,eng:null,_sdis:document.getElementById('chk-sdis')?.checked||false,_erp:erp,_urgence:erp,_animauxAppel:animauxAppel,
     req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,reqDispo,
     obs:'',agr:null,rappels:exIv.length,avisIds:exIv.map(iv=>iv.id),_appelDetails:appelDetails,
@@ -611,7 +611,7 @@ function enr(){
   const cm=document.getElementById('cm');cm.style.display='block';
   cm.innerHTML=`✅ Appel enregistré — <strong>${numApl}</strong>
     <br><span style="font-family:monospace;font-size:11px;">&#x1F4C5; ${h} | ${CU.l}</span>
-    <br><button class="btn sm" style="margin-top:6px;font-size:11px;color:#E24B4A;" onclick="annulerAppel('${numApl}')">✕ Annuler cet appel</button>`;
+    <br><button class="btn sm" style="margin-top:6px;font-size:11px;color:#E24B4A;" onclick="annulerAppel('${newIv.id}')">✕ Annuler cet appel</button>`;
   // Réinitialiser immédiatement le formulaire pour prendre un nouvel appel
   rF();rI();rAccueil();
   gS(1);
@@ -622,7 +622,7 @@ function annulerAppel(ivId){
   const iv=IVS.find(v=>v.id===ivId);
   if(!iv||iv.s!=='en-attente')return;
   document.getElementById('mt').textContent='Annuler l’appel';
-  document.getElementById('mi').textContent=ivId;
+  document.getElementById('mi').textContent=iv._numApl||ivId;
   document.getElementById('mb').innerHTML=`<div>
     <div style="font-size:13px;margin-bottom:10px;">Motif d’annulation <span style="color:#E24B4A;">*</span></div>
     <textarea class="fta" id="cancel-appel-motif" placeholder="ex. Faux appel, requérant a raccroché, doublon…" style="height:70px;"></textarea>
