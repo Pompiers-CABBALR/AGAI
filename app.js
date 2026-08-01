@@ -3288,12 +3288,12 @@ function checkDejaIntervenu(){
   const box=document.getElementById('deja-intervenu-alert');if(!box)return;
   const addr=(document.getElementById('fa')?.value||'').trim();
   const nat=selNat||'';
-  if(!addr||addr.length<4||!nat){box.style.display='none';return;}
-  const na=nm(addr), nn=nm(nat);
+  if(!selC2||!addr||addr.length<4||!nat){box.innerHTML='';box.style.display='none';return;}
+  const na=nm(addr), nn=nm(nat), nc=nm(selC2);
   const memes=[].concat(IVS||[],PILP_IVS||[]).filter(function(x){
-    return nm(x.addr)===na && nm(x.n)===nn && x.s!=='annulee';
+    return nm(x.addr)===na && nm(x.com)===nc && nm(x.n)===nn && x.s!=='annulee';
   });
-  if(!memes.length){box.style.display='none';return;}
+  if(!memes.length){box.innerHTML='';box.style.display='none';return;}
   const avisAttente=memes.filter(function(x){return x._avisEnAttente;});
   let msg;
   if(avisAttente.length){
@@ -3510,7 +3510,18 @@ function chkR(c){
   if(total>0){b.style.display='flex';document.getElementById('rct').textContent=exIv.length+' avis de passage + '+exPilp.length+' avis PILP sur '+c;}
   else b.style.display='none';
 }
-function rc(){selC2=null;addrSelected=false;document.getElementById('ci').value='';document.getElementById('ciw').style.display='';document.getElementById('cs').style.display='none';document.getElementById('rcb').style.display='none';document.getElementById('fa').value='';addrSelected=false;document.getElementById('fa').placeholder='Sélectionnez d\'abord une commune…';document.getElementById('fa-dd').style.display='none';}
+function rc(){
+  selC2=null;addrSelected=false;
+  document.getElementById('ci').value='';
+  document.getElementById('ciw').style.display='';
+  document.getElementById('cs').style.display='none';
+  document.getElementById('rcb').style.display='none';
+  document.getElementById('fa').value='';
+  document.getElementById('fa').placeholder='Sélectionnez d\'abord une commune…';
+  document.getElementById('fa-dd').style.display='none';
+  const deja=document.getElementById('deja-intervenu-alert');
+  if(deja){deja.innerHTML='';deja.style.display='none';}
+}
 document.addEventListener('click',e=>{if(!e.target.closest('#cwr'))document.getElementById('cdd').style.display='none';});
 document.addEventListener('keydown',e=>{
   const dd=document.getElementById('cdd');if(dd.style.display!=='block')return;
@@ -11270,7 +11281,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260801-identifiants-interventions-uniques-101';
+const APP_VERSION='20260801-bandeau-antecedent-adresse-102';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne

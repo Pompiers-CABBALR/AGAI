@@ -111,12 +111,12 @@ function checkDejaIntervenu(){
   const box=document.getElementById('deja-intervenu-alert');if(!box)return;
   const addr=(document.getElementById('fa')?.value||'').trim();
   const nat=selNat||'';
-  if(!addr||addr.length<4||!nat){box.style.display='none';return;}
-  const na=nm(addr), nn=nm(nat);
+  if(!selC2||!addr||addr.length<4||!nat){box.innerHTML='';box.style.display='none';return;}
+  const na=nm(addr), nn=nm(nat), nc=nm(selC2);
   const memes=[].concat(IVS||[],PILP_IVS||[]).filter(function(x){
-    return nm(x.addr)===na && nm(x.n)===nn && x.s!=='annulee';
+    return nm(x.addr)===na && nm(x.com)===nc && nm(x.n)===nn && x.s!=='annulee';
   });
-  if(!memes.length){box.style.display='none';return;}
+  if(!memes.length){box.innerHTML='';box.style.display='none';return;}
   const avisAttente=memes.filter(function(x){return x._avisEnAttente;});
   let msg;
   if(avisAttente.length){
@@ -333,7 +333,18 @@ function chkR(c){
   if(total>0){b.style.display='flex';document.getElementById('rct').textContent=exIv.length+' avis de passage + '+exPilp.length+' avis PILP sur '+c;}
   else b.style.display='none';
 }
-function rc(){selC2=null;addrSelected=false;document.getElementById('ci').value='';document.getElementById('ciw').style.display='';document.getElementById('cs').style.display='none';document.getElementById('rcb').style.display='none';document.getElementById('fa').value='';addrSelected=false;document.getElementById('fa').placeholder='Sélectionnez d\'abord une commune…';document.getElementById('fa-dd').style.display='none';}
+function rc(){
+  selC2=null;addrSelected=false;
+  document.getElementById('ci').value='';
+  document.getElementById('ciw').style.display='';
+  document.getElementById('cs').style.display='none';
+  document.getElementById('rcb').style.display='none';
+  document.getElementById('fa').value='';
+  document.getElementById('fa').placeholder='Sélectionnez d\'abord une commune…';
+  document.getElementById('fa-dd').style.display='none';
+  const deja=document.getElementById('deja-intervenu-alert');
+  if(deja){deja.innerHTML='';deja.style.display='none';}
+}
 document.addEventListener('click',e=>{if(!e.target.closest('#cwr'))document.getElementById('cdd').style.display='none';});
 document.addEventListener('keydown',e=>{
   const dd=document.getElementById('cdd');if(dd.style.display!=='block')return;
