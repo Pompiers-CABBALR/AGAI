@@ -472,6 +472,8 @@ select.fi{min-width:0;width:100%;max-width:100%;}
 @media(min-width:480px){.egrid{grid-template-columns:repeat(4,1fr);}}
 .frow{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px;}
 #astr-planning-grid{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+#astr-planning-grid .astr-fct-col{width:38px;min-width:38px;max-width:38px;box-sizing:border-box;overflow:hidden;text-overflow:ellipsis;}
+#astr-planning-grid .astr-slot-col{min-width:var(--astr-slot-width,30px)!important;}
 .admin-scroll-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
 @media(max-width:480px){
   /* 16px minimum sur les champs : empêche le zoom automatique d'iOS/Safari à la saisie */
@@ -499,7 +501,7 @@ select.fi{min-width:0;width:100%;max-width:100%;}
 @media(max-width:1024px){
   #astr-planning-grid table{font-size:10px;}
   #astr-planning-grid th[style*="min-width:130px"]{min-width:78px!important;font-size:9px;padding:3px 3px!important;}
-  #astr-planning-grid th[style*="min-width:60px"]{min-width:26px!important;font-size:7px;padding:3px 1px!important;}
+  #astr-planning-grid .astr-fct-col{width:30px!important;min-width:30px!important;max-width:30px!important;font-size:7px!important;padding:3px 1px!important;}
   #astr-planning-grid thead th{min-width:12px!important;padding:2px 0!important;}
   #astr-planning-grid tbody td{padding:2px 0!important;}
   #astr-planning-grid tbody td[style*="sticky"]{font-size:9px!important;padding:3px 3px!important;}

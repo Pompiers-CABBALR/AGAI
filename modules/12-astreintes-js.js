@@ -315,20 +315,20 @@ function rAstrPlanning(){
     // En-tête ligne 1 : heures début
     html+='<thead><tr>';
     html+='<th style="padding:4px 8px;background:var(--bg);border-right:1px solid var(--brd);border-bottom:1px solid var(--brd);white-space:nowrap;position:sticky;left:0;z-index:2;min-width:130px;">Grade Nom Pr\u00e9nom</th>';
-    html+='<th style="padding:4px 6px;background:var(--bg);border-right:1px solid var(--brd);border-bottom:1px solid var(--brd);font-size:10px;white-space:nowrap;min-width:60px;">Fonction</th>';
+    html+='<th class="astr-fct-col" title="Fonction" style="padding:4px 3px;background:var(--bg);border-right:1px solid var(--brd);border-bottom:1px solid var(--brd);font-size:9px;white-space:nowrap;">Fct</th>';
     for(let s=0;s<nbSlots;s++){
       const isHourMark=gran<=60||(s%(60/gran)===0);
-      html+=`<th style="padding:3px 2px;background:var(--bg);border-right:0.5px solid #e5e7eb;border-bottom:1px solid var(--brd);text-align:center;font-size:9px;font-weight:400;color:var(--t2);min-width:${gran>=60?28:16}px;">${heureLabels[s]}</th>`;
+      html+=`<th class="astr-slot-col" style="--astr-slot-width:${gran>=60?30:18}px;padding:3px 2px;background:var(--bg);border-right:0.5px solid #e5e7eb;border-bottom:1px solid var(--brd);text-align:center;font-size:9px;font-weight:400;color:var(--t2);">${heureLabels[s]}</th>`;
     }
     html+='</tr>';
     // Ligne 2 : heures fin (décalées)
     html+='<tr>';
     html+='<th style="padding:2px 8px;background:var(--bg);border-right:1px solid var(--brd);border-bottom:1px solid var(--brd);position:sticky;left:0;z-index:2;"></th>';
-    html+='<th style="background:var(--bg);border-right:1px solid var(--brd);border-bottom:1px solid var(--brd);"></th>';
+    html+='<th class="astr-fct-col" style="background:var(--bg);border-right:1px solid var(--brd);border-bottom:1px solid var(--brd);"></th>';
     for(let s=0;s<nbSlots;s++){
       const totalMin=(startHour*60+(s+1)*gran)%1440;
       const hh2=Math.floor(totalMin/60);const mm3=totalMin%60;
-      html+=`<th style="padding:2px 2px;background:var(--bg);border-right:0.5px solid #e5e7eb;border-bottom:1px solid var(--brd);text-align:center;font-size:9px;font-weight:400;color:#aaa;">${pad(hh2)}h${mm3?pad(mm3):''}</th>`;
+      html+=`<th class="astr-slot-col" style="--astr-slot-width:${gran>=60?30:18}px;padding:2px 2px;background:var(--bg);border-right:0.5px solid #e5e7eb;border-bottom:1px solid var(--brd);text-align:center;font-size:9px;font-weight:400;color:#aaa;">${pad(hh2)}h${mm3?pad(mm3):''}</th>`;
     }
     html+='</tr></thead><tbody>';
 
@@ -346,7 +346,7 @@ function rAstrPlanning(){
       html+=`<tr>`;
       html+=`<td style="padding:3px 8px;border-bottom:0.5px solid #f0f0f0;border-right:1px solid var(--brd);position:sticky;left:0;background:#fff;white-space:nowrap;border-left:3px solid ${eqColor};font-size:11px;font-weight:500;">${gradeAbbr(u.grade)} ${u.nom} ${u.prenom}</td>`;
       const displayFonction=(u.fonction==='Chef de centre'||u.fonction==='Adjoint au chef de centre')&&u.fonction2?ROLE_LABELS[fonctionToRole(u.fonction2)]||u.fonction2:ROLE_LABELS[roleKey]||roleKey;
-      html+=`<td style="padding:3px 6px;border-bottom:0.5px solid #f0f0f0;border-right:1px solid var(--brd);font-size:10px;color:var(--t2);white-space:nowrap;">${displayFonction}</td>`;
+      html+=`<td class="astr-fct-col" title="${escHtml(displayFonction)}" style="padding:3px 3px;border-bottom:0.5px solid #f0f0f0;border-right:1px solid var(--brd);font-size:9px;color:var(--t2);white-space:nowrap;text-align:center;">${displayFonction}</td>`;
 
       for(let s=0;s<nbSlots;s++){
         // Minutes du slot dans la journée (avec gestion passage minuit)
@@ -454,7 +454,7 @@ function rAstrPlanning(){
     ROLE_KEYS.forEach(function(rk){
       html+=`<tr style="background:var(--bg);">`;
       html+=`<td style="padding:3px 8px;border-right:1px solid var(--brd);border-bottom:0.5px solid #e5e7eb;position:sticky;left:0;background:var(--bg);font-size:10px;font-weight:600;color:var(--t2);white-space:nowrap;">${ROLE_LABELS[rk]}</td>`;
-      html+=`<td style="border-right:1px solid var(--brd);border-bottom:0.5px solid #e5e7eb;background:var(--bg);"></td>`;
+      html+=`<td class="astr-fct-col" style="border-right:1px solid var(--brd);border-bottom:0.5px solid #e5e7eb;background:var(--bg);"></td>`;
       for(let s=0;s<nbSlots;s++){
         const x=roleCountsX[rk][s];
         const d=roleCounts[rk][s];
