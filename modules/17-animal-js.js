@@ -1589,6 +1589,13 @@ function _rcPrunePendingDirty(candidateRows){
   if(changed)_rcPersistPendingDirty();
   return changed;
 }
+function _rcUniqueRowsById(rows){
+  const unique=new Map();
+  (rows||[]).forEach(function(row){
+    if(row&&row.id)unique.set(row.id,row);
+  });
+  return Array.from(unique.values());
+}
 function _rcScheduleRetry(delay){
   if(!USE_RECORDS||!_rcPendingDirty.size)return;
   if(_rcRetryTimer)clearTimeout(_rcRetryTimer);
@@ -1786,6 +1793,7 @@ async function _rcPushRecords(records){
   if(!USE_RECORDS) return;
   if(!records || !records.length) return;
   try {
+    records=_rcUniqueRowsById(records);
     const currentUser = (typeof CU!=='undefined' && CU) ? (CU.l||'') : '';
     const payload = records.map(function(r){
       return { id:r.id, caserne:r.caserne, type:r.type, data:r.data, deleted:!!r.deleted, updated_by:currentUser };
@@ -1936,6 +1944,7 @@ async function _rcPush(fullPush){
     const hadGlobalRow=rows.some(function(row){return row&&row.type==='global'&&row.caserne==='_GLOBAL';});
     rows=await _rcProtectSensitiveGlobalRow(rows);
     if(hadGlobalRow&&!rows.some(function(row){return row&&row.type==='global'&&row.caserne==='_GLOBAL';}))throw new Error('protection de la ligne globale indisponible');
+    rows=_rcUniqueRowsById(rows);
     if(!rows.length){_jbSetStatus(_rcPendingDirty.size?'pending':'ok');return;}
     const currentUser = (typeof CU!=='undefined' && CU) ? (CU.l||'') : '';
     const payload = rows.map(function(r){ return { id:r.id, caserne:r.caserne, type:r.type, data:r.data, deleted:r.deleted, updated_by:currentUser }; });

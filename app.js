@@ -11248,7 +11248,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260801-sync-appel-envoi-isole-99';
+const APP_VERSION='20260801-sync-doublon-requete-100';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -14186,6 +14186,13 @@ function _rcPrunePendingDirty(candidateRows){
   if(changed)_rcPersistPendingDirty();
   return changed;
 }
+function _rcUniqueRowsById(rows){
+  const unique=new Map();
+  (rows||[]).forEach(function(row){
+    if(row&&row.id)unique.set(row.id,row);
+  });
+  return Array.from(unique.values());
+}
 function _rcScheduleRetry(delay){
   if(!USE_RECORDS||!_rcPendingDirty.size)return;
   if(_rcRetryTimer)clearTimeout(_rcRetryTimer);
@@ -14383,6 +14390,7 @@ async function _rcPushRecords(records){
   if(!USE_RECORDS) return;
   if(!records || !records.length) return;
   try {
+    records=_rcUniqueRowsById(records);
     const currentUser = (typeof CU!=='undefined' && CU) ? (CU.l||'') : '';
     const payload = records.map(function(r){
       return { id:r.id, caserne:r.caserne, type:r.type, data:r.data, deleted:!!r.deleted, updated_by:currentUser };
@@ -14533,6 +14541,7 @@ async function _rcPush(fullPush){
     const hadGlobalRow=rows.some(function(row){return row&&row.type==='global'&&row.caserne==='_GLOBAL';});
     rows=await _rcProtectSensitiveGlobalRow(rows);
     if(hadGlobalRow&&!rows.some(function(row){return row&&row.type==='global'&&row.caserne==='_GLOBAL';}))throw new Error('protection de la ligne globale indisponible');
+    rows=_rcUniqueRowsById(rows);
     if(!rows.length){_jbSetStatus(_rcPendingDirty.size?'pending':'ok');return;}
     const currentUser = (typeof CU!=='undefined' && CU) ? (CU.l||'') : '';
     const payload = rows.map(function(r){ return { id:r.id, caserne:r.caserne, type:r.type, data:r.data, deleted:r.deleted, updated_by:currentUser }; });
