@@ -69,7 +69,7 @@ function rHistLegacy(){
   <span class="bdg ${iv.s==='terminee'?'bg2':iv.s==='avis-passage'?'bp':iv.s==='annulee'?'bgr':'ba'}" style="font-size:10px;">${iv.s==='terminee'?'✓':iv.s==='avis-passage'?'&#x1F7E3;':iv.s==='annulee'?'✕':'↻'}</span>
   ${iv._mailsEnvoyes&&iv._mailsEnvoyes.length?'<span title="Envoyé par mail ('+iv._mailsEnvoyes.length+'x)" style="font-size:11px;margin-left:3px;">✉️</span>':''}
   <span class="hist-report-flags">
-    ${iv._heureDebutModifiee&&hasAdministrativeAccount()?'<span class="hist-report-badge pending" style="background:#FFF7ED;color:#9A3412;border-color:#FDBA74;" title="L’heure réelle est conservée dans la traçabilité">&#x23F1; Heure corrigée</span>':''}
+    ${iv._heureDebutModifiee&&hasAdministrativeAccount()&&!iv._sdis?'<span class="hist-report-badge pending" style="background:#FFF7ED;color:#9A3412;border-color:#FDBA74;" title="L’heure réelle est conservée dans la traçabilité">&#x23F1; Heure corrigée</span>':''}
     ${iv.s==='terminee'&&iv._crValide?'<span class="hist-report-badge validated" title="Le compte rendu est validé">✅ Rapport validé</span>':iv.s==='terminee'&&(iv._crTexte||iv._compteRendu)?'<span class="hist-report-badge pending" title="Compte rendu en attente de validation">📋 Non validé</span>':''}
     ${iv._impressions&&iv._impressions.length?'<span class="hist-report-badge printed" title="Rapport imprimé '+iv._impressions.length+' fois">🖨️ Rapport imprimé'+(iv._impressions.length>1?' ×'+iv._impressions.length:'')+'</span>':''}
   </span>
@@ -129,7 +129,7 @@ function historyRowHTML(iv){
   <span class="bdg ${iv.s==='terminee'?'bg2':iv.s==='avis-passage'?'bp':iv.s==='annulee'?'bgr':'ba'}" style="font-size:10px;">${iv.s==='terminee'?'\u2713':iv.s==='avis-passage'?'\ud83d\udfe3':iv.s==='annulee'?'\u2715':'\u21bb'}</span>
   ${iv._mailsEnvoyes&&iv._mailsEnvoyes.length?'<span title="Envoy\u00e9 par mail ('+iv._mailsEnvoyes.length+'x)" style="font-size:11px;margin-left:3px;">\u2709\ufe0f</span>':''}
   <span class="hist-report-flags">
-    ${iv._heureDebutModifiee&&hasAdministrativeAccount()?'<span class="hist-report-badge pending" style="background:#FFF7ED;color:#9A3412;border-color:#FDBA74;" title="L\u2019heure r\u00e9elle est conserv\u00e9e dans la tra\u00e7abilit\u00e9">\u23f1 Heure corrig\u00e9e</span>':''}
+    ${iv._heureDebutModifiee&&hasAdministrativeAccount()&&!iv._sdis?'<span class="hist-report-badge pending" style="background:#FFF7ED;color:#9A3412;border-color:#FDBA74;" title="L\u2019heure r\u00e9elle est conserv\u00e9e dans la tra\u00e7abilit\u00e9">\u23f1 Heure corrig\u00e9e</span>':''}
     ${iv.s==='terminee'&&iv._crValide?'<span class="hist-report-badge validated" title="Le compte rendu est valid\u00e9">\u2705 Rapport valid\u00e9</span>':iv.s==='terminee'&&(iv._crTexte||iv._compteRendu)?'<span class="hist-report-badge pending" title="Compte rendu en attente de validation">\ud83d\udccb Non valid\u00e9</span>':''}
     ${iv._impressions&&iv._impressions.length?'<span class="hist-report-badge printed" title="Rapport imprim\u00e9 '+iv._impressions.length+' fois">\ud83d\udda8\ufe0f Rapport imprim\u00e9'+(iv._impressions.length>1?' \u00d7'+iv._impressions.length:'')+'</span>':''}
   </span>

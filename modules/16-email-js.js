@@ -464,6 +464,7 @@ function saveInterventionStartCorrection(ivId){
 }
 
 function interventionStartCorrectionHTML(iv){
+  if(iv&&iv._sdis)return '';
   const following=isFollowingInterventionInSeries(iv);
   const canEdit=canEditInterventionStart(iv);
   const admin=hasAdministrativeAccount();
@@ -589,12 +590,8 @@ function showCompteRenduModal(ivId) {
     const hRet=iv._hFin||'';
     const hNow=getHHMM(N()).slice(0,5);
     const ro=canWrite?'':' readonly';
-    const roDeparture=' readonly'; // le départ se corrige uniquement via la zone tracée dédiée
-    const roLocked=iv._crValide?' readonly':'';
     return '<div style="background:#DBEAFE;border:1px solid #93C5FD;border-radius:8px;padding:10px 12px;margin-bottom:10px;">'
-      +'<div style="font-size:12px;font-weight:700;color:#1D4ED8;margin-bottom:8px;">🚑 Champs spécifiques SDIS'
-      +(iv._crValide?'<span style="font-size:10px;font-weight:400;margin-left:8px;color:#6B7280;">🔒 Départ/Retour verrouillés</span>':'')
-      +'</div>'
+      +'<div style="font-size:12px;font-weight:700;color:#1D4ED8;margin-bottom:8px;">🚑 Champs spécifiques SDIS</div>'
       // Ligne 1 : Acquis présence + Départ + Retour (modifiables avant validation)
       +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;">'
       +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;">Acquis présence</div>'
@@ -602,9 +599,9 @@ function showCompteRenduModal(ivId) {
       +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;">N° intervention SDIS</div>'
       +'<input class="fi" id="cr-numsdis"'+ro+' value="'+(iv._numSDIS||'')+'" placeholder="ex: 112057-1" style="font-size:12px;padding:4px 6px;"></div>'
       +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;">⬆️ Départ engin</div>'
-      +'<input class="fi" id="cr-hdepart" type="time"'+roDeparture+' value="'+hDep+'" onchange="sdisUpdateMinMax()" style="font-size:12px;padding:4px 6px;background:#f5f5f5;"></div>'
+      +'<input class="fi" id="cr-hdepart" type="time"'+ro+' value="'+hDep+'" onchange="sdisUpdateMinMax()" style="font-size:12px;padding:4px 6px;"></div>'
       +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;">⬇️ Retour engin</div>'
-      +'<input class="fi" id="cr-hretour" type="time"'+roLocked+' value="'+hRet+'" onchange="sdisUpdateMinMax()" style="font-size:12px;padding:4px 6px;'+(iv._crValide?'background:#f5f5f5;':'')+'"></div>'
+      +'<input class="fi" id="cr-hretour" type="time"'+ro+' value="'+hRet+'" onchange="sdisUpdateMinMax()" style="font-size:12px;padding:4px 6px;"></div>'
       +'</div>'
       // Ligne 2 : SLL + Dispo + Op. terminée
       +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;">'
@@ -616,7 +613,7 @@ function showCompteRenduModal(ivId) {
       +'<input class="fi" id="cr-hopterminee" type="time"'+ro+(hRet?' min="'+hRet+'"':'')+(hNow?' max="'+hNow+'"':'')+' value="'+(iv._hOpTerminee||'')+'" style="font-size:12px;padding:4px 6px;"></div>'
       +'</div>'
       +'<div class="fg" style="margin-bottom:8px;"><div class="fgl" style="font-size:11px;">Matériel(s) utilisé(s)</div>'
-      +'<input class="fi" id="cr-materiels"'+ro+' value="'+(iv._materiels||'')+'" placeholder="Laisse, cage à chien…" style="font-size:12px;padding:4px 6px;"></div>'
+      +'<input class="fi" id="cr-materiels"'+ro+' value="'+(iv._materiels||'')+'" placeholder="-" style="font-size:12px;padding:4px 6px;"></div>'
       +'<div class="fg" style="margin-bottom:8px;"><div class="fgl" style="font-size:11px;">Consommable(s) utilisé(s)</div>'
       +'<input class="fi" id="cr-consommables"'+ro+' value="'+(iv._consommables||'')+'" placeholder="-" style="font-size:12px;padding:4px 6px;"></div>'
       +'<div class="fg" style="margin-bottom:4px;"><div class="fgl" style="font-size:11px;">Annotation(s) particulière(s)</div>'
@@ -713,10 +710,8 @@ function _sdisSaveFields(iv){
   const v=id=>(document.getElementById(id)||{}).value||'';
   iv._hAcquis     = v('cr-hacquis');
   iv._numSDIS     = v('cr-numsdis');
-  // Le départ est géré par la correction tracée ; le retour reste modifiable avant validation.
-  if(!iv._crValide){
-    iv._hFin   = v('cr-hretour')||iv._hFin;
-  }
+  iv._hDebut      = v('cr-hdepart');
+  iv._hFin        = v('cr-hretour');
   iv._hSll        = v('cr-hsll');
   iv._hDispo      = v('cr-hdispo');
   iv._materiels   = v('cr-materiels');

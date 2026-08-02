@@ -4256,7 +4256,7 @@ function renderInterventionRow(iv, ag, tireur) {
       ${isRenfortUT ? '<span class="bdg" style="background:#7C3AED;color:#fff;font-size:10px;">Renfort UT</span>' : ''}
       ${iv._urgence ? '<span class="bdg" style="background:#B91C1C;color:#fff;font-size:10px;font-weight:700;">🚨 URGENCE ERP</span>' : ''}
       ${iv._sdis ? '<span class="bdg" style="background:#1D4ED8;color:#fff;font-size:10px;font-weight:700;">SDIS</span>' : ''}
-      ${iv._heureDebutModifiee&&hasAdministrativeAccount() ? '<span class="bdg" title="Heure de début corrigée — consulter la traçabilité" style="background:#FFF7ED;color:#9A3412;border:1px solid #FDBA74;font-size:10px;font-weight:700;">&#x23F1; Heure corrigée</span>' : ''}
+      ${iv._heureDebutModifiee&&hasAdministrativeAccount()&&!iv._sdis ? '<span class="bdg" title="Heure de début corrigée — consulter la traçabilité" style="background:#FFF7ED;color:#9A3412;border:1px solid #FDBA74;font-size:10px;font-weight:700;">&#x23F1; Heure corrigée</span>' : ''}
       ${iv._echelleToiture ? '<span class="bdg" style="background:#F59E0B;color:#fff;font-size:10px;">Echelle de toit</span>' : ''}
       ${iv._epa ? '<span class="bdg" style="background:#8E44AD;color:#fff;font-size:10px;">EPA</span>' : ''}
       ${iv.rappels ? `<span class="bdg bp" style="font-size:10px;${isAdminModeActive()?'cursor:pointer;':''}"${isAdminModeActive()?` title="Déjà intervenu ici ?" onclick="event.stopPropagation();showInterventionsLiees('${iv.id}')"`:''}>${iv.rappels}×</span>` : ''}
@@ -4441,6 +4441,11 @@ function toggleAvisPILP(btn){
 // ────────────────── MODAL ──────────────────
 function oM(id){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
+  // Pour un départ SDIS, la synthèse opérationnelle commence à l'acquis
+  // présence et se termine à l'opération terminée. Les heures de départ et
+  // de retour de l'engin restent conservées séparément pour le rapport.
+  const detailStart=iv._sdis?(iv._hAcquis||iv._hDebut||''):(iv._hDebut||'');
+  const detailEnd=iv._sdis?(iv._hOpTerminee||iv._hFin||''):(iv._hFin||'');
   const ag=isAgres(),chef=isChef()||hasRight('Administration');
   // _showAutoBtn défini globalement pour toute la fonction oM
   const _isOwnAgres_=(iv.agr===CU.l||iv._agr2===CU.l);
@@ -4612,7 +4617,7 @@ function oM(id){
     ${iv._transfertVers?`<div class="mr"><div class="ml">Transféré vers</div><div class="mv2" style="color:#888;">&#x1F500; ${CASERNES.find(c=>c.id===iv._transfertVers)?.nom||iv._transfertVers}</div></div>`:''}
     ${iv._refugeAnimalier?`<div class="mr"><div class="ml">Refuge animalier</div><div class="mv2" style="color:var(--grn);">&#x1F43E; Transmis au refuge — ${iv._refugeAnimalier}</div></div>`:''}
 
-    ${(iv.eng||iv._hDebut||iv._hFin)?'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:8px;margin:6px 0;">'+(iv.eng?'<div style="background:var(--bg);border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Engin</div><span class="bdg bb">'+iv.eng+'</span></div>':'')+(iv._hDebut?'<div style="background:#FEF9EC;border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--amb);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">&#x23F1; Début</div><div style="font-weight:700;color:var(--amb);font-size:15px;">'+iv._hDebut+'</div></div>':'')+(iv._hFin?'<div style="background:#F0FAF0;border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--grn);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">&#x2705; Fin</div><div style="font-weight:700;color:var(--grn);font-size:15px;">'+iv._hFin+'</div></div>':'')+(iv._hDebut&&iv._hFin?'<div style="background:#F0F4FF;border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--pur);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">&#x23F3; Durée</div><div style="font-weight:700;color:var(--pur);font-size:15px;">'+dureeHHMM(iv._hDebut,iv._hFin)+'</div></div>':'')+'</div>':''}
+    ${(iv.eng||detailStart||detailEnd)?'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:8px;margin:6px 0;">'+(iv.eng?'<div style="background:var(--bg);border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Engin</div><span class="bdg bb">'+iv.eng+'</span></div>':'')+(detailStart?'<div style="background:#FEF9EC;border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--amb);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">&#x23F1; Début</div><div style="font-weight:700;color:var(--amb);font-size:15px;">'+detailStart+'</div></div>':'')+(detailEnd?'<div style="background:#F0FAF0;border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--grn);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">&#x2705; Fin</div><div style="font-weight:700;color:var(--grn);font-size:15px;">'+detailEnd+'</div></div>':'')+(detailStart&&detailEnd?'<div style="background:#F0F4FF;border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--pur);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">&#x23F3; Durée</div><div style="font-weight:700;color:var(--pur);font-size:15px;">'+dureeHHMM(detailStart,detailEnd)+'</div></div>':'')+'</div>':''}
     ${iv._equipage1?`<div class="mr"><div class="ml">&#x1F692; ${iv._engin1||'Engin 1'}</div><div class="mv2"><div style="display:flex;flex-wrap:wrap;gap:4px;">${iv._equipage1.map(e=>{const u=USERS.find(x=>x.l===e.login);const nom=u?fullName(u):((e.prenom||e.nom)?((e.prenom||'')+' '+(e.nom||'')).trim():e.login);return'<span style="background:'+(e.renfort?'#F5F3FF':'#EEF2FF')+';color:'+(e.renfort?'#6D28D9':'#3730A3')+';border-radius:6px;padding:2px 8px;font-size:11px;">'+(e.renfort?'&#x1F692; ':'')+'<span style="font-size:9px;opacity:.7;">'+e.role+'</span> '+nom+(e.renfort&&e.caserneNom?' <span style="font-size:9px;opacity:.7;">('+e.caserneNom+')</span>':'')+'</span>';}).join('')}</div></div></div>`:''}
     ${iv._equipage2?`<div class="mr"><div class="ml">&#x1F692; ${iv._engin2||'Engin 2'}</div><div class="mv2"><div style="display:flex;flex-wrap:wrap;gap:4px;">${iv._equipage2.map(e=>{const u=USERS.find(x=>x.l===e.login);const nom=u?fullName(u):((e.prenom||e.nom)?((e.prenom||'')+' '+(e.nom||'')).trim():e.login);return'<span style="background:'+(e.renfort?'#F5F3FF':'#F0FDF4')+';color:'+(e.renfort?'#6D28D9':'#166534')+';border-radius:6px;padding:2px 8px;font-size:11px;">'+(e.renfort?'&#x1F692; ':'')+'<span style="font-size:9px;opacity:.7;">'+e.role+'</span> '+nom+(e.renfort&&e.caserneNom?' <span style="font-size:9px;opacity:.7;">('+e.caserneNom+')</span>':'')+'</span>';}).join('')}</div></div></div>`:''}
     ${(iv._releves&&iv._releves.filter(r=>!r.isRenfort).length)?`<div class="mr"><div class="ml" style="color:#0369A1;">&#x1F504; Relèves</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:6px;">${iv._releves.filter(r=>!r.isRenfort).map((r,ri)=>{
@@ -5383,7 +5388,7 @@ function rHistLegacy(){
   <span class="bdg ${iv.s==='terminee'?'bg2':iv.s==='avis-passage'?'bp':iv.s==='annulee'?'bgr':'ba'}" style="font-size:10px;">${iv.s==='terminee'?'✓':iv.s==='avis-passage'?'&#x1F7E3;':iv.s==='annulee'?'✕':'↻'}</span>
   ${iv._mailsEnvoyes&&iv._mailsEnvoyes.length?'<span title="Envoyé par mail ('+iv._mailsEnvoyes.length+'x)" style="font-size:11px;margin-left:3px;">✉️</span>':''}
   <span class="hist-report-flags">
-    ${iv._heureDebutModifiee&&hasAdministrativeAccount()?'<span class="hist-report-badge pending" style="background:#FFF7ED;color:#9A3412;border-color:#FDBA74;" title="L’heure réelle est conservée dans la traçabilité">&#x23F1; Heure corrigée</span>':''}
+    ${iv._heureDebutModifiee&&hasAdministrativeAccount()&&!iv._sdis?'<span class="hist-report-badge pending" style="background:#FFF7ED;color:#9A3412;border-color:#FDBA74;" title="L’heure réelle est conservée dans la traçabilité">&#x23F1; Heure corrigée</span>':''}
     ${iv.s==='terminee'&&iv._crValide?'<span class="hist-report-badge validated" title="Le compte rendu est validé">✅ Rapport validé</span>':iv.s==='terminee'&&(iv._crTexte||iv._compteRendu)?'<span class="hist-report-badge pending" title="Compte rendu en attente de validation">📋 Non validé</span>':''}
     ${iv._impressions&&iv._impressions.length?'<span class="hist-report-badge printed" title="Rapport imprimé '+iv._impressions.length+' fois">🖨️ Rapport imprimé'+(iv._impressions.length>1?' ×'+iv._impressions.length:'')+'</span>':''}
   </span>
@@ -5443,7 +5448,7 @@ function historyRowHTML(iv){
   <span class="bdg ${iv.s==='terminee'?'bg2':iv.s==='avis-passage'?'bp':iv.s==='annulee'?'bgr':'ba'}" style="font-size:10px;">${iv.s==='terminee'?'\u2713':iv.s==='avis-passage'?'\ud83d\udfe3':iv.s==='annulee'?'\u2715':'\u21bb'}</span>
   ${iv._mailsEnvoyes&&iv._mailsEnvoyes.length?'<span title="Envoy\u00e9 par mail ('+iv._mailsEnvoyes.length+'x)" style="font-size:11px;margin-left:3px;">\u2709\ufe0f</span>':''}
   <span class="hist-report-flags">
-    ${iv._heureDebutModifiee&&hasAdministrativeAccount()?'<span class="hist-report-badge pending" style="background:#FFF7ED;color:#9A3412;border-color:#FDBA74;" title="L\u2019heure r\u00e9elle est conserv\u00e9e dans la tra\u00e7abilit\u00e9">\u23f1 Heure corrig\u00e9e</span>':''}
+    ${iv._heureDebutModifiee&&hasAdministrativeAccount()&&!iv._sdis?'<span class="hist-report-badge pending" style="background:#FFF7ED;color:#9A3412;border-color:#FDBA74;" title="L\u2019heure r\u00e9elle est conserv\u00e9e dans la tra\u00e7abilit\u00e9">\u23f1 Heure corrig\u00e9e</span>':''}
     ${iv.s==='terminee'&&iv._crValide?'<span class="hist-report-badge validated" title="Le compte rendu est valid\u00e9">\u2705 Rapport valid\u00e9</span>':iv.s==='terminee'&&(iv._crTexte||iv._compteRendu)?'<span class="hist-report-badge pending" title="Compte rendu en attente de validation">\ud83d\udccb Non valid\u00e9</span>':''}
     ${iv._impressions&&iv._impressions.length?'<span class="hist-report-badge printed" title="Rapport imprim\u00e9 '+iv._impressions.length+' fois">\ud83d\udda8\ufe0f Rapport imprim\u00e9'+(iv._impressions.length>1?' \u00d7'+iv._impressions.length:'')+'</span>':''}
   </span>
@@ -11293,7 +11298,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260802-astreinte-tel-desktop-107';
+const APP_VERSION='20260802-sdis-heures-rapport-108';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -12031,6 +12036,7 @@ function saveInterventionStartCorrection(ivId){
 }
 
 function interventionStartCorrectionHTML(iv){
+  if(iv&&iv._sdis)return '';
   const following=isFollowingInterventionInSeries(iv);
   const canEdit=canEditInterventionStart(iv);
   const admin=hasAdministrativeAccount();
@@ -12156,12 +12162,8 @@ function showCompteRenduModal(ivId) {
     const hRet=iv._hFin||'';
     const hNow=getHHMM(N()).slice(0,5);
     const ro=canWrite?'':' readonly';
-    const roDeparture=' readonly'; // le départ se corrige uniquement via la zone tracée dédiée
-    const roLocked=iv._crValide?' readonly':'';
     return '<div style="background:#DBEAFE;border:1px solid #93C5FD;border-radius:8px;padding:10px 12px;margin-bottom:10px;">'
-      +'<div style="font-size:12px;font-weight:700;color:#1D4ED8;margin-bottom:8px;">🚑 Champs spécifiques SDIS'
-      +(iv._crValide?'<span style="font-size:10px;font-weight:400;margin-left:8px;color:#6B7280;">🔒 Départ/Retour verrouillés</span>':'')
-      +'</div>'
+      +'<div style="font-size:12px;font-weight:700;color:#1D4ED8;margin-bottom:8px;">🚑 Champs spécifiques SDIS</div>'
       // Ligne 1 : Acquis présence + Départ + Retour (modifiables avant validation)
       +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;">'
       +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;">Acquis présence</div>'
@@ -12169,9 +12171,9 @@ function showCompteRenduModal(ivId) {
       +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;">N° intervention SDIS</div>'
       +'<input class="fi" id="cr-numsdis"'+ro+' value="'+(iv._numSDIS||'')+'" placeholder="ex: 112057-1" style="font-size:12px;padding:4px 6px;"></div>'
       +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;">⬆️ Départ engin</div>'
-      +'<input class="fi" id="cr-hdepart" type="time"'+roDeparture+' value="'+hDep+'" onchange="sdisUpdateMinMax()" style="font-size:12px;padding:4px 6px;background:#f5f5f5;"></div>'
+      +'<input class="fi" id="cr-hdepart" type="time"'+ro+' value="'+hDep+'" onchange="sdisUpdateMinMax()" style="font-size:12px;padding:4px 6px;"></div>'
       +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;">⬇️ Retour engin</div>'
-      +'<input class="fi" id="cr-hretour" type="time"'+roLocked+' value="'+hRet+'" onchange="sdisUpdateMinMax()" style="font-size:12px;padding:4px 6px;'+(iv._crValide?'background:#f5f5f5;':'')+'"></div>'
+      +'<input class="fi" id="cr-hretour" type="time"'+ro+' value="'+hRet+'" onchange="sdisUpdateMinMax()" style="font-size:12px;padding:4px 6px;"></div>'
       +'</div>'
       // Ligne 2 : SLL + Dispo + Op. terminée
       +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;">'
@@ -12183,7 +12185,7 @@ function showCompteRenduModal(ivId) {
       +'<input class="fi" id="cr-hopterminee" type="time"'+ro+(hRet?' min="'+hRet+'"':'')+(hNow?' max="'+hNow+'"':'')+' value="'+(iv._hOpTerminee||'')+'" style="font-size:12px;padding:4px 6px;"></div>'
       +'</div>'
       +'<div class="fg" style="margin-bottom:8px;"><div class="fgl" style="font-size:11px;">Matériel(s) utilisé(s)</div>'
-      +'<input class="fi" id="cr-materiels"'+ro+' value="'+(iv._materiels||'')+'" placeholder="Laisse, cage à chien…" style="font-size:12px;padding:4px 6px;"></div>'
+      +'<input class="fi" id="cr-materiels"'+ro+' value="'+(iv._materiels||'')+'" placeholder="-" style="font-size:12px;padding:4px 6px;"></div>'
       +'<div class="fg" style="margin-bottom:8px;"><div class="fgl" style="font-size:11px;">Consommable(s) utilisé(s)</div>'
       +'<input class="fi" id="cr-consommables"'+ro+' value="'+(iv._consommables||'')+'" placeholder="-" style="font-size:12px;padding:4px 6px;"></div>'
       +'<div class="fg" style="margin-bottom:4px;"><div class="fgl" style="font-size:11px;">Annotation(s) particulière(s)</div>'
@@ -12280,10 +12282,8 @@ function _sdisSaveFields(iv){
   const v=id=>(document.getElementById(id)||{}).value||'';
   iv._hAcquis     = v('cr-hacquis');
   iv._numSDIS     = v('cr-numsdis');
-  // Le départ est géré par la correction tracée ; le retour reste modifiable avant validation.
-  if(!iv._crValide){
-    iv._hFin   = v('cr-hretour')||iv._hFin;
-  }
+  iv._hDebut      = v('cr-hdepart');
+  iv._hFin        = v('cr-hretour');
   iv._hSll        = v('cr-hsll');
   iv._hDispo      = v('cr-hdispo');
   iv._materiels   = v('cr-materiels');
