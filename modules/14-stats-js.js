@@ -1093,6 +1093,17 @@ function adminExportUser(login){
   const u=USERS.find(function(x){return x.l===login;});
   return u?[u.nom||'',u.prenom||''].filter(Boolean).join(' '):login;
 }
+function adminExportInterventionChef(iv){
+  if(!iv)return '';
+  let login=iv.agr||'';
+  if(!login){
+    const member=[].concat(iv._equipage1||[],iv._equipage2||[]).find(function(item){
+      return item&&item.login&&interventionRoleKey(item.role)==='chefdagres';
+    });
+    login=(member&&member.login)||iv._agr2||'';
+  }
+  return adminExportUser(login);
+}
 function adminExportDuration(value,hd,hf){
   if(value)return dureeFormatHHMM(value,hd,hf)||value;
   return hd&&hf?dureeHHMM(hd,hf):'';
@@ -1348,7 +1359,7 @@ function exportAdminMonthlyExcel(){
     }).map(function(iv){
       const veh=adminExportVehicles(iv);
       const rates=adminExportInterventionRates(iv);
-      const rapportAuteur=adminExportUser(iv._crAuteur)+(iv._crDateValidation?' · '+iv._crDateValidation:'');
+      const rapportAuteur=adminExportInterventionChef(iv);
       const isSdis=adminExportReportType(iv)==='SDIS';
       return [
         iv._numMois||'',iv._numCaserne||iv._numApl||iv.id||'',iv._numSDIS||'',iv._numGlobal||'',
