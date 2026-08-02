@@ -99,8 +99,8 @@ function isFollowingInterventionInSeries(iv){
 
 function canEditInterventionStart(iv){
   if(!iv||!CU)return false;
+  if(typeof isAdminModeActive==='function'&&isAdminModeActive())return true;
   if(isFollowingInterventionInSeries(iv))return false;
-  if(hasAdministrativeAccount())return true;
   const own=isInterventionReportChef(iv,CU.l);
   return own&&!iv._crValide&&isFirstInterventionOfRoute(iv);
 }
@@ -472,7 +472,7 @@ function renderInterventionRow(iv, ag, tireur) {
       ${isRenfortUT ? '<span class="bdg" style="background:#7C3AED;color:#fff;font-size:10px;">Renfort UT</span>' : ''}
       ${iv._urgence ? '<span class="bdg" style="background:#B91C1C;color:#fff;font-size:10px;font-weight:700;">🚨 URGENCE ERP</span>' : ''}
       ${iv._sdis ? '<span class="bdg" style="background:#1D4ED8;color:#fff;font-size:10px;font-weight:700;">SDIS</span>' : ''}
-      ${iv._heureDebutModifiee&&hasAdministrativeAccount()&&!iv._sdis ? '<span class="bdg" title="Heure de début corrigée — consulter la traçabilité" style="background:#FFF7ED;color:#9A3412;border:1px solid #FDBA74;font-size:10px;font-weight:700;">&#x23F1; Heure corrigée</span>' : ''}
+      ${(iv._heureDebutModifiee&&hasAdministrativeAccount()||iv._heureFinModifiee&&hasAdministrativeAccount())&&!iv._sdis ? '<span class="bdg" title="Horaire corrigé — consulter la traçabilité" style="background:#FFF7ED;color:#9A3412;border:1px solid #FDBA74;font-size:10px;font-weight:700;">&#x23F1; Horaire corrigé</span>' : ''}
       ${iv._echelleToiture ? '<span class="bdg" style="background:#F59E0B;color:#fff;font-size:10px;">Echelle de toit</span>' : ''}
       ${iv._epa ? '<span class="bdg" style="background:#8E44AD;color:#fff;font-size:10px;">EPA</span>' : ''}
       ${iv.rappels ? `<span class="bdg bp" style="font-size:10px;${isAdminModeActive()?'cursor:pointer;':''}"${isAdminModeActive()?` title="Déjà intervenu ici ?" onclick="event.stopPropagation();showInterventionsLiees('${iv.id}')"`:''}>${iv.rappels}×</span>` : ''}
@@ -672,7 +672,7 @@ function oM(id){
   const dispApl=iv._numApl||iv.id;
   const dispTransfert=iv._transfertDe?` ↩ transféré de ${CASERNES.find(cas=>cas.id===iv._transfertDe)?.nom||iv._transfertDe}`:'';
   document.getElementById('mi').textContent=dispApl+dispTransfert;
-  const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis de passage'],'modif':['bgr','Modification'],'modif-adresse':['bgr','Adresse corrigée'],'modif-heure':['binfo','Heure de début corrigée'],'modif-equipier':['binfo','Équipier corrigé'],'reclasse':['bgr','Reclasé'],'releve':['binfo','Relève'],'info-compl':['binfo','ℹ️ Complément d\u2019info']};
+   const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis de passage'],'modif':['bgr','Modification'],'modif-adresse':['bgr','Adresse corrigée'],'modif-heure':['binfo','Horaire corrigé'],'modif-equipier':['binfo','Équipier corrigé'],'reclasse':['bgr','Reclasé'],'releve':['binfo','Relève'],'info-compl':['binfo','ℹ️ Complément d\u2019info']};
   const[bc,bt]=bm[iv.s]||['bgr','—'];
   const sdots={'en-attente':'#E24B4A','selectionne':'var(--sel)','en-cours':'var(--amb)','terminee':'var(--grn)','avis-passage':'var(--pur)','modif':'#888','modif-adresse':'#888','modif-heure':'#C2410C','modif-equipier':'#2563EB','reclasse':'#888','releve':'#0369A1','info-compl':'#0369A1'};
   const tlHtml=(iv.tl||[]).map(t=>`<div class="tl-item"><div class="tl-dot" style="background:${sdots[t.s]||'#aaa'};"></div><div class="tl-info"><span class="tl-status">${bm[t.s]?bm[t.s][1]:t.s}${t.note?` — ${t.note}`:''}</span> <span class="tl-horo">&#x1F4C5; ${t.h}</span><div class="tl-who">${t.who}</div></div></div>`).join('');

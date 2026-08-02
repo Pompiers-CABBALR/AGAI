@@ -435,31 +435,45 @@ function saveInterventionStartCorrection(ivId){
   const next=field?field.value:'';
   const nextMinutes=hhmmToMinutes(next);
   if(nextMinutes===null){showToast('Saisissez une heure valide au format HH:MM.','warn');return;}
+  const endField=document.getElementById('cr-end-correction');
+  const nextEnd=endField?endField.value:(iv._hFin||'');
+  if(endField&&!nextEnd&&iv._hFin){showToast('L’heure de retour ne peut pas être effacée.','warn');return;}
+  if(endField&&nextEnd&&hhmmToMinutes(nextEnd)===null){showToast('Saisissez une heure de retour valide au format HH:MM.','warn');return;}
   const old=iv._hDebut||'';
+  const oldEnd=iv._hFin||'';
   const real=iv._hDebutReelle||iv._hDebutInitiale||old;
   if(!real){showToast('L’heure réelle de départ est introuvable.','warn');return;}
-  if(!hasAdministrativeAccount()){
+  if(!isAdminModeActive()){
     const realMinutes=hhmmToMinutes(real);
     const backward=(realMinutes-nextMinutes+1440)%1440;
     if(backward>15){
       showToast('Le chef d’agrès peut avancer l’heure de départ de 15 minutes maximum.','warn');return;
     }
   }
-  if(next===old){showToast('L’heure de départ est inchangée.','info');return;}
-  if(!iv._hDebutReelle)iv._hDebutReelle=real;
-  if(!iv._hDebutInitiale)iv._hDebutInitiale=real;
-  iv._hDebut=next;
-  iv._heureDebutModifiee=true;
-  if(!Array.isArray(iv._heureDebutModifs))iv._heureDebutModifs=[];
-  const change={
-    ancienne:old,nouvelle:next,reelle:real,auteur:CU.l,
-    horodatage:getH(N()),administrateur:hasAdministrativeAccount()
-  };
-  iv._heureDebutModifs.push(change);
-  pushTL(iv,'modif-heure',CU.l,
-    'Heure de début '+old+' → '+next+' (heure réelle conservée : '+real+')');
+  if(next===old&&nextEnd===oldEnd){showToast('Les heures de l’intervention sont inchangées.','info');return;}
+  const notes=[];
+  if(next!==old){
+    if(!iv._hDebutReelle)iv._hDebutReelle=real;
+    if(!iv._hDebutInitiale)iv._hDebutInitiale=real;
+    iv._hDebut=next;
+    iv._heureDebutModifiee=true;
+    if(!Array.isArray(iv._heureDebutModifs))iv._heureDebutModifs=[];
+    iv._heureDebutModifs.push({ancienne:old,nouvelle:next,reelle:real,auteur:CU.l,horodatage:getH(N()),administrateur:isAdminModeActive()});
+    notes.push('Départ '+old+' → '+next+' (heure réelle conservée : '+real+')');
+  }
+  if(nextEnd!==oldEnd&&isAdminModeActive()){
+    const realEnd=iv._hFinReelle||iv._hFinInitiale||oldEnd;
+    if(!iv._hFinReelle)iv._hFinReelle=realEnd;
+    if(!iv._hFinInitiale)iv._hFinInitiale=realEnd;
+    iv._hFin=nextEnd;
+    iv._heureFinModifiee=true;
+    if(!Array.isArray(iv._heureFinModifs))iv._heureFinModifs=[];
+    iv._heureFinModifs.push({ancienne:oldEnd,nouvelle:nextEnd,reelle:realEnd,auteur:CU.l,horodatage:getH(N()),administrateur:true});
+    notes.push('Retour '+oldEnd+' → '+nextEnd+' (heure réelle conservée : '+realEnd+')');
+  }
+  pushTL(iv,'modif-heure',CU.l,notes.join(' · '));
   saveData(true);rI();rHist();
-  showToast('Heure corrigée et ajoutée à l’historique.','success');
+  showToast('Horaires corrigés et ajoutés à l’historique.','success');
   showCompteRenduModal(ivId);
 }
 
@@ -467,39 +481,49 @@ function interventionStartCorrectionHTML(iv){
   if(iv&&iv._sdis)return '';
   const following=isFollowingInterventionInSeries(iv);
   const canEdit=canEditInterventionStart(iv);
+  const adminMode=isAdminModeActive();
   const admin=hasAdministrativeAccount();
   const own=isInterventionReportChef(iv,CU.l);
   const first=isFirstInterventionOfRoute(iv);
   const chainedLocked=iv._startLockedByChain===true;
   const real=iv._hDebutReelle||iv._hDebutInitiale||iv._hDebut||'';
+  const realEnd=iv._hFinReelle||iv._hFinInitiale||iv._hFin||'';
   const changes=Array.isArray(iv._heureDebutModifs)?iv._heureDebutModifs:[];
+  const endChanges=Array.isArray(iv._heureFinModifs)?iv._heureFinModifs:[];
   if(!iv._hDebut&&!real)return '';
   if(following){
-    const traceFollowing=changes.length
-      ?'<div style="font-size:10px;color:#7C2D12;margin-top:6px;">Derni\u00e8re modification : '+escHtml(changes[changes.length-1].ancienne)+' \u2192 '+escHtml(changes[changes.length-1].nouvelle)+' par '+escHtml(changes[changes.length-1].auteur)+' \u00b7 '+escHtml(changes[changes.length-1].horodatage)+'</div>'
-      :'';
-    return '<div style="background:#F8FAFC;border:1px solid #CBD5E1;border-radius:8px;padding:10px 12px;margin-bottom:10px;">'
-      +'<div style="font-size:12px;font-weight:700;color:#334155;">&#x23F1; Heure de d\u00e9but : '+escHtml(iv._hDebut||real)+'</div>'
-      +'<div style="font-size:11px;color:#92400E;margin-top:5px;">Intervention encha\u00een\u00e9e avec le m\u00eame \u00e9quipage : l\u2019heure est automatique et ne peut pas \u00eatre modifi\u00e9e.</div>'
-      +traceFollowing+'</div>';
+    if(!adminMode){
+      const traceFollowing=changes.length
+        ?'<div style="font-size:10px;color:#7C2D12;margin-top:6px;">Derni\u00e8re modification : '+escHtml(changes[changes.length-1].ancienne)+' \u2192 '+escHtml(changes[changes.length-1].nouvelle)+' par '+escHtml(changes[changes.length-1].auteur)+' \u00b7 '+escHtml(changes[changes.length-1].horodatage)+'</div>'
+        :'';
+      return '<div style="background:#F8FAFC;border:1px solid #CBD5E1;border-radius:8px;padding:10px 12px;margin-bottom:10px;">'
+        +'<div style="font-size:12px;font-weight:700;color:#334155;">&#x23F1; Heure de d\u00e9but : '+escHtml(iv._hDebut||real)+'</div>'
+        +'<div style="font-size:11px;color:#92400E;margin-top:5px;">Intervention encha\u00een\u00e9e avec le m\u00eame \u00e9quipage : l\u2019heure est automatique et ne peut pas \u00eatre modifi\u00e9e.</div>'
+        +traceFollowing+'</div>';
+    }
   }
-  const notice=!canEdit&&own&&!admin&&chainedLocked
+  const notice=!canEdit&&own&&!adminMode&&chainedLocked
     ?'<div style="font-size:11px;color:#92400E;margin-top:6px;">Cette intervention est enchaînée avec le même équipage après l’intervention précédente. Son heure de départ est automatique et ne peut pas être modifiée par le chef d’agrès.</div>'
-    :!canEdit&&own&&!admin&&!first
+    :!canEdit&&own&&!adminMode&&!first
       ?'<div style="font-size:11px;color:#92400E;margin-top:6px;">Dans une tournée de plusieurs interventions, seule la première autorise une correction manuelle par le chef d’agrès. Les suivantes sont enchaînées automatiquement.</div>'
       :'';
-  const trace=changes.length
-    ?'<div style="font-size:10px;color:#7C2D12;margin-top:6px;">Dernière modification : '+escHtml(changes[changes.length-1].ancienne)+' → '+escHtml(changes[changes.length-1].nouvelle)+' par '+escHtml(changes[changes.length-1].auteur)+' · '+escHtml(changes[changes.length-1].horodatage)+'</div>'
-    :'';
-  return '<div style="background:'+(iv._heureDebutModifiee?'#FFF7ED':'#F8FAFC')+';border:1px solid '+(iv._heureDebutModifiee?'#FDBA74':'#CBD5E1')+';border-radius:8px;padding:10px 12px;margin-bottom:10px;">'
-    +'<div style="font-size:12px;font-weight:700;color:'+(iv._heureDebutModifiee?'#9A3412':'#334155')+';margin-bottom:7px;">&#x23F1; Heure de début'+(iv._heureDebutModifiee?' — corrigée':'')+'</div>'
+  const lastStart=changes.length?changes[changes.length-1]:null;
+  const lastEnd=endChanges.length?endChanges[endChanges.length-1]:null;
+  const traces=[];
+  if(lastStart)traces.push('Départ : '+escHtml(lastStart.ancienne)+' → '+escHtml(lastStart.nouvelle)+' par '+escHtml(lastStart.auteur)+' · '+escHtml(lastStart.horodatage));
+  if(lastEnd)traces.push('Retour : '+escHtml(lastEnd.ancienne)+' → '+escHtml(lastEnd.nouvelle)+' par '+escHtml(lastEnd.auteur)+' · '+escHtml(lastEnd.horodatage));
+  const trace=traces.length?'<div style="font-size:10px;color:#7C2D12;margin-top:6px;">'+traces.join('<br>')+'</div>':'';
+  const anyChanged=iv._heureDebutModifiee||iv._heureFinModifiee;
+  return '<div style="background:'+(anyChanged?'#FFF7ED':'#F8FAFC')+';border:1px solid '+(anyChanged?'#FDBA74':'#CBD5E1')+';border-radius:8px;padding:10px 12px;margin-bottom:10px;">'
+    +'<div style="font-size:12px;font-weight:700;color:'+(anyChanged?'#9A3412':'#334155')+';margin-bottom:7px;">&#x23F1; '+(adminMode?'Horaires de l’intervention':'Heure de début')+(anyChanged?(adminMode?' — corrigés':' — corrigée'):'')+'</div>'
     +'<div style="display:flex;align-items:end;gap:8px;flex-wrap:wrap;">'
-    +'<div class="fg" style="margin:0;min-width:140px;flex:1;"><div class="fgl" style="font-size:11px;">Heure enregistrée</div>'
+    +'<div class="fg" style="margin:0;min-width:140px;flex:1;"><div class="fgl" style="font-size:11px;">Heure de départ</div>'
     +'<input class="fi" id="cr-start-correction" type="time" value="'+escHtml(iv._hDebut||real)+'"'+(canEdit?'':' readonly')+' style="font-size:12px;padding:6px 8px;'+(!canEdit?'background:#f5f5f5;':'')+'"></div>'
-    +'<div style="font-size:11px;color:var(--t2);padding-bottom:7px;">Heure réelle : <strong>'+escHtml(real)+'</strong></div>'
-    +(canEdit?'<button class="btn sm" style="background:#C2410C;color:#fff;margin-bottom:1px;" onclick="saveInterventionStartCorrection(\''+iv.id+'\')">Enregistrer l’heure</button>':'')
+    +(adminMode?'<div class="fg" style="margin:0;min-width:140px;flex:1;"><div class="fgl" style="font-size:11px;">Heure de retour</div><input class="fi" id="cr-end-correction" type="time" value="'+escHtml(iv._hFin||'')+'" style="font-size:12px;padding:6px 8px;"></div>':'')
+    +'<div style="font-size:11px;color:var(--t2);padding-bottom:7px;">'+(adminMode?'Heures réelles : <strong>'+escHtml(real||'—')+' / '+escHtml(realEnd||'—')+'</strong>':'Heure réelle : <strong>'+escHtml(real)+'</strong>')+'</div>'
+    +(canEdit?'<button class="btn sm" style="background:#C2410C;color:#fff;margin-bottom:1px;" onclick="saveInterventionStartCorrection(\''+iv.id+'\')">Enregistrer '+(adminMode?'les heures':'l’heure')+'</button>':'')
     +'</div>'
-    +(canEdit&&!admin?'<div style="font-size:10px;color:var(--t2);margin-top:6px;">Correction autorisée jusqu’à 15 minutes avant l’heure réelle, uniquement avant validation du rapport.</div>':'')
+    +(canEdit&&!adminMode?'<div style="font-size:10px;color:var(--t2);margin-top:6px;">Correction autorisée jusqu’à 15 minutes avant l’heure réelle, uniquement avant validation du rapport.</div>':'')
     +notice+trace+'</div>';
 }
 
@@ -708,16 +732,38 @@ function _sdisValidateHeures(iv){
 }
 function _sdisSaveFields(iv){
   const v=id=>(document.getElementById(id)||{}).value||'';
+  const oldDeparture=iv._hDebut||'',oldReturn=iv._hFin||'';
+  const nextDeparture=v('cr-hdepart'),nextReturn=v('cr-hretour');
   iv._hAcquis     = v('cr-hacquis');
   iv._numSDIS     = v('cr-numsdis');
-  iv._hDebut      = v('cr-hdepart');
-  iv._hFin        = v('cr-hretour');
+  iv._hDebut      = nextDeparture;
+  iv._hFin        = nextReturn;
   iv._hSll        = v('cr-hsll');
   iv._hDispo      = v('cr-hdispo');
   iv._materiels   = v('cr-materiels');
   iv._consommables= v('cr-consommables');
   iv._annotations = v('cr-annotations');
   iv._hOpTerminee = v('cr-hopterminee');
+  if(isAdminModeActive()){
+    const notes=[];
+    if(oldDeparture&&nextDeparture&&oldDeparture!==nextDeparture){
+      if(!iv._hDebutReelle)iv._hDebutReelle=oldDeparture;
+      if(!iv._hDebutInitiale)iv._hDebutInitiale=oldDeparture;
+      iv._heureDebutModifiee=true;
+      if(!Array.isArray(iv._heureDebutModifs))iv._heureDebutModifs=[];
+      iv._heureDebutModifs.push({ancienne:oldDeparture,nouvelle:nextDeparture,reelle:iv._hDebutReelle,auteur:CU.l,horodatage:getH(N()),administrateur:true});
+      notes.push('Départ '+oldDeparture+' → '+nextDeparture);
+    }
+    if(oldReturn&&nextReturn&&oldReturn!==nextReturn){
+      if(!iv._hFinReelle)iv._hFinReelle=oldReturn;
+      if(!iv._hFinInitiale)iv._hFinInitiale=oldReturn;
+      iv._heureFinModifiee=true;
+      if(!Array.isArray(iv._heureFinModifs))iv._heureFinModifs=[];
+      iv._heureFinModifs.push({ancienne:oldReturn,nouvelle:nextReturn,reelle:iv._hFinReelle,auteur:CU.l,horodatage:getH(N()),administrateur:true});
+      notes.push('Retour '+oldReturn+' → '+nextReturn);
+    }
+    if(notes.length)pushTL(iv,'modif-heure',CU.l,'Correction SDIS : '+notes.join(' · '));
+  }
 }
 function validerCompteRendu(ivId) {
   const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
