@@ -1066,7 +1066,7 @@ function adminExportInterventionStartDate(iv){
   if(!/^\d{8}/.test(referenceStamp))return '';
   const compact=referenceStamp.slice(0,8);
   const startTime=String(iv&&(
-    iv._hDebut||iv._hDebutReelle||iv._hDebutInitiale||''
+    (iv._sdis&&iv._hAcquis)||iv._hDebut||iv._hDebutReelle||iv._hDebutInitiale||''
   )||'');
   const startMatch=startTime.match(/^(\d{1,2}):(\d{2})$/);
   const referenceTime=adminExportTimeCompact(referenceStamp);
@@ -1121,13 +1121,24 @@ function adminExportRoundDurationQuarter(value,iv){
   if(!match)return value;
   return adminExportMinutesHHMM(adminExportRoundMinutesQuarter(Number(match[1])*60+Number(match[2])));
 }
+function adminExportInterventionDurationBounds(iv){
+  if(!iv)return {start:'',end:''};
+  if(adminExportReportType(iv)==='SDIS'){
+    return {
+      start:iv._hAcquis||iv._hDebut||'',
+      end:iv._hOpTerminee||iv._hFin||''
+    };
+  }
+  return {start:iv._hDebut||'',end:iv._hFin||''};
+}
 function adminExportInterventionRates(iv){
-  const fallbackDuration=adminExportDuration('',iv&&iv._hDebut,iv&&iv._hFin);
+  const bounds=adminExportInterventionDurationBounds(iv);
+  const fallbackDuration=adminExportDuration('',bounds.start,bounds.end);
   const fallback={taux1:'',heures1:adminExportRoundDurationQuarter(fallbackDuration,iv),taux2:'',heures2:''};
   const dateStr=adminExportInterventionStartDate(iv);
-  if(!iv||!iv._hDebut||!iv._hFin||dateStr.length<8)return fallback;
+  if(!iv||!bounds.start||!bounds.end||dateStr.length<8)return fallback;
   const yr=parseInt(dateStr.slice(0,4),10),mo=parseInt(dateStr.slice(4,6),10)-1,da=parseInt(dateStr.slice(6,8),10);
-  const debut=String(iv._hDebut).split(':').map(Number),fin=String(iv._hFin).split(':').map(Number);
+  const debut=String(bounds.start).split(':').map(Number),fin=String(bounds.end).split(':').map(Number);
   if([yr,mo,da,debut[0],debut[1],fin[0],fin[1]].some(function(n){return !Number.isFinite(n);}))return fallback;
   let startMin=debut[0]*60+debut[1],endMin=fin[0]*60+fin[1];
   if(endMin===startMin){
