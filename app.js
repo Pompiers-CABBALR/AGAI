@@ -3988,7 +3988,9 @@ function isInterventionReportChef(iv,login){
 
 function interventionRoleKey(role){
   const key=String(role||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z]/g,'');
+  if(key==='ca'||key.startsWith('chefdagres'))return 'chefdagres';
   if(key==='cond'||key==='conductrice'||key.startsWith('conducteur'))return 'conducteur';
+  if(key==='chefeq'||key.startsWith('chefdequipe'))return 'chefdequipe';
   if(key==='eq'||key==='equ'||key==='equipiere'||key.startsWith('equipier'))return 'equipier';
   return key;
 }
@@ -4000,9 +4002,17 @@ function interventionMainReportCrew(iv){
     seen.add(login);crew.push({login:login,role:role||'Agent'});
   };
   add(iv.agr,"Chef d'agrès");
-  (Array.isArray(iv._equipage1)?iv._equipage1:[]).forEach(function(member){
-    if(member)add(member.login,member.role);
-  });
+  const vehicle=iv._engin1||iv.eng||'';
+  if(vehicle){
+    interventionConfiguredCrewSlots(iv).forEach(function(slot){
+      const member=interventionConfiguredCrewMember(iv,slot);
+      if(member)add(member.login,slot.role);
+    });
+  }else{
+    (Array.isArray(iv._equipage1)?iv._equipage1:[]).forEach(function(member){
+      if(member)add(member.login,member.role);
+    });
+  }
   return crew;
 }
 function interventionMainCrewRoleMember(iv,roleKey){
@@ -4019,6 +4029,12 @@ function interventionTeammateName(login){
   if(!login)return 'Aucun';
   const user=USERS.find(function(item){return item.l===login;});
   return user?fullName(user):login;
+}
+function interventionConfiguredCrewMember(iv,slot){
+  const matches=(Array.isArray(iv&&iv._equipage1)?iv._equipage1:[]).filter(function(member){
+    return member&&member.login!==iv.agr&&interventionRoleKey(member.role)===slot.key;
+  });
+  return matches[slot.ordinal-1]||null;
 }
 function interventionTeammateEditorHTMLLegacy(iv){
   if(!iv||!CU)return '';
@@ -4126,10 +4142,28 @@ function interventionCrewRoleOptions(iv,roleKey,currentLogin,emptyLabel){
   }
   return options;
 }
+function interventionReportCrewSlotId(slot){
+  if(slot.key==='conducteur'&&slot.ordinal===1)return 'cr-conducteur';
+  if(slot.key==='equipier'&&slot.ordinal===1)return 'cr-equipier';
+  if(slot.key==='chefdequipe'&&slot.ordinal===1)return 'cr-chef-equipe';
+  return 'cr-crew-'+slot.key+'-'+slot.ordinal;
+}
+function interventionReportCrewFieldHTML(iv,slot,currentLogin){
+  const options=interventionCrewRoleOptions(iv,slot.key,currentLogin,'Aucun agent');
+  const label='Ajouter ou corriger '+slot.role.toLowerCase()+(slot.total>1?' '+slot.ordinal:'');
+  const attrs=' data-report-crew-slot="1" data-role-key="'+escHtml(slot.key)+'" data-role-label="'+escHtml(slot.role)+'" data-role-ordinal="'+slot.ordinal+'"';
+  if(slot.key==='conducteur'&&slot.ordinal===1){
+    return '<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;">Ajouter ou corriger le conducteur</div><select class="fi" id="cr-conducteur"'+attrs+' style="min-width:0;">'+options+'</select></div>';
+  }
+  if(slot.key==='equipier'&&slot.ordinal===1){
+    return '<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;">Ajouter ou corriger l’équipier</div><select class="fi" id="cr-equipier"'+attrs+' style="min-width:0;">'+options+'</select></div>';
+  }
+  return '<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;">'+escHtml(label)+'</div><select class="fi" id="'+escHtml(interventionReportCrewSlotId(slot))+'"'+attrs+' style="min-width:0;">'+options+'</select></div>';
+}
 function interventionTeammateEditorHTML(iv){
   if(!iv||!CU)return '';
-  const currentDriver=interventionMainDriver(iv);
-  const currentTeammate=interventionMainTeammate(iv);
+  const vehicle=iv._engin1||iv.eng||'';
+  const configuredSlots=interventionConfiguredCrewSlots(iv);
   const reportCrew=interventionMainReportCrew(iv);
   const canManage=isInterventionReportChef(iv,CU.l)||hasAdministrativeAccount();
   const crewSummary=reportCrew.length?reportCrew.map(function(member){
@@ -4137,29 +4171,32 @@ function interventionTeammateEditorHTML(iv){
       +'<span style="color:#1D4ED8;font-weight:700;">'+escHtml(member.role||'Agent')+'</span> '
       +escHtml(interventionTeammateName(member.login))+'</span>';
   }).join(''):'<span style="font-size:12px;color:#64748B;">Aucun agent renseign\u00e9.</span>';
-  const crewHeader='<div style="font-size:12px;font-weight:700;color:#1D4ED8;margin-bottom:7px;">\ud83d\ude92 \u00c9quipage repris dans le rapport</div>'
+  const configuredPlaces=interventionConfiguredCrewPlaceCount(iv);
+  const vehicleInfo=vehicle?'<span style="font-size:10px;font-weight:500;color:#475569;margin-left:6px;">'+escHtml(vehicle)+' · '+configuredPlaces+' place'+(configuredPlaces>1?'s':'')+' définie'+(configuredPlaces>1?'s':'')+' au départ</span>':'';
+  const crewHeader='<div style="font-size:12px;font-weight:700;color:#1D4ED8;margin-bottom:7px;">\ud83d\ude92 \u00c9quipage repris dans le rapport'+vehicleInfo+'</div>'
     +'<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:'+(canManage?'10':'0')+'px;">'+crewSummary+'</div>';
   if(!canManage){
     return '<div style="background:#F8FAFC;border:1px solid #CBD5E1;border-radius:10px;padding:10px 12px;margin-bottom:10px;">'
       +crewHeader+'</div>';
   }
-  const driverLogin=currentDriver&&currentDriver.login||'';
-  const teammateLogin=currentTeammate&&currentTeammate.login||'';
-  const driverOptions=interventionCrewRoleOptions(iv,'conducteur',driverLogin,'Aucun conducteur');
-  const teammateOptions=interventionCrewRoleOptions(iv,'equipier',teammateLogin,'Aucun \u00e9quipier');
+  const configuredFields=configuredSlots.map(function(slot){
+    const current=interventionConfiguredCrewMember(iv,slot);
+    return interventionReportCrewFieldHTML(iv,slot,current&&current.login||'');
+  }).join('');
   return '<div style="background:#EFF6FF;border:1px solid #93C5FD;border-radius:10px;padding:10px 12px;margin-bottom:10px;">'
     +crewHeader
     +'<div class="cr-teammate-grid">'
-    +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;">Ajouter ou corriger le conducteur</div><select class="fi" id="cr-conducteur" style="min-width:0;">'+driverOptions+'</select></div>'
-    +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;">Ajouter ou corriger l\u2019\u00e9quipier</div><select class="fi" id="cr-equipier" style="min-width:0;">'+teammateOptions+'</select></div>'
+    +(configuredFields||'<div style="font-size:11px;color:#64748B;">Aucune place supplémentaire définie pour ce type d’engin.</div>')
     +'<button class="btn sm" style="background:#2563EB;color:#fff;white-space:nowrap;" onclick="saveInterventionTeammate(\''+escHtml(iv.id)+'\')">\ud83d\udcbe Enregistrer l\u2019\u00e9quipage</button>'
-    +'</div><div style="font-size:10px;color:#64748B;margin-top:6px;">Toute correction du conducteur ou de l\u2019\u00e9quipier est ajout\u00e9e \u00e0 l\u2019historique, au rapport et aux exports.</div></div>';
+    +'</div><div style="font-size:10px;color:#64748B;margin-top:6px;">Les places correspondent au type d’engin configuré par le superadmin. Toute correction est ajoutée à l’historique, au rapport et aux exports.</div></div>';
 }
 function saveInterventionTeammate(ivId){
   const iv=IVS.find(function(item){return item.id===ivId;});if(!iv||!CU)return;
   if(!isInterventionReportChef(iv,CU.l)&&!hasAdministrativeAccount()){
     showToast('Modification r\u00e9serv\u00e9e au chef d\u2019agr\u00e8s de l\u2019intervention ou \u00e0 un administrateur.','warn');return;
   }
+  const configuredFields=document.querySelectorAll?Array.from(document.querySelectorAll('[data-report-crew-slot="1"]')):[];
+  if(configuredFields.length){saveInterventionConfiguredCrew(iv,configuredFields);return;}
   const driverField=document.getElementById('cr-conducteur');
   const teammateField=document.getElementById('cr-equipier');
   if(!driverField&&!teammateField)return;
@@ -4207,6 +4244,50 @@ function saveInterventionTeammate(ivId){
   saveData(true);rI();rHist();
   showCompteRenduModal(ivId);
   showToast('Composition de l\u2019\u00e9quipage enregistr\u00e9e.','success');
+}
+
+function saveInterventionConfiguredCrew(iv,fields){
+  const selected=fields.map(function(field){
+    return {login:field.value||'',role:field.dataset.roleLabel||'Agent',key:field.dataset.roleKey||interventionRoleKey(field.dataset.roleLabel),ordinal:parseInt(field.dataset.roleOrdinal,10)||1};
+  });
+  const logins=selected.map(function(item){return item.login;}).filter(Boolean);
+  const occupiedOutside=[iv._agr2].concat((Array.isArray(iv._equipage2)?iv._equipage2:[]).map(function(member){return member&&member.login;})).filter(Boolean);
+  if(new Set(logins).size!==logins.length||logins.includes(iv.agr)||logins.some(function(login){return occupiedOutside.includes(login);})){
+    showToast('Chaque place de l’équipage doit être occupée par un agent différent.','warn');return;
+  }
+  const beforeCrew=Array.isArray(iv._equipage1)?iv._equipage1.slice():[];
+  const previousBySlot={};
+  interventionConfiguredCrewSlots(iv).forEach(function(slot){
+    const member=interventionConfiguredCrewMember(iv,slot);
+    previousBySlot[slot.key+'-'+slot.ordinal]=member&&member.login||'';
+  });
+  const chiefExisting=beforeCrew.find(function(member){return member&&member.login===iv.agr;});
+  const nextCrew=iv.agr?[Object.assign({},chiefExisting||{},{role:'CA',login:iv.agr})]:[];
+  selected.forEach(function(item){
+    if(!item.login)return;
+    const existing=beforeCrew.find(function(member){return member&&member.login===item.login;});
+    nextCrew.push(Object.assign({},existing||{},{role:item.role,login:item.login}));
+  });
+  const changes=[];
+  selected.forEach(function(item){
+    const before=previousBySlot[item.key+'-'+item.ordinal]||'';
+    if(before===item.login)return;
+    const place=item.role+(fields.filter(function(field){return field.dataset.roleKey===item.key;}).length>1?' '+item.ordinal:'');
+    if(!before&&item.login)changes.push(place+' ajouté : '+interventionTeammateName(item.login));
+    else if(before&&!item.login)changes.push(place+' retiré : '+interventionTeammateName(before));
+    else changes.push(place+' modifié : '+interventionTeammateName(before)+' → '+interventionTeammateName(item.login));
+  });
+  if(!changes.length){showToast('L’équipage est déjà enregistré.','info');return;}
+  const reportField=document.getElementById('cr-texte');
+  if(reportField)writeCompteRenduDraft(iv.id,reportField.value);
+  iv._equipage1=nextCrew;
+  if(!Array.isArray(iv._equipierModifications))iv._equipierModifications=[];
+  iv._equipierModifications.push({date:getH(N()),auteur:CU.l,role:'equipage-configure',details:changes.slice()});
+  pushTL(iv,'modif-equipier',CU.l,changes.join(' · '));
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);rI();rHist();
+  showCompteRenduModal(iv.id);
+  showToast('Composition de l’équipage enregistrée selon le type d’engin.','success');
 }
 
 const _pendingNextInterventionStarts={};
@@ -8224,6 +8305,67 @@ function getEnginNbPlaces(nom){
   return getEnginRoles(nom).reduce(function(s,r){return s+(r.n||0);},0);
 }
 
+// Déplie le référentiel du superadmin en une place par agent. La première
+// place de chef d'agrès est occupée par le chef ayant pris le départ.
+function configuredCrewSlotsFromRoles(roleDefinitions){
+  const counters={},slots=[];
+  let fixedChiefUsed=false;
+  (Array.isArray(roleDefinitions)?roleDefinitions:[]).forEach(function(definition){
+    const role=definition&&definition.role||'Agent';
+    const key=interventionRoleKey(role)||'agent';
+    const count=Math.max(0,parseInt(definition&&definition.n,10)||0);
+    for(let index=0;index<count;index++){
+      if(key==='chefdagres'&&!fixedChiefUsed){fixedChiefUsed=true;continue;}
+      counters[key]=(counters[key]||0)+1;
+      slots.push({role:role,key:key,ordinal:counters[key]});
+    }
+  });
+  const totals={};
+  slots.forEach(function(slot){totals[slot.key]=(totals[slot.key]||0)+1;});
+  slots.forEach(function(slot){slot.total=totals[slot.key]||1;});
+  return slots;
+}
+function configuredCrewSlotsForVehicle(nom){
+  return configuredCrewSlotsFromRoles(getEnginRoles(nom));
+}
+function interventionConfiguredCrewSlots(iv){
+  const saved=Array.isArray(iv&&iv._engin1RoleConfig)&&iv._engin1RoleConfig.length?iv._engin1RoleConfig:null;
+  return configuredCrewSlotsFromRoles(saved||getEnginRoles(iv&&((iv._engin1||iv.eng))||''));
+}
+function interventionConfiguredCrewPlaceCount(iv){
+  const saved=Array.isArray(iv&&iv._engin1RoleConfig)&&iv._engin1RoleConfig.length?iv._engin1RoleConfig:null;
+  return (saved||getEnginRoles(iv&&((iv._engin1||iv.eng))||'')).reduce(function(total,role){return total+(parseInt(role&&role.n,10)||0);},0);
+}
+
+function departureCrewSlotId(prefix,slot){
+  if(prefix==='eq1'&&slot.key==='conducteur'&&slot.ordinal===1)return 'eq-conducteur';
+  if(prefix==='eq1'&&slot.key==='chefdequipe'&&slot.ordinal===1)return 'eq-chef-equipe';
+  if(prefix==='eq1'&&slot.key==='equipier'&&slot.ordinal===1)return 'eq-equipier1';
+  if(prefix==='eq2'&&slot.key==='conducteur'&&slot.ordinal===1)return 'eq-cond2';
+  if(prefix==='eq2'&&slot.key==='chefdequipe'&&slot.ordinal===1)return 'eq-chef-equipe2';
+  if(prefix==='eq2'&&slot.key==='equipier'&&slot.ordinal===1)return 'eq-equipier2';
+  return prefix+'-'+slot.key+'-'+slot.ordinal;
+}
+
+function buildDepartureCrewFields(engin,prefix,suggestions,excludeLogins){
+  suggestions=suggestions||{};
+  return configuredCrewSlotsForVehicle(engin).map(function(slot){
+    const label=slot.role+(slot.total>1?' '+slot.ordinal:'');
+    const suggested=slot.ordinal===1?(suggestions[slot.key]||''):'';
+    return agentSelectHtml(label,departureCrewSlotId(prefix,slot),suggested,!!suggested,slot.key==='conducteur',excludeLogins||[]);
+  }).join('');
+}
+
+function readDepartureCrewFields(engin,prefix,chiefLogin){
+  const crew=chiefLogin?[{role:'CA',login:chiefLogin}]:[];
+  configuredCrewSlotsForVehicle(engin).forEach(function(slot){
+    const field=document.getElementById(departureCrewSlotId(prefix,slot));
+    const login=field&&field.value||'';
+    if(login)crew.push({role:slot.role,login:login});
+  });
+  return crew;
+}
+
 // Compte, pour un engin, combien de chaque rôle standard la config prévoit.
 // Renvoie {conducteur:N, chefEquipe:N, equipier:N}. Le chef d'agrès est implicite.
 function _enginRoleCount(nom){
@@ -8560,16 +8702,13 @@ function showPersonnelModal(id){
 
   // ── Équipage engin 1 ──
   function buildEquipage1(enginVal){
-    const rc=_enginRoleCount(enginVal);
     const caHtml='<div style="margin-bottom:8px;background:#EEF2FF;border-radius:8px;padding:8px 10px;">'
       +'<div style="font-size:11px;font-weight:600;color:#3730A3;margin-bottom:2px;">Chef d\u2019agr\u00e8s</div>'
       +'<div style="font-size:12px;font-weight:700;">'+fullName(USERS.find(function(u){return u.l===CU.l;})||{prenom:CU.l,nom:''})+' <span style="font-size:10px;color:var(--t2);">(vous)</span></div>'
       +'</div>';
-    let html=caHtml;
-    if(rc.conducteur>0)html+=agentSelectHtml('Conducteur','eq-conducteur',cond1Sugg,true,true,[CU.l]);
-    if(rc.chefEquipe>0)html+=agentSelectHtml('Chef d\u2019\u00e9quipe','eq-chef-equipe',chefEq1Sugg,true,false,[CU.l]);
-    if(rc.equipier>0)html+=agentSelectHtml('\u00c9quipier','eq-equipier1',eq1Sugg,false,false,[CU.l]);
-    return html;
+    return caHtml+buildDepartureCrewFields(enginVal,'eq1',{
+      conducteur:cond1Sugg,chefdequipe:chefEq1Sugg,equipier:eq1Sugg
+    },[CU.l]);
   }
 
   const u2=agr2?USERS.find(function(u){return u.l===agr2;}):null;
@@ -8577,16 +8716,13 @@ function showPersonnelModal(id){
   // ── Équipage engin 2 (si 2ème chef) ──
   function buildEquipage2(enginVal){
     if(!agr2)return '';
-    const rc=_enginRoleCount(enginVal);
     const ca2Html='<div style="margin-bottom:8px;background:#EEF2FF;border-radius:8px;padding:8px 10px;">'
       +'<div style="font-size:11px;font-weight:600;color:#3730A3;margin-bottom:2px;">Chef d\u2019agr\u00e8s</div>'
       +'<div style="font-size:12px;font-weight:700;">'+(u2?fullName(u2):agr2)+'</div>'
       +'</div>';
-    let html=ca2Html;
-    if(rc.conducteur>0)html+=agentSelectHtml('Conducteur','eq-cond2',cond2Sugg,true,true,[CU.l,agr2]);
-    if(rc.chefEquipe>0)html+=agentSelectHtml('Chef d\u2019\u00e9quipe','eq-chef-equipe2',eq2Sugg,false,false,[CU.l,agr2]);
-    if(rc.equipier>0)html+=agentSelectHtml('\u00c9quipier','eq-equipier2',rc.chefEquipe>0?'':eq2Sugg,false,false,[CU.l,agr2]);
-    return html;
+    return ca2Html+buildDepartureCrewFields(enginVal,'eq2',{
+      conducteur:cond2Sugg,chefdequipe:chefEq2Sugg,equipier:eq2Sugg
+    },[CU.l,agr2]);
   }
 
   const eq1Html=buildEquipage1(engin1Sugg);
@@ -8624,30 +8760,24 @@ function showPersonnelModal(id){
 
 function buildEquipage1Dyn(enginVal){
   const d=window._piqData||{};
-  const rc=_enginRoleCount(enginVal);
   const caHtml='<div style="margin-bottom:8px;background:#EEF2FF;border-radius:8px;padding:8px 10px;">'
     +'<div style="font-size:11px;font-weight:600;color:#3730A3;margin-bottom:2px;">Chef d\u2019agr\u00e8s</div>'
     +'<div style="font-size:12px;font-weight:700;">'+fullName(USERS.find(function(u){return u.l===d.CUl;})||{prenom:d.CUl,nom:''})+' <span style="font-size:10px;color:var(--t2);">(vous)</span></div>'
     +'</div>';
-  let html=caHtml;
-  if(rc.conducteur>0)html+=agentSelectHtml('Conducteur','eq-conducteur',d.cond1Sugg,true,true,[d.CUl]);
-  if(rc.chefEquipe>0)html+=agentSelectHtml('Chef d\u2019\u00e9quipe','eq-chef-equipe',d.chefEq1Sugg,false,false,[d.CUl]);
-  if(rc.equipier>0)html+=agentSelectHtml('\u00c9quipier','eq-equipier1',d.eq1Sugg,false,false,[d.CUl]);
-  return html;
+  return caHtml+buildDepartureCrewFields(enginVal,'eq1',{
+    conducteur:d.cond1Sugg,chefdequipe:d.chefEq1Sugg,equipier:d.eq1Sugg
+  },[d.CUl]);
 }
 
 function buildEquipage2Dyn(enginVal){
   const d=window._piqData||{};
   if(!d.agr2)return '';
-  const rc=_enginRoleCount(enginVal);
   const ca2Html='<div style="margin-bottom:8px;background:#EEF2FF;border-radius:8px;padding:8px 10px;">'
     +'<div style="font-size:11px;font-weight:600;color:#3730A3;margin-bottom:2px;">Chef d\u2019agr\u00e8s</div>'
     +'<div style="font-size:12px;font-weight:700;">'+(d.u2?fullName(d.u2):d.agr2)+'</div></div>';
-  let html=ca2Html;
-  if(rc.conducteur>0)html+=agentSelectHtml('Conducteur','eq-cond2',d.cond2Sugg,true,true,[d.CUl,d.agr2]);
-  if(rc.chefEquipe>0)html+=agentSelectHtml('Chef d\u2019\u00e9quipe','eq-chef-equipe2',d.chefEq2Sugg,false,false,[d.CUl,d.agr2]);
-  if(rc.equipier>0)html+=agentSelectHtml('\u00c9quipier','eq-equipier2',d.eq2Sugg,false,false,[d.CUl,d.agr2]);
-  return html;
+  return ca2Html+buildDepartureCrewFields(enginVal,'eq2',{
+    conducteur:d.cond2Sugg,chefdequipe:d.chefEq2Sugg,equipier:d.eq2Sugg
+  },[d.CUl,d.agr2]);
 }
 
 function confirmerDepart(id){
@@ -8659,22 +8789,11 @@ function confirmerDepart(id){
   delete _pendingNextInterventionStarts[id];
   const engin1=document.getElementById('pers-engin')?.value||'';
   const engin2=document.getElementById('pers-engin2')?.value||'';
-  const getVal=function(sid){const el=document.getElementById(sid);return el?el.value:'';};
   // Équipage 1
-  const eq1=[
-    {role:'CA',login:CU.l},
-    getVal('eq-conducteur')?{role:'Cond.',login:getVal('eq-conducteur')}:null,
-    getVal('eq-chef-equipe')?{role:'Chef Éq.',login:getVal('eq-chef-equipe')}:null,
-    getVal('eq-equipier1')?{role:'Équipier',login:getVal('eq-equipier1')}:null,
-  ].filter(Boolean);
+  const eq1=readDepartureCrewFields(engin1,'eq1',CU.l);
   // Équipage 2
   const agr2=iv._agr2||'';
-  const eq2=agr2?[
-    {role:'CA',login:agr2},
-    getVal('eq-cond2')?{role:'Cond.',login:getVal('eq-cond2')}:null,
-    getVal('eq-chef-equipe2')?{role:'Chef Éq.',login:getVal('eq-chef-equipe2')}:null,
-    getVal('eq-equipier2')?{role:'Équipier',login:getVal('eq-equipier2')}:null,
-  ].filter(Boolean):[];
+  const eq2=agr2?readDepartureCrewFields(engin2,'eq2',agr2):[];
   if(!iv.tl)iv.tl=[];
   iv.s='en-cours';iv.agr=CU.l;
   iv._hDebut=heure;
@@ -8696,8 +8815,10 @@ function confirmerDepart(id){
   delete iv._chainPreviousInterventionId;
   iv._equipage1=eq1;
   iv._engin1=engin1;
+  iv._engin1RoleConfig=JSON.parse(JSON.stringify(getEnginRoles(engin1)));
   iv._equipage2=eq2.length?eq2:null;
   iv._engin2=engin2||null;
+  iv._engin2RoleConfig=engin2?JSON.parse(JSON.stringify(getEnginRoles(engin2))):null;
   if(engin1)iv.eng=engin1;
   const agr2Label=agr2?(function(){const u=USERS.find(function(u){return u.l===agr2;});return u?' + '+fullName(u)+' (2\u00e8me)':' + '+agr2;})():'';
   const persLabel=' ['+eq1.concat(eq2).map(function(e){const u=USERS.find(function(x){return x.l===e.login;});return e.role+': '+(u?fullName(u):e.login);}).join(', ')+']';
@@ -11298,7 +11419,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260802-sdis-heures-rapport-108';
+const APP_VERSION='20260802-equipage-par-engin-109';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
