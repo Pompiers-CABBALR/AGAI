@@ -2106,11 +2106,12 @@ function transfererIV(id){
   </div>`;
   document.getElementById('mo').style.display='flex';
 }
-function confirmerTransfert(id){
+async function confirmerTransfert(id){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
   const destId=document.getElementById('tr-dest').value;
   const motif=document.getElementById('tr-motif').value.trim();
   const destCas=CASERNES.find(c=>c.id===destId);if(!destCas)return;
+  await supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
   initCaserneData(destId);
   const h=getH(N());
   // Créer une copie dans la caserne destinataire
@@ -2167,11 +2168,12 @@ function refugeAnimalier(id){
   </div>`;
   document.getElementById('mo').style.display='flex';
 }
-function confirmerRefuge(id){
+async function confirmerRefuge(id){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
   const h=getH(N());
   iv._refugeAnimalier='Refuge animalier';
   iv.s='annulee';
+  await supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
   pushTL(iv,'annulee',CU.l);
   iv.tl[iv.tl.length-1].note='Transmis au refuge animalier';
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
@@ -2199,10 +2201,11 @@ function annulerIV(id){
     </div>`;
   openModalAtTop('cancel-motif');
 }
-function confirmerAnnulation(id){
+async function confirmerAnnulation(id){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
   const motif=document.getElementById('cancel-motif')?.value.trim()||'';
   iv.s='annulee';
+  await supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
   pushTL(iv,'annulee',CU.l);
   if(motif)iv.tl[iv.tl.length-1].note=motif;
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
@@ -2282,10 +2285,11 @@ function demandeSDIS(ivId){
   </div>`;
   document.getElementById('mo').style.display='flex';
 }
-function confirmerSDIS(ivId){
+async function confirmerSDIS(ivId){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
   const h=getH(N());const annee=new Date().getFullYear();
   iv.s='terminee';
+  await supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
   iv.tl.push({s:'terminee',h,who:CU.l,note:'Recréée en inter. SDIS'});
   const numApl=nextAplNum(annee);
   incCallCounter();
@@ -3282,6 +3286,56 @@ function envoyerRenfort(ivId){
 }
 
 // Accepter / refuser un renfort (caserne destinataire)
+// Supprime uniquement les branches d'une demande auxquelles la caserne
+// destinataire n'a pas encore répondu lorsque l'intervention source se termine.
+function nettoyerDemandesRenfortSansReponse(iv,caserneSourceId){
+  const result={changed:false,deletions:[],casernes:[]};
+  if(!iv||!Array.isArray(iv._renforts)||!iv._renforts.length)return result;
+  const keptRequests=[];
+  const casernesSupprimees=new Set();
+  iv._renforts.forEach(function(request){
+    if(!request||!request.id){result.changed=true;return;}
+    const destinations=Array.isArray(request.destinataires)?request.destinataires.slice():[];
+    const keptDestinations=[];
+    destinations.forEach(function(cid){
+      const destData=CASERNE_DATA[cid];
+      const destList=destData&&Array.isArray(destData.renforts)?destData.renforts:null;
+      const index=destList?destList.findIndex(function(item){
+        return item&&item.id===request.id&&(!item.ivId||item.ivId===iv.id)&&(!item.caserneSource||item.caserneSource===caserneSourceId);
+      }):-1;
+      const destination=index>=0?destList[index]:null;
+      if(!destination||destination.statut==='en-attente'){
+        if(index>=0)destList.splice(index,1);
+        result.changed=true;
+        result.deletions.push({caserneId:cid,id:request.id});
+        casernesSupprimees.add(cid);
+      }else keptDestinations.push(cid);
+    });
+    if(keptDestinations.length){
+      if(keptDestinations.length!==destinations.length){request.destinataires=keptDestinations;result.changed=true;}
+      keptRequests.push(request);
+    }else result.changed=true;
+  });
+  if(keptRequests.length!==iv._renforts.length||result.changed)iv._renforts=keptRequests;
+  result.casernes=Array.from(casernesSupprimees);
+  if(result.casernes.length){
+    if(!Array.isArray(iv.tl))iv.tl=[];
+    const labels=result.casernes.map(function(cid){const cas=CASERNES.find(function(item){return item.id===cid;});return cas?cas.nom:cid;});
+    iv.tl.push({s:'renfort',h:getH(N()),who:CU?CU.l:'',note:'Demande de renfort supprimée automatiquement à la clôture — aucune réponse de '+labels.join(', ')});
+  }
+  return result;
+}
+async function supprimerDemandesRenfortSansReponse(iv,caserneSourceId){
+  const result=nettoyerDemandesRenfortSansReponse(iv,caserneSourceId);
+  if(!result.deletions.length)return result;
+  if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcMarkDeleted==='function'){
+    const grouped={};
+    result.deletions.forEach(function(item){if(!grouped[item.caserneId])grouped[item.caserneId]=[];grouped[item.caserneId].push(item.id);});
+    for(const cid of Object.keys(grouped))await _rcMarkDeleted(cid,'renfort',Array.from(new Set(grouped[cid])));
+  }
+  return result;
+}
+
 function repondreRenfort(cid,renfortId,reponse){
   const d=CASERNE_DATA[cid];if(!d)return;
   const r=d.renforts.find(function(x){return x.id===renfortId;});if(!r)return;

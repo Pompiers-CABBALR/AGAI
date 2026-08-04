@@ -1137,7 +1137,7 @@ function showNextSelectedInterventionModal(closedIv){
   document.getElementById('mo').style.display='flex';
 }
 
-function clot(id){
+async function clot(id){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
   // Ne pas re-clôturer une intervention déjà liée à une PILP
   if(iv._lienPilp&&iv.s==='terminee'){showToast('Cette intervention est déjà clôturée (liée à une PILP).','warn');cM();return;}
@@ -1155,6 +1155,7 @@ function clot(id){
   }
   // Clôture normale
   iv.s='terminee';iv._hFin=getHHMM(N());iv.tl.push({s:'terminee',h,who:CU.l+agr2Lbl});
+  await supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
   (iv.avisIds||[]).forEach(aid=>{const av=IVS.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';av.tl.push({s:'terminee',h,who:CU.l+' (fusion)'});}});
   // Attribution des numéros si pas encore attribués
   if(!iv._numGlobal||!iv._numCaserne||!iv._numMois){
@@ -1183,12 +1184,14 @@ function clot(id){
   saveData(true);cM();rI();rAccueil();rStatsHeader(); // push immédiat : clôture d'intervention
   setTimeout(function(){showNextSelectedInterventionModal(iv);},80);
 }
-function clotAvis(id){
+async function clotAvis(id){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
   const h=getH(N());
   iv.s='terminee';iv.tl.push({s:'terminee',h,who:CU.l});
+  await supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
   (iv.avisIds||[]).forEach(aid=>{const av=IVS.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';av.tl.push({s:'terminee',h,who:CU.l+' (fusion)'});}});
-  cM();rI();
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);cM();rI();
 }
 function reclasser(id){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
