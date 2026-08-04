@@ -102,10 +102,11 @@ function getSlotsForDay(dayIdx,granularity){
   // Chaque jour affiché = 24h complets démarrant à startHour
   return Math.floor(1440/granularity);
 }
-function getEquipeOfUser(login){return EQUIPES.find(e=>e.membres.includes(login));}
-function getEquipeById(id){return EQUIPES.find(e=>e.id===id);}
+function equipeBelongsToCurrentCaserne(e){return !!(e&&(!e.caserneId||e.caserneId===CURRENT_CASERNE_ID));}
+function getEquipeOfUser(login){return EQUIPES.find(e=>equipeBelongsToCurrentCaserne(e)&&Array.isArray(e.membres)&&e.membres.includes(login));}
+function getEquipeById(id){return EQUIPES.find(e=>equipeBelongsToCurrentCaserne(e)&&e.id===id);}
 function sortEquipes(list){
-  return [...(list||[])].sort(function(a,b){
+  return [...(list||[])].filter(equipeBelongsToCurrentCaserne).sort(function(a,b){
     return String(a&&a.nom||a&&a.id||'').localeCompare(String(b&&b.nom||b&&b.id||''),'fr',{numeric:true,sensitivity:'base'});
   });
 }
@@ -1994,14 +1995,24 @@ function addEquipe(){
   const id='eq'+Date.now();
   const granularity=parseInt(document.getElementById('eq-granularity').value);
   const resp=document.getElementById('eq-resp').value;
-  EQUIPES.push({id,nom,color:selEqColorVal,granularity,resp,membres:resp?[resp]:[]});
+  if(resp&&!USERS.some(function(user){return user.l===resp;})){err.style.display='block';err.textContent='Le responsable doit appartenir à cette caserne.';return;}
+  EQUIPES.push({id,caserneId:CURRENT_CASERNE_ID,nom,color:selEqColorVal,granularity,resp,membres:resp?[resp]:[]});
   if(CD())CD().equipes=EQUIPES;
   document.getElementById('eq-nom').value='';
   document.getElementById('astr-equipe-add').style.display='none';
   saveData();rAstrEquipes();applyNavRights();
 }
 function delEquipe(id){
-  confirmModal('Supprimer cette équipe ?',function(){EQUIPES=EQUIPES.filter(e=>e.id!==id);saveData();rAstrEquipes();applyNavRights();});
+  confirmModal('Supprimer cette équipe ?',async function(){
+    const index=EQUIPES.findIndex(function(eq){return equipeBelongsToCurrentCaserne(eq)&&eq.id===id;});
+    if(index<0)return;
+    if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcMarkDeleted==='function'&&CURRENT_CASERNE_ID){
+      try{await _rcMarkDeleted(CURRENT_CASERNE_ID,'equipe',[id]);}catch(e){}
+    }
+    EQUIPES.splice(index,1);
+    if(CD())CD().equipes=EQUIPES;
+    saveData(true);rAstrEquipes();applyNavRights();
+  });
 }
 function editEquipe(id){
   const eq=getEquipeById(id);if(!eq)return;
@@ -2030,7 +2041,9 @@ function saveEditEquipe(id){
   const eq=getEquipeById(id);if(!eq)return;
   eq.nom=document.getElementById('edit-eq-nom').value.trim()||eq.nom;
   eq.granularity=parseInt(document.getElementById('edit-eq-gran').value);
-  eq.resp=document.getElementById('edit-eq-resp').value;
+  const resp=document.getElementById('edit-eq-resp').value;
+  if(resp&&!USERS.some(function(user){return user.l===resp;})){showToast('Le responsable doit appartenir à cette caserne.','warn');return;}
+  eq.resp=resp;eq.caserneId=CURRENT_CASERNE_ID;
   cM();saveData();rAstrEquipes();applyNavRights();
 }
 function addMembre(eqId){
@@ -2038,6 +2051,7 @@ function addMembre(eqId){
   const sel=document.getElementById('add-membre-sel-'+eqId);
   if(!sel||!sel.value)return;
   const login=sel.value;
+  if(!USERS.some(function(user){return user.l===login;})){showToast('Cet agent n’appartient pas à cette caserne.','warn');return;}
   const autreEq=EQUIPES.find(e=>e.id!==eqId&&e.membres.includes(login));
   if(autreEq){showToast((USERS.find(u=>u.l===login)?.prenom||login)+' est déjà dans '+autreEq.nom+'.','warn');return;}
   if(!eq.membres.includes(login))eq.membres.push(login);
