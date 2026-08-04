@@ -2106,12 +2106,12 @@ function transfererIV(id){
   </div>`;
   document.getElementById('mo').style.display='flex';
 }
-async function confirmerTransfert(id){
+function confirmerTransfert(id){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
   const destId=document.getElementById('tr-dest').value;
   const motif=document.getElementById('tr-motif').value.trim();
   const destCas=CASERNES.find(c=>c.id===destId);if(!destCas)return;
-  await supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
+  supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
   initCaserneData(destId);
   const h=getH(N());
   // Créer une copie dans la caserne destinataire
@@ -2168,12 +2168,12 @@ function refugeAnimalier(id){
   </div>`;
   document.getElementById('mo').style.display='flex';
 }
-async function confirmerRefuge(id){
+function confirmerRefuge(id){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
   const h=getH(N());
   iv._refugeAnimalier='Refuge animalier';
   iv.s='annulee';
-  await supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
+  supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
   pushTL(iv,'annulee',CU.l);
   iv.tl[iv.tl.length-1].note='Transmis au refuge animalier';
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
@@ -2201,11 +2201,11 @@ function annulerIV(id){
     </div>`;
   openModalAtTop('cancel-motif');
 }
-async function confirmerAnnulation(id){
+function confirmerAnnulation(id){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
   const motif=document.getElementById('cancel-motif')?.value.trim()||'';
   iv.s='annulee';
-  await supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
+  supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
   pushTL(iv,'annulee',CU.l);
   if(motif)iv.tl[iv.tl.length-1].note=motif;
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
@@ -2285,11 +2285,11 @@ function demandeSDIS(ivId){
   </div>`;
   document.getElementById('mo').style.display='flex';
 }
-async function confirmerSDIS(ivId){
+function confirmerSDIS(ivId){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
   const h=getH(N());const annee=new Date().getFullYear();
   iv.s='terminee';
-  await supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
+  supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
   iv.tl.push({s:'terminee',h,who:CU.l,note:'Recréée en inter. SDIS'});
   const numApl=nextAplNum(annee);
   incCallCounter();
@@ -3325,13 +3325,13 @@ function nettoyerDemandesRenfortSansReponse(iv,caserneSourceId){
   }
   return result;
 }
-async function supprimerDemandesRenfortSansReponse(iv,caserneSourceId){
+function supprimerDemandesRenfortSansReponse(iv,caserneSourceId){
   const result=nettoyerDemandesRenfortSansReponse(iv,caserneSourceId);
   if(!result.deletions.length)return result;
   if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcMarkDeleted==='function'){
     const grouped={};
     result.deletions.forEach(function(item){if(!grouped[item.caserneId])grouped[item.caserneId]=[];grouped[item.caserneId].push(item.id);});
-    for(const cid of Object.keys(grouped))await _rcMarkDeleted(cid,'renfort',Array.from(new Set(grouped[cid])));
+    Object.keys(grouped).forEach(function(cid){_rcMarkDeleted(cid,'renfort',Array.from(new Set(grouped[cid])));});
   }
   return result;
 }

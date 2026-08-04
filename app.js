@@ -5072,7 +5072,7 @@ function showNextSelectedInterventionModal(closedIv){
   document.getElementById('mo').style.display='flex';
 }
 
-async function clot(id){
+function clot(id){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
   // Ne pas re-clôturer une intervention déjà liée à une PILP
   if(iv._lienPilp&&iv.s==='terminee'){showToast('Cette intervention est déjà clôturée (liée à une PILP).','warn');cM();return;}
@@ -5088,9 +5088,11 @@ async function clot(id){
     iv.tl.push({s:'avis-passage',h,who:CU.l});
     // On NE retourne PAS : on laisse le flux de clôture normale terminer l'intervention.
   }
-  // Clôture normale
+  // Clôture normale : verrouiller immédiatement avant toute autre opération afin
+  // qu'un pull déjà en cours ne puisse pas restaurer l'ancien statut.
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   iv.s='terminee';iv._hFin=getHHMM(N());iv.tl.push({s:'terminee',h,who:CU.l+agr2Lbl});
-  await supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
+  supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
   (iv.avisIds||[]).forEach(aid=>{const av=IVS.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';av.tl.push({s:'terminee',h,who:CU.l+' (fusion)'});}});
   // Attribution des numéros si pas encore attribués
   if(!iv._numGlobal||!iv._numCaserne||!iv._numMois){
@@ -5119,11 +5121,12 @@ async function clot(id){
   saveData(true);cM();rI();rAccueil();rStatsHeader(); // push immédiat : clôture d'intervention
   setTimeout(function(){showNextSelectedInterventionModal(iv);},80);
 }
-async function clotAvis(id){
+function clotAvis(id){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
   const h=getH(N());
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   iv.s='terminee';iv.tl.push({s:'terminee',h,who:CU.l});
-  await supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
+  supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
   (iv.avisIds||[]).forEach(aid=>{const av=IVS.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';av.tl.push({s:'terminee',h,who:CU.l+' (fusion)'});}});
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);cM();rI();
@@ -8133,12 +8136,12 @@ function transfererIV(id){
   </div>`;
   document.getElementById('mo').style.display='flex';
 }
-async function confirmerTransfert(id){
+function confirmerTransfert(id){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
   const destId=document.getElementById('tr-dest').value;
   const motif=document.getElementById('tr-motif').value.trim();
   const destCas=CASERNES.find(c=>c.id===destId);if(!destCas)return;
-  await supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
+  supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
   initCaserneData(destId);
   const h=getH(N());
   // Créer une copie dans la caserne destinataire
@@ -8195,12 +8198,12 @@ function refugeAnimalier(id){
   </div>`;
   document.getElementById('mo').style.display='flex';
 }
-async function confirmerRefuge(id){
+function confirmerRefuge(id){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
   const h=getH(N());
   iv._refugeAnimalier='Refuge animalier';
   iv.s='annulee';
-  await supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
+  supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
   pushTL(iv,'annulee',CU.l);
   iv.tl[iv.tl.length-1].note='Transmis au refuge animalier';
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
@@ -8228,11 +8231,11 @@ function annulerIV(id){
     </div>`;
   openModalAtTop('cancel-motif');
 }
-async function confirmerAnnulation(id){
+function confirmerAnnulation(id){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
   const motif=document.getElementById('cancel-motif')?.value.trim()||'';
   iv.s='annulee';
-  await supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
+  supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
   pushTL(iv,'annulee',CU.l);
   if(motif)iv.tl[iv.tl.length-1].note=motif;
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
@@ -8312,11 +8315,11 @@ function demandeSDIS(ivId){
   </div>`;
   document.getElementById('mo').style.display='flex';
 }
-async function confirmerSDIS(ivId){
+function confirmerSDIS(ivId){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
   const h=getH(N());const annee=new Date().getFullYear();
   iv.s='terminee';
-  await supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
+  supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
   iv.tl.push({s:'terminee',h,who:CU.l,note:'Recréée en inter. SDIS'});
   const numApl=nextAplNum(annee);
   incCallCounter();
@@ -9352,13 +9355,13 @@ function nettoyerDemandesRenfortSansReponse(iv,caserneSourceId){
   }
   return result;
 }
-async function supprimerDemandesRenfortSansReponse(iv,caserneSourceId){
+function supprimerDemandesRenfortSansReponse(iv,caserneSourceId){
   const result=nettoyerDemandesRenfortSansReponse(iv,caserneSourceId);
   if(!result.deletions.length)return result;
   if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcMarkDeleted==='function'){
     const grouped={};
     result.deletions.forEach(function(item){if(!grouped[item.caserneId])grouped[item.caserneId]=[];grouped[item.caserneId].push(item.id);});
-    for(const cid of Object.keys(grouped))await _rcMarkDeleted(cid,'renfort',Array.from(new Set(grouped[cid])));
+    Object.keys(grouped).forEach(function(cid){_rcMarkDeleted(cid,'renfort',Array.from(new Set(grouped[cid])));});
   }
   return result;
 }
@@ -11582,7 +11585,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260804-nettoyage-renforts-sans-reponse-114';
+const APP_VERSION='20260804-cloture-prioritaire-sync-115';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -14645,6 +14648,18 @@ function _rcTrackChangedRecords(previousData,nextData){
   if(changed)_rcDirtyGeneration++;
   _rcPersistPendingDirty();
 }
+function _rcOverlayPendingLocalRows(rows){
+  if(!Array.isArray(rows)||!_rcPendingDirty.size)return rows;
+  const localRows=_rcSplitAll(_buildDataObject()).filter(function(row){return row.caserne!=='_GLOBAL'&&_rcPendingDirty.has(row.id);});
+  if(!localRows.length)return rows;
+  const indexes={};
+  rows.forEach(function(row,index){if(row&&row.id)indexes[row.id]=index;});
+  localRows.forEach(function(localRow){
+    if(Object.prototype.hasOwnProperty.call(indexes,localRow.id))rows[indexes[localRow.id]]=localRow;
+    else{indexes[localRow.id]=rows.length;rows.push(localRow);}
+  });
+  return rows;
+}
 function _rcRenderRealtimeViews(){
   try{rI();}catch(e){}
   try{rAccueil();}catch(e){}
@@ -15021,6 +15036,9 @@ async function _rcPull(silent){
     if(!resp.ok) throw new Error('records GET HTTP '+resp.status);
     const rows = await resp.json();
     if(!Array.isArray(rows)) throw new Error('Données records invalides');
+    // Un pull peut avoir commencé juste avant une clôture. Les lignes locales
+    // marquées en attente d'envoi restent prioritaires sur ce résultat distant.
+    _rcOverlayPendingLocalRows(rows);
     // Reconstruire l'objet complet
     const data = { CASERNE_DATA:{} };
     const byCaserne = {};

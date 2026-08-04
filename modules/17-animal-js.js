@@ -1673,6 +1673,18 @@ function _rcTrackChangedRecords(previousData,nextData){
   if(changed)_rcDirtyGeneration++;
   _rcPersistPendingDirty();
 }
+function _rcOverlayPendingLocalRows(rows){
+  if(!Array.isArray(rows)||!_rcPendingDirty.size)return rows;
+  const localRows=_rcSplitAll(_buildDataObject()).filter(function(row){return row.caserne!=='_GLOBAL'&&_rcPendingDirty.has(row.id);});
+  if(!localRows.length)return rows;
+  const indexes={};
+  rows.forEach(function(row,index){if(row&&row.id)indexes[row.id]=index;});
+  localRows.forEach(function(localRow){
+    if(Object.prototype.hasOwnProperty.call(indexes,localRow.id))rows[indexes[localRow.id]]=localRow;
+    else{indexes[localRow.id]=rows.length;rows.push(localRow);}
+  });
+  return rows;
+}
 function _rcRenderRealtimeViews(){
   try{rI();}catch(e){}
   try{rAccueil();}catch(e){}
@@ -2049,6 +2061,9 @@ async function _rcPull(silent){
     if(!resp.ok) throw new Error('records GET HTTP '+resp.status);
     const rows = await resp.json();
     if(!Array.isArray(rows)) throw new Error('Données records invalides');
+    // Un pull peut avoir commencé juste avant une clôture. Les lignes locales
+    // marquées en attente d'envoi restent prioritaires sur ce résultat distant.
+    _rcOverlayPendingLocalRows(rows);
     // Reconstruire l'objet complet
     const data = { CASERNE_DATA:{} };
     const byCaserne = {};
