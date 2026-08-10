@@ -112,6 +112,14 @@ function historySearchBlob(iv){
     iv._hDebut,iv._hFin,iv._crTexte,iv._compteRendu,crew.join(' ')
   ].join(' '));
 }
+function historyReportOrder(iv){
+  const values=[iv&&iv._numMois,iv&&iv._numCaserne,iv&&iv._numGlobal,iv&&iv._numRenfort];
+  for(const value of values){
+    const matches=String(value||'').match(/\d+/g);
+    if(matches&&matches.length)return parseInt(matches[matches.length-1],10)||0;
+  }
+  return 0;
+}
 function historyRowHTML(iv){
   const click=iv._isPilp?"oPilp('"+escHtml(iv.id)+"')":"oM('"+escHtml(iv.id)+"')";
   return `<div class="hm hist-entry${iv._crValide&&iv._impressions&&iv._impressions.length?' report-complete':''}" data-hsearch="${escHtml(historySearchBlob(iv))}" onclick="${click}">
@@ -177,15 +185,14 @@ function rHist(){
     return dateKey(iv.h)||'00000000';
   };
   const startTime=function(iv){const hd=String(iv._hDebut||'').replace(/[^0-9]/g,'');return hd?hd.padStart(4,'0').slice(0,4):'0000';};
-  const numberOrder=function(iv){
-    const values=[iv._numCaserne,iv._numGlobal,iv._numMois,iv._numRenfort,iv.id];
-    for(const value of values){const matches=String(value||'').match(/\d+/g);if(matches&&matches.length)return parseInt(matches[matches.length-1],10)||0;}
-    return 0;
-  };
   const ivs=normalIvs.concat(pilpMapped).sort(function(a,b){
-    const dateSort=(dayKey(b)+startTime(b)).localeCompare(dayKey(a)+startTime(a));
-    if(dateSort)return dateSort;
-    return numberOrder(b)-numberOrder(a)||String(b.id||'').localeCompare(String(a.id||''),'fr',{numeric:true});
+    const daySort=dayKey(b).localeCompare(dayKey(a));
+    if(daySort)return daySort;
+    const reportSort=historyReportOrder(b)-historyReportOrder(a);
+    if(reportSort)return reportSort;
+    const timeSort=startTime(b).localeCompare(startTime(a));
+    if(timeSort)return timeSort;
+    return String(b.id||'').localeCompare(String(a.id||''),'fr',{numeric:true});
   });
   const groups={};
   ivs.forEach(function(iv){
