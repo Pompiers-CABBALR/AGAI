@@ -947,6 +947,7 @@ function cM(){
   deactivateMobileModalField();
   if(mo)mo.style.display='none';
   if(mo)mo.classList.remove('cr-modal-overlay','pec-modal-overlay','pec-form-active');
+  if(mo)mo.classList.remove('address-edit-modal');
   if(panel)panel.scrollTop=0;
 }
 window._activeMobileModalFieldId='';
@@ -1112,13 +1113,11 @@ function cS(id,s){
 
 function getNextSelectedInterventions(closedIv){
   if(!closedIv)return[];
-  return IVS.filter(function(candidate){
+  return sortRouteSelection(IVS.filter(function(candidate){
     if(candidate.id===closedIv.id||candidate.s!=='selectionne'||candidate.agr!==closedIv.agr)return false;
     if(closedIv._routeBatchId)return candidate._routeBatchId===closedIv._routeBatchId;
     return true;
-  }).sort(function(a,b){
-    return (Number(a._routeOrder)||9999)-(Number(b._routeOrder)||9999);
-  });
+  }));
 }
 
 function chooseNextSelectedIntervention(nextId,previousId){
@@ -1140,9 +1139,10 @@ function showNextSelectedInterventionModal(closedIv){
   document.getElementById('mb').innerHTML=
     '<div style="background:#EEF2FF;border:1px solid #C7D2FE;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#3730A3;">'
     +'Sélectionnez l’intervention à enchaîner. Son heure de début reprendra automatiquement l’heure de fin de l’intervention que vous venez de clôturer.</div>'
-    +nextItems.map(function(next){
+    +nextItems.map(function(next,index){
       return '<button class="btn" style="width:100%;text-align:left;justify-content:flex-start;margin-bottom:8px;padding:10px 12px;" onclick="chooseNextSelectedIntervention(\''+next.id+'\',\''+closedIv.id+'\')">'
-        +'<span><strong>'+escHtml(next.n)+'</strong><br><span style="font-size:11px;color:var(--t2);">&#x1F4CD; '+escHtml(interventionAddressLabel(next))+'</span></span></button>';
+        +'<span style="display:inline-flex;width:24px;height:24px;border-radius:50%;align-items:center;justify-content:center;background:#E0E7FF;color:#3730A3;font-weight:700;margin-right:8px;flex:0 0 auto;">'+(index+1)+'</span>'
+        +'<span><strong>'+escHtml(next.n)+'</strong><br><span style="font-size:11px;color:var(--t2);">Ordre de tournée '+(Number(next._routeOrder)||index+1)+' · &#x1F4CD; '+escHtml(interventionAddressLabel(next))+'</span></span></button>';
     }).join('')
     +'<button class="mclose" onclick="cM()">Plus tard</button>';
   document.getElementById('mo').style.display='flex';

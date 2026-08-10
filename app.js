@@ -4882,6 +4882,7 @@ function cM(){
   deactivateMobileModalField();
   if(mo)mo.style.display='none';
   if(mo)mo.classList.remove('cr-modal-overlay','pec-modal-overlay','pec-form-active');
+  if(mo)mo.classList.remove('address-edit-modal');
   if(panel)panel.scrollTop=0;
 }
 window._activeMobileModalFieldId='';
@@ -5047,13 +5048,11 @@ function cS(id,s){
 
 function getNextSelectedInterventions(closedIv){
   if(!closedIv)return[];
-  return IVS.filter(function(candidate){
+  return sortRouteSelection(IVS.filter(function(candidate){
     if(candidate.id===closedIv.id||candidate.s!=='selectionne'||candidate.agr!==closedIv.agr)return false;
     if(closedIv._routeBatchId)return candidate._routeBatchId===closedIv._routeBatchId;
     return true;
-  }).sort(function(a,b){
-    return (Number(a._routeOrder)||9999)-(Number(b._routeOrder)||9999);
-  });
+  }));
 }
 
 function chooseNextSelectedIntervention(nextId,previousId){
@@ -5075,9 +5074,10 @@ function showNextSelectedInterventionModal(closedIv){
   document.getElementById('mb').innerHTML=
     '<div style="background:#EEF2FF;border:1px solid #C7D2FE;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#3730A3;">'
     +'Sélectionnez l’intervention à enchaîner. Son heure de début reprendra automatiquement l’heure de fin de l’intervention que vous venez de clôturer.</div>'
-    +nextItems.map(function(next){
+    +nextItems.map(function(next,index){
       return '<button class="btn" style="width:100%;text-align:left;justify-content:flex-start;margin-bottom:8px;padding:10px 12px;" onclick="chooseNextSelectedIntervention(\''+next.id+'\',\''+closedIv.id+'\')">'
-        +'<span><strong>'+escHtml(next.n)+'</strong><br><span style="font-size:11px;color:var(--t2);">&#x1F4CD; '+escHtml(interventionAddressLabel(next))+'</span></span></button>';
+        +'<span style="display:inline-flex;width:24px;height:24px;border-radius:50%;align-items:center;justify-content:center;background:#E0E7FF;color:#3730A3;font-weight:700;margin-right:8px;flex:0 0 auto;">'+(index+1)+'</span>'
+        +'<span><strong>'+escHtml(next.n)+'</strong><br><span style="font-size:11px;color:var(--t2);">Ordre de tournée '+(Number(next._routeOrder)||index+1)+' · &#x1F4CD; '+escHtml(interventionAddressLabel(next))+'</span></span></button>';
     }).join('')
     +'<button class="mclose" onclick="cM()">Plus tard</button>';
   document.getElementById('mo').style.display='flex';
@@ -5542,6 +5542,11 @@ function sortRouteSelection(sel){
     const av=Number.isFinite(ao)&&ao>0?ao:999999;
     const bv=Number.isFinite(bo)&&bo>0?bo:999999;
     if(av!==bv)return av-bv;
+    // Repli pour les anciennes sélections sans _routeOrder : conserver
+    // l'ordre chronologique dans lequel les interventions ont été choisies.
+    const as=(a.iv&&a.iv.tl||[]).filter(function(entry){return entry&&entry.s==='selectionne'&&entry.h;}).map(function(entry){return String(entry.h);}).pop()||'';
+    const bs=(b.iv&&b.iv.tl||[]).filter(function(entry){return entry&&entry.s==='selectionne'&&entry.h;}).map(function(entry){return String(entry.h);}).pop()||'';
+    if(as&&bs&&as!==bs)return as.localeCompare(bs);
     return a.index-b.index;
   }).map(function(item){return item.iv;});
 }
@@ -10340,6 +10345,12 @@ function editSelectCommune(commune,event){
   const addr=document.getElementById('edit-addr-val');
   if(addr){addr.disabled=false;addr.placeholder='ex. 12 rue des Lilas';if(changed)addr.value='';}
   editAddrSelected=!changed&&!!(addr&&addr.value.trim());
+  setTimeout(function(){
+    if(!addr)return;
+    window._activeMobileModalFieldId=addr.id;
+    try{addr.focus({preventScroll:true});}catch(errFocus){addr.focus();}
+    keepMobileModalFieldVisible();
+  },60);
 }
 function editResetCommune(){
   editCommuneSelected=null;editAddrSelected=false;
@@ -10373,6 +10384,8 @@ function editAddrAutocomplete(q){
       });
       dd.innerHTML=options.length?options.join(''):'<div class="addr-opt"><div class="addr-sub">Aucun résultat — saisie manuelle possible</div></div>';
       dd.style.display='block';
+      window._activeMobileModalFieldId='edit-addr-val';
+      setTimeout(keepMobileModalFieldVisible,40);
     }catch(e){
       dd.innerHTML='<div class="addr-opt"><div class="addr-sub">⚠️ Service indisponible — saisie manuelle</div></div>';dd.style.display='block';
     }
@@ -10388,6 +10401,9 @@ function editSelectAddress(address,event){
 }
 function editAdresse(ivId){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  const overlay=document.getElementById('mo');
+  deactivateMobileModalField();
+  if(overlay)overlay.classList.add('address-edit-modal','keyboard-aware-modal');
   editCommuneSelected=iv.com||null;editAddrSelected=!!iv.addr;
   document.getElementById('mt').textContent='Corriger l’adresse et la commune';
   document.getElementById('mi').textContent=iv.id;
@@ -10415,7 +10431,8 @@ function editAdresse(ivId){
         <button class="btn sm" onclick="oM('${ivId}')">Retour</button>
       </div>
     </div>`;
-  document.getElementById('mo').style.display='flex';
+  openModalAtTop();
+  registerMobileModalFields(document.getElementById('mb'));
 }
 function saveAdresse(ivId){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
@@ -11872,7 +11889,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260810-exclusivite-tout-personnel-118';
+const APP_VERSION='20260810-adresse-mobile-ordre-cloture-119';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne

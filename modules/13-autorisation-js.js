@@ -497,6 +497,12 @@ function editSelectCommune(commune,event){
   const addr=document.getElementById('edit-addr-val');
   if(addr){addr.disabled=false;addr.placeholder='ex. 12 rue des Lilas';if(changed)addr.value='';}
   editAddrSelected=!changed&&!!(addr&&addr.value.trim());
+  setTimeout(function(){
+    if(!addr)return;
+    window._activeMobileModalFieldId=addr.id;
+    try{addr.focus({preventScroll:true});}catch(errFocus){addr.focus();}
+    keepMobileModalFieldVisible();
+  },60);
 }
 function editResetCommune(){
   editCommuneSelected=null;editAddrSelected=false;
@@ -530,6 +536,8 @@ function editAddrAutocomplete(q){
       });
       dd.innerHTML=options.length?options.join(''):'<div class="addr-opt"><div class="addr-sub">Aucun résultat — saisie manuelle possible</div></div>';
       dd.style.display='block';
+      window._activeMobileModalFieldId='edit-addr-val';
+      setTimeout(keepMobileModalFieldVisible,40);
     }catch(e){
       dd.innerHTML='<div class="addr-opt"><div class="addr-sub">⚠️ Service indisponible — saisie manuelle</div></div>';dd.style.display='block';
     }
@@ -545,6 +553,9 @@ function editSelectAddress(address,event){
 }
 function editAdresse(ivId){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  const overlay=document.getElementById('mo');
+  deactivateMobileModalField();
+  if(overlay)overlay.classList.add('address-edit-modal','keyboard-aware-modal');
   editCommuneSelected=iv.com||null;editAddrSelected=!!iv.addr;
   document.getElementById('mt').textContent='Corriger l’adresse et la commune';
   document.getElementById('mi').textContent=iv.id;
@@ -572,7 +583,8 @@ function editAdresse(ivId){
         <button class="btn sm" onclick="oM('${ivId}')">Retour</button>
       </div>
     </div>`;
-  document.getElementById('mo').style.display='flex';
+  openModalAtTop();
+  registerMobileModalFields(document.getElementById('mb'));
 }
 function saveAdresse(ivId){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;

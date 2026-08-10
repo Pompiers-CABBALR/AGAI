@@ -386,6 +386,11 @@ function sortRouteSelection(sel){
     const av=Number.isFinite(ao)&&ao>0?ao:999999;
     const bv=Number.isFinite(bo)&&bo>0?bo:999999;
     if(av!==bv)return av-bv;
+    // Repli pour les anciennes sélections sans _routeOrder : conserver
+    // l'ordre chronologique dans lequel les interventions ont été choisies.
+    const as=(a.iv&&a.iv.tl||[]).filter(function(entry){return entry&&entry.s==='selectionne'&&entry.h;}).map(function(entry){return String(entry.h);}).pop()||'';
+    const bs=(b.iv&&b.iv.tl||[]).filter(function(entry){return entry&&entry.s==='selectionne'&&entry.h;}).map(function(entry){return String(entry.h);}).pop()||'';
+    if(as&&bs&&as!==bs)return as.localeCompare(bs);
     return a.index-b.index;
   }).map(function(item){return item.iv;});
 }

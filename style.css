@@ -674,6 +674,28 @@ body{min-height:var(--app-height);}
     scroll-margin-top:90px;
     scroll-margin-bottom:120px;
   }
+  /* La correction d'adresse reste dans le viewport visible quand le clavier
+     mobile s'ouvre. Les suggestions participent au flux vertical afin que le
+     champ ne soit jamais repousse ou masque sous le clavier. */
+  .mov.address-edit-modal .mod{
+    width:100%;
+    max-width:100%;
+    max-height:100%;
+    overflow-y:auto;
+    overflow-x:hidden;
+  }
+  .mov.address-edit-modal #edit-com-val,
+  .mov.address-edit-modal #edit-addr-val,
+  .mov.address-edit-modal #edit-addr-comp{
+    scroll-margin-top:80px;
+    scroll-margin-bottom:150px;
+  }
+  .mov.address-edit-modal #edit-addr-dd{
+    position:static!important;
+    max-height:min(180px,30vh)!important;
+    max-height:min(180px,30dvh)!important;
+    margin-top:4px!important;
+  }
   /* La fiche de prise en charge utilise le viewport réellement visible. Sur
      iPhone, cela empêche le clavier de déplacer la feuille et de laisser
      réapparaître la liste des interventions derrière le formulaire. */
