@@ -2540,6 +2540,7 @@ function agentSelectHtml(role,idSel,suggestedLogin,piqLabel,required,excludeLogi
 // ── Reconstruit toutes les options en excluant les agents déjà pris ──
 function refreshEquipageSelects(){
   const sels=Array.from(document.querySelectorAll('.eq-sel'));
+  const currentIvId=window._piqData&&window._piqData.ivId;
   const vals={};
   sels.forEach(function(s){
     // La suggestion du piquet ne s'applique QU'À LA PREMIÈRE initialisation du champ.
@@ -2557,11 +2558,13 @@ function refreshEquipageSelects(){
     const takenByOthers=sels.filter(function(o){return o.id!==sel.id&&vals[o.id];}).map(function(o){return vals[o.id];});
     const allExclude=baseExclude.concat(takenByOthers);
     const users=USERS.filter(function(u){
-      return u.l===currentVal||!allExclude.includes(u.l);
+      return (u.l===currentVal||!allExclude.includes(u.l))&&!findActivePersonnelConflict(u.l,currentIvId);
     }).sort(function(a,b){return (a.nom+' '+a.prenom).localeCompare(b.nom+' '+b.prenom,'fr');});
     const suggested=sel.dataset.suggested||'';
     // Personnel renfort (autre caserne) — affiché en tête de liste
-    const renforts=_getRenfortPersonnel().filter(function(r){return r.login===currentVal||!allExclude.includes(r.login);});
+    const renforts=_getRenfortPersonnel().filter(function(r){
+      return (r.login===currentVal||!allExclude.includes(r.login))&&!findActivePersonnelConflict(r.login,currentIvId);
+    });
     const renfortOpts=renforts.map(function(r){
       const nom=(r.prenom||r.nom)?((r.prenom||'')+' '+(r.nom||'')).trim():r.login;
       return '<option value="'+r.login+'"'+(r.login===currentVal?' selected':'')+'>&#x1F692; '+nom+(r.grade?' ('+gradeAbbr(r.grade)+')':'')+' — '+r.caserneNom+'</option>';
@@ -2760,7 +2763,8 @@ function showPersonnelModal(id){
 
   const enginOpts=function(sugg){
     return [''].concat(ASTR_CONFIG.engins||[]).map(function(e){
-      return '<option value="'+e+'"'+(e===sugg?' selected':'')+'>'+(e||'\u2014 Aucun \u2014')+'</option>';
+      const conflict=e?findActiveVehicleConflict(e,id):null;
+      return '<option value="'+e+'"'+(e===sugg?' selected':'')+(conflict?' disabled':'')+'>'+(e||'\u2014 Aucun \u2014')+(conflict?' \u2014 D\u00e9j\u00e0 en intervention':'')+'</option>';
     }).join('');
   };
 
@@ -2846,18 +2850,29 @@ function buildEquipage2Dyn(enginVal){
 
 function confirmerDepart(id){
   const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
-  prepareInterventionRoute(iv);
   const chained=!!_pendingNextInterventionStarts[id];
   const chainedPreviousId=iv._chainPreviousInterventionId||'';
   const heure=_pendingNextInterventionStarts[id]||getHHMM(N());
-  delete _pendingNextInterventionStarts[id];
   const engin1=document.getElementById('pers-engin')?.value||'';
   const engin2=document.getElementById('pers-engin2')?.value||'';
-  // Équipage 1
-  const eq1=readDepartureCrewFields(engin1,'eq1',CU.l);
-  // Équipage 2
   const agr2=iv._agr2||'';
+  // Tous les membres des deux equipages sont controles juste avant le depart.
+  const eq1=readDepartureCrewFields(engin1,'eq1',CU.l);
   const eq2=agr2?readDepartureCrewFields(engin2,'eq2',agr2):[];
+  const personnelLogins=eq1.concat(eq2).map(function(member){return member&&member.login;}).filter(Boolean);
+  const conflict=validateOperationalDeparture(iv,engin1,engin2,personnelLogins);
+  if(conflict){
+    if(conflict.sameDeparture&&conflict.kind==='vehicle'){
+      showToast('Le même véhicule ne peut pas être engagé deux fois sur la même intervention.','warn');
+    }else if(conflict.sameDeparture){
+      showToast('Le même agent ne peut pas occuper plusieurs places ou plusieurs véhicules sur le même départ.','warn');
+    }else{
+      showOperationalConflict(conflict.kind,conflict.value,conflict.iv);
+    }
+    return;
+  }
+  prepareInterventionRoute(iv);
+  delete _pendingNextInterventionStarts[id];
   if(!iv.tl)iv.tl=[];
   iv.s='en-cours';iv.agr=CU.l;
   iv._hDebut=heure;
@@ -3010,7 +3025,9 @@ function showReleveModal(id){
   // Construire les sélecteurs par rôle pour les remplaçants
   function agentOpts(excludeLogins){
     return '<option value="">\u2014 Inchangé \u2014</option>'
-      +sortByGradeThenName(USERS.filter(u=>!excludeLogins.includes(u.l))).map(function(u){
+      +sortByGradeThenName(USERS.filter(function(u){
+        return !excludeLogins.includes(u.l)&&!findActivePersonnelConflict(u.l,id);
+      })).map(function(u){
         const eq=getEquipeOfUser(u.l);
         return '<option value="'+u.l+'">'+fullName(u)+' ('+gradeAbbr(u.grade)+(eq?', '+eq.nom:'')+')' +'</option>';
       }).join('');
@@ -3067,6 +3084,17 @@ function validerReleve(id){
 
   if(!hasChange){showToast('Aucun remplacement sélectionné.','warn');return;}
 
+  const newLogins=nouvelEquipage.map(function(member){return member.login;}).filter(Boolean);
+  const duplicateLogin=newLogins.find(function(login,index){return newLogins.indexOf(login)!==index;});
+  if(duplicateLogin){
+    showToast('Le même agent ne peut pas occuper plusieurs places dans le véhicule.','warn');
+    return;
+  }
+  for(const login of newLogins){
+    const conflict=findActivePersonnelConflict(login,id);
+    if(conflict){showOperationalConflict('personnel',login,conflict);return;}
+  }
+
   if(!iv._releves)iv._releves=[];
   iv._releves.push({hReleve:heure,ancienEquipage,nouvelEquipage});
   iv.tl.push({s:'releve',h:getH(N()),who:CU.l,
@@ -3113,7 +3141,9 @@ function showRenfortInterneModal(ivId){
   if(iv.agr)dejaPris.add(iv.agr);
 
   // Agents disponibles (non engagés)
-  const disponibles=sortByGradeThenName(USERS.filter(function(u){return !dejaPris.has(u.l);}));
+  const disponibles=sortByGradeThenName(USERS.filter(function(u){
+    return !dejaPris.has(u.l)&&!findActivePersonnelConflict(u.l,ivId);
+  }));
 
   if(!disponibles.length){showToast('Aucun agent disponible dans la caserne.','warn');return;}
 
@@ -3149,6 +3179,10 @@ function confirmerRenfortInterne(ivId){
   const heure=getHHMM(N());
   const checked=Array.from(document.querySelectorAll('.renfort-int-chk:checked')).map(function(c){return c.value;});
   if(!checked.length){showToast('Aucun agent sélectionné.','warn');return;}
+  for(const login of checked){
+    const conflict=findActivePersonnelConflict(login,ivId);
+    if(conflict){showOperationalConflict('personnel',login,conflict);return;}
+  }
 
   // Ajouter comme relève interne
   if(!iv._releves)iv._releves=[];

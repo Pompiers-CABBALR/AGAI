@@ -919,6 +919,14 @@ function oM(id){
 }
 function setAgr2(ivId,login){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  if(login){
+    const conflict=findActivePersonnelConflict(login,ivId);
+    if(conflict){
+      showOperationalConflict('personnel',login,conflict);
+      oM(ivId);
+      return;
+    }
+  }
   const old2=iv._agr2;
   iv._agr2=login||null;
   // Tracer dans la timeline
@@ -927,6 +935,8 @@ function setAgr2(ivId,login){
     const nom2=u2?fullName(u2):login;
     pushTL(iv,'selectionne',CU.l+' + '+nom2+' (2\u00e8me chef)');
   }
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);
   rI();oM(ivId);
 }
 let _modalLocked = false;
@@ -1041,9 +1051,9 @@ function agresEnCours(){
   // La règle 1 seul en-cours s'applique dès que l'utilisateur est chef d'agrès OU tireur PILP,
   // quels que soient ses autres droits (chef, admin...).
   if(!isAgres()&&!isTireurPILP())return null;
-  const ivNorm=IVS.find(v=>v.s==='en-cours'&&v.agr===CU.l&&!v._isPilip);
+  const ivNorm=IVS.find(v=>v.s==='en-cours'&&(v.agr===CU.l||v._agr2===CU.l)&&!v._isPilip);
   if(ivNorm)return ivNorm;
-  const ivPilp=PILP_IVS.find(v=>v.s==='en-cours'&&v.agr===CU.l);
+  const ivPilp=PILP_IVS.find(v=>v.s==='en-cours'&&(v.agr===CU.l||v._agr2===CU.l));
   return ivPilp||null;
 }
 function showBlockModal(enCours){

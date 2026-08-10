@@ -259,9 +259,96 @@ function clotAvisPilp(id){
 }
 
 // ────────────────── PARCOURS ──────────────────
+function getActiveOperationalInterventions(excludeId){
+  return [].concat(IVS||[],PILP_IVS||[]).filter(function(iv){
+    return iv&&iv.id!==excludeId&&iv.s==='en-cours';
+  });
+}
+function interventionVehicleNames(iv){
+  const names=[iv&&iv.eng,iv&&iv._engin1,iv&&iv._engin2].filter(Boolean);
+  return [...new Set(names.map(function(name){return String(name).trim();}).filter(Boolean))];
+}
+function interventionActivePersonnelLogins(iv){
+  if(!iv)return [];
+  // La derniere releve contient la photographie complete de l'equipage
+  // principal actif, y compris apres l'ajout d'un renfort interne.
+  const releves=(iv._releves||[]).filter(function(r){
+    return r&&Array.isArray(r.nouvelEquipage)&&r.nouvelEquipage.length;
+  });
+  const principal=releves.length?releves[releves.length-1].nouvelEquipage:(iv._equipage1||[]);
+  const secondaire=iv._equipage2||[];
+  const logins=[];
+  principal.concat(secondaire).forEach(function(member){
+    if(member&&member.login)logins.push(member.login);
+  });
+  // Compatibilite avec les anciennes interventions sans equipage structure.
+  if(!principal.length&&iv.agr)logins.push(iv.agr);
+  if(!secondaire.length&&iv._agr2)logins.push(iv._agr2);
+  return [...new Set(logins.filter(Boolean))];
+}
+function interventionChiefLogins(iv){
+  return interventionActivePersonnelLogins(iv).filter(function(login){
+    if(login===iv.agr||login===iv._agr2)return true;
+    const releves=iv._releves||[];
+    const principal=releves.length?(releves[releves.length-1].nouvelEquipage||[]):(iv._equipage1||[]);
+    return principal.concat(iv._equipage2||[]).some(function(member){
+      const role=nm(member&&member.role||'').replace(/[^a-z0-9]+/g,' ').trim();
+      return member&&member.login===login&&(role==='ca'||role.includes('chef d agres'));
+    });
+  });
+}
+function findActiveVehicleConflict(engin,excludeId){
+  const key=nm(engin);
+  if(!key)return null;
+  return getActiveOperationalInterventions(excludeId).find(function(iv){
+    return interventionVehicleNames(iv).some(function(name){return nm(name)===key;});
+  })||null;
+}
+function findActivePersonnelConflict(login,excludeId){
+  if(!login)return null;
+  return getActiveOperationalInterventions(excludeId).find(function(iv){
+    return interventionActivePersonnelLogins(iv).includes(login);
+  })||null;
+}
+function findActiveChiefConflict(login,excludeId){
+  return findActivePersonnelConflict(login,excludeId);
+}
+function operationalConflictLabel(iv){
+  if(!iv)return '';
+  return (iv._numApl||iv.id||'Intervention')+' — '+(iv.n||'')+(iv.com?' ('+iv.com+')':'');
+}
+function showOperationalConflict(kind,value,iv){
+  const isVehicle=kind==='vehicle';
+  const user=!isVehicle&&USERS.find(function(agent){return agent.l===value;});
+  const label=isVehicle?value:(user?fullName(user):value);
+  const message=isVehicle
+    ?'Le véhicule '+label+' est déjà engagé sur '+operationalConflictLabel(iv)+'. Clôturez cette intervention avant de réutiliser ce véhicule.'
+    :'L’agent '+label+' est déjà engagé sur '+operationalConflictLabel(iv)+'. Un membre du personnel ne peut pas être affecté à plusieurs véhicules en même temps.';
+  showToast(message,'warn');
+}
+function validateOperationalDeparture(iv,engin1,engin2,personnelLogins){
+  const vehicleNames=[engin1,engin2].filter(Boolean);
+  if(vehicleNames.length>1&&nm(vehicleNames[0])===nm(vehicleNames[1])){
+    return {kind:'vehicle',value:vehicleNames[0],iv:iv,sameDeparture:true};
+  }
+  for(const engin of vehicleNames){
+    const vehicleConflict=findActiveVehicleConflict(engin,iv&&iv.id);
+    if(vehicleConflict)return {kind:'vehicle',value:engin,iv:vehicleConflict};
+  }
+  const personnel=(personnelLogins||[]).filter(Boolean);
+  const duplicateLogin=personnel.find(function(login,index){return personnel.indexOf(login)!==index;});
+  if(duplicateLogin)return {kind:'personnel',value:duplicateLogin,iv:iv,sameDeparture:true};
+  const uniquePersonnel=[...new Set(personnel)];
+  for(const login of uniquePersonnel){
+    const personnelConflict=findActivePersonnelConflict(login,iv&&iv.id);
+    if(personnelConflict)return {kind:'personnel',value:login,iv:personnelConflict};
+  }
+  return null;
+}
 function getEnginsOccupes(){
-  // Engins déjà assignés à une intervention en cours aujourd'hui
-  return IVS.filter(iv=>isTdy(iv)&&iv.s==='en-cours'&&iv.eng).map(iv=>iv.eng);
+  // Inclut les engins principaux et secondaires encore engagés, y compris
+  // lorsque l'intervention a été créée un jour précédent.
+  return [...new Set(getActiveOperationalInterventions().flatMap(interventionVehicleNames))];
 }
 function getPiquetsEngin(engin){
   // Piquets ASTR du jour pour cet engin
@@ -275,7 +362,7 @@ function rEgrid(){
   if(!eg)return;
   const occupes=getEnginsOccupes();
   eg.innerHTML=ASTR_CONFIG.engins.map(engin=>{
-    const occupe=occupes.includes(engin)&&selEng!==engin;
+    const occupe=occupes.some(function(name){return nm(name)===nm(engin);});
     const piquets=getPiquetsEngin(engin);
     const agentsPiquet=piquets.map(p=>{
       const ca=USERS.find(u=>u.l===p.chefAgres);
