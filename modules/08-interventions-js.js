@@ -20,12 +20,13 @@ function hasAdministrativeAccount(){
 
 function assignInterventionRoute(iv,login){
   if(!iv||!login)return;
-  const active=IVS.filter(function(x){
+  const allInterventions=[].concat(IVS||[],PILP_IVS||[]);
+  const active=allInterventions.filter(function(x){
     return x.id!==iv.id&&x.agr===login&&['selectionne','en-cours'].includes(x.s);
   });
   let batch=active.map(function(x){return x._routeBatchId;}).find(Boolean);
   if(!batch)batch='ROUTE_'+String(Date.now())+'_'+login;
-  const sameBatch=IVS.filter(function(x){return x._routeBatchId===batch;});
+  const sameBatch=allInterventions.filter(function(x){return x._routeBatchId===batch;});
   const maxOrder=sameBatch.reduce(function(max,x){return Math.max(max,Number(x._routeOrder)||0);},0);
   iv._routeBatchId=batch;
   if(!iv._routeOrder)iv._routeOrder=maxOrder+1;

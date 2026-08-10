@@ -290,24 +290,179 @@ function rEgrid(){
     </div>`;
   }).join('');
 }
-function rPL(sel){
+let _routeDraggedId='';
+let _routeTouchDrag=null;
+
+function sortRouteSelection(sel){
+  return (sel||[]).map(function(iv,index){return {iv:iv,index:index};}).sort(function(a,b){
+    const ao=Number(a.iv&&a.iv._routeOrder),bo=Number(b.iv&&b.iv._routeOrder);
+    const av=Number.isFinite(ao)&&ao>0?ao:999999;
+    const bv=Number.isFinite(bo)&&bo>0?bo:999999;
+    if(av!==bv)return av-bv;
+    return a.index-b.index;
+  }).map(function(item){return item.iv;});
+}
+
+function captureRouteViewPosition(){
+  const list=document.getElementById('pl2');
+  return {listTop:list?list.scrollTop:0,windowX:window.scrollX||0,windowY:window.scrollY||0};
+}
+
+function restoreRouteViewPosition(position){
+  if(!position)return;
+  requestAnimationFrame(function(){
+    const list=document.getElementById('pl2');
+    if(list)list.scrollTop=position.listTop||0;
+    window.scrollTo(position.windowX||0,position.windowY||0);
+  });
+}
+
+function rPL(sel,position){
+  const viewPosition=position||captureRouteViewPosition();
+  const ordered=sortRouteSelection(sel);
   rEgrid();
-  document.getElementById('pl2').innerHTML=sel.map((iv,i)=>`<div class="pi"><div class="pnum">${i+1}</div><div class="pinfo"><div class="pn2">${iv._isPilp||iv.id.startsWith('PILP')?'&#x1F3AF; ':''} ${escHtml(iv.n)}</div><div class="pa2">${escHtml(iv.addr||iv.com)} — ${escHtml(iv.com)}</div></div><div class="pmv"><button onclick="mvU(${i})" ${i===0?'disabled':''}>▲</button><button onclick="mvD(${i})" ${i===sel.length-1?'disabled':''}>▼</button></div></div>`).join('');
+  const list=document.getElementById('pl2');
+  if(!list)return;
+  list.innerHTML=ordered.map(function(iv,i){
+    const pilp=iv._isPilp||String(iv.id||'').startsWith('PILP');
+    return `<div class="pi" data-route-id="${escHtml(iv.id)}" ondragover="routeDragOver(event)" ondragleave="routeDragLeave(event)" ondrop="routeDrop(event)">
+      <button type="button" class="pdrag" draggable="true" ondragstart="routeDragStart(event)" ondragend="routeDragEnd(event)" onpointerdown="routePointerDown(event)" title="Glisser pour modifier l'ordre" aria-label="Déplacer l'intervention ${i+1}">⠿</button>
+      <div class="pnum">${i+1}</div><div class="pinfo"><div class="pn2">${pilp?'&#x1F3AF; ':''} ${escHtml(iv.n)}</div><div class="pa2">${escHtml(iv.addr||iv.com)} — ${escHtml(iv.com)}</div></div>
+      <div class="pmv"><button type="button" onclick="mvU(${i})" ${i===0?'disabled':''} title="Monter">▲</button><button type="button" onclick="mvD(${i})" ${i===ordered.length-1?'disabled':''} title="Descendre">▼</button></div></div>`;
+  }).join('');
+  restoreRouteViewPosition(viewPosition);
 }
 function getSelMixte(){
   const norm=IVS.filter(iv=>isTdy(iv)&&iv.s==='selectionne'&&iv.agr===CU.l&&!parcConfirmed.has(iv.id)&&!iv._isPilip);
   const pilp=isTireurPILP()?PILP_IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l&&!parcConfirmed.has(iv.id)):[];
-  return [...norm,...pilp];
+  return sortRouteSelection([...norm,...pilp]);
 }
-function mvU(i){const s=getSelMixte();if(i===0)return;const prev=s[i-1],cur=s[i];const listA=prev.id.startsWith('PILP')?PILP_IVS:IVS;const listB=cur.id.startsWith('PILP')?PILP_IVS:IVS;const a=listA.findIndex(v=>v.id===prev.id),b=listB.findIndex(v=>v.id===cur.id);if(listA===listB)[listA[a],listA[b]]=[listA[b],listA[a]];rI();}
-function mvD(i){const s=getSelMixte();if(i>=s.length-1)return;const cur=s[i],nxt=s[i+1];const listA=cur.id.startsWith('PILP')?PILP_IVS:IVS;const listB=nxt.id.startsWith('PILP')?PILP_IVS:IVS;const a=listA.findIndex(v=>v.id===cur.id),b=listB.findIndex(v=>v.id===nxt.id);if(listA===listB)[listA[a],listA[b]]=[listA[b],listA[a]];rI();}
+
+function persistRouteOrder(ordered,position){
+  if(!ordered||!ordered.length)return;
+  const batch=ordered.map(function(iv){return iv._routeBatchId;}).find(Boolean)||('ROUTE_'+String(Date.now())+'_'+(CU&&CU.l||''));
+  const stamp=getH(N());
+  ordered.forEach(function(iv,index){
+    iv._routeBatchId=batch;
+    iv._routeOrder=index+1;
+    iv._routeOrderUpdatedAt=stamp;
+  });
+  if(CD()){
+    CD().ivs=IVS;
+    CD().pilpIvs=PILP_IVS;
+  }
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);
+  rPL(ordered,position||captureRouteViewPosition());
+}
+
+function mvU(i){
+  const s=getSelMixte();if(i<=0||i>=s.length)return;
+  const position=captureRouteViewPosition();
+  [s[i-1],s[i]]=[s[i],s[i-1]];
+  persistRouteOrder(s,position);
+}
+function mvD(i){
+  const s=getSelMixte();if(i<0||i>=s.length-1)return;
+  const position=captureRouteViewPosition();
+  [s[i],s[i+1]]=[s[i+1],s[i]];
+  persistRouteOrder(s,position);
+}
+
+function clearRouteDropIndicators(){
+  document.querySelectorAll('#pl2 .pi').forEach(function(row){row.classList.remove('route-drop-before','route-drop-after','route-dragging');});
+}
+function routeDragStart(event){
+  const row=event.currentTarget.closest('.pi');
+  _routeDraggedId=row&&row.dataset.routeId||'';
+  if(!_routeDraggedId){event.preventDefault();return;}
+  row.classList.add('route-dragging');
+  if(event.dataTransfer){event.dataTransfer.effectAllowed='move';event.dataTransfer.setData('text/plain',_routeDraggedId);}
+}
+function routeDragOver(event){
+  if(!_routeDraggedId)return;
+  event.preventDefault();
+  const row=event.currentTarget;
+  if(!row||row.dataset.routeId===_routeDraggedId)return;
+  document.querySelectorAll('#pl2 .pi').forEach(function(item){item.classList.remove('route-drop-before','route-drop-after');});
+  const after=event.clientY>row.getBoundingClientRect().top+row.offsetHeight/2;
+  row.classList.add(after?'route-drop-after':'route-drop-before');
+  if(event.dataTransfer)event.dataTransfer.dropEffect='move';
+}
+function routeDragLeave(event){
+  const row=event.currentTarget;
+  if(row&&event.relatedTarget&&!row.contains(event.relatedTarget))row.classList.remove('route-drop-before','route-drop-after');
+}
+function routeDrop(event){
+  event.preventDefault();
+  const row=event.currentTarget;
+  const targetId=row&&row.dataset.routeId||'';
+  const after=!!row&&event.clientY>row.getBoundingClientRect().top+row.offsetHeight/2;
+  moveRouteIntervention(_routeDraggedId,targetId,after);
+  routeDragEnd();
+}
+function routeDragEnd(){
+  _routeDraggedId='';
+  clearRouteDropIndicators();
+}
+function moveRouteIntervention(draggedId,targetId,after){
+  if(!draggedId||!targetId||draggedId===targetId)return;
+  const ordered=getSelMixte();
+  const from=ordered.findIndex(function(iv){return iv.id===draggedId;});
+  if(from<0)return;
+  const moved=ordered.splice(from,1)[0];
+  let target=ordered.findIndex(function(iv){return iv.id===targetId;});
+  if(target<0)return;
+  if(after)target+=1;
+  ordered.splice(target,0,moved);
+  persistRouteOrder(ordered,captureRouteViewPosition());
+}
+
+function routePointerDown(event){
+  if(event.pointerType==='mouse'||event.button!==0)return;
+  const row=event.currentTarget.closest('.pi');
+  if(!row)return;
+  _routeTouchDrag={id:row.dataset.routeId,startY:event.clientY,moved:false,handle:event.currentTarget,pointerId:event.pointerId};
+  try{event.currentTarget.setPointerCapture(event.pointerId);}catch(e){}
+}
+function routePointerMove(event){
+  const state=_routeTouchDrag;
+  if(!state||event.pointerId!==state.pointerId)return;
+  if(!state.moved&&Math.abs(event.clientY-state.startY)<6)return;
+  state.moved=true;event.preventDefault();
+  const list=document.getElementById('pl2');
+  const dragged=list&&[...list.querySelectorAll('.pi')].find(function(row){return row.dataset.routeId===state.id;});
+  const target=document.elementFromPoint(event.clientX,event.clientY)?.closest('#pl2 .pi');
+  if(!list||!dragged||!target||target===dragged)return;
+  dragged.classList.add('route-dragging');
+  const after=event.clientY>target.getBoundingClientRect().top+target.offsetHeight/2;
+  list.insertBefore(dragged,after?target.nextSibling:target);
+  const bounds=list.getBoundingClientRect();
+  if(event.clientY<bounds.top+34)list.scrollTop-=14;
+  else if(event.clientY>bounds.bottom-34)list.scrollTop+=14;
+}
+function routePointerEnd(event){
+  const state=_routeTouchDrag;
+  if(!state||event.pointerId!==state.pointerId)return;
+  _routeTouchDrag=null;
+  try{state.handle.releasePointerCapture(state.pointerId);}catch(e){}
+  if(!state.moved){clearRouteDropIndicators();return;}
+  const current=getSelMixte();
+  const byId=new Map(current.map(function(iv){return [iv.id,iv];}));
+  const ordered=[...document.querySelectorAll('#pl2 .pi')].map(function(row){return byId.get(row.dataset.routeId);}).filter(Boolean);
+  clearRouteDropIndicators();
+  if(ordered.length===current.length)persistRouteOrder(ordered,captureRouteViewPosition());
+}
+document.addEventListener('pointermove',routePointerMove,{passive:false});
+document.addEventListener('pointerup',routePointerEnd);
+document.addEventListener('pointercancel',routePointerEnd);
+
 function opt(){
   const s=getSelMixte();
   if(s.length<=2)return;
   const base=[50.508,2.548];let rem=[...s],res=[],cur=base;
   while(rem.length){let best=null,bd=Infinity;rem.forEach(iv=>{const c=gc(iv.com),d=dst(cur,c);if(d<bd){bd=d;best=iv;}});res.push(best);rem=rem.filter(v=>v.id!==best.id);cur=gc(best.com);}
-  res.forEach((iv,i)=>{const list=iv.id.startsWith('PILP')?PILP_IVS:IVS;const p=list.findIndex(v=>v.id===iv.id);if(p>-1){const t=list.splice(p,1)[0];list.splice(i,0,t);}});
-  rI();
+  persistRouteOrder(res,captureRouteViewPosition());
 }
 function confirmerSel(){
   IVS.filter(iv=>isTdy(iv)&&iv.s==='selectionne'&&iv.agr===CU.l).forEach(iv=>parcConfirmed.add(iv.id));

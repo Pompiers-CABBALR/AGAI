@@ -245,13 +245,20 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 /* ── 12. Parcours / tournée ── */
 .pp{background:#fff;border:1.5px solid var(--sel);border-radius:12px;padding:14px;margin-bottom:12px;}
 .ptit{font-size:13px;font-weight:600;color:var(--sel);margin-bottom:10px;}
-.pi{display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--bg);border-radius:8px;margin-bottom:4px;font-size:12px;}
+.pi{display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--bg);border:1px solid transparent;border-radius:8px;margin-bottom:4px;font-size:12px;transition:opacity .15s,transform .15s,border-color .15s,box-shadow .15s;}
 .pnum{width:22px;height:22px;background:var(--sel);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;}
 .pinfo{flex:1;min-width:0;}
 .pn2{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--t);}
 .pa2{font-size:11px;color:var(--t2);}
+.pdrag{width:28px;height:34px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;border:1px solid var(--brd);border-radius:6px;background:#fff;color:var(--t2);font-size:18px;line-height:1;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;}
+.pdrag:active{cursor:grabbing;}
+.pi.route-dragging{opacity:.45;transform:scale(.99);}
+.pi.route-drop-before{border-top-color:var(--sel);box-shadow:0 -3px 0 var(--sel);}
+.pi.route-drop-after{border-bottom-color:var(--sel);box-shadow:0 3px 0 var(--sel);}
 .pmv{display:flex;flex-direction:column;gap:2px;}
 .pmv button{background:#fff;border:1px solid var(--brd);border-radius:4px;width:22px;height:17px;cursor:pointer;font-size:10px;color:var(--t2);}
+#pl2{max-height:min(44vh,420px);overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding:2px 3px 2px 0;}
+@media(max-width:480px){#pl2{max-height:38vh;}.pi{padding:8px 7px;}.pdrag{width:34px;height:38px;font-size:21px;}}
 .egrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:8px 0;}
 .ec{border:1px solid var(--brd);border-radius:8px;padding:7px 4px;text-align:center;cursor:pointer;background:#fff;font-size:12px;font-weight:500;color:var(--t);}
 .ec.sel{border-color:var(--grn);background:var(--gl);color:#3B6D11;}
