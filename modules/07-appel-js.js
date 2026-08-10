@@ -569,9 +569,8 @@ function enr(){
   // Lever l'indicateur "en attente" sur ces interventions (le requérant a rappelé).
   exIv.concat(exPilp).forEach(iv=>{iv._avisEnAttente=false;iv._avisRappele=true;});
   exPilp.forEach(iv=>iv.rappels=(iv.rappels||0)+1);
-  // Numérotation appel (APL) et intervention (INT, seulement quand terminée)
+  // Seul l'appel reçoit son numéro ici. Les numéros d'intervention sont attribués au passage En cours.
   const numApl=nextAplNum(annee);
-  const nums=nextIntNum(annee,h); // Réservé pour quand l'intervention sera terminée
   let det=document.getElementById('fo').value.trim();
   const appelDetails=_captureAppelDetails();
   const tels=getAppelPhones();
@@ -582,18 +581,9 @@ function enr(){
   incCallCounter();
 
   if(pilpDirect&&selNat==='Nid de frelons asiatiques'){
-    // Attribuer numéro INT à l'IVS de base qui sera comptabilisée
-    const numsInt=nextIntNum(annee,h);
-    const ivBase={id:numsInt.idCas,_numApl:numApl,_numCaserne:numsInt.numCas,_numGlobal:numsInt.numGlobal,
-      n:selNat,addr,com,h,op:CU.l,s:'terminee',det,eng:null,
-      req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,
-      obs:'',agr:CU.l,rappels:exPilp.length,avisIds:[],_lienPilp:true,_appelDetails:appelDetails,reqDispo,_erp:erp,_urgence:erp,
-      tl:[mkTL('en-attente',h,CU.l),mkTL('terminee',h,CU.l+' → PILP')]};
-    IVS.unshift(ivBase);
-    if(CD())CD().ivs=IVS;
     PILP_IVS.unshift({
-      id:nextPilpId(annee),ivRef:numsInt.idCas,_numApl:numApl,
-      // Pas de _numCaserne/_numGlobal : attribués à la clôture PILP
+      id:nextPilpId(annee),ivRef:null,_numApl:numApl,
+      // Aucun numéro d'intervention tant que la PILP reste en attente.
       n:'Nid de frelons asiatiques — PILP',addr,com,h,
       req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,reqDispo,_erp:erp,_urgence:erp,
       localisation:null,hauteur:null,reconnaissanceFaite:false,axeTir:null,obs:det,

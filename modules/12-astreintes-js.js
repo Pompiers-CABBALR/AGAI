@@ -2300,6 +2300,9 @@ function confirmerSDIS(ivId){
     tl:[mkTL('en-attente',h,CU.l),mkTL('en-cours',h,CU.l+' (SDIS)')]
   };
   IVS.unshift(newIv);
+  assignInterventionNumbersAtStart(newIv);
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);
   cM();rI();rAccueil();
   // Ouvrir directement la nouvelle intervention
   setTimeout(()=>oM(newIv.id),100);
@@ -2903,6 +2906,7 @@ function confirmerDepart(id){
   const persLabel=' ['+eq1.concat(eq2).map(function(e){const u=USERS.find(function(x){return x.l===e.login;});return e.role+': '+(u?fullName(u):e.login);}).join(', ')+']';
   pushTL(iv,'en-cours',CU.l+agr2Label+persLabel,
     chained?'Début enchaîné à '+heure+' après l’intervention précédente':'Départ réel à '+heure);
+  assignInterventionNumbersAtStart(iv);
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);cM();rI();rStatsHeader(); // push immédiat : changement de statut partagé
   setTimeout(function(){oM(id);},80);
@@ -3462,7 +3466,7 @@ function confirmerRenfortEquipage(cid,renfortId){
   // Éviter les doublons
   const ivId=r.ivId+'_renfort_'+cid;
   if(!CASERNE_DATA[cid].ivs.find(function(iv){return iv.id===ivId;})){
-    CASERNE_DATA[cid].ivs.push({
+    const renfortIv={
       id:ivId,
       _isRenfort:true,
       _renfortId:renfortId,
@@ -3485,7 +3489,9 @@ function confirmerRenfortEquipage(cid,renfortId){
       req:ivSrc?ivSrc.req:'',
       tel:ivSrc?ivSrc.tel:'',
       op:CU?CU.l:'',
-    });
+    };
+    CASERNE_DATA[cid].ivs.push(renfortIv);
+    assignInterventionNumbersAtStart(renfortIv);
   }
 
   // Intégrer dans l'intervention source

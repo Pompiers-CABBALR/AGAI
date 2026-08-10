@@ -31,18 +31,12 @@ function creerPILP(ivId){
   err.style.display='none';
   const h=getH(N());
   const annee=new Date().getFullYear();
-  // L'intervention parente (frelons) reçoit son numéro INT à la clôture
-  if(!iv._numCaserne){
-    const nums=nextIntNum(annee,iv);
-    iv._numCaserne=nums.numCas;iv._numGlobal=nums.numGlobal;
-    iv.id=nums.idCas;
-  }
   // La PILP créée reçoit un id temporaire PILP-2026-001
-  // Elle n'a PAS encore de numéro INT — ce sera attribué à la clôture
+  // Elle n'a PAS encore de numéro INT — ce sera attribué à son passage En cours.
   const pilpId=nextPilpId(annee);
   PILP_IVS.unshift({
     id:pilpId,ivRef:iv.id,_numApl:iv._numApl||iv.id,
-    // Pas de _numCaserne ni _numGlobal ici — attribués à la clôture
+    // Pas de _numCaserne ni _numGlobal ici — attribués au passage En cours
     n:'Nid de frelons asiatiques — PILP',addr,com:iv.com,h,req,tel,
     localisation:document.getElementById('pf-loc').value,
     hauteur:parseFloat(document.getElementById('pf-haut').value)||null,
@@ -142,7 +136,8 @@ function oPilp(id){
   document.getElementById('mt').textContent=iv.n;
     // Numéro affiché : id temporaire PILP ou APL si clôturé
   const pApl=iv._numApl||'';
-  document.getElementById('mi').textContent=iv.s==='terminee'?(pApl||iv.id):iv.id;
+  const pilpUt=iv._numCaserne?' · UT '+iv._numCaserne:'';
+  document.getElementById('mi').textContent=(iv.s==='terminee'?(pApl||iv.id):iv.id)+pilpUt;
   const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis passage']};
   const[bc,bt]=bm[iv.s]||['bgr','—'];
   let actions='';
@@ -208,8 +203,9 @@ function cSPilp(id,s){
   iv.s=s;
   if(s==='selectionne'||s==='en-cours')iv.agr=CU.l;
   if(s==='en-cours')iv.tireur=CU.l;
-  if(s==='en-attente'){iv.agr=null;iv.tireur=null;}
+  if(s==='en-attente'){clearInterventionNumbersForPending(iv);iv.agr=null;iv.tireur=null;}
   if(!iv.tl)iv.tl=[];iv.tl.push(mkTL(s,getH(N()),CU.l));
+  if(s==='en-cours')assignInterventionNumbersAtStart(iv);
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);
   rPilp();oPilp(id);
@@ -227,13 +223,6 @@ function clotPilp(id){
     rPilp();oPilp(id);
   } else {
     iv.s='terminee';iv._hFin=getHHMM(N());iv.tl.push({s:'terminee',h,who:CU.l});
-    // Attribuer numéros INT
-    if(!iv._numGlobal||!iv._numCaserne||!iv._numMois){
-      const nums=nextIntNum(new Date().getFullYear(),iv);
-      if(!iv._numGlobal)  iv._numGlobal=nums.numGlobal;
-      if(!iv._numCaserne) iv._numCaserne=nums.numCas;
-      if(!iv._numMois)    iv._numMois=nums.numMois;
-    }
     (iv.avisIds||[]).forEach(aid=>{const av=PILP_IVS.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';av.tl.push({s:'terminee',h,who:CU.l+' (fusion)'});}});
     if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
     saveData(true);
@@ -243,14 +232,11 @@ function clotPilp(id){
 function clotAvisPilp(id){
   const iv=PILP_IVS.find(v=>v.id===id);if(!iv)return;
   const h=getH(N());iv.s='terminee';iv.tl.push({s:'terminee',h,who:CU.l});
-  if(!iv._numCaserne){
-    const annee=new Date().getFullYear();
-    const nums=nextIntNum(annee,iv);
-    iv._numCaserne=nums.numCas;iv._numGlobal=nums.numGlobal;
-    IVS.unshift({id:nums.idCas,_numApl:iv._numApl||iv.id,_numCaserne:nums.numCas,_numGlobal:nums.numGlobal,
+  if(iv._numCaserne&&!IVS.some(function(item){return item&&item._lienPilpSourceId===iv.id;})){
+    IVS.unshift({id:String(iv.id)+'_historique',_numApl:iv._numApl||iv.id,_numCaserne:iv._numCaserne,_numGlobal:iv._numGlobal,_numMois:iv._numMois,
       n:iv.n.replace(' — PILP',''),addr:iv.addr,com:iv.com,h:iv.h,op:iv.agr||CU.l,
       s:'terminee',det:iv.obs||'',eng:null,req:iv.req||'',tel:iv.tel||'',obs:'',agr:CU.l,
-      rappels:0,avisIds:[],_lienPilp:true,tl:[...iv.tl]});
+      rappels:0,avisIds:[],_lienPilp:true,_lienPilpSourceId:iv.id,tl:[...iv.tl]});
   }
   (iv.avisIds||[]).forEach(aid=>{const av=PILP_IVS.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';av.tl.push({s:'terminee',h,who:CU.l+' (fusion)'});}});
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();

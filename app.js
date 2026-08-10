@@ -502,7 +502,7 @@ function nextRenfortNum(annee){
   const ivsCas=[...(CASERNE_DATA[cid]&&CASERNE_DATA[cid].ivs||[])];
   let maxR=0;
   ivsCas.forEach(function(iv){
-    if(iv._isRenfort&&iv.s==='terminee'&&(iv.h||'').startsWith(y)&&iv._numRenfort){
+    if(iv._isRenfort&&['en-cours','terminee'].includes(iv.s)&&interventionNumberingDateKey(iv).startsWith(y)&&iv._numRenfort){
       const n=parseInt(iv._numRenfort)||0;if(n>maxR)maxR=n;
     }
   });
@@ -510,6 +510,9 @@ function nextRenfortNum(annee){
 }
 
 function interventionNumberingDateKey(reference,annee){
+  if(reference&&typeof reference==='object'&&/^\d{8}/.test(String(reference._numberedAtStart||''))){
+    return String(reference._numberedAtStart).replace(/\D/g,'').slice(0,8);
+  }
   if(reference&&typeof reference==='object'&&typeof adminExportInterventionStartDate==='function'){
     const actual=adminExportInterventionStartDate(reference);
     if(/^\d{8}$/.test(actual))return actual;
@@ -539,7 +542,7 @@ function nextIntNum(annee,reference){
   let maxGlobal=initGlobal;
   Object.values(CASERNE_DATA).forEach(function(cd){
     [...(cd.ivs||[]),...(cd.pilpIvs||[])].forEach(function(iv){
-      if(iv.s==='terminee'&&interventionNumberingDateKey(iv).startsWith(y)&&iv._numGlobal){
+      if(['en-cours','terminee'].includes(iv.s)&&interventionNumberingDateKey(iv).startsWith(y)&&iv._numGlobal){
         const n=parseInt(iv._numGlobal)||0;if(n>maxGlobal)maxGlobal=n;
       }
     });
@@ -548,10 +551,95 @@ function nextIntNum(annee,reference){
   const ivsCas=[...(CASERNE_DATA[cid]&&CASERNE_DATA[cid].ivs||[]),...(CASERNE_DATA[cid]&&CASERNE_DATA[cid].pilpIvs||[])];
   let maxCas=initCas,maxMois=initMois;
   ivsCas.forEach(function(iv){
-    if(iv.s==='terminee'&&!iv._isRenfort&&interventionNumberingDateKey(iv).startsWith(y)&&iv._numCaserne){const n=parseInt(iv._numCaserne)||0;if(n>maxCas)maxCas=n;}
-    if(iv.s==='terminee'&&!iv._isRenfort&&interventionNumberingDateKey(iv).startsWith(ymo)&&iv._numMois){const n=parseInt(iv._numMois)||0;if(n>maxMois)maxMois=n;}
+    if(['en-cours','terminee'].includes(iv.s)&&!iv._isRenfort&&interventionNumberingDateKey(iv).startsWith(y)&&iv._numCaserne){const n=parseInt(iv._numCaserne)||0;if(n>maxCas)maxCas=n;}
+    if(['en-cours','terminee'].includes(iv.s)&&!iv._isRenfort&&interventionNumberingDateKey(iv).startsWith(ymo)&&iv._numMois){const n=parseInt(iv._numMois)||0;if(n>maxMois)maxMois=n;}
   });
   return {numGlobal:maxGlobal+1,numCas:maxCas+1,numMois:maxMois+1};
+}
+
+function interventionNumberingStartStamp(iv){
+  const starts=(Array.isArray(iv&&iv.tl)?iv.tl:[]).filter(function(entry){
+    return entry&&entry.s==='en-cours'&&/^\d{8}_?\d{4}/.test(String(entry.h||''));
+  });
+  if(starts.length)return String(starts[starts.length-1].h).replace(/\D/g,'').slice(0,12);
+  const date=interventionNumberingDateKey(iv);
+  const time=String(iv&&iv._hDebut||'').replace(/\D/g,'').padStart(4,'0').slice(0,4);
+  return date+(time||'0000');
+}
+function assignInterventionNumbersAtStart(iv){
+  if(!iv)return;
+  const stamp=interventionNumberingStartStamp(iv)||getH(N()).replace(/\D/g,'').slice(0,12);
+  const year=parseInt(stamp.slice(0,4),10)||N().getFullYear();
+  if(iv._isRenfort){
+    if(!iv._numGlobal){
+      const source=Object.values(CASERNE_DATA).flatMap(function(cd){return cd&&cd.ivs||[];}).find(function(item){return item&&item.id===iv._ivSourceId;});
+      if(source&&source._numGlobal)iv._numGlobal=source._numGlobal;
+    }
+    if(!iv._numRenfort)iv._numRenfort=nextRenfortNum(year);
+    iv._numCaserne=null;iv._numMois=null;iv._numberedAtStart=stamp;
+    return;
+  }
+  if(!iv._numGlobal||!iv._numCaserne||!iv._numMois){
+    const nums=nextIntNum(year,stamp);
+    if(!iv._numGlobal&&cabbalrActif())iv._numGlobal=nums.numGlobal;
+    if(!iv._numCaserne)iv._numCaserne=nums.numCas;
+    if(!iv._numMois)iv._numMois=nums.numMois;
+  }
+  iv._numberedAtStart=stamp;
+}
+function clearInterventionNumbersForPending(iv){
+  if(!iv)return;
+  iv._numGlobal=null;
+  iv._numCaserne=null;
+  iv._numMois=null;
+  if(iv._isRenfort)iv._numRenfort=null;
+  delete iv._numberedAtStart;
+}
+
+function agaiRepairNumberingByStartOrder(){
+  const cid=CURRENT_CASERNE_ID;
+  const data=cid&&CASERNE_DATA[cid];
+  const version='20260811-start-order-v1';
+  if(!data||data._numberingStartOrderVersion===version)return {applied:false,changes:[]};
+  const records=[];
+  const seen=new Set();
+  [...(data.ivs||[]),...(data.pilpIvs||[])].forEach(function(iv){
+    if(!iv||iv._isRenfort||iv._refugeAnimalier)return;
+    if(iv.s==='en-attente'||iv.s==='selectionne'){
+      if(iv._numGlobal||iv._numCaserne||iv._numMois)clearInterventionNumbersForPending(iv);
+      return;
+    }
+    if(iv.s!=='en-cours'&&iv.s!=='terminee')return;
+    const identity=String(iv.id||'');
+    if(!identity||seen.has(identity))return;
+    seen.add(identity);records.push(iv);
+  });
+  const changes=[];
+  const sortByStart=function(a,b){
+    return interventionNumberingStartStamp(a).localeCompare(interventionNumberingStartStamp(b))||String(a.id||'').localeCompare(String(b.id||''),'fr',{numeric:true});
+  };
+  const renumber=function(list,field,scope){
+    if(!list.length)return;
+    const existing=list.map(function(iv){return parseInt(iv[field],10)||0;}).filter(function(value){return value>0;});
+    const first=existing.length?Math.min.apply(Math,existing):1;
+    list.sort(sortByStart).forEach(function(iv,index){
+      const next=first+index;
+      if(parseInt(iv[field],10)===next)return;
+      changes.push({id:iv.id,champ:field,avant:iv[field]||null,apres:next,periode:scope});
+      iv[field]=next;
+    });
+  };
+  const years={},months={};
+  records.forEach(function(iv){
+    const stamp=interventionNumberingStartStamp(iv),year=stamp.slice(0,4),month=stamp.slice(0,6);
+    if(!years[year])years[year]=[];years[year].push(iv);
+    if(!months[month])months[month]=[];months[month].push(iv);
+    iv._numberedAtStart=stamp;
+  });
+  Object.keys(years).forEach(function(year){renumber(years[year],'_numCaserne',year);});
+  Object.keys(months).forEach(function(month){renumber(months[month],'_numMois',month);});
+  data._numberingStartOrderVersion=version;
+  return {applied:true,changes:changes};
 }
 
 function agaiCheckNumberingConflicts(notify){
@@ -3816,9 +3904,8 @@ function enr(){
   // Lever l'indicateur "en attente" sur ces interventions (le requérant a rappelé).
   exIv.concat(exPilp).forEach(iv=>{iv._avisEnAttente=false;iv._avisRappele=true;});
   exPilp.forEach(iv=>iv.rappels=(iv.rappels||0)+1);
-  // Numérotation appel (APL) et intervention (INT, seulement quand terminée)
+  // Seul l'appel reçoit son numéro ici. Les numéros d'intervention sont attribués au passage En cours.
   const numApl=nextAplNum(annee);
-  const nums=nextIntNum(annee,h); // Réservé pour quand l'intervention sera terminée
   let det=document.getElementById('fo').value.trim();
   const appelDetails=_captureAppelDetails();
   const tels=getAppelPhones();
@@ -3829,18 +3916,9 @@ function enr(){
   incCallCounter();
 
   if(pilpDirect&&selNat==='Nid de frelons asiatiques'){
-    // Attribuer numéro INT à l'IVS de base qui sera comptabilisée
-    const numsInt=nextIntNum(annee,h);
-    const ivBase={id:numsInt.idCas,_numApl:numApl,_numCaserne:numsInt.numCas,_numGlobal:numsInt.numGlobal,
-      n:selNat,addr,com,h,op:CU.l,s:'terminee',det,eng:null,
-      req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,
-      obs:'',agr:CU.l,rappels:exPilp.length,avisIds:[],_lienPilp:true,_appelDetails:appelDetails,reqDispo,_erp:erp,_urgence:erp,
-      tl:[mkTL('en-attente',h,CU.l),mkTL('terminee',h,CU.l+' → PILP')]};
-    IVS.unshift(ivBase);
-    if(CD())CD().ivs=IVS;
     PILP_IVS.unshift({
-      id:nextPilpId(annee),ivRef:numsInt.idCas,_numApl:numApl,
-      // Pas de _numCaserne/_numGlobal : attribués à la clôture PILP
+      id:nextPilpId(annee),ivRef:null,_numApl:numApl,
+      // Aucun numéro d'intervention tant que la PILP reste en attente.
       n:'Nid de frelons asiatiques — PILP',addr,com,h,
       req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,reqDispo,_erp:erp,_urgence:erp,
       localisation:null,hauteur:null,reconnaissanceFaite:false,axeTir:null,obs:det,
@@ -4679,7 +4757,8 @@ function oM(id){
     // Seul le numéro APL est affiché (numérotation INT désactivée)
   const dispApl=iv._numApl||iv.id;
   const dispTransfert=iv._transfertDe?` ↩ transféré de ${CASERNES.find(cas=>cas.id===iv._transfertDe)?.nom||iv._transfertDe}`:'';
-  document.getElementById('mi').textContent=dispApl+dispTransfert;
+  const dispUt=iv._numCaserne?' · UT '+iv._numCaserne:'';
+  document.getElementById('mi').textContent=dispApl+dispUt+dispTransfert;
    const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis de passage'],'modif':['bgr','Modification'],'modif-adresse':['bgr','Adresse corrigée'],'modif-heure':['binfo','Horaire corrigé'],'modif-equipier':['binfo','Équipage corrigé'],'modif-engin':['binfo','Véhicule corrigé'],'reclasse':['bgr','Reclasé'],'releve':['binfo','Relève'],'info-compl':['binfo','ℹ️ Complément d\u2019info']};
   const[bc,bt]=bm[iv.s]||['bgr','—'];
   const sdots={'en-attente':'#E24B4A','selectionne':'var(--sel)','en-cours':'var(--amb)','terminee':'var(--grn)','avis-passage':'var(--pur)','modif':'#888','modif-adresse':'#888','modif-heure':'#C2410C','modif-equipier':'#2563EB','modif-engin':'#0F766E','reclasse':'#888','releve':'#0369A1','info-compl':'#0369A1'};
@@ -5105,6 +5184,7 @@ function cS(id,s){
   if(s==='selectionne'||s==='en-cours'){ if(isAgres()||isChef()||isAdminModeActive()) iv.agr=CU.l; }
   if(s==='selectionne')assignInterventionRoute(iv,iv.agr||CU.l);
   if(s==='en-attente'){
+    clearInterventionNumbersForPending(iv);
     iv.agr=null;
     delete iv._routeBatchId;delete iv._routeOrder;
   }
@@ -5177,24 +5257,6 @@ function clot(id){
   iv.s='terminee';iv._hFin=getHHMM(N());iv.tl.push({s:'terminee',h,who:CU.l+agr2Lbl});
   supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
   (iv.avisIds||[]).forEach(aid=>{const av=IVS.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';av.tl.push({s:'terminee',h,who:CU.l+' (fusion)'});}});
-  // Attribution des numéros si pas encore attribués
-  if(!iv._numGlobal||!iv._numCaserne||!iv._numMois){
-    const annee=parseInt((iv.h||getH(N())).slice(0,4));
-    if(iv._isRenfort){
-      if(!iv._numGlobal){
-        const ivSrc=IVS.find(function(x){return x.id===iv._ivSourceId;})||
-          Object.values(CASERNE_DATA).flatMap(function(cd){return cd.ivs||[];}).find(function(x){return x.id===iv._ivSourceId;});
-        iv._numGlobal=ivSrc&&ivSrc._numGlobal?ivSrc._numGlobal:nextIntNum(annee,iv).numGlobal;
-      }
-      if(!iv._numRenfort) iv._numRenfort=nextRenfortNum(annee);
-      iv._numCaserne=null; iv._numMois=null;
-    } else {
-      const nums=nextIntNum(annee,iv);
-      if(!iv._numGlobal&&cabbalrActif())  iv._numGlobal=nums.numGlobal;
-      if(!iv._numCaserne) iv._numCaserne=nums.numCas;
-      if(!iv._numMois)    iv._numMois=nums.numMois;
-    }
-  }
   if(iv._autorisationData&&iv._autorisationData.nom){
     iv._pdfAutorisation=_buildAutorisationHTML(id,'autorisation');
     iv._pdfAttestation=_buildAutorisationHTML(id,'attestation');
@@ -5259,18 +5321,12 @@ function creerPILP(ivId){
   err.style.display='none';
   const h=getH(N());
   const annee=new Date().getFullYear();
-  // L'intervention parente (frelons) reçoit son numéro INT à la clôture
-  if(!iv._numCaserne){
-    const nums=nextIntNum(annee,iv);
-    iv._numCaserne=nums.numCas;iv._numGlobal=nums.numGlobal;
-    iv.id=nums.idCas;
-  }
   // La PILP créée reçoit un id temporaire PILP-2026-001
-  // Elle n'a PAS encore de numéro INT — ce sera attribué à la clôture
+  // Elle n'a PAS encore de numéro INT — ce sera attribué à son passage En cours.
   const pilpId=nextPilpId(annee);
   PILP_IVS.unshift({
     id:pilpId,ivRef:iv.id,_numApl:iv._numApl||iv.id,
-    // Pas de _numCaserne ni _numGlobal ici — attribués à la clôture
+    // Pas de _numCaserne ni _numGlobal ici — attribués au passage En cours
     n:'Nid de frelons asiatiques — PILP',addr,com:iv.com,h,req,tel,
     localisation:document.getElementById('pf-loc').value,
     hauteur:parseFloat(document.getElementById('pf-haut').value)||null,
@@ -5370,7 +5426,8 @@ function oPilp(id){
   document.getElementById('mt').textContent=iv.n;
     // Numéro affiché : id temporaire PILP ou APL si clôturé
   const pApl=iv._numApl||'';
-  document.getElementById('mi').textContent=iv.s==='terminee'?(pApl||iv.id):iv.id;
+  const pilpUt=iv._numCaserne?' · UT '+iv._numCaserne:'';
+  document.getElementById('mi').textContent=(iv.s==='terminee'?(pApl||iv.id):iv.id)+pilpUt;
   const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis passage']};
   const[bc,bt]=bm[iv.s]||['bgr','—'];
   let actions='';
@@ -5436,8 +5493,9 @@ function cSPilp(id,s){
   iv.s=s;
   if(s==='selectionne'||s==='en-cours')iv.agr=CU.l;
   if(s==='en-cours')iv.tireur=CU.l;
-  if(s==='en-attente'){iv.agr=null;iv.tireur=null;}
+  if(s==='en-attente'){clearInterventionNumbersForPending(iv);iv.agr=null;iv.tireur=null;}
   if(!iv.tl)iv.tl=[];iv.tl.push(mkTL(s,getH(N()),CU.l));
+  if(s==='en-cours')assignInterventionNumbersAtStart(iv);
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);
   rPilp();oPilp(id);
@@ -5455,13 +5513,6 @@ function clotPilp(id){
     rPilp();oPilp(id);
   } else {
     iv.s='terminee';iv._hFin=getHHMM(N());iv.tl.push({s:'terminee',h,who:CU.l});
-    // Attribuer numéros INT
-    if(!iv._numGlobal||!iv._numCaserne||!iv._numMois){
-      const nums=nextIntNum(new Date().getFullYear(),iv);
-      if(!iv._numGlobal)  iv._numGlobal=nums.numGlobal;
-      if(!iv._numCaserne) iv._numCaserne=nums.numCas;
-      if(!iv._numMois)    iv._numMois=nums.numMois;
-    }
     (iv.avisIds||[]).forEach(aid=>{const av=PILP_IVS.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';av.tl.push({s:'terminee',h,who:CU.l+' (fusion)'});}});
     if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
     saveData(true);
@@ -5471,14 +5522,11 @@ function clotPilp(id){
 function clotAvisPilp(id){
   const iv=PILP_IVS.find(v=>v.id===id);if(!iv)return;
   const h=getH(N());iv.s='terminee';iv.tl.push({s:'terminee',h,who:CU.l});
-  if(!iv._numCaserne){
-    const annee=new Date().getFullYear();
-    const nums=nextIntNum(annee,iv);
-    iv._numCaserne=nums.numCas;iv._numGlobal=nums.numGlobal;
-    IVS.unshift({id:nums.idCas,_numApl:iv._numApl||iv.id,_numCaserne:nums.numCas,_numGlobal:nums.numGlobal,
+  if(iv._numCaserne&&!IVS.some(function(item){return item&&item._lienPilpSourceId===iv.id;})){
+    IVS.unshift({id:String(iv.id)+'_historique',_numApl:iv._numApl||iv.id,_numCaserne:iv._numCaserne,_numGlobal:iv._numGlobal,_numMois:iv._numMois,
       n:iv.n.replace(' — PILP',''),addr:iv.addr,com:iv.com,h:iv.h,op:iv.agr||CU.l,
       s:'terminee',det:iv.obs||'',eng:null,req:iv.req||'',tel:iv.tel||'',obs:'',agr:CU.l,
-      rappels:0,avisIds:[],_lienPilp:true,tl:[...iv.tl]});
+      rappels:0,avisIds:[],_lienPilp:true,_lienPilpSourceId:iv.id,tl:[...iv.tl]});
   }
   (iv.avisIds||[]).forEach(aid=>{const av=PILP_IVS.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';av.tl.push({s:'terminee',h,who:CU.l+' (fusion)'});}});
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
@@ -5969,6 +6017,13 @@ function filterHistoryRows(value){
 }
 function clearHistorySearch(){HIST_SEARCH='';rHist();const input=document.getElementById('hist-search');if(input)input.focus();}
 function rHist(){
+  const startOrderRepair=agaiRepairNumberingByStartOrder();
+  if(startOrderRepair.applied){
+    if(typeof syncCaserneContext==='function')syncCaserneContext();
+    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+    saveData(true);
+    if(startOrderRepair.changes.length)showToast('Numérotation remise dans l’ordre des départs : '+startOrderRepair.changes.length+' correction(s).','success');
+  }
   const monthlyNumberRepairs=agaiRepairMonthlyNumberingConflicts();
   if(monthlyNumberRepairs.length){
     if(typeof syncCaserneContext==='function')syncCaserneContext();
@@ -8667,6 +8722,9 @@ function confirmerSDIS(ivId){
     tl:[mkTL('en-attente',h,CU.l),mkTL('en-cours',h,CU.l+' (SDIS)')]
   };
   IVS.unshift(newIv);
+  assignInterventionNumbersAtStart(newIv);
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);
   cM();rI();rAccueil();
   // Ouvrir directement la nouvelle intervention
   setTimeout(()=>oM(newIv.id),100);
@@ -9270,6 +9328,7 @@ function confirmerDepart(id){
   const persLabel=' ['+eq1.concat(eq2).map(function(e){const u=USERS.find(function(x){return x.l===e.login;});return e.role+': '+(u?fullName(u):e.login);}).join(', ')+']';
   pushTL(iv,'en-cours',CU.l+agr2Label+persLabel,
     chained?'Début enchaîné à '+heure+' après l’intervention précédente':'Départ réel à '+heure);
+  assignInterventionNumbersAtStart(iv);
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);cM();rI();rStatsHeader(); // push immédiat : changement de statut partagé
   setTimeout(function(){oM(id);},80);
@@ -9829,7 +9888,7 @@ function confirmerRenfortEquipage(cid,renfortId){
   // Éviter les doublons
   const ivId=r.ivId+'_renfort_'+cid;
   if(!CASERNE_DATA[cid].ivs.find(function(iv){return iv.id===ivId;})){
-    CASERNE_DATA[cid].ivs.push({
+    const renfortIv={
       id:ivId,
       _isRenfort:true,
       _renfortId:renfortId,
@@ -9852,7 +9911,9 @@ function confirmerRenfortEquipage(cid,renfortId){
       req:ivSrc?ivSrc.req:'',
       tel:ivSrc?ivSrc.tel:'',
       op:CU?CU.l:'',
-    });
+    };
+    CASERNE_DATA[cid].ivs.push(renfortIv);
+    assignInterventionNumbersAtStart(renfortIv);
   }
 
   // Intégrer dans l'intervention source
@@ -11968,7 +12029,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260811-ordre-rapports-121';
+const APP_VERSION='20260811-numerotation-au-depart-122';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne

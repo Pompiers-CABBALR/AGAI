@@ -349,7 +349,7 @@ function nextRenfortNum(annee){
   const ivsCas=[...(CASERNE_DATA[cid]&&CASERNE_DATA[cid].ivs||[])];
   let maxR=0;
   ivsCas.forEach(function(iv){
-    if(iv._isRenfort&&iv.s==='terminee'&&(iv.h||'').startsWith(y)&&iv._numRenfort){
+    if(iv._isRenfort&&['en-cours','terminee'].includes(iv.s)&&interventionNumberingDateKey(iv).startsWith(y)&&iv._numRenfort){
       const n=parseInt(iv._numRenfort)||0;if(n>maxR)maxR=n;
     }
   });
@@ -357,6 +357,9 @@ function nextRenfortNum(annee){
 }
 
 function interventionNumberingDateKey(reference,annee){
+  if(reference&&typeof reference==='object'&&/^\d{8}/.test(String(reference._numberedAtStart||''))){
+    return String(reference._numberedAtStart).replace(/\D/g,'').slice(0,8);
+  }
   if(reference&&typeof reference==='object'&&typeof adminExportInterventionStartDate==='function'){
     const actual=adminExportInterventionStartDate(reference);
     if(/^\d{8}$/.test(actual))return actual;
@@ -386,7 +389,7 @@ function nextIntNum(annee,reference){
   let maxGlobal=initGlobal;
   Object.values(CASERNE_DATA).forEach(function(cd){
     [...(cd.ivs||[]),...(cd.pilpIvs||[])].forEach(function(iv){
-      if(iv.s==='terminee'&&interventionNumberingDateKey(iv).startsWith(y)&&iv._numGlobal){
+      if(['en-cours','terminee'].includes(iv.s)&&interventionNumberingDateKey(iv).startsWith(y)&&iv._numGlobal){
         const n=parseInt(iv._numGlobal)||0;if(n>maxGlobal)maxGlobal=n;
       }
     });
@@ -395,10 +398,95 @@ function nextIntNum(annee,reference){
   const ivsCas=[...(CASERNE_DATA[cid]&&CASERNE_DATA[cid].ivs||[]),...(CASERNE_DATA[cid]&&CASERNE_DATA[cid].pilpIvs||[])];
   let maxCas=initCas,maxMois=initMois;
   ivsCas.forEach(function(iv){
-    if(iv.s==='terminee'&&!iv._isRenfort&&interventionNumberingDateKey(iv).startsWith(y)&&iv._numCaserne){const n=parseInt(iv._numCaserne)||0;if(n>maxCas)maxCas=n;}
-    if(iv.s==='terminee'&&!iv._isRenfort&&interventionNumberingDateKey(iv).startsWith(ymo)&&iv._numMois){const n=parseInt(iv._numMois)||0;if(n>maxMois)maxMois=n;}
+    if(['en-cours','terminee'].includes(iv.s)&&!iv._isRenfort&&interventionNumberingDateKey(iv).startsWith(y)&&iv._numCaserne){const n=parseInt(iv._numCaserne)||0;if(n>maxCas)maxCas=n;}
+    if(['en-cours','terminee'].includes(iv.s)&&!iv._isRenfort&&interventionNumberingDateKey(iv).startsWith(ymo)&&iv._numMois){const n=parseInt(iv._numMois)||0;if(n>maxMois)maxMois=n;}
   });
   return {numGlobal:maxGlobal+1,numCas:maxCas+1,numMois:maxMois+1};
+}
+
+function interventionNumberingStartStamp(iv){
+  const starts=(Array.isArray(iv&&iv.tl)?iv.tl:[]).filter(function(entry){
+    return entry&&entry.s==='en-cours'&&/^\d{8}_?\d{4}/.test(String(entry.h||''));
+  });
+  if(starts.length)return String(starts[starts.length-1].h).replace(/\D/g,'').slice(0,12);
+  const date=interventionNumberingDateKey(iv);
+  const time=String(iv&&iv._hDebut||'').replace(/\D/g,'').padStart(4,'0').slice(0,4);
+  return date+(time||'0000');
+}
+function assignInterventionNumbersAtStart(iv){
+  if(!iv)return;
+  const stamp=interventionNumberingStartStamp(iv)||getH(N()).replace(/\D/g,'').slice(0,12);
+  const year=parseInt(stamp.slice(0,4),10)||N().getFullYear();
+  if(iv._isRenfort){
+    if(!iv._numGlobal){
+      const source=Object.values(CASERNE_DATA).flatMap(function(cd){return cd&&cd.ivs||[];}).find(function(item){return item&&item.id===iv._ivSourceId;});
+      if(source&&source._numGlobal)iv._numGlobal=source._numGlobal;
+    }
+    if(!iv._numRenfort)iv._numRenfort=nextRenfortNum(year);
+    iv._numCaserne=null;iv._numMois=null;iv._numberedAtStart=stamp;
+    return;
+  }
+  if(!iv._numGlobal||!iv._numCaserne||!iv._numMois){
+    const nums=nextIntNum(year,stamp);
+    if(!iv._numGlobal&&cabbalrActif())iv._numGlobal=nums.numGlobal;
+    if(!iv._numCaserne)iv._numCaserne=nums.numCas;
+    if(!iv._numMois)iv._numMois=nums.numMois;
+  }
+  iv._numberedAtStart=stamp;
+}
+function clearInterventionNumbersForPending(iv){
+  if(!iv)return;
+  iv._numGlobal=null;
+  iv._numCaserne=null;
+  iv._numMois=null;
+  if(iv._isRenfort)iv._numRenfort=null;
+  delete iv._numberedAtStart;
+}
+
+function agaiRepairNumberingByStartOrder(){
+  const cid=CURRENT_CASERNE_ID;
+  const data=cid&&CASERNE_DATA[cid];
+  const version='20260811-start-order-v1';
+  if(!data||data._numberingStartOrderVersion===version)return {applied:false,changes:[]};
+  const records=[];
+  const seen=new Set();
+  [...(data.ivs||[]),...(data.pilpIvs||[])].forEach(function(iv){
+    if(!iv||iv._isRenfort||iv._refugeAnimalier)return;
+    if(iv.s==='en-attente'||iv.s==='selectionne'){
+      if(iv._numGlobal||iv._numCaserne||iv._numMois)clearInterventionNumbersForPending(iv);
+      return;
+    }
+    if(iv.s!=='en-cours'&&iv.s!=='terminee')return;
+    const identity=String(iv.id||'');
+    if(!identity||seen.has(identity))return;
+    seen.add(identity);records.push(iv);
+  });
+  const changes=[];
+  const sortByStart=function(a,b){
+    return interventionNumberingStartStamp(a).localeCompare(interventionNumberingStartStamp(b))||String(a.id||'').localeCompare(String(b.id||''),'fr',{numeric:true});
+  };
+  const renumber=function(list,field,scope){
+    if(!list.length)return;
+    const existing=list.map(function(iv){return parseInt(iv[field],10)||0;}).filter(function(value){return value>0;});
+    const first=existing.length?Math.min.apply(Math,existing):1;
+    list.sort(sortByStart).forEach(function(iv,index){
+      const next=first+index;
+      if(parseInt(iv[field],10)===next)return;
+      changes.push({id:iv.id,champ:field,avant:iv[field]||null,apres:next,periode:scope});
+      iv[field]=next;
+    });
+  };
+  const years={},months={};
+  records.forEach(function(iv){
+    const stamp=interventionNumberingStartStamp(iv),year=stamp.slice(0,4),month=stamp.slice(0,6);
+    if(!years[year])years[year]=[];years[year].push(iv);
+    if(!months[month])months[month]=[];months[month].push(iv);
+    iv._numberedAtStart=stamp;
+  });
+  Object.keys(years).forEach(function(year){renumber(years[year],'_numCaserne',year);});
+  Object.keys(months).forEach(function(month){renumber(months[month],'_numMois',month);});
+  data._numberingStartOrderVersion=version;
+  return {applied:true,changes:changes};
 }
 
 function agaiCheckNumberingConflicts(notify){

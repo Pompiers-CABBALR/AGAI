@@ -163,6 +163,13 @@ function filterHistoryRows(value){
 }
 function clearHistorySearch(){HIST_SEARCH='';rHist();const input=document.getElementById('hist-search');if(input)input.focus();}
 function rHist(){
+  const startOrderRepair=agaiRepairNumberingByStartOrder();
+  if(startOrderRepair.applied){
+    if(typeof syncCaserneContext==='function')syncCaserneContext();
+    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+    saveData(true);
+    if(startOrderRepair.changes.length)showToast('Numérotation remise dans l’ordre des départs : '+startOrderRepair.changes.length+' correction(s).','success');
+  }
   const monthlyNumberRepairs=agaiRepairMonthlyNumberingConflicts();
   if(monthlyNumberRepairs.length){
     if(typeof syncCaserneContext==='function')syncCaserneContext();

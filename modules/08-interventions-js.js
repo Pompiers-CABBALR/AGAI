@@ -744,7 +744,8 @@ function oM(id){
     // Seul le numéro APL est affiché (numérotation INT désactivée)
   const dispApl=iv._numApl||iv.id;
   const dispTransfert=iv._transfertDe?` ↩ transféré de ${CASERNES.find(cas=>cas.id===iv._transfertDe)?.nom||iv._transfertDe}`:'';
-  document.getElementById('mi').textContent=dispApl+dispTransfert;
+  const dispUt=iv._numCaserne?' · UT '+iv._numCaserne:'';
+  document.getElementById('mi').textContent=dispApl+dispUt+dispTransfert;
    const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis de passage'],'modif':['bgr','Modification'],'modif-adresse':['bgr','Adresse corrigée'],'modif-heure':['binfo','Horaire corrigé'],'modif-equipier':['binfo','Équipage corrigé'],'modif-engin':['binfo','Véhicule corrigé'],'reclasse':['bgr','Reclasé'],'releve':['binfo','Relève'],'info-compl':['binfo','ℹ️ Complément d\u2019info']};
   const[bc,bt]=bm[iv.s]||['bgr','—'];
   const sdots={'en-attente':'#E24B4A','selectionne':'var(--sel)','en-cours':'var(--amb)','terminee':'var(--grn)','avis-passage':'var(--pur)','modif':'#888','modif-adresse':'#888','modif-heure':'#C2410C','modif-equipier':'#2563EB','modif-engin':'#0F766E','reclasse':'#888','releve':'#0369A1','info-compl':'#0369A1'};
@@ -1170,6 +1171,7 @@ function cS(id,s){
   if(s==='selectionne'||s==='en-cours'){ if(isAgres()||isChef()||isAdminModeActive()) iv.agr=CU.l; }
   if(s==='selectionne')assignInterventionRoute(iv,iv.agr||CU.l);
   if(s==='en-attente'){
+    clearInterventionNumbersForPending(iv);
     iv.agr=null;
     delete iv._routeBatchId;delete iv._routeOrder;
   }
@@ -1242,24 +1244,6 @@ function clot(id){
   iv.s='terminee';iv._hFin=getHHMM(N());iv.tl.push({s:'terminee',h,who:CU.l+agr2Lbl});
   supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
   (iv.avisIds||[]).forEach(aid=>{const av=IVS.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';av.tl.push({s:'terminee',h,who:CU.l+' (fusion)'});}});
-  // Attribution des numéros si pas encore attribués
-  if(!iv._numGlobal||!iv._numCaserne||!iv._numMois){
-    const annee=parseInt((iv.h||getH(N())).slice(0,4));
-    if(iv._isRenfort){
-      if(!iv._numGlobal){
-        const ivSrc=IVS.find(function(x){return x.id===iv._ivSourceId;})||
-          Object.values(CASERNE_DATA).flatMap(function(cd){return cd.ivs||[];}).find(function(x){return x.id===iv._ivSourceId;});
-        iv._numGlobal=ivSrc&&ivSrc._numGlobal?ivSrc._numGlobal:nextIntNum(annee,iv).numGlobal;
-      }
-      if(!iv._numRenfort) iv._numRenfort=nextRenfortNum(annee);
-      iv._numCaserne=null; iv._numMois=null;
-    } else {
-      const nums=nextIntNum(annee,iv);
-      if(!iv._numGlobal&&cabbalrActif())  iv._numGlobal=nums.numGlobal;
-      if(!iv._numCaserne) iv._numCaserne=nums.numCas;
-      if(!iv._numMois)    iv._numMois=nums.numMois;
-    }
-  }
   if(iv._autorisationData&&iv._autorisationData.nom){
     iv._pdfAutorisation=_buildAutorisationHTML(id,'autorisation');
     iv._pdfAttestation=_buildAutorisationHTML(id,'attestation');
