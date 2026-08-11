@@ -4045,6 +4045,40 @@ function assignInterventionRoute(iv,login){
   if(!iv._routeOrder)iv._routeOrder=maxOrder+1;
 }
 
+function interventionRouteChefName(iv){
+  const login=iv&&iv.agr||'';
+  const user=USERS.find(function(item){return item.l===login;});
+  return user?fullName(user):(login||'Chef non renseign\u00e9');
+}
+
+function interventionRouteBadgeHTML(iv){
+  if(!iv||!['selectionne','en-cours'].includes(iv.s))return '';
+  const order=Number(iv._routeOrder)||0;
+  if(!order||!iv.agr)return '';
+  const chef=interventionRouteChefName(iv);
+  const label='Tourn\u00e9e '+order+' \u00b7 '+chef;
+  const canEdit=iv.s==='selectionne'&&CU&&iv.agr===CU.l;
+  if(canEdit){
+    return `<button type="button" class="bdg route-order-badge" title="Modifier l'ordre de cette tourn\u00e9e" onclick="event.stopPropagation();editInterventionRoute('${escHtml(iv.agr)}','${escHtml(iv._routeBatchId||'')}')"><span class="route-order-number">n\u00b0${order}</span><span class="route-order-chef">${escHtml(chef)}</span></button>`;
+  }
+  return `<span class="bdg route-order-badge" title="${escHtml(label)}"><span class="route-order-number">n\u00b0${order}</span><span class="route-order-chef">${escHtml(chef)}</span></span>`;
+}
+
+function editInterventionRoute(chefLogin,batchId){
+  if(!CU||chefLogin!==CU.l){showToast('Seul le chef d\u2019agr\u00e8s concern\u00e9 peut modifier cette tourn\u00e9e.','warn');return;}
+  const route=[].concat(IVS||[],PILP_IVS||[]).filter(function(iv){
+    return iv.s==='selectionne'&&iv.agr===chefLogin&&(!batchId||iv._routeBatchId===batchId);
+  });
+  if(!route.length){showToast('Aucune intervention s\u00e9lectionn\u00e9e \u00e0 r\u00e9organiser.','info');return;}
+  route.forEach(function(iv){parcConfirmed.delete(iv.id);});
+  rI();
+  requestAnimationFrame(function(){
+    const panel=document.getElementById('pap');
+    if(panel)panel.scrollIntoView({behavior:'smooth',block:'start'});
+  });
+  showToast('Vous pouvez modifier l\u2019ordre puis confirmer de nouveau la tourn\u00e9e.','info');
+}
+
 function prepareInterventionRoute(iv){
   if(!iv)return;
   assignInterventionRoute(iv,iv.agr||CU.l);
@@ -4553,6 +4587,7 @@ function renderInterventionRow(iv, ag, tireur) {
       <div class="ivrc">&#x1F4CD; ${escHtml(interventionAddressLabel(iv))}${iv.eng ? ' · ' + escHtml(iv.eng) : ''}${isRenfortUT && iv._hDebut ? ' · depuis ' + escHtml(iv._hDebut) : ''}${numBadges}</div>
     </div>
     <div class="ivrr" onclick="${onclick}">
+      ${interventionRouteBadgeHTML(iv)}
       <span class="bdg ${bc}">${bt}</span>
       ${isPilp ? '<span class="bdg bpilp" style="font-size:10px;">PILP</span>' : ''}
       ${isRenfortUT ? '<span class="bdg" style="background:#7C3AED;color:#fff;font-size:10px;">Renfort UT</span>' : ''}
@@ -4673,7 +4708,7 @@ function rI(){
   const selPilpNonConf=tireurP?PILP_IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l&&!parcConfirmed.has(iv.id)):[];
   const selMixte=[...selNonConf,...selPilpNonConf];
   const pp=document.getElementById('pap');
-  if((ag||tireurP)&&selMixte.length>0){pp.style.display='block';document.getElementById('pagl').textContent=CU.l;document.getElementById('pac').textContent=selMixte.length;rPL(selMixte);}
+  if((ag||tireurP)&&selMixte.length>0){pp.style.display='block';document.getElementById('pagl').textContent=interventionRouteChefName({agr:CU.l});document.getElementById('pac').textContent=selMixte.length;rPL(selMixte);}
   else{pp.style.display='none';rEgrid();}
   // Liste
   const tireur=isTireurPILP();
@@ -4712,11 +4747,13 @@ function toggleChk(id,el){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
   if(el.checked){
     iv.s='selectionne';iv.agr=CU.l;
+    parcConfirmed.delete(iv.id);
     assignInterventionRoute(iv,CU.l);
     pushTL(iv,'selectionne',CU.l,'Ordre de tournée : '+iv._routeOrder);
   }
   else{
     iv.s='en-attente';iv.agr=null;
+    parcConfirmed.delete(iv.id);
     delete iv._routeBatchId;delete iv._routeOrder;
     pushTL(iv,'en-attente',CU.l);
   }
@@ -5182,9 +5219,13 @@ function cS(id,s){
   if(!iv.tl)iv.tl=[];
   iv.s=s;
   if(s==='selectionne'||s==='en-cours'){ if(isAgres()||isChef()||isAdminModeActive()) iv.agr=CU.l; }
-  if(s==='selectionne')assignInterventionRoute(iv,iv.agr||CU.l);
+  if(s==='selectionne'){
+    parcConfirmed.delete(iv.id);
+    assignInterventionRoute(iv,iv.agr||CU.l);
+  }
   if(s==='en-attente'){
     clearInterventionNumbersForPending(iv);
+    parcConfirmed.delete(iv.id);
     iv.agr=null;
     delete iv._routeBatchId;delete iv._routeOrder;
   }
@@ -5405,6 +5446,7 @@ function rPilp(){
         <div style="font-size:11px;color:var(--t2);margin-top:2px;">${iv.localisation||'—'}${iv.hauteur?' · '+iv.hauteur+'m':''} ${iv.reconnaissanceFaite?'· ✅ Reco':'· ❌ Reco'} ${iv.axeTir?'· &#x1F3AF; Axe OK':'· ⚠️ Axe ?'}</div>
       </div>
       <div class="ivrr" style="cursor:pointer;" onclick="oPilp('${iv.id}')">
+        ${interventionRouteBadgeHTML(iv)}
         <span class="bdg ${bc}">${bt}</span>
         ${iv.rappels?`<span class="bdg bp" style="font-size:10px;">${iv.rappels}×</span>`:''}
       </div>
@@ -5413,8 +5455,16 @@ function rPilp(){
 }
 function toggleChkPilp(id,el){
   const iv=PILP_IVS.find(v=>v.id===id);if(!iv)return;
-  if(el.checked){iv.s='selectionne';iv.agr=CU.l;pushTL(iv,'selectionne',CU.l);}
-  else{iv.s='en-attente';iv.agr=null;pushTL(iv,'en-attente',CU.l);}
+  if(el.checked){
+    iv.s='selectionne';iv.agr=CU.l;parcConfirmed.delete(iv.id);
+    assignInterventionRoute(iv,CU.l);
+    pushTL(iv,'selectionne',CU.l,'Ordre de tourn\u00e9e : '+iv._routeOrder);
+  }
+  else{
+    iv.s='en-attente';iv.agr=null;parcConfirmed.delete(iv.id);
+    delete iv._routeBatchId;delete iv._routeOrder;
+    pushTL(iv,'en-attente',CU.l);
+  }
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);rPilp(); // push immédiat : changement de statut partagé
 }
@@ -5833,9 +5883,12 @@ function opt(){
   persistRouteOrder(res,captureRouteViewPosition());
 }
 function confirmerSel(){
-  IVS.filter(iv=>isTdy(iv)&&iv.s==='selectionne'&&iv.agr===CU.l).forEach(iv=>parcConfirmed.add(iv.id));
-  if(isTireurPILP())PILP_IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l).forEach(iv=>parcConfirmed.add(iv.id));
+  const selected=getSelMixte();
+  if(!selected.length)return;
+  persistRouteOrder(selected,captureRouteViewPosition());
+  selected.forEach(function(iv){parcConfirmed.add(iv.id);});
   rI();
+  showToast('Tourn\u00e9e confirm\u00e9e : l\u2019ordre reste visible sur chaque intervention.','success');
 }
 function sE(el,e){
   if(getEnginsOccupes().includes(e)){
@@ -5847,9 +5900,9 @@ function sE(el,e){
   selEng=e;
 }
 function vp(){
-  IVS.filter(iv=>isTdy(iv)&&iv.s==='selectionne'&&iv.agr===CU.l).forEach(iv=>{iv.s='en-attente';iv.agr=null;pushTL(iv,'en-attente',CU.l);});
-  if(isTireurPILP())PILP_IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l).forEach(iv=>{iv.s='en-attente';iv.agr=null;pushTL(iv,'en-attente',CU.l);});
-  selEng=null;parcConfirmed.clear();document.querySelectorAll('#eg .ec').forEach(c=>c.classList.remove('sel'));rI();
+  IVS.filter(iv=>isTdy(iv)&&iv.s==='selectionne'&&iv.agr===CU.l).forEach(iv=>{iv.s='en-attente';iv.agr=null;delete iv._routeBatchId;delete iv._routeOrder;pushTL(iv,'en-attente',CU.l);});
+  if(isTireurPILP())PILP_IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l).forEach(iv=>{iv.s='en-attente';iv.agr=null;delete iv._routeBatchId;delete iv._routeOrder;pushTL(iv,'en-attente',CU.l);});
+  selEng=null;parcConfirmed.clear();document.querySelectorAll('#eg .ec').forEach(c=>c.classList.remove('sel'));saveData(true);rI();
 }
 
 // === MODULE: historique.js ===
@@ -12029,7 +12082,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260811-numerotation-au-depart-122';
+const APP_VERSION='20260811-ordre-tournee-visible-123';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne

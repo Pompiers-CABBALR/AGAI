@@ -115,6 +115,7 @@ function rPilp(){
         <div style="font-size:11px;color:var(--t2);margin-top:2px;">${iv.localisation||'—'}${iv.hauteur?' · '+iv.hauteur+'m':''} ${iv.reconnaissanceFaite?'· ✅ Reco':'· ❌ Reco'} ${iv.axeTir?'· &#x1F3AF; Axe OK':'· ⚠️ Axe ?'}</div>
       </div>
       <div class="ivrr" style="cursor:pointer;" onclick="oPilp('${iv.id}')">
+        ${interventionRouteBadgeHTML(iv)}
         <span class="bdg ${bc}">${bt}</span>
         ${iv.rappels?`<span class="bdg bp" style="font-size:10px;">${iv.rappels}×</span>`:''}
       </div>
@@ -123,8 +124,16 @@ function rPilp(){
 }
 function toggleChkPilp(id,el){
   const iv=PILP_IVS.find(v=>v.id===id);if(!iv)return;
-  if(el.checked){iv.s='selectionne';iv.agr=CU.l;pushTL(iv,'selectionne',CU.l);}
-  else{iv.s='en-attente';iv.agr=null;pushTL(iv,'en-attente',CU.l);}
+  if(el.checked){
+    iv.s='selectionne';iv.agr=CU.l;parcConfirmed.delete(iv.id);
+    assignInterventionRoute(iv,CU.l);
+    pushTL(iv,'selectionne',CU.l,'Ordre de tourn\u00e9e : '+iv._routeOrder);
+  }
+  else{
+    iv.s='en-attente';iv.agr=null;parcConfirmed.delete(iv.id);
+    delete iv._routeBatchId;delete iv._routeOrder;
+    pushTL(iv,'en-attente',CU.l);
+  }
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);rPilp(); // push immédiat : changement de statut partagé
 }
@@ -543,9 +552,12 @@ function opt(){
   persistRouteOrder(res,captureRouteViewPosition());
 }
 function confirmerSel(){
-  IVS.filter(iv=>isTdy(iv)&&iv.s==='selectionne'&&iv.agr===CU.l).forEach(iv=>parcConfirmed.add(iv.id));
-  if(isTireurPILP())PILP_IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l).forEach(iv=>parcConfirmed.add(iv.id));
+  const selected=getSelMixte();
+  if(!selected.length)return;
+  persistRouteOrder(selected,captureRouteViewPosition());
+  selected.forEach(function(iv){parcConfirmed.add(iv.id);});
   rI();
+  showToast('Tourn\u00e9e confirm\u00e9e : l\u2019ordre reste visible sur chaque intervention.','success');
 }
 function sE(el,e){
   if(getEnginsOccupes().includes(e)){
@@ -557,8 +569,8 @@ function sE(el,e){
   selEng=e;
 }
 function vp(){
-  IVS.filter(iv=>isTdy(iv)&&iv.s==='selectionne'&&iv.agr===CU.l).forEach(iv=>{iv.s='en-attente';iv.agr=null;pushTL(iv,'en-attente',CU.l);});
-  if(isTireurPILP())PILP_IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l).forEach(iv=>{iv.s='en-attente';iv.agr=null;pushTL(iv,'en-attente',CU.l);});
-  selEng=null;parcConfirmed.clear();document.querySelectorAll('#eg .ec').forEach(c=>c.classList.remove('sel'));rI();
+  IVS.filter(iv=>isTdy(iv)&&iv.s==='selectionne'&&iv.agr===CU.l).forEach(iv=>{iv.s='en-attente';iv.agr=null;delete iv._routeBatchId;delete iv._routeOrder;pushTL(iv,'en-attente',CU.l);});
+  if(isTireurPILP())PILP_IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l).forEach(iv=>{iv.s='en-attente';iv.agr=null;delete iv._routeBatchId;delete iv._routeOrder;pushTL(iv,'en-attente',CU.l);});
+  selEng=null;parcConfirmed.clear();document.querySelectorAll('#eg .ec').forEach(c=>c.classList.remove('sel'));saveData(true);rI();
 }
 

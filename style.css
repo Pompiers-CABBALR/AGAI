@@ -170,6 +170,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 }
 /* ── 4. Badges ── */
 .bdg{display:inline-block;font-size:11px;font-weight:500;padding:2px 8px;border-radius:20px;}
+.route-order-badge{display:inline-flex;align-items:center;gap:5px;max-width:250px;padding:3px 8px;border:1px solid #93C5FD;background:#EFF6FF;color:#1D4ED8;font-size:10px;font-weight:600;line-height:1.2;white-space:nowrap;}
+button.route-order-badge{cursor:pointer;}
+button.route-order-badge:hover{background:#DBEAFE;border-color:#60A5FA;}
+.route-order-number{display:inline-flex;align-items:center;justify-content:center;min-width:19px;height:19px;padding:0 5px;border-radius:10px;background:#2563EB;color:#fff;font-size:10px;font-weight:800;}
+.route-order-chef{min-width:0;overflow:hidden;text-overflow:ellipsis;}
 .br{background:var(--rl);color:var(--rd);}
 .ba{background:var(--al);color:#854F0B;}
 .bg2{background:var(--gl);color:#3B6D11;}
@@ -911,6 +916,7 @@ html.appel-nature-locked .cnt{overflow:hidden!important;}
   .fg-duo,.fg-horaires{grid-template-columns:1fr;}
   .smg2{grid-template-columns:1fr;}
   .ivrr{max-width:42%;flex-wrap:wrap;justify-content:flex-end;}
+  .route-order-badge{max-width:145px;padding:3px 6px;}
 }
 
 /* Smartphones en portrait, y compris les grands iPhone de 430 px :
