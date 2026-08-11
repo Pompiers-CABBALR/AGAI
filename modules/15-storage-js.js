@@ -12,7 +12,7 @@
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260811-ordre-tournee-visible-123';
+const APP_VERSION='20260812-avis-passage-heure-124';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -280,6 +280,61 @@ function viewPdfDocument(ivId, docType) {
   openIframeModal(html);
   // Ajouter bouton imprimer — dans l'iframe via srcdoc
   // Ajouter bouton imprimer
+}
+
+function getAvisPassageTimelineEntry(iv){
+  const entries=(iv&&Array.isArray(iv.tl)?iv.tl:[]).filter(function(entry){return entry&&entry.s==='avis-passage'&&entry.h;});
+  return entries.length?entries[entries.length-1]:null;
+}
+
+function getAvisPassageHour(iv){
+  if(!iv)return '';
+  if(/^([01]\d|2[0-3]):[0-5]\d$/.test(String(iv._avisPassageHeure||'')))return iv._avisPassageHeure;
+  const raw=String(iv._avisPassageAt||(getAvisPassageTimelineEntry(iv)||{}).h||'');
+  return /^\d{8}_\d{4}/.test(raw)?raw.slice(9,11)+':'+raw.slice(11,13):'';
+}
+
+function getAvisPassageDateFr(iv){
+  if(!iv)return '';
+  let raw=String(iv._avisPassageDate||iv._avisPassageAt||(getAvisPassageTimelineEntry(iv)||{}).h||iv.h||'').replace(/\D/g,'').slice(0,8);
+  if(raw.length!==8)return '';
+  return raw.slice(6,8)+'/'+raw.slice(4,6)+'/'+raw.slice(0,4);
+}
+
+function _buildAvisPassageBody(iv){
+  if(!iv||!iv._avisPassage)return '';
+  const logoSrc=_getLogoSrc();
+  const dateFr=getAvisPassageDateFr(iv)||'—';
+  const heure=getAvisPassageHour(iv)||'—';
+  const nom=escHtml(iv.req||'—');
+  const objet=escHtml(iv.n||'—');
+  const adresse=escHtml([iv.addr||'',iv.addrComp||'',iv.com||''].filter(Boolean).join(', ')||'—');
+  return '<div class="avis-document" style="font-family:Calibri,Arial,sans-serif;color:#000;font-size:11pt;">'
+    +'<div style="height:20mm;display:flex;align-items:flex-start;margin-bottom:2mm;"><img src="'+logoSrc+'" alt="Logo" style="width:83.1mm;height:20mm;object-fit:contain;object-position:left top;"></div>'
+    +'<h2 style="text-align:center;font-size:16pt;font-weight:700;text-decoration:underline;margin:1mm 0 5mm;">AVIS DE PASSAGE</h2>'
+    +'<table style="width:100%;border-collapse:collapse;table-layout:fixed;margin:0 0 7mm;">'
+    +'<tr><td style="width:42%;border:1px solid #000;padding:3mm 3.5mm;font-weight:600;">Date du passage :</td><td style="border:1px solid #000;padding:3mm 3.5mm;text-align:center;font-weight:700;">'+dateFr+'</td></tr>'
+    +'<tr><td style="border:1px solid #000;padding:3mm 3.5mm;font-weight:600;">Objet de l’intervention</td><td style="border:1px solid #000;padding:3mm 3.5mm;text-align:center;">'+objet+'</td></tr>'
+    +'<tr><td style="border:1px solid #000;padding:3mm 3.5mm;font-weight:600;">Nom du propriétaire ou du locataire</td><td style="border:1px solid #000;padding:3mm 3.5mm;text-align:center;">'+nom+'</td></tr>'
+    +'<tr><td style="border:1px solid #000;padding:3mm 3.5mm;font-weight:600;">Adresse :</td><td style="border:1px solid #000;padding:3mm 3.5mm;text-align:center;">'+adresse+'</td></tr>'
+    +'</table>'
+    +'<p style="font-size:12pt;line-height:1.5;text-align:justify;margin:0;">Suite à votre appel téléphonique, les sapeurs-pompiers se sont présentés à votre domicile à <strong>'+heure.replace(':',' h ')+' min</strong> pour intervenir.</p>'
+    +'</div>';
+}
+
+function _buildAvisPassageHTML(ivId){
+  const iv=IVS.find(function(item){return item.id===ivId;})||PILP_IVS.find(function(item){return item.id===ivId;});
+  const body=_buildAvisPassageBody(iv);if(!body)return '';
+  return '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Avis de passage</title><style>'
+    +'@page{size:210mm 148mm;margin:0;}*{box-sizing:border-box;}html{background:#666;}body{width:210mm;min-height:148mm;margin:15px auto;padding:10mm;background:#fff;box-shadow:0 4px 24px rgba(0,0,0,.5);}'
+    +'.no-print{position:fixed;top:10px;right:10px;z-index:10;padding:7px 12px;border:0;border-radius:6px;background:#7E22CE;color:#fff;cursor:pointer;}@media print{html{background:none;}body{margin:0;box-shadow:none;}.no-print{display:none;}}'
+    +'</style></head><body><button class="no-print" onclick="window.print()">Imprimer / PDF</button>'+body+'</body></html>';
+}
+
+function viewAvisPassageDocument(ivId){
+  const html=_buildAvisPassageHTML(ivId);
+  if(!html){showToast('Avis de passage non disponible.','warn');return;}
+  openIframeModal(html,ivId);
 }
 
 

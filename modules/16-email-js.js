@@ -834,6 +834,7 @@ function genRapportInterventionHTML(ivId) {
   const engin=iv.eng||(iv._engin1||'')||'';
   const hDebut=iv._hDebut||'';
   const hFin=iv._hFin||'';
+  const avisPassageHeure=getAvisPassageHour(iv);
   const cr=iv._crTexte||iv._compteRendu||'';
 
   // Pr\u00e9sents
@@ -893,6 +894,7 @@ function genRapportInterventionHTML(ivId) {
     if(iv._hDispo)rows_data.push([iv._hDispo,(engin||'') + ' dispo']);
   }
   const idxRetour=hFin?rows_data.length:-1;if(hFin)rows_data.push([hFin,'Retour '+(engin||'')]);
+  if(iv._avisPassage&&avisPassageHeure)rows_data.push([avisPassageHeure,'Avis de passage déposé dans la boîte aux lettres']);
   if(iv._sdis){
     rows_data.push(['','Mat\u00e9riel(s) utilis\u00e9(s)\u00a0: '+(iv._materiels||'-')]);
     rows_data.push(['','Consommable(s) utilis\u00e9(s)\u00a0: '+(iv._consommables||'-')]);
@@ -991,6 +993,7 @@ function genRapportInterventionHTML(ivId) {
       autBody=ab;
     }
   }
+  const avisBody=iv._isRenfort?'':_buildAvisPassageBody(iv);
 
   // Prises en charge animales : joindre la page sapeurs-pompiers de chaque
   // fiche enregistrée au compte rendu, dans l'ordre des animaux.
@@ -1031,6 +1034,12 @@ function genRapportInterventionHTML(ivId) {
     +'.aut-wrap p{margin:2px 0;line-height:1.4;font-size:9.5pt;}'
     +'.aut-wrap .sig-t{width:100%;border-collapse:collapse;margin-top:4px;}'
     +'.aut-wrap .sig-t td{border:1px solid #000;padding:4px 5px;vertical-align:top;width:50%;font-size:9.5pt;}'
+    +'.avis-wrap{margin-top:5mm;padding-top:3mm;border-top:1px dashed #bbb;}'
+    +'.avis-wrap .avis-document{font-size:9.5pt!important;}'
+    +'.avis-wrap .avis-document h2{font-size:12pt!important;margin:1mm 0 3mm!important;}'
+    +'.avis-wrap .avis-document table{margin-bottom:4mm!important;}'
+    +'.avis-wrap .avis-document td{padding:1.8mm 2.5mm!important;font-size:9pt;}'
+    +'.avis-wrap .avis-document p{font-size:9.5pt!important;line-height:1.35!important;}'
     +'.no-print{position:fixed;top:10px;right:10px;z-index:999;display:flex;gap:6px;background:rgba(255,255,255,.95);padding:6px;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.3);}'
     +'.no-print button{padding:6px 12px;border:none;border-radius:5px;cursor:pointer;font-size:12px;}'
     +'p{margin:0;}'
@@ -1040,7 +1049,7 @@ function genRapportInterventionHTML(ivId) {
     +'<button onclick="window.print()" style="background:#C0392B;color:#fff;">\uD83D\uDDA8 Imprimer recto-verso</button>'
 
     +'</div>'
-    // Page 1 : rapport + autorisation
+    // Page 1 : rapport + documents associés
     +'<div class="page">'
     +'<table style="border-top:'+B+';border-left:0;border-right:0;">'
     +'<tr><td colspan="2" style="border-left:'+B+';border-right:'+B+';border-bottom:'+B+';text-align:center;font-size:13pt;font-weight:bold;padding:4px;">Rapport d\u2019intervention'+(iv._isRenfort?' \u2014 Renfort':'')+'</td></tr>'
@@ -1051,7 +1060,8 @@ function genRapportInterventionHTML(ivId) {
     +rows_html
     +'</table>'
     +(autBody?'<div class="aut-wrap">'+autBody+'</div>':'')
-    +(pecPagesHtml&&autBody?'<div style="min-height:60mm;page-break-after:always;break-after:page;"></div>':'')
+    +(avisBody?'<div class="avis-wrap">'+avisBody+'</div>':'')
+    +(pecPagesHtml&&(autBody||avisBody)?'<div style="min-height:60mm;page-break-after:always;break-after:page;"></div>':'')
     +'</div>'
     // Pages suivantes : une prise en charge sapeurs-pompiers par animal.
     +(pecPagesHtml?pecPagesHtml.replace(/<div class="page">/g,'<div class="pec-page">').replace(/<style>[\s\S]*?<\/style>/g,''):'')

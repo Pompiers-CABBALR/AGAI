@@ -1597,8 +1597,8 @@ function renderSuperAdmin(){
       ${renderGlobalStats()}
     </div>
     <div style="margin-top:20px;background:#fff;border-radius:14px;padding:16px;border:1px solid #eee;">
-      <h3 style="font-size:15px;font-weight:700;margin-bottom:4px;">&#x1F5BC;&#xFE0F; Logo des documents (Autorisation / Attestation)</h3>
-      <div style="font-size:12px;color:#666;margin-bottom:12px;">Ce logo apparaît en haut à gauche de l'autorisation et de l'attestation d'intervention. Taille recommandée : 1,5 cm de haut × 6 cm de large.</div>
+      <h3 style="font-size:15px;font-weight:700;margin-bottom:4px;">&#x1F5BC;&#xFE0F; Logo des documents (Autorisation / Attestation / Avis de passage)</h3>
+      <div style="font-size:12px;color:#666;margin-bottom:12px;">Ce logo apparaît en haut à gauche de l'autorisation, de l'attestation d'intervention et de l'avis de passage. Taille recommandée : 1,5 cm de haut × 6 cm de large.</div>
       <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
         <div style="border:1px solid #eee;border-radius:8px;padding:8px;background:#f9f9f9;min-width:80px;min-height:40px;display:flex;align-items:center;justify-content:center;">
           <img id="sa-logo-preview" src="" style="height:42px;max-width:170px;object-fit:contain;display:none;">
@@ -4777,6 +4777,17 @@ function toggleAvisPILP(btn){
   btn.textContent=expanded?'▼ Voir tous':'▲ Réduire';
 }
 
+function toggleAvisPassageHour(checkbox,timeId,wrapId){
+  const wrap=document.getElementById(wrapId);
+  const input=document.getElementById(timeId);
+  const checked=!!(checkbox&&checkbox.checked);
+  if(wrap)wrap.style.display=checked?'block':'none';
+  if(input){
+    input.required=checked;
+    if(checked&&!input.value)input.value=getHHMM(N());
+  }
+}
+
 // ────────────────── MODAL ──────────────────
 function oM(id){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
@@ -4878,7 +4889,11 @@ function oM(id){
         ${renfortCloBtn}
         ${iv._isRenfort?'':`${animalBtn}${autorisationBtn}
         <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Clôturer l'intervention</div>
-        <label class="avislbl"><input type="checkbox" id="chk-av" style="accent-color:var(--pur);"/>&#x1F7E3; Requérant absent — Avis de passage</label>
+        <label class="avislbl"><input type="checkbox" id="chk-av" style="accent-color:var(--pur);" onchange="toggleAvisPassageHour(this,'avis-passage-hour','avis-passage-hour-wrap')"/>&#x1F7E3; Requérant absent — Avis de passage</label>
+        <div id="avis-passage-hour-wrap" style="display:none;background:#FAF5FF;border:1px solid #D8B4FE;border-radius:9px;padding:9px 10px;margin:-2px 0 10px;">
+          <label for="avis-passage-hour" style="display:block;font-size:11px;font-weight:700;color:#6B21A8;margin-bottom:5px;">Heure de dépôt dans la boîte aux lettres *</label>
+          <input class="fi" type="time" id="avis-passage-hour" value="${getHHMM(N())}" style="width:100%;"/>
+        </div>
         ${(iv.agr===CU.l||iv._agr2===CU.l||chef||isAdminModeActive())?`<button class="btn gn" style="width:100%;margin-bottom:10px;" onclick="clot('${iv.id}')">✅ Confirmer la clôture</button>`:`<div style="font-size:12px;color:#991B1B;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:8px;margin-bottom:10px;">🔒 Clôture réservée au chef d'agrès assigné ou à un administrateur.</div>`}
         <div style="border-top:1px solid var(--brd);padding-top:10px;margin-bottom:6px;">
           <div style="font-size:10px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Gestion de l'équipage</div>
@@ -4923,7 +4938,7 @@ function oM(id){
     <div style="margin-bottom:8px;"><span class="bdg ${bc}">${bt}</span>${iv.rappels?` <span class="bdg bp" style="${isAdminModeActive()?'cursor:pointer;':''}"${isAdminModeActive()?` title="Déjà intervenu ici ?" onclick="showInterventionsLiees('${iv.id}')"`:''}>${iv.rappels} rappel(s)</span>`:''}</div>
     ${iv._urgence?'<div style="background:#FEE2E2;border:2px solid #B91C1C;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:800;color:#991B1B;margin-bottom:10px;text-align:center;">🚨 URGENCE — ÉTABLISSEMENT RECEVANT DU PUBLIC (ERP)</div>':''}
     ${iv._sdis?'<div style="background:#DBEAFE;border:1px solid #93C5FD;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;color:#1D4ED8;margin-bottom:10px;text-align:center;">&#x1F691; INTERVENTION SDIS</div>':''}
-    ${iv._avisPassage?'<div style="background:#F3EAF8;border:2px solid #9B59B6;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;color:#6C3483;margin-bottom:10px;text-align:center;">🟣 Un avis de passage a été laissé pour cette intervention</div>':''}
+    ${iv._avisPassage?'<div style="background:#F3EAF8;border:2px solid #9B59B6;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;color:#6C3483;margin-bottom:10px;text-align:center;">🟣 Un avis de passage a été laissé'+(getAvisPassageHour(iv)?' à '+escHtml(getAvisPassageHour(iv)):'')+' pour cette intervention</div>':''}
     ${iv._echelleToiture?'<div style="background:#FEF3C7;border:2px solid #F59E0B;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:700;color:#92400E;margin-bottom:10px;text-align:center;">&#x26A0;&#xFE0F; INTERVENTION À FAIRE AVEC ÉCHELLE DE TOIT</div>':''}
     ${iv._epa?'<div style="background:#F3EAF8;border:2px solid #8E44AD;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:700;color:#6C3483;margin-bottom:10px;text-align:center;">&#x1F9F0; INTERVENTION À FAIRE AVEC EPA</div>':''}
     <div class="mr"><div class="ml">Adresse</div><div class="mv2" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">&#x1F4CD; ${escHtml(iv.addr)}, ${escHtml(iv.com)}${iv.addrComp?' · '+escHtml(iv.addrComp):''}${(isAgres()||isChef()||hasRight('Administration'))&&iv.s!=='terminee'?`<button class="btn sm" style="font-size:10px;padding:2px 7px;" onclick="editAdresse('${iv.id}')">✏️ Corriger</button>`:''}<button class="btn sm" style="font-size:10px;padding:2px 7px;background:#4285F4;color:#fff;border-color:#4285F4;" onclick="openMaps('${iv.id}')">🗺️ Maps</button></div></div>
@@ -5030,7 +5045,12 @@ function oM(id){
         ${(iv._pdfAttestation||iv._autorisationData)?`<button class="btn sm" style="background:#3B6D11;color:#fff;" onclick="viewPdfDocument('${iv.id}','attestation')">&#x1F4CB; Attestation</button>`:''}
         ${!iv._pdfAutorisation&&iv._autorisationData?`<span style="font-size:10px;color:var(--t2);align-self:center;">&#x26A0;&#xFE0F; Générés à la volée</span>`:'<span style="font-size:10px;color:var(--grn);align-self:center;">&#x2705; Sauvegardés</span>'}
       </div>
-    </div>`:''}    ${(['en-attente','selectionne','en-cours'].includes(iv.s)&&(hasRight('Interventions')||isAgres()||isChef()||isAdminModeActive()))?`<button class="btn sm" style="width:100%;margin-bottom:8px;background:#0369A1;color:#fff;border-color:#0369A1;" onclick="showComplementModal('${iv.id}')">&#x2139;&#xFE0F; Ajouter un complément d'information</button>`:''}
+    </div>`:''}
+    ${iv._avisPassage&&(iv.agr===CU.l||iv._agr2===CU.l||hasAdministrativeAccount())?`<div style="background:#FAF5FF;border:1px solid #D8B4FE;border-radius:10px;padding:10px 12px;margin-bottom:10px;">
+      <div style="font-size:11px;font-weight:700;color:#6B21A8;margin-bottom:8px;">&#x1F4EC; Avis de passage${getAvisPassageHour(iv)?' — déposé à '+escHtml(getAvisPassageHour(iv)):''}</div>
+      <button class="btn sm" style="background:#7E22CE;color:#fff;border-color:#7E22CE;" onclick="viewAvisPassageDocument('${iv.id}')">&#x1F4CB; Voir l'avis de passage</button>
+    </div>`:''}
+    ${(['en-attente','selectionne','en-cours'].includes(iv.s)&&(hasRight('Interventions')||isAgres()||isChef()||isAdminModeActive()))?`<button class="btn sm" style="width:100%;margin-bottom:8px;background:#0369A1;color:#fff;border-color:#0369A1;" onclick="showComplementModal('${iv.id}')">&#x2139;&#xFE0F; Ajouter un complément d'information</button>`:''}
     <details style="background:var(--bg);border-radius:10px;margin-bottom:8px;" id="tl-details-${iv.id}">
       <summary style="font-size:11px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;padding:10px 12px;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;">
         Historique des statuts <span style="font-size:10px;background:var(--brd);border-radius:10px;padding:1px 7px;color:var(--t2);font-weight:400;">${(iv.tl||[]).length}</span>
@@ -5281,6 +5301,12 @@ function clot(id){
   // Ne pas re-clôturer une intervention déjà liée à une PILP
   if(iv._lienPilp&&iv.s==='terminee'){showToast('Cette intervention est déjà clôturée (liée à une PILP).','warn');cM();return;}
   const avis=document.getElementById('chk-av')&&document.getElementById('chk-av').checked;
+  const avisHeure=avis&&document.getElementById('avis-passage-hour')?document.getElementById('avis-passage-hour').value:'';
+  if(avis&&!/^([01]\d|2[0-3]):[0-5]\d$/.test(avisHeure)){
+    showToast('Renseignez l’heure à laquelle l’avis de passage a été déposé.','warn');
+    const field=document.getElementById('avis-passage-hour');if(field){field.focus();field.scrollIntoView({behavior:'smooth',block:'center'});}
+    return;
+  }
   const h=getH(N());
   const agr2Lbl=iv._agr2?(()=>{const u=USERS.find(u=>u.l===iv._agr2);return u?' + '+fullName(u)+' (2\u00e8me)':' + '+iv._agr2;})():'';
   if(avis){
@@ -5289,7 +5315,10 @@ function clot(id){
     // signaler qu'un avis a été laissé et qu'on attend le rappel du requérant.
     iv._avisPassage=true;
     iv._avisEnAttente=true; // indicateur "en attente de rappel" (levé quand le requérant rappelle)
-    iv.tl.push({s:'avis-passage',h,who:CU.l});
+    iv._avisPassageHeure=avisHeure;
+    iv._avisPassageDate=getDS(N());
+    iv._avisPassageAt=h;
+    iv.tl.push({s:'avis-passage',h,who:CU.l,note:'Avis déposé à '+avisHeure});
     // On NE retourne PAS : on laisse le flux de clôture normale terminer l'intervention.
   }
   // Clôture normale : verrouiller immédiatement avant toute autre opération afin
@@ -5493,7 +5522,11 @@ function oPilp(id){
       const ds=getDS(N()),hh=pad(N().getHours()),mm2=pad(N().getMinutes());
       actions=`<div class="clotbox">
         <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Clôturer l'intervention PILP</div>
-        <label class="avislbl"><input type="checkbox" id="chk-pilp-avis" style="accent-color:var(--pur);"/>&#x1F7E3; Requérant absent — Avis de passage PILP</label>
+        <label class="avislbl"><input type="checkbox" id="chk-pilp-avis" style="accent-color:var(--pur);" onchange="toggleAvisPassageHour(this,'pilp-avis-passage-hour','pilp-avis-passage-hour-wrap')"/>&#x1F7E3; Requérant absent — Avis de passage PILP</label>
+        <div id="pilp-avis-passage-hour-wrap" style="display:none;background:#FAF5FF;border:1px solid #D8B4FE;border-radius:9px;padding:9px 10px;margin:-2px 0 10px;">
+          <label for="pilp-avis-passage-hour" style="display:block;font-size:11px;font-weight:700;color:#6B21A8;margin-bottom:5px;">Heure de dépôt dans la boîte aux lettres *</label>
+          <input class="fi" type="time" id="pilp-avis-passage-hour" value="${getHHMM(N())}" style="width:100%;"/>
+        </div>
         <button class="btn gn" style="width:100%;" onclick="clotPilp('${id}')">✅ Confirmer la clôture</button>
       </div>
       <div class="brow" style="margin-top:8px;"><button class="btn sm danger" onclick="cSPilp('${id}','en-attente')">↩ En attente</button></div>`;
@@ -5553,11 +5586,19 @@ function cSPilp(id,s){
 function clotPilp(id){
   const iv=PILP_IVS.find(v=>v.id===id);if(!iv)return;
   const avis=document.getElementById('chk-pilp-avis')&&document.getElementById('chk-pilp-avis').checked;
+  const avisHeure=avis&&document.getElementById('pilp-avis-passage-hour')?document.getElementById('pilp-avis-passage-hour').value:'';
+  if(avis&&!/^([01]\d|2[0-3]):[0-5]\d$/.test(avisHeure)){
+    showToast('Renseignez l’heure à laquelle l’avis de passage a été déposé.','warn');
+    const field=document.getElementById('pilp-avis-passage-hour');if(field){field.focus();field.scrollIntoView({behavior:'smooth',block:'center'});}
+    return;
+  }
   const h=getH(N());
   if(avis){
     iv.s='avis-passage';iv.rappels=(iv.rappels||0)+1;
+    iv._avisPassage=true;iv._avisEnAttente=true;
+    iv._avisPassageHeure=avisHeure;iv._avisPassageDate=getDS(N());iv._avisPassageAt=h;
     if(!iv.avisIds)iv.avisIds=[];if(!iv.avisIds.includes(iv.id))iv.avisIds.push(iv.id);
-    iv.tl.push({s:'avis-passage',h,who:CU.l});
+    iv.tl.push({s:'avis-passage',h,who:CU.l,note:'Avis déposé à '+avisHeure});
     if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
     saveData(true);
     rPilp();oPilp(id);
@@ -5576,7 +5617,8 @@ function clotAvisPilp(id){
     IVS.unshift({id:String(iv.id)+'_historique',_numApl:iv._numApl||iv.id,_numCaserne:iv._numCaserne,_numGlobal:iv._numGlobal,_numMois:iv._numMois,
       n:iv.n.replace(' — PILP',''),addr:iv.addr,com:iv.com,h:iv.h,op:iv.agr||CU.l,
       s:'terminee',det:iv.obs||'',eng:null,req:iv.req||'',tel:iv.tel||'',obs:'',agr:CU.l,
-      rappels:0,avisIds:[],_lienPilp:true,_lienPilpSourceId:iv.id,tl:[...iv.tl]});
+      rappels:0,avisIds:[],_lienPilp:true,_lienPilpSourceId:iv.id,tl:[...iv.tl],
+      _avisPassage:iv._avisPassage===true,_avisPassageHeure:iv._avisPassageHeure||'',_avisPassageDate:iv._avisPassageDate||'',_avisPassageAt:iv._avisPassageAt||''});
   }
   (iv.avisIds||[]).forEach(aid=>{const av=PILP_IVS.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';av.tl.push({s:'terminee',h,who:CU.l+' (fusion)'});}});
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
@@ -12082,7 +12124,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260811-ordre-tournee-visible-123';
+const APP_VERSION='20260812-avis-passage-heure-124';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -12350,6 +12392,61 @@ function viewPdfDocument(ivId, docType) {
   openIframeModal(html);
   // Ajouter bouton imprimer — dans l'iframe via srcdoc
   // Ajouter bouton imprimer
+}
+
+function getAvisPassageTimelineEntry(iv){
+  const entries=(iv&&Array.isArray(iv.tl)?iv.tl:[]).filter(function(entry){return entry&&entry.s==='avis-passage'&&entry.h;});
+  return entries.length?entries[entries.length-1]:null;
+}
+
+function getAvisPassageHour(iv){
+  if(!iv)return '';
+  if(/^([01]\d|2[0-3]):[0-5]\d$/.test(String(iv._avisPassageHeure||'')))return iv._avisPassageHeure;
+  const raw=String(iv._avisPassageAt||(getAvisPassageTimelineEntry(iv)||{}).h||'');
+  return /^\d{8}_\d{4}/.test(raw)?raw.slice(9,11)+':'+raw.slice(11,13):'';
+}
+
+function getAvisPassageDateFr(iv){
+  if(!iv)return '';
+  let raw=String(iv._avisPassageDate||iv._avisPassageAt||(getAvisPassageTimelineEntry(iv)||{}).h||iv.h||'').replace(/\D/g,'').slice(0,8);
+  if(raw.length!==8)return '';
+  return raw.slice(6,8)+'/'+raw.slice(4,6)+'/'+raw.slice(0,4);
+}
+
+function _buildAvisPassageBody(iv){
+  if(!iv||!iv._avisPassage)return '';
+  const logoSrc=_getLogoSrc();
+  const dateFr=getAvisPassageDateFr(iv)||'—';
+  const heure=getAvisPassageHour(iv)||'—';
+  const nom=escHtml(iv.req||'—');
+  const objet=escHtml(iv.n||'—');
+  const adresse=escHtml([iv.addr||'',iv.addrComp||'',iv.com||''].filter(Boolean).join(', ')||'—');
+  return '<div class="avis-document" style="font-family:Calibri,Arial,sans-serif;color:#000;font-size:11pt;">'
+    +'<div style="height:20mm;display:flex;align-items:flex-start;margin-bottom:2mm;"><img src="'+logoSrc+'" alt="Logo" style="width:83.1mm;height:20mm;object-fit:contain;object-position:left top;"></div>'
+    +'<h2 style="text-align:center;font-size:16pt;font-weight:700;text-decoration:underline;margin:1mm 0 5mm;">AVIS DE PASSAGE</h2>'
+    +'<table style="width:100%;border-collapse:collapse;table-layout:fixed;margin:0 0 7mm;">'
+    +'<tr><td style="width:42%;border:1px solid #000;padding:3mm 3.5mm;font-weight:600;">Date du passage :</td><td style="border:1px solid #000;padding:3mm 3.5mm;text-align:center;font-weight:700;">'+dateFr+'</td></tr>'
+    +'<tr><td style="border:1px solid #000;padding:3mm 3.5mm;font-weight:600;">Objet de l’intervention</td><td style="border:1px solid #000;padding:3mm 3.5mm;text-align:center;">'+objet+'</td></tr>'
+    +'<tr><td style="border:1px solid #000;padding:3mm 3.5mm;font-weight:600;">Nom du propriétaire ou du locataire</td><td style="border:1px solid #000;padding:3mm 3.5mm;text-align:center;">'+nom+'</td></tr>'
+    +'<tr><td style="border:1px solid #000;padding:3mm 3.5mm;font-weight:600;">Adresse :</td><td style="border:1px solid #000;padding:3mm 3.5mm;text-align:center;">'+adresse+'</td></tr>'
+    +'</table>'
+    +'<p style="font-size:12pt;line-height:1.5;text-align:justify;margin:0;">Suite à votre appel téléphonique, les sapeurs-pompiers se sont présentés à votre domicile à <strong>'+heure.replace(':',' h ')+' min</strong> pour intervenir.</p>'
+    +'</div>';
+}
+
+function _buildAvisPassageHTML(ivId){
+  const iv=IVS.find(function(item){return item.id===ivId;})||PILP_IVS.find(function(item){return item.id===ivId;});
+  const body=_buildAvisPassageBody(iv);if(!body)return '';
+  return '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Avis de passage</title><style>'
+    +'@page{size:210mm 148mm;margin:0;}*{box-sizing:border-box;}html{background:#666;}body{width:210mm;min-height:148mm;margin:15px auto;padding:10mm;background:#fff;box-shadow:0 4px 24px rgba(0,0,0,.5);}'
+    +'.no-print{position:fixed;top:10px;right:10px;z-index:10;padding:7px 12px;border:0;border-radius:6px;background:#7E22CE;color:#fff;cursor:pointer;}@media print{html{background:none;}body{margin:0;box-shadow:none;}.no-print{display:none;}}'
+    +'</style></head><body><button class="no-print" onclick="window.print()">Imprimer / PDF</button>'+body+'</body></html>';
+}
+
+function viewAvisPassageDocument(ivId){
+  const html=_buildAvisPassageHTML(ivId);
+  if(!html){showToast('Avis de passage non disponible.','warn');return;}
+  openIframeModal(html,ivId);
 }
 
 
@@ -13190,6 +13287,7 @@ function genRapportInterventionHTML(ivId) {
   const engin=iv.eng||(iv._engin1||'')||'';
   const hDebut=iv._hDebut||'';
   const hFin=iv._hFin||'';
+  const avisPassageHeure=getAvisPassageHour(iv);
   const cr=iv._crTexte||iv._compteRendu||'';
 
   // Pr\u00e9sents
@@ -13249,6 +13347,7 @@ function genRapportInterventionHTML(ivId) {
     if(iv._hDispo)rows_data.push([iv._hDispo,(engin||'') + ' dispo']);
   }
   const idxRetour=hFin?rows_data.length:-1;if(hFin)rows_data.push([hFin,'Retour '+(engin||'')]);
+  if(iv._avisPassage&&avisPassageHeure)rows_data.push([avisPassageHeure,'Avis de passage déposé dans la boîte aux lettres']);
   if(iv._sdis){
     rows_data.push(['','Mat\u00e9riel(s) utilis\u00e9(s)\u00a0: '+(iv._materiels||'-')]);
     rows_data.push(['','Consommable(s) utilis\u00e9(s)\u00a0: '+(iv._consommables||'-')]);
@@ -13347,6 +13446,7 @@ function genRapportInterventionHTML(ivId) {
       autBody=ab;
     }
   }
+  const avisBody=iv._isRenfort?'':_buildAvisPassageBody(iv);
 
   // Prises en charge animales : joindre la page sapeurs-pompiers de chaque
   // fiche enregistrée au compte rendu, dans l'ordre des animaux.
@@ -13387,6 +13487,12 @@ function genRapportInterventionHTML(ivId) {
     +'.aut-wrap p{margin:2px 0;line-height:1.4;font-size:9.5pt;}'
     +'.aut-wrap .sig-t{width:100%;border-collapse:collapse;margin-top:4px;}'
     +'.aut-wrap .sig-t td{border:1px solid #000;padding:4px 5px;vertical-align:top;width:50%;font-size:9.5pt;}'
+    +'.avis-wrap{margin-top:5mm;padding-top:3mm;border-top:1px dashed #bbb;}'
+    +'.avis-wrap .avis-document{font-size:9.5pt!important;}'
+    +'.avis-wrap .avis-document h2{font-size:12pt!important;margin:1mm 0 3mm!important;}'
+    +'.avis-wrap .avis-document table{margin-bottom:4mm!important;}'
+    +'.avis-wrap .avis-document td{padding:1.8mm 2.5mm!important;font-size:9pt;}'
+    +'.avis-wrap .avis-document p{font-size:9.5pt!important;line-height:1.35!important;}'
     +'.no-print{position:fixed;top:10px;right:10px;z-index:999;display:flex;gap:6px;background:rgba(255,255,255,.95);padding:6px;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.3);}'
     +'.no-print button{padding:6px 12px;border:none;border-radius:5px;cursor:pointer;font-size:12px;}'
     +'p{margin:0;}'
@@ -13396,7 +13502,7 @@ function genRapportInterventionHTML(ivId) {
     +'<button onclick="window.print()" style="background:#C0392B;color:#fff;">\uD83D\uDDA8 Imprimer recto-verso</button>'
 
     +'</div>'
-    // Page 1 : rapport + autorisation
+    // Page 1 : rapport + documents associés
     +'<div class="page">'
     +'<table style="border-top:'+B+';border-left:0;border-right:0;">'
     +'<tr><td colspan="2" style="border-left:'+B+';border-right:'+B+';border-bottom:'+B+';text-align:center;font-size:13pt;font-weight:bold;padding:4px;">Rapport d\u2019intervention'+(iv._isRenfort?' \u2014 Renfort':'')+'</td></tr>'
@@ -13407,7 +13513,8 @@ function genRapportInterventionHTML(ivId) {
     +rows_html
     +'</table>'
     +(autBody?'<div class="aut-wrap">'+autBody+'</div>':'')
-    +(pecPagesHtml&&autBody?'<div style="min-height:60mm;page-break-after:always;break-after:page;"></div>':'')
+    +(avisBody?'<div class="avis-wrap">'+avisBody+'</div>':'')
+    +(pecPagesHtml&&(autBody||avisBody)?'<div style="min-height:60mm;page-break-after:always;break-after:page;"></div>':'')
     +'</div>'
     // Pages suivantes : une prise en charge sapeurs-pompiers par animal.
     +(pecPagesHtml?pecPagesHtml.replace(/<div class="page">/g,'<div class="pec-page">').replace(/<style>[\s\S]*?<\/style>/g,''):'')

@@ -450,8 +450,8 @@ function renderSuperAdmin(){
       ${renderGlobalStats()}
     </div>
     <div style="margin-top:20px;background:#fff;border-radius:14px;padding:16px;border:1px solid #eee;">
-      <h3 style="font-size:15px;font-weight:700;margin-bottom:4px;">&#x1F5BC;&#xFE0F; Logo des documents (Autorisation / Attestation)</h3>
-      <div style="font-size:12px;color:#666;margin-bottom:12px;">Ce logo apparaît en haut à gauche de l'autorisation et de l'attestation d'intervention. Taille recommandée : 1,5 cm de haut × 6 cm de large.</div>
+      <h3 style="font-size:15px;font-weight:700;margin-bottom:4px;">&#x1F5BC;&#xFE0F; Logo des documents (Autorisation / Attestation / Avis de passage)</h3>
+      <div style="font-size:12px;color:#666;margin-bottom:12px;">Ce logo apparaît en haut à gauche de l'autorisation, de l'attestation d'intervention et de l'avis de passage. Taille recommandée : 1,5 cm de haut × 6 cm de large.</div>
       <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
         <div style="border:1px solid #eee;border-radius:8px;padding:8px;background:#f9f9f9;min-width:80px;min-height:40px;display:flex;align-items:center;justify-content:center;">
           <img id="sa-logo-preview" src="" style="height:42px;max-width:170px;object-fit:contain;display:none;">

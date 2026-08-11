@@ -162,7 +162,11 @@ function oPilp(id){
       const ds=getDS(N()),hh=pad(N().getHours()),mm2=pad(N().getMinutes());
       actions=`<div class="clotbox">
         <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Clôturer l'intervention PILP</div>
-        <label class="avislbl"><input type="checkbox" id="chk-pilp-avis" style="accent-color:var(--pur);"/>&#x1F7E3; Requérant absent — Avis de passage PILP</label>
+        <label class="avislbl"><input type="checkbox" id="chk-pilp-avis" style="accent-color:var(--pur);" onchange="toggleAvisPassageHour(this,'pilp-avis-passage-hour','pilp-avis-passage-hour-wrap')"/>&#x1F7E3; Requérant absent — Avis de passage PILP</label>
+        <div id="pilp-avis-passage-hour-wrap" style="display:none;background:#FAF5FF;border:1px solid #D8B4FE;border-radius:9px;padding:9px 10px;margin:-2px 0 10px;">
+          <label for="pilp-avis-passage-hour" style="display:block;font-size:11px;font-weight:700;color:#6B21A8;margin-bottom:5px;">Heure de dépôt dans la boîte aux lettres *</label>
+          <input class="fi" type="time" id="pilp-avis-passage-hour" value="${getHHMM(N())}" style="width:100%;"/>
+        </div>
         <button class="btn gn" style="width:100%;" onclick="clotPilp('${id}')">✅ Confirmer la clôture</button>
       </div>
       <div class="brow" style="margin-top:8px;"><button class="btn sm danger" onclick="cSPilp('${id}','en-attente')">↩ En attente</button></div>`;
@@ -222,11 +226,19 @@ function cSPilp(id,s){
 function clotPilp(id){
   const iv=PILP_IVS.find(v=>v.id===id);if(!iv)return;
   const avis=document.getElementById('chk-pilp-avis')&&document.getElementById('chk-pilp-avis').checked;
+  const avisHeure=avis&&document.getElementById('pilp-avis-passage-hour')?document.getElementById('pilp-avis-passage-hour').value:'';
+  if(avis&&!/^([01]\d|2[0-3]):[0-5]\d$/.test(avisHeure)){
+    showToast('Renseignez l’heure à laquelle l’avis de passage a été déposé.','warn');
+    const field=document.getElementById('pilp-avis-passage-hour');if(field){field.focus();field.scrollIntoView({behavior:'smooth',block:'center'});}
+    return;
+  }
   const h=getH(N());
   if(avis){
     iv.s='avis-passage';iv.rappels=(iv.rappels||0)+1;
+    iv._avisPassage=true;iv._avisEnAttente=true;
+    iv._avisPassageHeure=avisHeure;iv._avisPassageDate=getDS(N());iv._avisPassageAt=h;
     if(!iv.avisIds)iv.avisIds=[];if(!iv.avisIds.includes(iv.id))iv.avisIds.push(iv.id);
-    iv.tl.push({s:'avis-passage',h,who:CU.l});
+    iv.tl.push({s:'avis-passage',h,who:CU.l,note:'Avis déposé à '+avisHeure});
     if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
     saveData(true);
     rPilp();oPilp(id);
@@ -245,7 +257,8 @@ function clotAvisPilp(id){
     IVS.unshift({id:String(iv.id)+'_historique',_numApl:iv._numApl||iv.id,_numCaserne:iv._numCaserne,_numGlobal:iv._numGlobal,_numMois:iv._numMois,
       n:iv.n.replace(' — PILP',''),addr:iv.addr,com:iv.com,h:iv.h,op:iv.agr||CU.l,
       s:'terminee',det:iv.obs||'',eng:null,req:iv.req||'',tel:iv.tel||'',obs:'',agr:CU.l,
-      rappels:0,avisIds:[],_lienPilp:true,_lienPilpSourceId:iv.id,tl:[...iv.tl]});
+      rappels:0,avisIds:[],_lienPilp:true,_lienPilpSourceId:iv.id,tl:[...iv.tl],
+      _avisPassage:iv._avisPassage===true,_avisPassageHeure:iv._avisPassageHeure||'',_avisPassageDate:iv._avisPassageDate||'',_avisPassageAt:iv._avisPassageAt||''});
   }
   (iv.avisIds||[]).forEach(aid=>{const av=PILP_IVS.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';av.tl.push({s:'terminee',h,who:CU.l+' (fusion)'});}});
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
