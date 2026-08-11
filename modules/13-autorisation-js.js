@@ -470,7 +470,7 @@ function genAutorisationDocx(ivId) {
   }
 }
 
-let editCommuneSelected=null,editAddrSelected=false,editAddrTimer=null;
+let editCommuneSelected=null,editAddrSelected=false,editAddrSelectedValue='',editAddrTimer=null,editAddrRequest=null;
 function editFiltCommune(q){
   const dd=document.getElementById('edit-com-dd');if(!dd)return;
   const nq=nm(q);
@@ -497,6 +497,7 @@ function editSelectCommune(commune,event){
   const addr=document.getElementById('edit-addr-val');
   if(addr){addr.disabled=false;addr.placeholder='ex. 12 rue des Lilas';if(changed)addr.value='';}
   editAddrSelected=!changed&&!!(addr&&addr.value.trim());
+  editAddrSelectedValue=editAddrSelected&&addr?addr.value.trim():'';
   setTimeout(function(){
     if(!addr)return;
     window._activeMobileModalFieldId=addr.id;
@@ -505,7 +506,7 @@ function editSelectCommune(commune,event){
   },60);
 }
 function editResetCommune(){
-  editCommuneSelected=null;editAddrSelected=false;
+  editCommuneSelected=null;editAddrSelected=false;editAddrSelectedValue='';
   const input=document.getElementById('edit-com-val'),dd=document.getElementById('edit-com-dd');
   if(input)input.value='';if(dd)dd.style.display='none';
   const iw=document.getElementById('edit-com-input-wrap'),selected=document.getElementById('edit-com-selected');
@@ -515,7 +516,7 @@ function editResetCommune(){
   if(addrDd)addrDd.style.display='none';
   setTimeout(()=>input&&input.focus(),0);
 }
-function editAddrAutocomplete(q){
+function editAddrAutocompleteLegacy(q){
   const dd=document.getElementById('edit-addr-dd'),spinner=document.getElementById('edit-addr-spinner');
   if(!dd||!spinner)return;
   editAddrSelected=false;
@@ -544,11 +545,45 @@ function editAddrAutocomplete(q){
     spinner.style.display='none';
   },400);
 }
+function editAddrAutocomplete(q){
+  const dd=document.getElementById('edit-addr-dd'),spinner=document.getElementById('edit-addr-spinner'),input=document.getElementById('edit-addr-val');
+  if(!dd||!spinner||!input)return;
+  if(editAddrSelected&&q.trim()===editAddrSelectedValue)return;
+  editAddrSelected=false;editAddrSelectedValue='';
+  if(!editCommuneSelected||!q||q.trim().length<2){dd.style.display='none';return;}
+  clearTimeout(editAddrTimer);
+  if(editAddrRequest)editAddrRequest.abort();
+  editAddrTimer=setTimeout(async function(){
+    const searched=q.trim(),commune=editCommuneSelected;
+    editAddrRequest=new AbortController();
+    spinner.style.display='inline';
+    try{
+      const results=await addressSuggestions(searched,commune,editAddrRequest.signal);
+      if(input.value.trim()!==searched||editCommuneSelected!==commune)return;
+      dd.innerHTML=addrOptionsHtml(results,commune,'data-edit-addr');
+      dd.onpointerdown=function(event){
+        const option=event.target.closest('[data-edit-addr]');
+        if(option)editSelectAddress(option.dataset.editAddr,event);
+      };
+      dd.style.display='block';
+      window._activeMobileModalFieldId='edit-addr-val';
+      setTimeout(keepMobileModalFieldVisible,40);
+    }catch(e){
+      if(!e||e.name!=='AbortError'){
+        dd.innerHTML='<div class="addr-opt"><div class="addr-sub">⚠️ Service indisponible — saisie manuelle possible</div></div>';
+        dd.style.display='block';
+      }
+    }finally{
+      if(input.value.trim()===searched)spinner.style.display='none';
+    }
+  },350);
+}
 function editSelectAddress(address,event){
   if(event){event.preventDefault();event.stopPropagation();}
   const input=document.getElementById('edit-addr-val'),dd=document.getElementById('edit-addr-dd');
   if(input)input.value=address;if(dd)dd.style.display='none';
   editAddrSelected=true;
+  editAddrSelectedValue=address;
   setTimeout(()=>{if(input){input.focus();input.setSelectionRange(input.value.length,input.value.length);}},50);
 }
 function editAdresse(ivId){
@@ -556,7 +591,7 @@ function editAdresse(ivId){
   const overlay=document.getElementById('mo');
   deactivateMobileModalField();
   if(overlay)overlay.classList.add('address-edit-modal','keyboard-aware-modal');
-  editCommuneSelected=iv.com||null;editAddrSelected=!!iv.addr;
+  editCommuneSelected=iv.com||null;editAddrSelected=!!iv.addr;editAddrSelectedValue=iv.addr||'';
   document.getElementById('mt').textContent='Corriger l’adresse et la commune';
   document.getElementById('mi').textContent=iv.id;
   document.getElementById('mb').innerHTML=`

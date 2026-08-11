@@ -190,10 +190,82 @@ function callRequerantMasque(id,index){
 }
 
 // ────────────────── AUTOCOMPLÉTION ADRESSE (Nominatim) ──────────────────
-let addrTimer=null;
-let addrSelected=false;
+let addrTimer=null,addrRequest=null;
+let addrSelected=false,addrSelectedValue='';
 function extractNumero(q){const m=q.match(/^(\d+\s*(?:bis|ter|quater)?\s*)/i);return m?m[1]:'';}
-function addrAutocomplete(q){
+const ADDRESS_COMPLETION_URL='https://data.geopf.fr/geocodage/completion/';
+const ADDRESS_SEARCH_URL='https://data.geopf.fr/geocodage/search';
+const addressSearchCache=new Map();
+function addrNorm(v){return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[-'’]/g,' ').replace(/\s+/g,' ').trim().toLowerCase();}
+function addrEsc(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+function addrCityMatches(city,fulltext,commune){
+  const expected=addrNorm(commune),actual=addrNorm(city);
+  if(actual)return actual===expected;
+  return addrNorm(fulltext).includes(expected);
+}
+function addrCandidate(raw,kind,commune,numero){
+  let street='',city='',fulltext='';
+  if(kind==='completion'){
+    street=raw.street||((raw.names||[])[0])||'';
+    city=raw.city||raw.municipality||'';
+    fulltext=raw.fulltext||raw.label||'';
+  }else if(kind==='search'){
+    const p=(raw&&raw.properties)||{};
+    street=p.street||((p.type==='street'||p.type==='locality')?p.name:'')||'';
+    city=p.city||p.municipality||'';
+    fulltext=p.label||p.name||'';
+  }else{
+    const a=(raw&&raw.address)||{};
+    street=a.road||a.pedestrian||a.footway||a.street||a.place||'';
+    city=a.city||a.town||a.village||a.municipality||'';
+    fulltext=raw.display_name||'';
+  }
+  street=String(street||'').replace(/^\d+\s*(?:bis|ter|quater)?\s*/i,'').trim();
+  if(!street||!addrCityMatches(city,fulltext,commune))return null;
+  return {address:(numero+street).trim(),detail:fulltext||((numero+street).trim()+', '+commune)};
+}
+function addrCollect(target,seen,items,kind,commune,numero){
+  (items||[]).forEach(function(raw){
+    const candidate=addrCandidate(raw,kind,commune,numero);
+    if(!candidate)return;
+    const key=addrNorm(candidate.address);
+    if(!key||seen.has(key))return;
+    seen.add(key);target.push(candidate);
+  });
+}
+async function addressSuggestions(q,commune,signal){
+  const clean=String(q||'').trim(),cacheKey=addrNorm(commune)+'|'+addrNorm(clean);
+  if(addressSearchCache.has(cacheKey))return addressSearchCache.get(cacheKey);
+  const numero=extractNumero(clean),text=clean+', '+commune;
+  const completionParams=new URLSearchParams({text:text,type:'StreetAddress',maximumResponses:'15'});
+  const searchParams=new URLSearchParams({q:text,index:'address',limit:'30',autocomplete:'true'});
+  const requests=[
+    fetch(ADDRESS_COMPLETION_URL+'?'+completionParams.toString(),{signal:signal,headers:{'Accept-Language':'fr'}}).then(function(r){if(!r.ok)throw new Error('completion '+r.status);return r.json();}),
+    fetch(ADDRESS_SEARCH_URL+'?'+searchParams.toString(),{signal:signal,headers:{'Accept-Language':'fr'}}).then(function(r){if(!r.ok)throw new Error('search '+r.status);return r.json();})
+  ];
+  const settled=await Promise.allSettled(requests),results=[],seen=new Set();
+  if(settled[0].status==='fulfilled')addrCollect(results,seen,settled[0].value.results,'completion',commune,numero);
+  if(settled[1].status==='fulfilled')addrCollect(results,seen,settled[1].value.features,'search',commune,numero);
+  if(!results.length&&!signal.aborted){
+    try{
+      const fallbackParams=new URLSearchParams({q:text+', France',format:'json',addressdetails:'1',limit:'20',countrycodes:'fr'});
+      const response=await fetch('https://nominatim.openstreetmap.org/search?'+fallbackParams.toString(),{signal:signal,headers:{'Accept-Language':'fr'}});
+      if(response.ok)addrCollect(results,seen,await response.json(),'nominatim',commune,numero);
+    }catch(fallbackError){if(fallbackError&&fallbackError.name==='AbortError')throw fallbackError;}
+  }
+  const finalResults=results.slice(0,30);
+  addressSearchCache.set(cacheKey,finalResults);
+  if(addressSearchCache.size>120)addressSearchCache.delete(addressSearchCache.keys().next().value);
+  return finalResults;
+}
+function addrOptionsHtml(results,commune,attribute){
+  if(!results.length)return '<div class="addr-opt"><div class="addr-sub">Aucune rue trouvée — vous pouvez conserver une saisie manuelle</div></div>';
+  const attr=attribute||'data-addr';
+  const rows=results.map(function(r){return `<div class="addr-opt" ${attr}="${addrEsc(r.address)}" style="cursor:pointer;padding:10px 12px;border-bottom:1px solid var(--brd);"><div style="font-weight:500;font-size:13px;">${addrEsc(r.address)}</div><div style="font-size:10px;color:var(--t2);margin-top:2px;">${addrEsc(r.detail)}</div></div>`;});
+  rows.push(`<div class="addr-sub" style="padding:8px 12px;">${results.length} proposition${results.length>1?'s':''} dans ${addrEsc(commune)} — continuez à saisir pour affiner</div>`);
+  return rows.join('');
+}
+function addrAutocompleteLegacy(q){
   const dd=document.getElementById('fa-dd');
   const spinner=document.getElementById('fa-spinner');
   const fa=document.getElementById('fa');
@@ -227,11 +299,42 @@ function addrAutocomplete(q){
     spinner.style.display='none';
   },400);
 }
+function addrAutocomplete(q){
+  const dd=document.getElementById('fa-dd');
+  const spinner=document.getElementById('fa-spinner');
+  const fa=document.getElementById('fa');
+  if(!selC2){fa.placeholder='Sélectionnez d’abord une commune…';dd.style.display='none';return;}
+  fa.placeholder='ex. 12 rue des Lilas';
+  if(addrSelected&&q.trim()===addrSelectedValue)return;
+  addrSelected=false;addrSelectedValue='';
+  if(!q||q.trim().length<2){dd.style.display='none';return;}
+  clearTimeout(addrTimer);
+  if(addrRequest)addrRequest.abort();
+  addrTimer=setTimeout(async function(){
+    const searched=q.trim(),commune=selC2;
+    addrRequest=new AbortController();
+    spinner.style.display='inline';
+    try{
+      const results=await addressSuggestions(searched,commune,addrRequest.signal);
+      if(fa.value.trim()!==searched||selC2!==commune)return;
+      dd.innerHTML=addrOptionsHtml(results,commune,'data-addr');
+      dd.style.display='block';
+    }catch(e){
+      if(!e||e.name!=='AbortError'){
+        dd.innerHTML='<div class="addr-opt"><div class="addr-sub">⚠️ Service indisponible — saisie manuelle possible</div></div>';
+        dd.style.display='block';
+      }
+    }finally{
+      if(fa.value.trim()===searched)spinner.style.display='none';
+    }
+  },350);
+}
 function selectAddr(addr){
   const fa=document.getElementById('fa');
   fa.value=addr;
   document.getElementById('fa-dd').style.display='none';
   addrSelected=true;
+  addrSelectedValue=addr;
   ce('a');
   // Placer le curseur en fin de texte pour pouvoir compléter
   setTimeout(()=>{fa.focus();fa.setSelectionRange(fa.value.length,fa.value.length);},50);
@@ -334,7 +437,7 @@ function chkR(c){
   else b.style.display='none';
 }
 function rc(){
-  selC2=null;addrSelected=false;
+  selC2=null;addrSelected=false;addrSelectedValue='';
   document.getElementById('ci').value='';
   document.getElementById('ciw').style.display='';
   document.getElementById('cs').style.display='none';
@@ -650,7 +753,7 @@ function confirmerAnnulationAppel(ivId){
   cM();rF();gS(1);rI();rAccueil();
 }
 function rF(){
-  selNat=null;selC2=null;hoA=null;nidSize=null;addrSelected=false;
+  selNat=null;selC2=null;hoA=null;nidSize=null;addrSelected=false;addrSelectedValue='';
   _natureLastTapLabel='';_natureLastTapAt=0;
   document.getElementById('bn').disabled=true;
   document.getElementById('sn').value='';
