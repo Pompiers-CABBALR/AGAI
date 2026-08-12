@@ -17,6 +17,46 @@ function autorisationDataForNid(iv,nidIndex){
   if(index===0&&iv&&iv._autorisationData)return iv._autorisationData;
   return{};
 }
+function showAddRecognizedNidModal(ivId){
+  const iv=IVS.find(function(item){return item.id===ivId;});if(!iv)return;
+  document.getElementById('mt').textContent='Ajouter un nid après reconnaissance';
+  document.getElementById('mi').textContent=iv.n+' — '+iv.com;
+  document.getElementById('mb').innerHTML='<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Ajoutez chaque nid découvert sur place. Une autorisation et une attestation distinctes seront créées.</div>'
+    +'<input type="hidden" id="reco-nid-nature"><input type="hidden" id="reco-nid-location">'
+    +'<div class="fgl">Nature *</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">'
+    +'<button type="button" class="smopt" data-reco-nid-nature onclick="selectRecognizedNidOption(this,\'nature\',\'Guêpes\')">🐝 Guêpes</button><button type="button" class="smopt" data-reco-nid-nature onclick="selectRecognizedNidOption(this,\'nature\',\'Frelons européens\')">🐝 Frelons européens</button><button type="button" class="smopt" data-reco-nid-nature onclick="selectRecognizedNidOption(this,\'nature\',\'Frelons asiatiques\')">🐝 Frelons asiatiques</button><button type="button" class="smopt" data-reco-nid-nature onclick="selectRecognizedNidOption(this,\'nature\',\'Abeilles\')">🐝 Abeilles</button></div>'
+    +'<div class="fgl">Localisation *</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">'
+    +'<button type="button" class="smopt" data-reco-nid-location onclick="selectRecognizedNidOption(this,\'location\',\'Sous terre\')">🌍 Sous terre</button><button type="button" class="smopt" data-reco-nid-location onclick="selectRecognizedNidOption(this,\'location\',\'Toiture\')">🏠 Toiture</button><button type="button" class="smopt" data-reco-nid-location onclick="selectRecognizedNidOption(this,\'location\',\'Arbre/Haie\')">🌳 Arbre / Haie</button><button type="button" class="smopt" data-reco-nid-location onclick="selectRecognizedNidOption(this,\'location\',\'Mur\')">🧱 Mur</button><button type="button" class="smopt" data-reco-nid-location onclick="selectRecognizedNidOption(this,\'location\',\'Autre\')">📋 Autre</button></div>'
+    +'<div id="reco-nid-other-wrap" class="fg" style="display:none;"><div class="fgl">Précision</div><input class="fi" id="reco-nid-other" placeholder="Préciser la localisation…"></div>'
+    +'<div id="reco-nid-height-wrap" class="fg" style="display:none;"><div class="fgl">Hauteur estimée</div><div class="urow"><input type="number" min="0" id="reco-nid-height" placeholder="ex. 5"><span class="ul2">m</span></div></div>'
+    +'<div class="ferr" id="reco-nid-error">Choisissez la nature et la localisation.</div>'
+    +'<div class="brow" style="margin-top:12px;"><button class="btn pr" onclick="saveRecognizedNid(\''+ivId+'\')">➕ Ajouter le nid</button><button class="btn" onclick="showAutorisationNidPicker(\''+ivId+'\')">Annuler</button></div>';
+  document.getElementById('mo').style.display='flex';
+}
+function selectRecognizedNidOption(button,field,value){
+  const input=document.getElementById('reco-nid-'+field);if(input)input.value=value;
+  document.querySelectorAll('[data-reco-nid-'+field+']').forEach(function(choice){choice.classList.toggle('sel',choice===button);});
+  if(field==='location'){
+    const other=document.getElementById('reco-nid-other-wrap');if(other)other.style.display=value==='Autre'?'':'none';
+    const height=document.getElementById('reco-nid-height-wrap');if(height)height.style.display=['Toiture','Arbre/Haie','Mur'].includes(value)?'':'none';
+  }
+  const err=document.getElementById('reco-nid-error');if(err)err.style.display='none';
+}
+function saveRecognizedNid(ivId){
+  const iv=IVS.find(function(item){return item.id===ivId;});if(!iv)return;
+  const nature=(document.getElementById('reco-nid-nature')||{}).value||'';
+  let localisation=(document.getElementById('reco-nid-location')||{}).value||'';
+  if(localisation==='Autre')localisation=((document.getElementById('reco-nid-other')||{}).value||'').trim();
+  if(!nature||!localisation){const err=document.getElementById('reco-nid-error');if(err)err.style.display='block';return;}
+  if(!Array.isArray(iv._nidsAppel)||!iv._nidsAppel.length)iv._nidsAppel=interventionNids(iv).slice();
+  const height=((document.getElementById('reco-nid-height')||{}).value||'').trim();
+  iv._nidsAppel.push({id:'nid-'+(iv._nidsAppel.length+1),nature:nature,localisation:localisation,hauteur:height?height+' m':'',taille:'',ajouteApresReconnaissance:true});
+  if(/frelons? asiatiques?/i.test(nature)){iv._natureAppelInitiale=iv._natureAppelInitiale||iv.n;iv.n='Nid de frelons asiatiques';iv._prioriteFrelonAsiatique=true;}
+  if(!Array.isArray(iv.tl))iv.tl=[];
+  iv.tl.push({s:'information',h:getH(N()),who:CU&&CU.l||'',note:'Nid ajouté après reconnaissance : '+nature+' — '+localisation});
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);showToast('Nid ajouté — complétez son autorisation','success');showAutorisationNidPicker(ivId);
+}
 function showAutorisationNidPicker(ivId){
   const iv=IVS.find(function(item){return item.id===ivId;});if(!iv)return;
   const nids=interventionNids(iv);
@@ -26,7 +66,7 @@ function showAutorisationNidPicker(ivId){
     +'<div style="display:flex;flex-direction:column;gap:8px;">'+nids.map(function(nid,index){
       const filled=!!autorisationDataForNid(iv,index).nom;
       return '<button class="btn" style="text-align:left;display:flex;justify-content:space-between;gap:8px;align-items:center;padding:10px 12px;" onclick="showAutorisationModal(\''+ivId+'\','+index+')"><span><strong>'+escHtml('Nid '+(index+1))+'</strong><br><span style="font-size:11px;color:var(--t2);">'+escHtml([nid.nature,nid.localisation,nid.hauteur,nid.taille].filter(Boolean).join(' · ')||iv.n)+'</span></span><span class="bdg '+(filled?'bg2':'bgr')+'">'+(filled?'Complété':'À compléter')+'</span></button>';
-    }).join('')+'</div>';
+    }).join('')+'</div><button class="btn" style="width:100%;margin-top:10px;border-style:dashed;color:#9A3412;background:#FFF7ED;" onclick="showAddRecognizedNidModal(\''+ivId+'\')">➕ Nid découvert après reconnaissance</button>';
   document.getElementById('mo').style.display='flex';
 }
 
@@ -40,7 +80,9 @@ function showAutorisationModal(ivId, nidIndex) {
   const activeNid=nids[activeIndex]||null;
   const today = new Date();
   const dateDefault = today.getFullYear() + '-' + pad(today.getMonth()+1) + '-' + pad(today.getDate());
-  const saved = Object.assign({},autorisationDataForNid(iv,activeIndex));
+  const reference=(Array.isArray(iv._autorisationNids)&&iv._autorisationNids.find(Boolean))||iv._autorisationData||{};
+  const saved = Object.assign({},reference,autorisationDataForNid(iv,activeIndex));
+  saved.signature=iv._autorisationSignatureCommune||saved.signature||reference.signature||null;
   _autorisationData[ivId]=saved;
   const typeOpts = ['Propri\u00e9taire','Locataire','Autre'].map(function(t) {
     return '<option value="' + t + '"' + (saved.demandeurType === t ? ' selected' : '') + '>' + t + '</option>';
@@ -137,8 +179,11 @@ function saveAutorisationData(ivId) {
   const nidIndex=Number.isInteger(_autorisationActiveNid[ivId])?_autorisationActiveNid[ivId]:0;
   if(iv){
     if(!Array.isArray(iv._autorisationNids))iv._autorisationNids=[];
+    if(d.signature)iv._autorisationSignatureCommune=d.signature;
+    d.signature=iv._autorisationSignatureCommune||d.signature||null;
     iv._autorisationNids[nidIndex]=d;
     if(nidIndex===0)iv._autorisationData=d;
+    if(iv._autorisationSignatureCommune)iv._autorisationNids.forEach(function(item){if(item)item.signature=iv._autorisationSignatureCommune;});
   }
   saveData();
   showToast('Formulaire du nid '+(nidIndex+1)+' sauvegard\u00e9', 'success');

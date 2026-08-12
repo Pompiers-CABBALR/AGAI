@@ -330,6 +330,7 @@ function CD(){if(!CURRENT_CASERNE_ID)return null;initCaserneData(CURRENT_CASERNE
 let USERS=[];let IVS=[];let PILP_IVS=[];let EQUIPES=[];let DISPOS={};let PIQUETS={};let DISPOS_VALIDATED={};let PIQUETS_VALIDATED={};let PLANNING_ROTATIONS={};let DISPOS_UNLOCKED={};let DISPO_REQUESTS={};let ASTR_CONFIG={granularity:60,engins:[],deadline:{dayOfWeek:5,hour:23,minute:59},deadlinePiquet:{dayOfWeek:0,hour:18,minute:0},weekStartDay:1,weekStartHour:0};
 let LOGIN_HISTORY=[];
 let LOGIN_HISTORY_DELETED={};
+const LOGIN_HISTORY_MAX=5000;
 let _equipeIsolationCleanupTimer=null;
 const _equipeIsolationCleanupPending={};
 function normalizeEquipesForCaserne(cid,d){
@@ -945,6 +946,9 @@ function _createSession(){
         previous.fermetureAuto='Remplacée par une nouvelle connexion';
       }
     });
+    const ua=String(navigator.userAgent||'');
+    const support=/iPad|Tablet|Android(?!.*Mobile)/i.test(ua)?'Tablette':/iPhone|Android.*Mobile|Mobile/i.test(ua)?'Smartphone':'Ordinateur';
+    const navigateur=/Edg\//.test(ua)?'Edge':/Firefox\//.test(ua)?'Firefox':/CriOS|Chrome\//.test(ua)?'Chrome':/Safari\//.test(ua)?'Safari':'Navigateur';
     const entry={
       id:SESSION_TOKEN,
       login:CU.l,
@@ -954,10 +958,12 @@ function _createSession(){
       caserne:CC()?.nom||'Global',
       hConnexion:nowIso,
       hDeconnexion:null,
-      actif:true
+      actif:true,
+      support:support,
+      navigateur:navigateur
     };
     LOGIN_HISTORY.unshift(entry);
-    if(LOGIN_HISTORY.length>500)LOGIN_HISTORY=LOGIN_HISTORY.slice(0,500);
+    if(LOGIN_HISTORY.length>LOGIN_HISTORY_MAX)LOGIN_HISTORY=LOGIN_HISTORY.slice(0,LOGIN_HISTORY_MAX);
     if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
     saveData(true);
   }
@@ -1280,12 +1286,12 @@ function renderLoginHistoryAccount(group,colour){
     +'<span style="font-size:11px;color:#999;">'+group.entries.length+' connexion(s)</span><span style="color:#aaa;">▼</span></div>'
     +'<div style="display:none;overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:11px;">'
     +'<thead><tr style="background:#f5f5f7;"><th style="padding:6px;width:34px;text-align:center;"><input type="checkbox" class="login-history-group-all" onchange="toggleLoginHistoryGroupSelection(this)" aria-label="Sélectionner toutes les connexions de ce compte"/></th>'
-    +'<th style="padding:6px 12px;font-weight:600;text-align:left;">Connexion</th><th style="padding:6px 12px;font-weight:600;text-align:left;">Déconnexion</th><th style="padding:6px 12px;font-weight:600;text-align:left;">Statut</th></tr></thead><tbody>'
+    +'<th style="padding:6px 12px;font-weight:600;text-align:left;">Connexion</th><th style="padding:6px 12px;font-weight:600;text-align:left;">Déconnexion</th><th style="padding:6px 12px;font-weight:600;text-align:left;">Support</th><th style="padding:6px 12px;font-weight:600;text-align:left;">Statut</th></tr></thead><tbody>'
     +group.entries.map(function(entry){
       const online=isLoginHistorySessionActive(entry);
       const closure=entry.fermetureAuto?' title="'+escHtml(entry.fermetureAuto)+'"':'';
       return '<tr style="border-top:1px solid #f0f0f0;"><td style="padding:6px;text-align:center;"><input type="checkbox" class="login-history-check" data-session-id="'+escHtml(entry.id)+'" onchange="updateLoginHistorySelectionCount()" aria-label="Sélectionner cette connexion"/></td>'
-        +'<td style="padding:6px 12px;color:#444;">'+fmt(entry.hConnexion)+'</td><td style="padding:6px 12px;color:#444;"'+closure+'>'+(entry.hDeconnexion?fmt(entry.hDeconnexion):'—')+'</td>'
+        +'<td style="padding:6px 12px;color:#444;">'+fmt(entry.hConnexion)+'</td><td style="padding:6px 12px;color:#444;"'+closure+'>'+(entry.hDeconnexion?fmt(entry.hDeconnexion):'—')+'</td><td style="padding:6px 12px;color:#64748B;">'+escHtml([entry.support,entry.navigateur].filter(Boolean).join(' · ')||'Non renseigné')+'</td>'
         +'<td style="padding:6px 12px;">'+(online?'<span style="color:#065F46;font-weight:600;">🟢 En ligne</span>':'<span style="color:#9CA3AF;">Déconnecté</span>')+'</td></tr>';
     }).join('')
     +'</tbody></table></div></div>';
@@ -1331,6 +1337,12 @@ function renderLoginHistoryByCaserne(){
       +accounts.map(function(account){return renderLoginHistoryAccount(account,caserne.colour);}).join('')
       +'</div></div>';
   }).join('');
+}
+function renderLoginHistorySummary(){
+  if(!LOGIN_HISTORY.length)return'';
+  const sorted=LOGIN_HISTORY.slice().sort(function(a,b){return String(a.hConnexion||'').localeCompare(String(b.hConnexion||''));});
+  const fmt=function(value){const d=new Date(value);return Number.isNaN(d.getTime())?'—':d.toLocaleDateString('fr-FR')+' '+d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});};
+  return '<div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:9px;padding:8px 11px;margin-bottom:10px;font-size:11px;color:#475569;display:flex;gap:14px;flex-wrap:wrap;"><strong>'+LOGIN_HISTORY.length+' connexion(s) conservée(s)</strong><span>Du '+fmt(sorted[0]&&sorted[0].hConnexion)+' au '+fmt(sorted[sorted.length-1]&&sorted[sorted.length-1].hConnexion)+'</span><span>Nouvelles connexions : support et navigateur enregistrés</span></div>';
 }
 
 function renderSuperAdmin(){
@@ -1637,6 +1649,7 @@ function renderSuperAdmin(){
           <button class="btn sm danger" onclick="deleteAllLoginHistory()">🧹 Tout effacer</button>
         </div>
       </div>
+      ${renderLoginHistorySummary()}
       ${renderLoginHistoryByCaserne()}
     </div>
     <div style="margin-top:20px;background:#FEF2F2;border-radius:14px;padding:16px;border:1px solid #FECACA;">
@@ -3397,11 +3410,11 @@ function sr(g,el,v){
   document.querySelectorAll('#'+g+' .smopt').forEach(o=>o.classList.remove('sel'));el.classList.add('sel');
   el.dataset.val=v; // stocke la valeur propre (sans emoji) pour la capture des détails
   if(g==='lg'){
-    document.getElementById('hgb').style.display=(v==='Toiture'||v==='Arbre/Haie')?'':'none';
+    document.getElementById('hgb').style.display=(v==='Toiture'||v==='Arbre/Haie'||v==='Mur')?'':'none';
     document.getElementById('lgab').style.display=v==='Autre'?'':'none';
   }
   if(g==='lf'){document.getElementById('lfab').style.display=v==='Autre'?'':'none';document.getElementById('hfb').style.display='';}
-  if(g==='la'){document.getElementById('laab').style.display=v==='Autre'?'':'none';}
+  if(g==='la'){document.getElementById('laab').style.display=v==='Autre'?'':'none';document.getElementById('hab').style.display=(v==='Arbre'||v==='Haie'||v==='Mur'||v==='Toiture')?'':'none';}
   if(g==='ta'){document.getElementById('tapb').style.display=(v==='NAC'||v==='Autre')?'':'none';}
 }
 function sz(el,v){document.querySelectorAll('.szo').forEach(o=>o.classList.remove('sel'));el.classList.add('sel');nidSize=v;}
@@ -3913,39 +3926,57 @@ function addAppelExtraNid(host){
   const row=document.createElement('div');row.className='appel-extra-nid-row';
   row.style.cssText='background:#FFF7ED;border:1px solid #FDBA74;border-radius:9px;padding:9px;margin-top:8px;';
   row.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;"><strong style="font-size:12px;color:#9A3412;">Nid supplémentaire</strong><button type="button" class="appel-phone-remove" title="Supprimer ce nid">−</button></div>'
-    +'<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:7px;">'
-    +'<div><div class="fgl">Nature *</div><select class="fi" data-extra-nid-type><option>Guêpes</option><option>Frelons européens</option><option>Frelons asiatiques</option><option>Nature inconnue</option></select></div>'
-    +'<div><div class="fgl">Localisation *</div><input class="fi" data-extra-nid-location placeholder="Ex. toiture, cheminée…"></div>'
-    +'<div><div class="fgl">Hauteur</div><input class="fi" type="number" min="0" data-extra-nid-height placeholder="m"></div>'
-    +'<div><div class="fgl">Taille</div><select class="fi" data-extra-nid-size><option value="">—</option><option>Petit</option><option>Moyen</option><option>Gros</option><option>Inconnu</option></select></div>'
-    +'</div><div class="ferr" data-extra-nid-error style="margin-top:5px;">Précisez la localisation de ce nid.</div>';
+    +'<div class="fgl">Nature *</div><div class="appel-extra-nid-options" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">'
+    +'<button type="button" class="smopt" data-extra-nid-nature-choice onclick="selectExtraNidOption(this,\'nature\',\'Guêpes\')">🐝 Guêpes</button>'
+    +'<button type="button" class="smopt" data-extra-nid-nature-choice onclick="selectExtraNidOption(this,\'nature\',\'Frelons européens\')">🐝 Frelons européens</button>'
+    +'<button type="button" class="smopt" data-extra-nid-nature-choice onclick="selectExtraNidOption(this,\'nature\',\'Frelons asiatiques\')">🐝 Frelons asiatiques</button>'
+    +'<button type="button" class="smopt" data-extra-nid-nature-choice onclick="selectExtraNidOption(this,\'nature\',\'Abeilles\')">🐝 Abeilles</button></div>'
+    +'<div class="fgl">Localisation *</div><div class="appel-extra-nid-options" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">'
+    +'<button type="button" class="smopt" data-extra-nid-location-choice onclick="selectExtraNidOption(this,\'location\',\'Sous terre\')">🌍 Sous terre</button>'
+    +'<button type="button" class="smopt" data-extra-nid-location-choice onclick="selectExtraNidOption(this,\'location\',\'Toiture\')">🏠 Toiture</button>'
+    +'<button type="button" class="smopt" data-extra-nid-location-choice onclick="selectExtraNidOption(this,\'location\',\'Arbre/Haie\')">🌳 Arbre / Haie</button>'
+    +'<button type="button" class="smopt" data-extra-nid-location-choice onclick="selectExtraNidOption(this,\'location\',\'Mur\')">🧱 Mur</button>'
+    +'<button type="button" class="smopt" data-extra-nid-location-choice onclick="selectExtraNidOption(this,\'location\',\'Autre\')">📋 Autre</button></div>'
+    +'<div data-extra-nid-other-wrap style="display:none;margin-bottom:8px;"><input class="fi" data-extra-nid-other placeholder="Préciser la localisation…"></div>'
+    +'<div data-extra-nid-height-wrap style="display:none;margin-bottom:8px;"><div class="fgl">Hauteur estimée</div><div class="urow"><input type="number" min="0" data-extra-nid-height placeholder="ex. 5"><span class="ul2">m</span></div></div>'
+    +'<div class="fgl">Taille du nid (facultatif)</div><div style="display:flex;flex-wrap:wrap;gap:6px;">'
+    +'<button type="button" class="smopt" data-extra-nid-size-choice onclick="selectExtraNidOption(this,\'size\',\'Petit\')">Petit</button><button type="button" class="smopt" data-extra-nid-size-choice onclick="selectExtraNidOption(this,\'size\',\'Moyen\')">Moyen</button><button type="button" class="smopt" data-extra-nid-size-choice onclick="selectExtraNidOption(this,\'size\',\'Gros\')">Gros</button><button type="button" class="smopt" data-extra-nid-size-choice onclick="selectExtraNidOption(this,\'size\',\'Inconnu\')">Inconnu</button></div>'
+    +'<div class="ferr" data-extra-nid-error style="margin-top:5px;">Choisissez la nature et la localisation de ce nid.</div>';
   row.querySelector('button').onclick=function(){row.remove();};
-  row.querySelector('[data-extra-nid-location]').addEventListener('input',function(){const err=row.querySelector('[data-extra-nid-error]');if(err)err.style.display='none';});
-  box.appendChild(row);row.querySelector('[data-extra-nid-location]').focus();
+  box.appendChild(row);
+}
+function selectExtraNidOption(button,field,value){
+  const row=button.closest('.appel-extra-nid-row');if(!row)return;
+  row.dataset[field]=value;
+  row.querySelectorAll('[data-extra-nid-'+field+'-choice]').forEach(function(choice){choice.classList.toggle('sel',choice===button);});
+  if(field==='location'){
+    const other=row.querySelector('[data-extra-nid-other-wrap]');if(other)other.style.display=value==='Autre'?'':'none';
+    const height=row.querySelector('[data-extra-nid-height-wrap]');if(height)height.style.display=['Toiture','Arbre/Haie','Mur'].includes(value)?'':'none';
+  }
+  const err=row.querySelector('[data-extra-nid-error]');if(err)err.style.display='none';
 }
 function resetAppelNids(){
-  ['g','f'].forEach(function(host){const box=document.getElementById('extra-nids-'+host);if(box)box.innerHTML='';});
-  const g=document.getElementById('primary-nid-type-g');if(g)g.value='Guêpes';
-  const f=document.getElementById('primary-nid-type-f');if(f)f.value='Frelons asiatiques';
+  ['g','f','a'].forEach(function(host){const box=document.getElementById('extra-nids-'+host);if(box)box.innerHTML='';});
 }
 function getAppelNids(){
   const result=[];
-  const host=document.getElementById('sm-g')&&document.getElementById('sm-g').offsetParent!==null?'g':document.getElementById('sm-f')&&document.getElementById('sm-f').offsetParent!==null?'f':'';
+  const host=document.getElementById('sm-g')&&document.getElementById('sm-g').offsetParent!==null?'g':document.getElementById('sm-f')&&document.getElementById('sm-f').offsetParent!==null?'f':document.getElementById('sm-a')&&document.getElementById('sm-a').offsetParent!==null?'a':'';
   if(!host)return result;
-  const group=document.getElementById(host==='g'?'lg':'lf');
+  const group=document.getElementById(host==='g'?'lg':host==='f'?'lf':'la');
   const selected=group&&group.querySelector('.smopt.sel');
   if(selected){
     let localisation=selected.dataset.val||selected.textContent.trim();
-    if(localisation==='Autre')localisation=((document.getElementById(host==='g'?'lg-autre-txt':'lf-autre-txt')||{}).value||'Autre').trim();
-    const nature=((document.getElementById('primary-nid-type-'+host)||{}).value||'Nature inconnue').trim();
-    const hauteur=((document.getElementById(host==='g'?'hg-val':'hf-val')||{}).value||'').trim();
+    if(localisation==='Autre')localisation=((document.getElementById(host==='g'?'lg-autre-txt':host==='f'?'lf-autre-txt':'la-autre-txt')||{}).value||'Autre').trim();
+    const nature=((document.getElementById('primary-nid-type-'+host)||{}).dataset||{}).nidNature||selNat||'Nature inconnue';
+    const hauteur=((document.getElementById(host==='g'?'hg-val':host==='f'?'hf-val':'ha-val')||{}).value||'').trim();
     result.push({id:'nid-1',nature,localisation,hauteur:hauteur?hauteur+' m':'',taille:host==='f'?(nidSize||''):''});
   }
   document.querySelectorAll('#extra-nids-'+host+' .appel-extra-nid-row').forEach(function(row){
-    const nature=(row.querySelector('[data-extra-nid-type]')||{}).value||'Nature inconnue';
-    const localisation=((row.querySelector('[data-extra-nid-location]')||{}).value||'').trim();
+    const nature=row.dataset.nature||'';
+    let localisation=row.dataset.location||'';
+    if(localisation==='Autre')localisation=((row.querySelector('[data-extra-nid-other]')||{}).value||'Autre').trim();
     const hauteur=((row.querySelector('[data-extra-nid-height]')||{}).value||'').trim();
-    const taille=(row.querySelector('[data-extra-nid-size]')||{}).value||'';
+    const taille=row.dataset.size||'';
     result.push({id:'nid-'+(result.length+1),nature,localisation,hauteur:hauteur?hauteur+' m':'',taille});
   });
   return result;
@@ -3953,12 +3984,17 @@ function getAppelNids(){
 function validateAppelNids(){
   let valid=true;
   document.querySelectorAll('.appel-extra-nid-row').forEach(function(row){
-    const location=((row.querySelector('[data-extra-nid-location]')||{}).value||'').trim();
+    const nature=row.dataset.nature||'';
+    let location=row.dataset.location||'';
+    if(location==='Autre')location=((row.querySelector('[data-extra-nid-other]')||{}).value||'').trim();
     const err=row.querySelector('[data-extra-nid-error]');
-    if(err)err.style.display=location?'none':'block';
-    if(!location)valid=false;
+    if(err)err.style.display=nature&&location?'none':'block';
+    if(!nature||!location)valid=false;
   });
   return valid;
+}
+function appelNaturePrioritaire(nids){
+  return (nids||[]).some(function(nid){return /frelons? asiatiques?/i.test(String(nid&&nid.nature||''));})?'Nid de frelons asiatiques':selNat;
 }
 function nidAppelLabel(nid,index){
   if(!nid)return'Nid '+(index+1);
@@ -4088,8 +4124,10 @@ function enr(){
   const pilpDirect=document.getElementById('chk-pilp-direct')&&document.getElementById('chk-pilp-direct').checked;
   // Avis en attente de rappel pour CETTE adresse et CE type : le requérant rappelle.
   const _adr=document.getElementById('fa')?document.getElementById('fa').value.trim():'';
-  const exIv=IVS.filter(iv=>iv._avisEnAttente&&!iv._isPilip&&nm(iv.addr)===nm(_adr)&&nm(iv.n)===nm(selNat));
-  const exPilp=PILP_IVS.filter(iv=>iv._avisEnAttente&&nm(iv.addr)===nm(_adr)&&nm(iv.n)===nm(selNat));
+  const nidsAppel=getAppelNids();
+  const natureAppel=appelNaturePrioritaire(nidsAppel);
+  const exIv=IVS.filter(iv=>iv._avisEnAttente&&!iv._isPilip&&nm(iv.addr)===nm(_adr)&&nm(iv.n)===nm(natureAppel));
+  const exPilp=PILP_IVS.filter(iv=>iv._avisEnAttente&&nm(iv.addr)===nm(_adr)&&nm(iv.n)===nm(natureAppel));
   // Lever l'indicateur "en attente" sur ces interventions (le requérant a rappelé).
   exIv.concat(exPilp).forEach(iv=>{iv._avisEnAttente=false;iv._avisRappele=true;});
   exPilp.forEach(iv=>iv.rappels=(iv.rappels||0)+1);
@@ -4101,11 +4139,10 @@ function enr(){
   const reqDispo=getReqAvailability();
   const erp=!!document.getElementById('chk-erp')?.checked;
   const animauxAppel=getAppelAnimals();
-  const nidsAppel=getAppelNids();
   // Incrémenter compteur appels
   incCallCounter();
 
-  if(pilpDirect&&selNat==='Nid de frelons asiatiques'){
+  if(pilpDirect&&natureAppel==='Nid de frelons asiatiques'){
     PILP_IVS.unshift({
       id:nextPilpId(annee),ivRef:null,_numApl:numApl,
       // Aucun numéro d'intervention tant que la PILP reste en attente.
@@ -4126,7 +4163,7 @@ function enr(){
   }
   // Enregistrement normal — id = numéro APL, numéro INT attribué à la clôture
   const newIv={id:makeInterventionRecordId(numApl),_numApl:numApl,
-    n:selNat,addr,com,h,op:CU.l,s:'en-attente',det,eng:null,_sdis:document.getElementById('chk-sdis')?.checked||false,_erp:erp,_urgence:erp,_animauxAppel:animauxAppel,_nidsAppel:nidsAppel,
+    n:natureAppel,_natureAppelInitiale:selNat,addr,com,h,op:CU.l,s:'en-attente',det,eng:null,_sdis:document.getElementById('chk-sdis')?.checked||false,_erp:erp,_urgence:erp,_animauxAppel:animauxAppel,_nidsAppel:nidsAppel,
     req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,reqDispo,
     obs:'',agr:null,rappels:exIv.length,avisIds:exIv.map(iv=>iv.id),_appelDetails:appelDetails,
     tl:[mkTL('en-attente',h,CU.l)]};
@@ -10321,6 +10358,46 @@ function autorisationDataForNid(iv,nidIndex){
   if(index===0&&iv&&iv._autorisationData)return iv._autorisationData;
   return{};
 }
+function showAddRecognizedNidModal(ivId){
+  const iv=IVS.find(function(item){return item.id===ivId;});if(!iv)return;
+  document.getElementById('mt').textContent='Ajouter un nid après reconnaissance';
+  document.getElementById('mi').textContent=iv.n+' — '+iv.com;
+  document.getElementById('mb').innerHTML='<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Ajoutez chaque nid découvert sur place. Une autorisation et une attestation distinctes seront créées.</div>'
+    +'<input type="hidden" id="reco-nid-nature"><input type="hidden" id="reco-nid-location">'
+    +'<div class="fgl">Nature *</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">'
+    +'<button type="button" class="smopt" data-reco-nid-nature onclick="selectRecognizedNidOption(this,\'nature\',\'Guêpes\')">🐝 Guêpes</button><button type="button" class="smopt" data-reco-nid-nature onclick="selectRecognizedNidOption(this,\'nature\',\'Frelons européens\')">🐝 Frelons européens</button><button type="button" class="smopt" data-reco-nid-nature onclick="selectRecognizedNidOption(this,\'nature\',\'Frelons asiatiques\')">🐝 Frelons asiatiques</button><button type="button" class="smopt" data-reco-nid-nature onclick="selectRecognizedNidOption(this,\'nature\',\'Abeilles\')">🐝 Abeilles</button></div>'
+    +'<div class="fgl">Localisation *</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">'
+    +'<button type="button" class="smopt" data-reco-nid-location onclick="selectRecognizedNidOption(this,\'location\',\'Sous terre\')">🌍 Sous terre</button><button type="button" class="smopt" data-reco-nid-location onclick="selectRecognizedNidOption(this,\'location\',\'Toiture\')">🏠 Toiture</button><button type="button" class="smopt" data-reco-nid-location onclick="selectRecognizedNidOption(this,\'location\',\'Arbre/Haie\')">🌳 Arbre / Haie</button><button type="button" class="smopt" data-reco-nid-location onclick="selectRecognizedNidOption(this,\'location\',\'Mur\')">🧱 Mur</button><button type="button" class="smopt" data-reco-nid-location onclick="selectRecognizedNidOption(this,\'location\',\'Autre\')">📋 Autre</button></div>'
+    +'<div id="reco-nid-other-wrap" class="fg" style="display:none;"><div class="fgl">Précision</div><input class="fi" id="reco-nid-other" placeholder="Préciser la localisation…"></div>'
+    +'<div id="reco-nid-height-wrap" class="fg" style="display:none;"><div class="fgl">Hauteur estimée</div><div class="urow"><input type="number" min="0" id="reco-nid-height" placeholder="ex. 5"><span class="ul2">m</span></div></div>'
+    +'<div class="ferr" id="reco-nid-error">Choisissez la nature et la localisation.</div>'
+    +'<div class="brow" style="margin-top:12px;"><button class="btn pr" onclick="saveRecognizedNid(\''+ivId+'\')">➕ Ajouter le nid</button><button class="btn" onclick="showAutorisationNidPicker(\''+ivId+'\')">Annuler</button></div>';
+  document.getElementById('mo').style.display='flex';
+}
+function selectRecognizedNidOption(button,field,value){
+  const input=document.getElementById('reco-nid-'+field);if(input)input.value=value;
+  document.querySelectorAll('[data-reco-nid-'+field+']').forEach(function(choice){choice.classList.toggle('sel',choice===button);});
+  if(field==='location'){
+    const other=document.getElementById('reco-nid-other-wrap');if(other)other.style.display=value==='Autre'?'':'none';
+    const height=document.getElementById('reco-nid-height-wrap');if(height)height.style.display=['Toiture','Arbre/Haie','Mur'].includes(value)?'':'none';
+  }
+  const err=document.getElementById('reco-nid-error');if(err)err.style.display='none';
+}
+function saveRecognizedNid(ivId){
+  const iv=IVS.find(function(item){return item.id===ivId;});if(!iv)return;
+  const nature=(document.getElementById('reco-nid-nature')||{}).value||'';
+  let localisation=(document.getElementById('reco-nid-location')||{}).value||'';
+  if(localisation==='Autre')localisation=((document.getElementById('reco-nid-other')||{}).value||'').trim();
+  if(!nature||!localisation){const err=document.getElementById('reco-nid-error');if(err)err.style.display='block';return;}
+  if(!Array.isArray(iv._nidsAppel)||!iv._nidsAppel.length)iv._nidsAppel=interventionNids(iv).slice();
+  const height=((document.getElementById('reco-nid-height')||{}).value||'').trim();
+  iv._nidsAppel.push({id:'nid-'+(iv._nidsAppel.length+1),nature:nature,localisation:localisation,hauteur:height?height+' m':'',taille:'',ajouteApresReconnaissance:true});
+  if(/frelons? asiatiques?/i.test(nature)){iv._natureAppelInitiale=iv._natureAppelInitiale||iv.n;iv.n='Nid de frelons asiatiques';iv._prioriteFrelonAsiatique=true;}
+  if(!Array.isArray(iv.tl))iv.tl=[];
+  iv.tl.push({s:'information',h:getH(N()),who:CU&&CU.l||'',note:'Nid ajouté après reconnaissance : '+nature+' — '+localisation});
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);showToast('Nid ajouté — complétez son autorisation','success');showAutorisationNidPicker(ivId);
+}
 function showAutorisationNidPicker(ivId){
   const iv=IVS.find(function(item){return item.id===ivId;});if(!iv)return;
   const nids=interventionNids(iv);
@@ -10330,7 +10407,7 @@ function showAutorisationNidPicker(ivId){
     +'<div style="display:flex;flex-direction:column;gap:8px;">'+nids.map(function(nid,index){
       const filled=!!autorisationDataForNid(iv,index).nom;
       return '<button class="btn" style="text-align:left;display:flex;justify-content:space-between;gap:8px;align-items:center;padding:10px 12px;" onclick="showAutorisationModal(\''+ivId+'\','+index+')"><span><strong>'+escHtml('Nid '+(index+1))+'</strong><br><span style="font-size:11px;color:var(--t2);">'+escHtml([nid.nature,nid.localisation,nid.hauteur,nid.taille].filter(Boolean).join(' · ')||iv.n)+'</span></span><span class="bdg '+(filled?'bg2':'bgr')+'">'+(filled?'Complété':'À compléter')+'</span></button>';
-    }).join('')+'</div>';
+    }).join('')+'</div><button class="btn" style="width:100%;margin-top:10px;border-style:dashed;color:#9A3412;background:#FFF7ED;" onclick="showAddRecognizedNidModal(\''+ivId+'\')">➕ Nid découvert après reconnaissance</button>';
   document.getElementById('mo').style.display='flex';
 }
 
@@ -10344,7 +10421,9 @@ function showAutorisationModal(ivId, nidIndex) {
   const activeNid=nids[activeIndex]||null;
   const today = new Date();
   const dateDefault = today.getFullYear() + '-' + pad(today.getMonth()+1) + '-' + pad(today.getDate());
-  const saved = Object.assign({},autorisationDataForNid(iv,activeIndex));
+  const reference=(Array.isArray(iv._autorisationNids)&&iv._autorisationNids.find(Boolean))||iv._autorisationData||{};
+  const saved = Object.assign({},reference,autorisationDataForNid(iv,activeIndex));
+  saved.signature=iv._autorisationSignatureCommune||saved.signature||reference.signature||null;
   _autorisationData[ivId]=saved;
   const typeOpts = ['Propri\u00e9taire','Locataire','Autre'].map(function(t) {
     return '<option value="' + t + '"' + (saved.demandeurType === t ? ' selected' : '') + '>' + t + '</option>';
@@ -10441,8 +10520,11 @@ function saveAutorisationData(ivId) {
   const nidIndex=Number.isInteger(_autorisationActiveNid[ivId])?_autorisationActiveNid[ivId]:0;
   if(iv){
     if(!Array.isArray(iv._autorisationNids))iv._autorisationNids=[];
+    if(d.signature)iv._autorisationSignatureCommune=d.signature;
+    d.signature=iv._autorisationSignatureCommune||d.signature||null;
     iv._autorisationNids[nidIndex]=d;
     if(nidIndex===0)iv._autorisationData=d;
+    if(iv._autorisationSignatureCommune)iv._autorisationNids.forEach(function(item){if(item)item.signature=iv._autorisationSignatureCommune;});
   }
   saveData();
   showToast('Formulaire du nid '+(nidIndex+1)+' sauvegard\u00e9', 'success');
@@ -12417,7 +12499,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260812-avis-disponibilites-multinids-127';
+const APP_VERSION='20260812-nids-reconnaissance-historique-128';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -15865,10 +15947,12 @@ function _mergeLoginHistory(localArr, remoteArr, deletedMap){
   };
   (remoteArr||[]).forEach(add);
   (localArr||[]).forEach(add);
-  // Trier par heure de connexion décroissante (plus récent d'abord), limiter à 500
+  // Trier par heure de connexion décroissante (plus récent d'abord).
+  // La limite élargie évite qu'une caserne active fasse disparaître les
+  // anciennes connexions des autres casernes.
   const out=Object.keys(map).map(function(k){return map[k];});
   out.sort(function(a,b){return (b.hConnexion||'').localeCompare(a.hConnexion||'');});
-  return out.slice(0,500);
+  return out.slice(0,LOGIN_HISTORY_MAX);
 }
 
 // ── Pousse uniquement la ligne globale (LOGIN_HISTORY, etc.) avec keepalive ──

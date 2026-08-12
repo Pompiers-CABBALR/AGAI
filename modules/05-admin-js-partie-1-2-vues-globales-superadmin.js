@@ -133,12 +133,12 @@ function renderLoginHistoryAccount(group,colour){
     +'<span style="font-size:11px;color:#999;">'+group.entries.length+' connexion(s)</span><span style="color:#aaa;">▼</span></div>'
     +'<div style="display:none;overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:11px;">'
     +'<thead><tr style="background:#f5f5f7;"><th style="padding:6px;width:34px;text-align:center;"><input type="checkbox" class="login-history-group-all" onchange="toggleLoginHistoryGroupSelection(this)" aria-label="Sélectionner toutes les connexions de ce compte"/></th>'
-    +'<th style="padding:6px 12px;font-weight:600;text-align:left;">Connexion</th><th style="padding:6px 12px;font-weight:600;text-align:left;">Déconnexion</th><th style="padding:6px 12px;font-weight:600;text-align:left;">Statut</th></tr></thead><tbody>'
+    +'<th style="padding:6px 12px;font-weight:600;text-align:left;">Connexion</th><th style="padding:6px 12px;font-weight:600;text-align:left;">Déconnexion</th><th style="padding:6px 12px;font-weight:600;text-align:left;">Support</th><th style="padding:6px 12px;font-weight:600;text-align:left;">Statut</th></tr></thead><tbody>'
     +group.entries.map(function(entry){
       const online=isLoginHistorySessionActive(entry);
       const closure=entry.fermetureAuto?' title="'+escHtml(entry.fermetureAuto)+'"':'';
       return '<tr style="border-top:1px solid #f0f0f0;"><td style="padding:6px;text-align:center;"><input type="checkbox" class="login-history-check" data-session-id="'+escHtml(entry.id)+'" onchange="updateLoginHistorySelectionCount()" aria-label="Sélectionner cette connexion"/></td>'
-        +'<td style="padding:6px 12px;color:#444;">'+fmt(entry.hConnexion)+'</td><td style="padding:6px 12px;color:#444;"'+closure+'>'+(entry.hDeconnexion?fmt(entry.hDeconnexion):'—')+'</td>'
+        +'<td style="padding:6px 12px;color:#444;">'+fmt(entry.hConnexion)+'</td><td style="padding:6px 12px;color:#444;"'+closure+'>'+(entry.hDeconnexion?fmt(entry.hDeconnexion):'—')+'</td><td style="padding:6px 12px;color:#64748B;">'+escHtml([entry.support,entry.navigateur].filter(Boolean).join(' · ')||'Non renseigné')+'</td>'
         +'<td style="padding:6px 12px;">'+(online?'<span style="color:#065F46;font-weight:600;">🟢 En ligne</span>':'<span style="color:#9CA3AF;">Déconnecté</span>')+'</td></tr>';
     }).join('')
     +'</tbody></table></div></div>';
@@ -184,6 +184,12 @@ function renderLoginHistoryByCaserne(){
       +accounts.map(function(account){return renderLoginHistoryAccount(account,caserne.colour);}).join('')
       +'</div></div>';
   }).join('');
+}
+function renderLoginHistorySummary(){
+  if(!LOGIN_HISTORY.length)return'';
+  const sorted=LOGIN_HISTORY.slice().sort(function(a,b){return String(a.hConnexion||'').localeCompare(String(b.hConnexion||''));});
+  const fmt=function(value){const d=new Date(value);return Number.isNaN(d.getTime())?'—':d.toLocaleDateString('fr-FR')+' '+d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});};
+  return '<div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:9px;padding:8px 11px;margin-bottom:10px;font-size:11px;color:#475569;display:flex;gap:14px;flex-wrap:wrap;"><strong>'+LOGIN_HISTORY.length+' connexion(s) conservée(s)</strong><span>Du '+fmt(sorted[0]&&sorted[0].hConnexion)+' au '+fmt(sorted[sorted.length-1]&&sorted[sorted.length-1].hConnexion)+'</span><span>Nouvelles connexions : support et navigateur enregistrés</span></div>';
 }
 
 function renderSuperAdmin(){
@@ -490,6 +496,7 @@ function renderSuperAdmin(){
           <button class="btn sm danger" onclick="deleteAllLoginHistory()">🧹 Tout effacer</button>
         </div>
       </div>
+      ${renderLoginHistorySummary()}
       ${renderLoginHistoryByCaserne()}
     </div>
     <div style="margin-top:20px;background:#FEF2F2;border-radius:14px;padding:16px;border:1px solid #FECACA;">

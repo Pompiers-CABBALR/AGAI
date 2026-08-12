@@ -177,6 +177,7 @@ function CD(){if(!CURRENT_CASERNE_ID)return null;initCaserneData(CURRENT_CASERNE
 let USERS=[];let IVS=[];let PILP_IVS=[];let EQUIPES=[];let DISPOS={};let PIQUETS={};let DISPOS_VALIDATED={};let PIQUETS_VALIDATED={};let PLANNING_ROTATIONS={};let DISPOS_UNLOCKED={};let DISPO_REQUESTS={};let ASTR_CONFIG={granularity:60,engins:[],deadline:{dayOfWeek:5,hour:23,minute:59},deadlinePiquet:{dayOfWeek:0,hour:18,minute:0},weekStartDay:1,weekStartHour:0};
 let LOGIN_HISTORY=[];
 let LOGIN_HISTORY_DELETED={};
+const LOGIN_HISTORY_MAX=5000;
 let _equipeIsolationCleanupTimer=null;
 const _equipeIsolationCleanupPending={};
 function normalizeEquipesForCaserne(cid,d){

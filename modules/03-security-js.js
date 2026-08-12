@@ -86,6 +86,9 @@ function _createSession(){
         previous.fermetureAuto='Remplacée par une nouvelle connexion';
       }
     });
+    const ua=String(navigator.userAgent||'');
+    const support=/iPad|Tablet|Android(?!.*Mobile)/i.test(ua)?'Tablette':/iPhone|Android.*Mobile|Mobile/i.test(ua)?'Smartphone':'Ordinateur';
+    const navigateur=/Edg\//.test(ua)?'Edge':/Firefox\//.test(ua)?'Firefox':/CriOS|Chrome\//.test(ua)?'Chrome':/Safari\//.test(ua)?'Safari':'Navigateur';
     const entry={
       id:SESSION_TOKEN,
       login:CU.l,
@@ -95,10 +98,12 @@ function _createSession(){
       caserne:CC()?.nom||'Global',
       hConnexion:nowIso,
       hDeconnexion:null,
-      actif:true
+      actif:true,
+      support:support,
+      navigateur:navigateur
     };
     LOGIN_HISTORY.unshift(entry);
-    if(LOGIN_HISTORY.length>500)LOGIN_HISTORY=LOGIN_HISTORY.slice(0,500);
+    if(LOGIN_HISTORY.length>LOGIN_HISTORY_MAX)LOGIN_HISTORY=LOGIN_HISTORY.slice(0,LOGIN_HISTORY_MAX);
     if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
     saveData(true);
   }

@@ -1927,10 +1927,12 @@ function _mergeLoginHistory(localArr, remoteArr, deletedMap){
   };
   (remoteArr||[]).forEach(add);
   (localArr||[]).forEach(add);
-  // Trier par heure de connexion décroissante (plus récent d'abord), limiter à 500
+  // Trier par heure de connexion décroissante (plus récent d'abord).
+  // La limite élargie évite qu'une caserne active fasse disparaître les
+  // anciennes connexions des autres casernes.
   const out=Object.keys(map).map(function(k){return map[k];});
   out.sort(function(a,b){return (b.hConnexion||'').localeCompare(a.hConnexion||'');});
-  return out.slice(0,500);
+  return out.slice(0,LOGIN_HISTORY_MAX);
 }
 
 // ── Pousse uniquement la ligne globale (LOGIN_HISTORY, etc.) avec keepalive ──

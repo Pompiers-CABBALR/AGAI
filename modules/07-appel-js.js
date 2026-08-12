@@ -34,11 +34,11 @@ function sr(g,el,v){
   document.querySelectorAll('#'+g+' .smopt').forEach(o=>o.classList.remove('sel'));el.classList.add('sel');
   el.dataset.val=v; // stocke la valeur propre (sans emoji) pour la capture des détails
   if(g==='lg'){
-    document.getElementById('hgb').style.display=(v==='Toiture'||v==='Arbre/Haie')?'':'none';
+    document.getElementById('hgb').style.display=(v==='Toiture'||v==='Arbre/Haie'||v==='Mur')?'':'none';
     document.getElementById('lgab').style.display=v==='Autre'?'':'none';
   }
   if(g==='lf'){document.getElementById('lfab').style.display=v==='Autre'?'':'none';document.getElementById('hfb').style.display='';}
-  if(g==='la'){document.getElementById('laab').style.display=v==='Autre'?'':'none';}
+  if(g==='la'){document.getElementById('laab').style.display=v==='Autre'?'':'none';document.getElementById('hab').style.display=(v==='Arbre'||v==='Haie'||v==='Mur'||v==='Toiture')?'':'none';}
   if(g==='ta'){document.getElementById('tapb').style.display=(v==='NAC'||v==='Autre')?'':'none';}
 }
 function sz(el,v){document.querySelectorAll('.szo').forEach(o=>o.classList.remove('sel'));el.classList.add('sel');nidSize=v;}
@@ -550,39 +550,57 @@ function addAppelExtraNid(host){
   const row=document.createElement('div');row.className='appel-extra-nid-row';
   row.style.cssText='background:#FFF7ED;border:1px solid #FDBA74;border-radius:9px;padding:9px;margin-top:8px;';
   row.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;"><strong style="font-size:12px;color:#9A3412;">Nid supplémentaire</strong><button type="button" class="appel-phone-remove" title="Supprimer ce nid">−</button></div>'
-    +'<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:7px;">'
-    +'<div><div class="fgl">Nature *</div><select class="fi" data-extra-nid-type><option>Guêpes</option><option>Frelons européens</option><option>Frelons asiatiques</option><option>Nature inconnue</option></select></div>'
-    +'<div><div class="fgl">Localisation *</div><input class="fi" data-extra-nid-location placeholder="Ex. toiture, cheminée…"></div>'
-    +'<div><div class="fgl">Hauteur</div><input class="fi" type="number" min="0" data-extra-nid-height placeholder="m"></div>'
-    +'<div><div class="fgl">Taille</div><select class="fi" data-extra-nid-size><option value="">—</option><option>Petit</option><option>Moyen</option><option>Gros</option><option>Inconnu</option></select></div>'
-    +'</div><div class="ferr" data-extra-nid-error style="margin-top:5px;">Précisez la localisation de ce nid.</div>';
+    +'<div class="fgl">Nature *</div><div class="appel-extra-nid-options" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">'
+    +'<button type="button" class="smopt" data-extra-nid-nature-choice onclick="selectExtraNidOption(this,\'nature\',\'Guêpes\')">🐝 Guêpes</button>'
+    +'<button type="button" class="smopt" data-extra-nid-nature-choice onclick="selectExtraNidOption(this,\'nature\',\'Frelons européens\')">🐝 Frelons européens</button>'
+    +'<button type="button" class="smopt" data-extra-nid-nature-choice onclick="selectExtraNidOption(this,\'nature\',\'Frelons asiatiques\')">🐝 Frelons asiatiques</button>'
+    +'<button type="button" class="smopt" data-extra-nid-nature-choice onclick="selectExtraNidOption(this,\'nature\',\'Abeilles\')">🐝 Abeilles</button></div>'
+    +'<div class="fgl">Localisation *</div><div class="appel-extra-nid-options" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">'
+    +'<button type="button" class="smopt" data-extra-nid-location-choice onclick="selectExtraNidOption(this,\'location\',\'Sous terre\')">🌍 Sous terre</button>'
+    +'<button type="button" class="smopt" data-extra-nid-location-choice onclick="selectExtraNidOption(this,\'location\',\'Toiture\')">🏠 Toiture</button>'
+    +'<button type="button" class="smopt" data-extra-nid-location-choice onclick="selectExtraNidOption(this,\'location\',\'Arbre/Haie\')">🌳 Arbre / Haie</button>'
+    +'<button type="button" class="smopt" data-extra-nid-location-choice onclick="selectExtraNidOption(this,\'location\',\'Mur\')">🧱 Mur</button>'
+    +'<button type="button" class="smopt" data-extra-nid-location-choice onclick="selectExtraNidOption(this,\'location\',\'Autre\')">📋 Autre</button></div>'
+    +'<div data-extra-nid-other-wrap style="display:none;margin-bottom:8px;"><input class="fi" data-extra-nid-other placeholder="Préciser la localisation…"></div>'
+    +'<div data-extra-nid-height-wrap style="display:none;margin-bottom:8px;"><div class="fgl">Hauteur estimée</div><div class="urow"><input type="number" min="0" data-extra-nid-height placeholder="ex. 5"><span class="ul2">m</span></div></div>'
+    +'<div class="fgl">Taille du nid (facultatif)</div><div style="display:flex;flex-wrap:wrap;gap:6px;">'
+    +'<button type="button" class="smopt" data-extra-nid-size-choice onclick="selectExtraNidOption(this,\'size\',\'Petit\')">Petit</button><button type="button" class="smopt" data-extra-nid-size-choice onclick="selectExtraNidOption(this,\'size\',\'Moyen\')">Moyen</button><button type="button" class="smopt" data-extra-nid-size-choice onclick="selectExtraNidOption(this,\'size\',\'Gros\')">Gros</button><button type="button" class="smopt" data-extra-nid-size-choice onclick="selectExtraNidOption(this,\'size\',\'Inconnu\')">Inconnu</button></div>'
+    +'<div class="ferr" data-extra-nid-error style="margin-top:5px;">Choisissez la nature et la localisation de ce nid.</div>';
   row.querySelector('button').onclick=function(){row.remove();};
-  row.querySelector('[data-extra-nid-location]').addEventListener('input',function(){const err=row.querySelector('[data-extra-nid-error]');if(err)err.style.display='none';});
-  box.appendChild(row);row.querySelector('[data-extra-nid-location]').focus();
+  box.appendChild(row);
+}
+function selectExtraNidOption(button,field,value){
+  const row=button.closest('.appel-extra-nid-row');if(!row)return;
+  row.dataset[field]=value;
+  row.querySelectorAll('[data-extra-nid-'+field+'-choice]').forEach(function(choice){choice.classList.toggle('sel',choice===button);});
+  if(field==='location'){
+    const other=row.querySelector('[data-extra-nid-other-wrap]');if(other)other.style.display=value==='Autre'?'':'none';
+    const height=row.querySelector('[data-extra-nid-height-wrap]');if(height)height.style.display=['Toiture','Arbre/Haie','Mur'].includes(value)?'':'none';
+  }
+  const err=row.querySelector('[data-extra-nid-error]');if(err)err.style.display='none';
 }
 function resetAppelNids(){
-  ['g','f'].forEach(function(host){const box=document.getElementById('extra-nids-'+host);if(box)box.innerHTML='';});
-  const g=document.getElementById('primary-nid-type-g');if(g)g.value='Guêpes';
-  const f=document.getElementById('primary-nid-type-f');if(f)f.value='Frelons asiatiques';
+  ['g','f','a'].forEach(function(host){const box=document.getElementById('extra-nids-'+host);if(box)box.innerHTML='';});
 }
 function getAppelNids(){
   const result=[];
-  const host=document.getElementById('sm-g')&&document.getElementById('sm-g').offsetParent!==null?'g':document.getElementById('sm-f')&&document.getElementById('sm-f').offsetParent!==null?'f':'';
+  const host=document.getElementById('sm-g')&&document.getElementById('sm-g').offsetParent!==null?'g':document.getElementById('sm-f')&&document.getElementById('sm-f').offsetParent!==null?'f':document.getElementById('sm-a')&&document.getElementById('sm-a').offsetParent!==null?'a':'';
   if(!host)return result;
-  const group=document.getElementById(host==='g'?'lg':'lf');
+  const group=document.getElementById(host==='g'?'lg':host==='f'?'lf':'la');
   const selected=group&&group.querySelector('.smopt.sel');
   if(selected){
     let localisation=selected.dataset.val||selected.textContent.trim();
-    if(localisation==='Autre')localisation=((document.getElementById(host==='g'?'lg-autre-txt':'lf-autre-txt')||{}).value||'Autre').trim();
-    const nature=((document.getElementById('primary-nid-type-'+host)||{}).value||'Nature inconnue').trim();
-    const hauteur=((document.getElementById(host==='g'?'hg-val':'hf-val')||{}).value||'').trim();
+    if(localisation==='Autre')localisation=((document.getElementById(host==='g'?'lg-autre-txt':host==='f'?'lf-autre-txt':'la-autre-txt')||{}).value||'Autre').trim();
+    const nature=((document.getElementById('primary-nid-type-'+host)||{}).dataset||{}).nidNature||selNat||'Nature inconnue';
+    const hauteur=((document.getElementById(host==='g'?'hg-val':host==='f'?'hf-val':'ha-val')||{}).value||'').trim();
     result.push({id:'nid-1',nature,localisation,hauteur:hauteur?hauteur+' m':'',taille:host==='f'?(nidSize||''):''});
   }
   document.querySelectorAll('#extra-nids-'+host+' .appel-extra-nid-row').forEach(function(row){
-    const nature=(row.querySelector('[data-extra-nid-type]')||{}).value||'Nature inconnue';
-    const localisation=((row.querySelector('[data-extra-nid-location]')||{}).value||'').trim();
+    const nature=row.dataset.nature||'';
+    let localisation=row.dataset.location||'';
+    if(localisation==='Autre')localisation=((row.querySelector('[data-extra-nid-other]')||{}).value||'Autre').trim();
     const hauteur=((row.querySelector('[data-extra-nid-height]')||{}).value||'').trim();
-    const taille=(row.querySelector('[data-extra-nid-size]')||{}).value||'';
+    const taille=row.dataset.size||'';
     result.push({id:'nid-'+(result.length+1),nature,localisation,hauteur:hauteur?hauteur+' m':'',taille});
   });
   return result;
@@ -590,12 +608,17 @@ function getAppelNids(){
 function validateAppelNids(){
   let valid=true;
   document.querySelectorAll('.appel-extra-nid-row').forEach(function(row){
-    const location=((row.querySelector('[data-extra-nid-location]')||{}).value||'').trim();
+    const nature=row.dataset.nature||'';
+    let location=row.dataset.location||'';
+    if(location==='Autre')location=((row.querySelector('[data-extra-nid-other]')||{}).value||'').trim();
     const err=row.querySelector('[data-extra-nid-error]');
-    if(err)err.style.display=location?'none':'block';
-    if(!location)valid=false;
+    if(err)err.style.display=nature&&location?'none':'block';
+    if(!nature||!location)valid=false;
   });
   return valid;
+}
+function appelNaturePrioritaire(nids){
+  return (nids||[]).some(function(nid){return /frelons? asiatiques?/i.test(String(nid&&nid.nature||''));})?'Nid de frelons asiatiques':selNat;
 }
 function nidAppelLabel(nid,index){
   if(!nid)return'Nid '+(index+1);
@@ -725,8 +748,10 @@ function enr(){
   const pilpDirect=document.getElementById('chk-pilp-direct')&&document.getElementById('chk-pilp-direct').checked;
   // Avis en attente de rappel pour CETTE adresse et CE type : le requérant rappelle.
   const _adr=document.getElementById('fa')?document.getElementById('fa').value.trim():'';
-  const exIv=IVS.filter(iv=>iv._avisEnAttente&&!iv._isPilip&&nm(iv.addr)===nm(_adr)&&nm(iv.n)===nm(selNat));
-  const exPilp=PILP_IVS.filter(iv=>iv._avisEnAttente&&nm(iv.addr)===nm(_adr)&&nm(iv.n)===nm(selNat));
+  const nidsAppel=getAppelNids();
+  const natureAppel=appelNaturePrioritaire(nidsAppel);
+  const exIv=IVS.filter(iv=>iv._avisEnAttente&&!iv._isPilip&&nm(iv.addr)===nm(_adr)&&nm(iv.n)===nm(natureAppel));
+  const exPilp=PILP_IVS.filter(iv=>iv._avisEnAttente&&nm(iv.addr)===nm(_adr)&&nm(iv.n)===nm(natureAppel));
   // Lever l'indicateur "en attente" sur ces interventions (le requérant a rappelé).
   exIv.concat(exPilp).forEach(iv=>{iv._avisEnAttente=false;iv._avisRappele=true;});
   exPilp.forEach(iv=>iv.rappels=(iv.rappels||0)+1);
@@ -738,11 +763,10 @@ function enr(){
   const reqDispo=getReqAvailability();
   const erp=!!document.getElementById('chk-erp')?.checked;
   const animauxAppel=getAppelAnimals();
-  const nidsAppel=getAppelNids();
   // Incrémenter compteur appels
   incCallCounter();
 
-  if(pilpDirect&&selNat==='Nid de frelons asiatiques'){
+  if(pilpDirect&&natureAppel==='Nid de frelons asiatiques'){
     PILP_IVS.unshift({
       id:nextPilpId(annee),ivRef:null,_numApl:numApl,
       // Aucun numéro d'intervention tant que la PILP reste en attente.
@@ -763,7 +787,7 @@ function enr(){
   }
   // Enregistrement normal — id = numéro APL, numéro INT attribué à la clôture
   const newIv={id:makeInterventionRecordId(numApl),_numApl:numApl,
-    n:selNat,addr,com,h,op:CU.l,s:'en-attente',det,eng:null,_sdis:document.getElementById('chk-sdis')?.checked||false,_erp:erp,_urgence:erp,_animauxAppel:animauxAppel,_nidsAppel:nidsAppel,
+    n:natureAppel,_natureAppelInitiale:selNat,addr,com,h,op:CU.l,s:'en-attente',det,eng:null,_sdis:document.getElementById('chk-sdis')?.checked||false,_erp:erp,_urgence:erp,_animauxAppel:animauxAppel,_nidsAppel:nidsAppel,
     req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,reqDispo,
     obs:'',agr:null,rappels:exIv.length,avisIds:exIv.map(iv=>iv.id),_appelDetails:appelDetails,
     tl:[mkTL('en-attente',h,CU.l)]};
