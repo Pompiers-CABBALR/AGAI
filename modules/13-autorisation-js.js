@@ -62,11 +62,22 @@ function saveRecognizedNid(ivId){
   const height=((document.getElementById('reco-nid-height')||{}).value||'').trim();
   const size=(document.getElementById('reco-nid-size')||{}).value||'';
   iv._nidsAppel.push({id:'nid-'+(iv._nidsAppel.length+1),nature:nature,localisation:localisation,hauteur:height?height+' m':'',taille:size,ajouteApresReconnaissance:true});
+  if(!iv._appelDetails||typeof iv._appelDetails!=='object')iv._appelDetails={};
+  iv._appelDetails['Nids à traiter']=iv._nidsAppel.map(function(nid,index){return nidAppelLabel(nid,index);}).join(' ; ');
   if(/frelons? asiatiques?/i.test(nature)){iv._natureAppelInitiale=iv._natureAppelInitiale||iv.n;iv.n='Nid de frelons asiatiques';iv._prioriteFrelonAsiatique=true;}
   if(!Array.isArray(iv.tl))iv.tl=[];
   iv.tl.push({s:'information',h:getH(N()),who:CU&&CU.l||'',note:'Nid ajouté après reconnaissance : '+nature+' — '+localisation});
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-  saveData(true);showToast('Nid ajouté — complétez son autorisation','success');showAutorisationNidPicker(ivId);
+  // Marquage explicite : cet ajout doit rester prioritaire même si une autre
+  // synchronisation était déjà en cours sur le poste.
+  if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcPendingDirty!=='undefined'&&typeof _rcId==='function'&&CURRENT_CASERNE_ID){
+    _rcPendingDirty.add(_rcId(CURRENT_CASERNE_ID,'iv',iv.id));
+    if(typeof _rcDirtyGeneration!=='undefined')_rcDirtyGeneration++;
+    if(typeof _rcPersistPendingDirty==='function')_rcPersistPendingDirty();
+  }
+  saveData(true);
+  try{rI();rAccueil();rHist();}catch(e){}
+  showToast('Nid ajouté et enregistré — complétez son autorisation','success');showAutorisationNidPicker(ivId);
 }
 function showAutorisationNidPicker(ivId){
   const iv=IVS.find(function(item){return item.id===ivId;});if(!iv)return;
