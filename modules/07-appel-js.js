@@ -555,17 +555,12 @@ function addAppelExtraNid(host){
     +'<button type="button" class="smopt" data-extra-nid-nature-choice onclick="selectExtraNidOption(this,\'nature\',\'Frelons européens\')">🐝 Frelons européens</button>'
     +'<button type="button" class="smopt" data-extra-nid-nature-choice onclick="selectExtraNidOption(this,\'nature\',\'Frelons asiatiques\')">🐝 Frelons asiatiques</button>'
     +'<button type="button" class="smopt" data-extra-nid-nature-choice onclick="selectExtraNidOption(this,\'nature\',\'Abeilles\')">🐝 Abeilles</button></div>'
-    +'<div class="fgl">Localisation *</div><div class="appel-extra-nid-options" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">'
-    +'<button type="button" class="smopt" data-extra-nid-location-choice onclick="selectExtraNidOption(this,\'location\',\'Sous terre\')">🌍 Sous terre</button>'
-    +'<button type="button" class="smopt" data-extra-nid-location-choice onclick="selectExtraNidOption(this,\'location\',\'Toiture\')">🏠 Toiture</button>'
-    +'<button type="button" class="smopt" data-extra-nid-location-choice onclick="selectExtraNidOption(this,\'location\',\'Arbre/Haie\')">🌳 Arbre / Haie</button>'
-    +'<button type="button" class="smopt" data-extra-nid-location-choice onclick="selectExtraNidOption(this,\'location\',\'Mur\')">🧱 Mur</button>'
-    +'<button type="button" class="smopt" data-extra-nid-location-choice onclick="selectExtraNidOption(this,\'location\',\'Autre\')">📋 Autre</button></div>'
+    +'<div class="fgl">Localisation *</div><div class="appel-extra-nid-options" data-extra-nid-location-options style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;"><span style="font-size:11px;color:var(--t2);">Choisissez d’abord la nature.</span></div>'
     +'<div data-extra-nid-other-wrap style="display:none;margin-bottom:8px;"><input class="fi" data-extra-nid-other placeholder="Préciser la localisation…"></div>'
     +'<div data-extra-nid-height-wrap style="display:none;margin-bottom:8px;"><div class="fgl">Hauteur estimée</div><div class="urow"><input type="number" min="0" data-extra-nid-height placeholder="ex. 5"><span class="ul2">m</span></div></div>'
-    +'<div class="fgl">Taille du nid (facultatif)</div><div style="display:flex;flex-wrap:wrap;gap:6px;">'
+    +'<div data-extra-nid-size-wrap style="display:none;"><div class="fgl">Taille du nid (facultatif)</div><div style="display:flex;flex-wrap:wrap;gap:6px;">'
     +'<button type="button" class="smopt" data-extra-nid-size-choice onclick="selectExtraNidOption(this,\'size\',\'Petit\')">Petit</button><button type="button" class="smopt" data-extra-nid-size-choice onclick="selectExtraNidOption(this,\'size\',\'Moyen\')">Moyen</button><button type="button" class="smopt" data-extra-nid-size-choice onclick="selectExtraNidOption(this,\'size\',\'Gros\')">Gros</button><button type="button" class="smopt" data-extra-nid-size-choice onclick="selectExtraNidOption(this,\'size\',\'Inconnu\')">Inconnu</button></div>'
-    +'<div class="ferr" data-extra-nid-error style="margin-top:5px;">Choisissez la nature et la localisation de ce nid.</div>';
+    +'</div><div class="ferr" data-extra-nid-error style="margin-top:5px;">Choisissez la nature et la localisation de ce nid.</div>';
   row.querySelector('button').onclick=function(){row.remove();};
   box.appendChild(row);
 }
@@ -573,11 +568,31 @@ function selectExtraNidOption(button,field,value){
   const row=button.closest('.appel-extra-nid-row');if(!row)return;
   row.dataset[field]=value;
   row.querySelectorAll('[data-extra-nid-'+field+'-choice]').forEach(function(choice){choice.classList.toggle('sel',choice===button);});
+  if(field==='nature')renderExtraNidLocationOptions(row,value);
   if(field==='location'){
     const other=row.querySelector('[data-extra-nid-other-wrap]');if(other)other.style.display=value==='Autre'?'':'none';
-    const height=row.querySelector('[data-extra-nid-height-wrap]');if(height)height.style.display=['Toiture','Arbre/Haie','Mur'].includes(value)?'':'none';
+    const height=row.querySelector('[data-extra-nid-height-wrap]');if(height)height.style.display=extraNidNeedsHeight(row.dataset.nature,value)?'':'none';
   }
   const err=row.querySelector('[data-extra-nid-error]');if(err)err.style.display='none';
+}
+function extraNidLocationChoices(nature){
+  if(nature==='Frelons asiatiques')return[['🌳','Arbre'],['🏠','Toiture'],['🧱','Mur'],['🐦','Nichoir'],['📋','Autre']];
+  if(nature==='Abeilles')return[['🌳','Arbre'],['🌿','Haie'],['🧱','Mur'],['🏠','Toiture'],['📋','Autre']];
+  return[['🌍','Sous terre'],['🏠','Toiture'],['🌳','Arbre/Haie'],['🧱','Mur'],['📋','Autre']];
+}
+function extraNidNeedsHeight(nature,location){
+  if(nature==='Frelons asiatiques')return !!location;
+  if(nature==='Abeilles')return ['Arbre','Haie','Mur','Toiture'].includes(location);
+  return ['Toiture','Arbre/Haie','Mur'].includes(location);
+}
+function renderExtraNidLocationOptions(row,nature){
+  row.dataset.location='';row.dataset.size='';
+  const box=row.querySelector('[data-extra-nid-location-options]');
+  if(box)box.innerHTML=extraNidLocationChoices(nature).map(function(choice){return '<button type="button" class="smopt" data-extra-nid-location-choice onclick="selectExtraNidOption(this,\'location\',\''+choice[1]+'\')">'+choice[0]+' '+choice[1]+'</button>';}).join('');
+  const other=row.querySelector('[data-extra-nid-other-wrap]');if(other)other.style.display='none';
+  const height=row.querySelector('[data-extra-nid-height-wrap]');if(height)height.style.display='none';
+  const size=row.querySelector('[data-extra-nid-size-wrap]');if(size)size.style.display=nature==='Frelons asiatiques'?'':'none';
+  row.querySelectorAll('[data-extra-nid-size-choice]').forEach(function(choice){choice.classList.remove('sel');});
 }
 function resetAppelNids(){
   ['g','f','a'].forEach(function(host){const box=document.getElementById('extra-nids-'+host);if(box)box.innerHTML='';});

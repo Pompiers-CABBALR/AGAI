@@ -22,13 +22,13 @@ function showAddRecognizedNidModal(ivId){
   document.getElementById('mt').textContent='Ajouter un nid après reconnaissance';
   document.getElementById('mi').textContent=iv.n+' — '+iv.com;
   document.getElementById('mb').innerHTML='<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Ajoutez chaque nid découvert sur place. Une autorisation et une attestation distinctes seront créées.</div>'
-    +'<input type="hidden" id="reco-nid-nature"><input type="hidden" id="reco-nid-location">'
+    +'<input type="hidden" id="reco-nid-nature"><input type="hidden" id="reco-nid-location"><input type="hidden" id="reco-nid-size">'
     +'<div class="fgl">Nature *</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">'
     +'<button type="button" class="smopt" data-reco-nid-nature onclick="selectRecognizedNidOption(this,\'nature\',\'Guêpes\')">🐝 Guêpes</button><button type="button" class="smopt" data-reco-nid-nature onclick="selectRecognizedNidOption(this,\'nature\',\'Frelons européens\')">🐝 Frelons européens</button><button type="button" class="smopt" data-reco-nid-nature onclick="selectRecognizedNidOption(this,\'nature\',\'Frelons asiatiques\')">🐝 Frelons asiatiques</button><button type="button" class="smopt" data-reco-nid-nature onclick="selectRecognizedNidOption(this,\'nature\',\'Abeilles\')">🐝 Abeilles</button></div>'
-    +'<div class="fgl">Localisation *</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">'
-    +'<button type="button" class="smopt" data-reco-nid-location onclick="selectRecognizedNidOption(this,\'location\',\'Sous terre\')">🌍 Sous terre</button><button type="button" class="smopt" data-reco-nid-location onclick="selectRecognizedNidOption(this,\'location\',\'Toiture\')">🏠 Toiture</button><button type="button" class="smopt" data-reco-nid-location onclick="selectRecognizedNidOption(this,\'location\',\'Arbre/Haie\')">🌳 Arbre / Haie</button><button type="button" class="smopt" data-reco-nid-location onclick="selectRecognizedNidOption(this,\'location\',\'Mur\')">🧱 Mur</button><button type="button" class="smopt" data-reco-nid-location onclick="selectRecognizedNidOption(this,\'location\',\'Autre\')">📋 Autre</button></div>'
+    +'<div class="fgl">Localisation *</div><div id="reco-nid-location-options" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;"><span style="font-size:11px;color:var(--t2);">Choisissez d’abord la nature.</span></div>'
     +'<div id="reco-nid-other-wrap" class="fg" style="display:none;"><div class="fgl">Précision</div><input class="fi" id="reco-nid-other" placeholder="Préciser la localisation…"></div>'
     +'<div id="reco-nid-height-wrap" class="fg" style="display:none;"><div class="fgl">Hauteur estimée</div><div class="urow"><input type="number" min="0" id="reco-nid-height" placeholder="ex. 5"><span class="ul2">m</span></div></div>'
+    +'<div id="reco-nid-size-wrap" class="fg" style="display:none;"><div class="fgl">Taille du nid</div><div style="display:flex;flex-wrap:wrap;gap:6px;"><button type="button" class="smopt" data-reco-nid-size onclick="selectRecognizedNidOption(this,\'size\',\'Petit\')">Petit</button><button type="button" class="smopt" data-reco-nid-size onclick="selectRecognizedNidOption(this,\'size\',\'Moyen\')">Moyen</button><button type="button" class="smopt" data-reco-nid-size onclick="selectRecognizedNidOption(this,\'size\',\'Gros\')">Gros</button><button type="button" class="smopt" data-reco-nid-size onclick="selectRecognizedNidOption(this,\'size\',\'Inconnu\')">Inconnu</button></div></div>'
     +'<div class="ferr" id="reco-nid-error">Choisissez la nature et la localisation.</div>'
     +'<div class="brow" style="margin-top:12px;"><button class="btn pr" onclick="saveRecognizedNid(\''+ivId+'\')">➕ Ajouter le nid</button><button class="btn" onclick="showAutorisationNidPicker(\''+ivId+'\')">Annuler</button></div>';
   document.getElementById('mo').style.display='flex';
@@ -36,11 +36,21 @@ function showAddRecognizedNidModal(ivId){
 function selectRecognizedNidOption(button,field,value){
   const input=document.getElementById('reco-nid-'+field);if(input)input.value=value;
   document.querySelectorAll('[data-reco-nid-'+field+']').forEach(function(choice){choice.classList.toggle('sel',choice===button);});
+  if(field==='nature')renderRecognizedNidLocations(value);
   if(field==='location'){
     const other=document.getElementById('reco-nid-other-wrap');if(other)other.style.display=value==='Autre'?'':'none';
-    const height=document.getElementById('reco-nid-height-wrap');if(height)height.style.display=['Toiture','Arbre/Haie','Mur'].includes(value)?'':'none';
+    const nature=(document.getElementById('reco-nid-nature')||{}).value||'';
+    const height=document.getElementById('reco-nid-height-wrap');if(height)height.style.display=extraNidNeedsHeight(nature,value)?'':'none';
   }
   const err=document.getElementById('reco-nid-error');if(err)err.style.display='none';
+}
+function renderRecognizedNidLocations(nature){
+  const location=document.getElementById('reco-nid-location');if(location)location.value='';
+  const box=document.getElementById('reco-nid-location-options');
+  if(box)box.innerHTML=extraNidLocationChoices(nature).map(function(choice){return '<button type="button" class="smopt" data-reco-nid-location onclick="selectRecognizedNidOption(this,\'location\',\''+choice[1]+'\')">'+choice[0]+' '+choice[1]+'</button>';}).join('');
+  const other=document.getElementById('reco-nid-other-wrap');if(other)other.style.display='none';
+  const height=document.getElementById('reco-nid-height-wrap');if(height)height.style.display='none';
+  const size=document.getElementById('reco-nid-size-wrap');if(size)size.style.display=nature==='Frelons asiatiques'?'':'none';
 }
 function saveRecognizedNid(ivId){
   const iv=IVS.find(function(item){return item.id===ivId;});if(!iv)return;
@@ -50,7 +60,8 @@ function saveRecognizedNid(ivId){
   if(!nature||!localisation){const err=document.getElementById('reco-nid-error');if(err)err.style.display='block';return;}
   if(!Array.isArray(iv._nidsAppel)||!iv._nidsAppel.length)iv._nidsAppel=interventionNids(iv).slice();
   const height=((document.getElementById('reco-nid-height')||{}).value||'').trim();
-  iv._nidsAppel.push({id:'nid-'+(iv._nidsAppel.length+1),nature:nature,localisation:localisation,hauteur:height?height+' m':'',taille:'',ajouteApresReconnaissance:true});
+  const size=(document.getElementById('reco-nid-size')||{}).value||'';
+  iv._nidsAppel.push({id:'nid-'+(iv._nidsAppel.length+1),nature:nature,localisation:localisation,hauteur:height?height+' m':'',taille:size,ajouteApresReconnaissance:true});
   if(/frelons? asiatiques?/i.test(nature)){iv._natureAppelInitiale=iv._natureAppelInitiale||iv.n;iv.n='Nid de frelons asiatiques';iv._prioriteFrelonAsiatique=true;}
   if(!Array.isArray(iv.tl))iv.tl=[];
   iv.tl.push({s:'information',h:getH(N()),who:CU&&CU.l||'',note:'Nid ajouté après reconnaissance : '+nature+' — '+localisation});
@@ -111,7 +122,7 @@ function showAutorisationModal(ivId, nidIndex) {
     + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">'
     + '<div class="fg"><div class="fgl">Commune</div><input class="fi" id="aut-commune" type="text" value="' + (saved.commune || iv.com || '') + '"/></div>'
     + '<div class="fg"><div class="fgl">Date intervention</div><input class="fi" id="aut-date" type="date" value="' + (saved.date || dateDefault) + '"/></div></div>'
-    + '<div class="fg"><div class="fgl">Objet</div><input class="fi" id="aut-objet" type="text" value="' + (saved.objet || (activeNid?nidAppelLabel(activeNid,activeIndex):iv.n) || '') + '"/></div>'
+    + '<div class="fg"><div class="fgl">Objet</div><input class="fi" id="aut-objet" type="text" value="' + (saved.objet || (activeNid?[activeNid.nature,activeNid.localisation,activeNid.hauteur,activeNid.taille].filter(Boolean).join(' — '):iv.n) || '') + '"/></div>'
     + '<div class="fg"><div class="fgl">Nature r\u00e9alis\u00e9e</div>'
     + '<textarea class="fi" id="aut-nature" rows="2" style="resize:vertical;">' + (saved.nature || (activeNid?[activeNid.nature,activeNid.localisation,activeNid.hauteur,activeNid.taille].filter(Boolean).join(' — '):iv.n) || '') + '</textarea></div>'
     + '<div class="fg"><div class="fgl" style="margin-bottom:6px;">Travaux (cocher = effectu\u00e9)</div>'

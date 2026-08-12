@@ -892,6 +892,9 @@ function oM(id){
       const autorisationBtn=_showAutoBtn
         ?`<button class="btn sm" style="width:100%;margin-bottom:10px;background:#8E44AD;color:#fff;border-color:#8E44AD;" onclick="showAutorisationModal('${iv.id}')">&#x1F4DD; Autorisation &amp; Attestation</button>`
         :'';
+      const addNidBtn=_showAutoBtn&&natsEchelle.includes(iv.n)
+        ?`<button class="btn sm" style="width:100%;margin-bottom:8px;background:#FFF7ED;color:#9A3412;border:1px dashed #F97316;font-weight:700;" onclick="showAddRecognizedNidModal('${iv.id}')">➕ Ajouter un nid découvert sur place</button>`
+        :'';
       // Bouton prise en charge animal (sauvetage/capture uniquement)
       const _isAnimal=iv.n&&iv.n.toLowerCase().includes('sauvetage et capture d');
       const _showAnimalBtn=_isAnimal&&(_isOwnAgres||chef||isAdminModeActive())&&!iv._isRenfort;
@@ -901,7 +904,7 @@ function oM(id){
         :'';
       actions=`<div class="clotbox">
         ${renfortCloBtn}
-        ${iv._isRenfort?'':`${animalBtn}${autorisationBtn}
+        ${iv._isRenfort?'':`${animalBtn}${addNidBtn}${autorisationBtn}
         <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Clôturer l'intervention</div>
         <label class="avislbl"><input type="checkbox" id="chk-av" style="accent-color:var(--pur);" onchange="toggleAvisPassageHour(this,'avis-passage-hour','avis-passage-hour-wrap')"/>&#x1F7E3; Requérant absent — Avis de passage</label>
         <div id="avis-passage-hour-wrap" style="display:none;background:#FAF5FF;border:1px solid #D8B4FE;border-radius:9px;padding:9px 10px;margin:-2px 0 10px;">
