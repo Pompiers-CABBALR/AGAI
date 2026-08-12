@@ -1587,6 +1587,9 @@ function _rcPersistPendingDirty(){
 function _rcRowWritableHere(row){
   if(!row)return false;
   if(typeof isSuperAdmin==='function'&&isSuperAdmin())return true;
+  // Chaque utilisateur peut publier uniquement sa propre ligne de présence.
+  // L'historique n'est ainsi plus bloqué par la protection de la ligne globale.
+  if(row.type==='login'&&row.data&&CU&&row.data.login===CU.l)return true;
   // La politique Supabase réserve _GLOBAL au superadmin. Un utilisateur de caserne
   // ne doit jamais laisser cette ligne bloquer l'envoi de ses interventions.
   return !!(CURRENT_CASERNE_ID&&row.caserne===CURRENT_CASERNE_ID);
@@ -1696,6 +1699,10 @@ function _rcRenderRealtimeViews(){
   try{rAccueil();}catch(e){}
   try{rHist();}catch(e){}
   try{rPilp();}catch(e){}
+  try{
+    const globalView=document.getElementById('global-view');
+    if(globalView&&globalView.style.display!=='none'&&GLOBAL_ROLE==='superadmin')refreshLoginHistoryPanel();
+  }catch(e){}
 }
 function _rcRequestRealtimePull(delay){
   _rcRealtimePullPending=true;
@@ -1850,6 +1857,13 @@ function _rcSplitAll(data){
     _cabbalrActif:(data.CASERNE_DATA&&data.CASERNE_DATA._cabbalrActif),
     _initCabbalr:(data.CASERNE_DATA&&data.CASERNE_DATA._initCabbalr)
   }, deleted:false });
+  // Une ligne autonome par session permet aux comptes de caserne d'enregistrer
+  // leur connexion et leur présence sans droit d'écriture sur la ligne globale.
+  (data.LOGIN_HISTORY||[]).forEach(function(entry){
+    if(!entry||!entry.id||!entry.login)return;
+    const sessionCaserne=entry.caserneId||'_GLOBAL';
+    rows.push({id:_rcId(sessionCaserne,'login',entry.id),caserne:sessionCaserne,type:'login',data:entry,deleted:!!(data.LOGIN_HISTORY_DELETED&&data.LOGIN_HISTORY_DELETED[entry.id])});
+  });
   Object.keys(data.CASERNE_DATA||{}).forEach(function(cid){
     if(cid==='_cabbalrActif'||cid==='_initCabbalr'||cid==='_global') return;
     rows = rows.concat(_rcSplitCaserne(cid, data.CASERNE_DATA[cid]));
@@ -2075,7 +2089,12 @@ async function _rcPull(silent){
     // Reconstruire l'objet complet
     const data = { CASERNE_DATA:{} };
     const byCaserne = {};
+    const loginSessionRows=[];
     rows.forEach(function(r){
+      if(r.type==='login'){
+        if(!r.deleted&&r.data&&r.data.id)loginSessionRows.push(r.data);
+        return;
+      }
       if(r.caserne==='_GLOBAL'){
         if(r.type==='global' && !r.deleted){
           const g=r.data||{};
@@ -2104,6 +2123,12 @@ async function _rcPull(silent){
       if(!byCaserne[r.caserne]) byCaserne[r.caserne]=[];
       byCaserne[r.caserne].push(r);
     });
+    data.LOGIN_HISTORY_DELETED=Object.assign({},data.LOGIN_HISTORY_DELETED||{},typeof LOGIN_HISTORY_DELETED!=='undefined'?LOGIN_HISTORY_DELETED:{});
+    data.LOGIN_HISTORY=_mergeLoginHistory(
+      _mergeLoginHistory(typeof LOGIN_HISTORY!=='undefined'?LOGIN_HISTORY:[],data.LOGIN_HISTORY||[],data.LOGIN_HISTORY_DELETED),
+      loginSessionRows,
+      data.LOGIN_HISTORY_DELETED
+    );
     Object.keys(byCaserne).forEach(function(cid){
       data.CASERNE_DATA[cid] = _rcAssembleCaserne(byCaserne[cid]);
     });

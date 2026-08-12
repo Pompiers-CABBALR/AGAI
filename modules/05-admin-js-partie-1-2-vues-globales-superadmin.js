@@ -113,8 +113,8 @@ function normalizeLoginHistorySessions(){
 
 function isLoginHistorySessionActive(entry){
   if(!entry||!entry.actif||entry.hDeconnexion)return false;
-  const started=new Date(entry.hConnexion||0).getTime();
-  return Number.isFinite(started)&&Date.now()-started<SESSION_DURATION_MS;
+  const lastSeen=new Date(entry.lastSeenAt||entry.hConnexion||0).getTime();
+  return Number.isFinite(lastSeen)&&Date.now()-lastSeen<LOGIN_PRESENCE_TIMEOUT_MS;
 }
 
 function renderLoginHistoryAccount(group,colour){
@@ -133,12 +133,12 @@ function renderLoginHistoryAccount(group,colour){
     +'<span style="font-size:11px;color:#999;">'+group.entries.length+' connexion(s)</span><span style="color:#aaa;">▼</span></div>'
     +'<div style="display:none;overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:11px;">'
     +'<thead><tr style="background:#f5f5f7;"><th style="padding:6px;width:34px;text-align:center;"><input type="checkbox" class="login-history-group-all" onchange="toggleLoginHistoryGroupSelection(this)" aria-label="Sélectionner toutes les connexions de ce compte"/></th>'
-    +'<th style="padding:6px 12px;font-weight:600;text-align:left;">Connexion</th><th style="padding:6px 12px;font-weight:600;text-align:left;">Déconnexion</th><th style="padding:6px 12px;font-weight:600;text-align:left;">Support</th><th style="padding:6px 12px;font-weight:600;text-align:left;">Statut</th></tr></thead><tbody>'
+    +'<th style="padding:6px 12px;font-weight:600;text-align:left;">Connexion</th><th style="padding:6px 12px;font-weight:600;text-align:left;">Dernière activité</th><th style="padding:6px 12px;font-weight:600;text-align:left;">Déconnexion</th><th style="padding:6px 12px;font-weight:600;text-align:left;">Support</th><th style="padding:6px 12px;font-weight:600;text-align:left;">Statut</th></tr></thead><tbody>'
     +group.entries.map(function(entry){
       const online=isLoginHistorySessionActive(entry);
       const closure=entry.fermetureAuto?' title="'+escHtml(entry.fermetureAuto)+'"':'';
       return '<tr style="border-top:1px solid #f0f0f0;"><td style="padding:6px;text-align:center;"><input type="checkbox" class="login-history-check" data-session-id="'+escHtml(entry.id)+'" onchange="updateLoginHistorySelectionCount()" aria-label="Sélectionner cette connexion"/></td>'
-        +'<td style="padding:6px 12px;color:#444;">'+fmt(entry.hConnexion)+'</td><td style="padding:6px 12px;color:#444;"'+closure+'>'+(entry.hDeconnexion?fmt(entry.hDeconnexion):'—')+'</td><td style="padding:6px 12px;color:#64748B;">'+escHtml([entry.support,entry.navigateur].filter(Boolean).join(' · ')||'Non renseigné')+'</td>'
+        +'<td style="padding:6px 12px;color:#444;">'+fmt(entry.hConnexion)+'</td><td style="padding:6px 12px;color:#444;">'+fmt(entry.lastSeenAt||entry.hConnexion)+'</td><td style="padding:6px 12px;color:#444;"'+closure+'>'+(entry.hDeconnexion?fmt(entry.hDeconnexion):'—')+'</td><td style="padding:6px 12px;color:#64748B;">'+escHtml([entry.support,entry.navigateur].filter(Boolean).join(' · ')||'Non renseigné')+'</td>'
         +'<td style="padding:6px 12px;">'+(online?'<span style="color:#065F46;font-weight:600;">🟢 En ligne</span>':'<span style="color:#9CA3AF;">Déconnecté</span>')+'</td></tr>';
     }).join('')
     +'</tbody></table></div></div>';
@@ -191,6 +191,14 @@ function renderLoginHistorySummary(){
   const fmt=function(value){const d=new Date(value);return Number.isNaN(d.getTime())?'—':d.toLocaleDateString('fr-FR')+' '+d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});};
   return '<div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:9px;padding:8px 11px;margin-bottom:10px;font-size:11px;color:#475569;display:flex;gap:14px;flex-wrap:wrap;"><strong>'+LOGIN_HISTORY.length+' connexion(s) conservée(s)</strong><span>Du '+fmt(sorted[0]&&sorted[0].hConnexion)+' au '+fmt(sorted[sorted.length-1]&&sorted[sorted.length-1].hConnexion)+'</span><span>Nouvelles connexions : support et navigateur enregistrés</span></div>';
 }
+function refreshLoginHistoryPanel(){
+  const panel=document.getElementById('login-history-content');if(!panel)return;
+  panel.innerHTML=renderLoginHistorySummary()+renderLoginHistoryByCaserne();
+}
+window.setInterval(function(){
+  const globalView=document.getElementById('global-view');
+  if(globalView&&globalView.style.display!=='none'&&GLOBAL_ROLE==='superadmin')refreshLoginHistoryPanel();
+},30000);
 
 function renderSuperAdmin(){
   const repairedChefCorps=repairKnownChefCorpsAssignment();
@@ -496,8 +504,7 @@ function renderSuperAdmin(){
           <button class="btn sm danger" onclick="deleteAllLoginHistory()">🧹 Tout effacer</button>
         </div>
       </div>
-      ${renderLoginHistorySummary()}
-      ${renderLoginHistoryByCaserne()}
+      <div id="login-history-content">${renderLoginHistorySummary()}${renderLoginHistoryByCaserne()}</div>
     </div>
     <div style="margin-top:20px;background:#FEF2F2;border-radius:14px;padding:16px;border:1px solid #FECACA;">
       <h3 style="font-size:15px;font-weight:700;margin-bottom:4px;color:#C0392B;">⚠️ Zone dangereuse — Gestion des interventions</h3>
@@ -1742,6 +1749,21 @@ function _restoreSessionAfterLoad(){
   CU=restoredUser;
   SESSION_TOKEN=stored.token;
   SESSION_EXPIRY=Number(stored.expiresAt);
+  const restoredNow=new Date().toISOString();
+  let restoredHistoryEntry=LOGIN_HISTORY.find(function(item){return item&&item.id===SESSION_TOKEN;});
+  if(!restoredHistoryEntry){
+    const ua=String(navigator.userAgent||'');
+    restoredHistoryEntry={id:SESSION_TOKEN,login:CU.l,prenom:CU.prenom,nom:CU.nom,
+      caserneId:CURRENT_CASERNE_ID||CU.caserneId||(GLOBAL_ROLE?'EMAJ':''),caserne:(CC()&&CC().nom)||(GLOBAL_ROLE?'État-Major':'Global'),
+      hConnexion:new Date(Number(stored.lastSeenAt)||Date.now()).toISOString(),hDeconnexion:null,actif:true,lastSeenAt:restoredNow,
+      support:/iPad|Tablet|Android(?!.*Mobile)/i.test(ua)?'Tablette':/iPhone|Android.*Mobile|Mobile/i.test(ua)?'Smartphone':'Ordinateur',
+      navigateur:/Edg\//.test(ua)?'Edge':/Firefox\//.test(ua)?'Firefox':/CriOS|Chrome\//.test(ua)?'Chrome':/Safari\//.test(ua)?'Safari':'Navigateur'};
+    LOGIN_HISTORY.unshift(restoredHistoryEntry);
+  }else{
+    restoredHistoryEntry.lastSeenAt=restoredNow;restoredHistoryEntry.actif=true;restoredHistoryEntry.hDeconnexion=null;
+  }
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  window.setTimeout(function(){saveData(true);},0);
   const cas=CC();if(cas)setCaserneTheme(cas.couleur);
   document.getElementById('lw').style.display='none';
   const app=document.getElementById('app');app.style.display='flex';app.style.flexDirection='column';
@@ -1801,7 +1823,7 @@ function doLogout(){
   // Marquer la déconnexion dans l'historique
   if(SESSION_TOKEN){
     const entry=LOGIN_HISTORY.find(e=>e.id===SESSION_TOKEN);
-    if(entry){entry.hDeconnexion=new Date().toISOString();entry.actif=false;}
+    if(entry){entry.hDeconnexion=new Date().toISOString();entry.lastSeenAt=entry.hDeconnexion;entry.actif=false;}
     saveData(true); // push immédiat : l'historique de connexion est partagé
   }
   _clearSession(); // P2 : invalider la session

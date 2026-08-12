@@ -37,6 +37,7 @@ let SESSION_EXPIRY=null;
 let _sessionTimer=null;
 let _sessionWarnTimer=null;
 let _sessionLastPersist=0;
+let _loginPresenceLastPush=0;
 // SESSION_DURATION_MS est défini dans config.js
 
 function _readStoredSession(){
@@ -94,15 +95,17 @@ function _createSession(){
       login:CU.l,
       prenom:CU.prenom,
       nom:CU.nom,
-      caserneId:CURRENT_CASERNE_ID||'',
-      caserne:CC()?.nom||'Global',
+      caserneId:CURRENT_CASERNE_ID||CU.caserneId||(GLOBAL_ROLE?'EMAJ':''),
+      caserne:CC()?.nom||(GLOBAL_ROLE?'État-Major':'Global'),
       hConnexion:nowIso,
       hDeconnexion:null,
       actif:true,
+      lastSeenAt:nowIso,
       support:support,
       navigateur:navigateur
     };
     LOGIN_HISTORY.unshift(entry);
+    _loginPresenceLastPush=Date.now();
     if(LOGIN_HISTORY.length>LOGIN_HISTORY_MAX)LOGIN_HISTORY=LOGIN_HISTORY.slice(0,LOGIN_HISTORY_MAX);
     if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
     saveData(true);

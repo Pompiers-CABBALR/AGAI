@@ -396,6 +396,18 @@ function _touchSessionActivity(){
   if(!CU||!isSessionValid()||document.hidden)return;
   if(Date.now()-_sessionLastPersist<30000)return;
   _persistSessionState({backgroundAt:0});
+  const now=Date.now();
+  const entry=LOGIN_HISTORY.find(function(item){return item&&item.id===SESSION_TOKEN;});
+  if(entry){
+    entry.lastSeenAt=new Date(now).toISOString();
+    entry.actif=true;
+    entry.hDeconnexion=null;
+    if(now-_loginPresenceLastPush>=45000){
+      _loginPresenceLastPush=now;
+      if(typeof _jbEditLock!=='undefined')_jbEditLock=now;
+      saveData(true);
+    }
+  }
 }
 ['pointerdown','keydown','touchstart'].forEach(function(eventName){
   document.addEventListener(eventName,_touchSessionActivity,{passive:true});
