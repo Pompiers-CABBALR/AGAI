@@ -545,6 +545,62 @@ function resetAppelAnimals(){
   if(row){delete row.dataset.animalType;delete row.dataset.animalSituation;row.querySelectorAll('.appel-animal-choice.sel').forEach(el=>el.classList.remove('sel'));const precision=row.querySelector('[data-appel-animal-precision]');if(precision){precision.value='';precision.style.display='none';}}
   clearAppelAnimalsError();renumberAppelAnimals();
 }
+function addAppelExtraNid(host){
+  const box=document.getElementById('extra-nids-'+host);if(!box)return;
+  const row=document.createElement('div');row.className='appel-extra-nid-row';
+  row.style.cssText='background:#FFF7ED;border:1px solid #FDBA74;border-radius:9px;padding:9px;margin-top:8px;';
+  row.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;"><strong style="font-size:12px;color:#9A3412;">Nid supplémentaire</strong><button type="button" class="appel-phone-remove" title="Supprimer ce nid">−</button></div>'
+    +'<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:7px;">'
+    +'<div><div class="fgl">Nature *</div><select class="fi" data-extra-nid-type><option>Guêpes</option><option>Frelons européens</option><option>Frelons asiatiques</option><option>Nature inconnue</option></select></div>'
+    +'<div><div class="fgl">Localisation *</div><input class="fi" data-extra-nid-location placeholder="Ex. toiture, cheminée…"></div>'
+    +'<div><div class="fgl">Hauteur</div><input class="fi" type="number" min="0" data-extra-nid-height placeholder="m"></div>'
+    +'<div><div class="fgl">Taille</div><select class="fi" data-extra-nid-size><option value="">—</option><option>Petit</option><option>Moyen</option><option>Gros</option><option>Inconnu</option></select></div>'
+    +'</div><div class="ferr" data-extra-nid-error style="margin-top:5px;">Précisez la localisation de ce nid.</div>';
+  row.querySelector('button').onclick=function(){row.remove();};
+  row.querySelector('[data-extra-nid-location]').addEventListener('input',function(){const err=row.querySelector('[data-extra-nid-error]');if(err)err.style.display='none';});
+  box.appendChild(row);row.querySelector('[data-extra-nid-location]').focus();
+}
+function resetAppelNids(){
+  ['g','f'].forEach(function(host){const box=document.getElementById('extra-nids-'+host);if(box)box.innerHTML='';});
+  const g=document.getElementById('primary-nid-type-g');if(g)g.value='Guêpes';
+  const f=document.getElementById('primary-nid-type-f');if(f)f.value='Frelons asiatiques';
+}
+function getAppelNids(){
+  const result=[];
+  const host=document.getElementById('sm-g')&&document.getElementById('sm-g').offsetParent!==null?'g':document.getElementById('sm-f')&&document.getElementById('sm-f').offsetParent!==null?'f':'';
+  if(!host)return result;
+  const group=document.getElementById(host==='g'?'lg':'lf');
+  const selected=group&&group.querySelector('.smopt.sel');
+  if(selected){
+    let localisation=selected.dataset.val||selected.textContent.trim();
+    if(localisation==='Autre')localisation=((document.getElementById(host==='g'?'lg-autre-txt':'lf-autre-txt')||{}).value||'Autre').trim();
+    const nature=((document.getElementById('primary-nid-type-'+host)||{}).value||'Nature inconnue').trim();
+    const hauteur=((document.getElementById(host==='g'?'hg-val':'hf-val')||{}).value||'').trim();
+    result.push({id:'nid-1',nature,localisation,hauteur:hauteur?hauteur+' m':'',taille:host==='f'?(nidSize||''):''});
+  }
+  document.querySelectorAll('#extra-nids-'+host+' .appel-extra-nid-row').forEach(function(row){
+    const nature=(row.querySelector('[data-extra-nid-type]')||{}).value||'Nature inconnue';
+    const localisation=((row.querySelector('[data-extra-nid-location]')||{}).value||'').trim();
+    const hauteur=((row.querySelector('[data-extra-nid-height]')||{}).value||'').trim();
+    const taille=(row.querySelector('[data-extra-nid-size]')||{}).value||'';
+    result.push({id:'nid-'+(result.length+1),nature,localisation,hauteur:hauteur?hauteur+' m':'',taille});
+  });
+  return result;
+}
+function validateAppelNids(){
+  let valid=true;
+  document.querySelectorAll('.appel-extra-nid-row').forEach(function(row){
+    const location=((row.querySelector('[data-extra-nid-location]')||{}).value||'').trim();
+    const err=row.querySelector('[data-extra-nid-error]');
+    if(err)err.style.display=location?'none':'block';
+    if(!location)valid=false;
+  });
+  return valid;
+}
+function nidAppelLabel(nid,index){
+  if(!nid)return'Nid '+(index+1);
+  return 'Nid '+(index+1)+' — '+[nid.nature,nid.localisation,nid.hauteur,nid.taille].filter(Boolean).join(' · ');
+}
 function clearReqAvailabilityError(){const err=document.getElementById('req-dispo-error');if(err)err.style.display='none';}
 function addReqAvailabilityDay(){
   const box=document.getElementById('req-dispo-days');if(!box)return;
@@ -613,7 +669,7 @@ function getInterventionPhones(iv){
   const vals=Array.isArray(iv&&iv.tels)?iv.tels:iv&&iv.tel?[iv.tel]:[];
   return [...new Set(vals.map(v=>String(v||'').trim()).filter(Boolean))];
 }
-function vF(){let ok=true;[['a','ea'],['r','er'],['t','et']].forEach(([id,eid])=>{const el=document.getElementById('f'+id);if(!el.value.trim()){ok=false;el.classList.add('err');document.getElementById(eid).style.display='block';}});if(!selC2){ok=false;document.getElementById('ci').classList.add('err');document.getElementById('ec').style.display='block';}if(!validateReqAvailability())ok=false;if(!validateAppelAnimals())ok=false;if(!ok)document.getElementById('vb2').style.display='block';return ok;}
+function vF(){let ok=true;[['a','ea'],['r','er'],['t','et']].forEach(([id,eid])=>{const el=document.getElementById('f'+id);if(!el.value.trim()){ok=false;el.classList.add('err');document.getElementById(eid).style.display='block';}});if(!selC2){ok=false;document.getElementById('ci').classList.add('err');document.getElementById('ec').style.display='block';}if(!validateReqAvailability())ok=false;if(!validateAppelAnimals())ok=false;if(!validateAppelNids())ok=false;if(!ok)document.getElementById('vb2').style.display='block';return ok;}
 
 // ────────────────── ENREGISTRER APPEL ──────────────────
 // Capture les détails contextuels saisis dans les sous-menus de la prise d'appel.
@@ -634,6 +690,8 @@ function _captureAppelDetails(){
     const hf=txt('hf-val');if(hf)d['Hauteur']=hf+' m';
     if(nidSize)d['Taille du nid']=nidSize;
   }
+  const nids=getAppelNids();
+  if(nids.length)d['Nids à traiter']=nids.map(function(nid,index){return nidAppelLabel(nid,index);}).join(' ; ');
   // Essaim abeilles (sm-a) : localisation
   if(vis('sm-a')){
     const loc=selOf('la');if(loc)d['Localisation de l\u2019essaim']=loc==='Autre'?(txt('la-autre-txt')||'Autre'):loc;
@@ -680,6 +738,7 @@ function enr(){
   const reqDispo=getReqAvailability();
   const erp=!!document.getElementById('chk-erp')?.checked;
   const animauxAppel=getAppelAnimals();
+  const nidsAppel=getAppelNids();
   // Incrémenter compteur appels
   incCallCounter();
 
@@ -688,7 +747,7 @@ function enr(){
       id:nextPilpId(annee),ivRef:null,_numApl:numApl,
       // Aucun numéro d'intervention tant que la PILP reste en attente.
       n:'Nid de frelons asiatiques — PILP',addr,com,h,
-      req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,reqDispo,_erp:erp,_urgence:erp,
+      req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,reqDispo,_nidsAppel:nidsAppel,_erp:erp,_urgence:erp,
       localisation:null,hauteur:null,reconnaissanceFaite:false,axeTir:null,obs:det,
       s:'en-attente',agr:CU.l,tireur:null,rappels:exPilp.length,
       avisIds:exPilp.map(iv=>iv.id),tl:[mkTL('en-attente',h,CU.l)]
@@ -704,7 +763,7 @@ function enr(){
   }
   // Enregistrement normal — id = numéro APL, numéro INT attribué à la clôture
   const newIv={id:makeInterventionRecordId(numApl),_numApl:numApl,
-    n:selNat,addr,com,h,op:CU.l,s:'en-attente',det,eng:null,_sdis:document.getElementById('chk-sdis')?.checked||false,_erp:erp,_urgence:erp,_animauxAppel:animauxAppel,
+    n:selNat,addr,com,h,op:CU.l,s:'en-attente',det,eng:null,_sdis:document.getElementById('chk-sdis')?.checked||false,_erp:erp,_urgence:erp,_animauxAppel:animauxAppel,_nidsAppel:nidsAppel,
     req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,reqDispo,
     obs:'',agr:null,rappels:exIv.length,avisIds:exIv.map(iv=>iv.id),_appelDetails:appelDetails,
     tl:[mkTL('en-attente',h,CU.l)]};
@@ -761,6 +820,7 @@ function rF(){
   resetAppelPhones();
   resetReqAvailability();
   resetAppelAnimals();
+  resetAppelNids();
   document.getElementById('fa').placeholder='Sélectionnez d’abord une commune…';
   document.getElementById('fa-dd').style.display='none';
   ['sm-g','sm-f','sm-a','sm-n','sm-e'].forEach(id=>{const e=document.getElementById(id);if(e)e.style.display='none';});

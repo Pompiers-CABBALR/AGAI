@@ -9,7 +9,7 @@
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
 <title>AGAI</title>
-<link rel="stylesheet" href="style.css?v=20260812-recherche-adresses-125"/>
+<link rel="stylesheet" href="style.css?v=20260812-avis-disponibilites-multinids-127"/>
 </head>
 <body>
 
@@ -94,8 +94,16 @@
           <label class="pilp-chk-lbl"><input type="checkbox" id="chk-pilp-direct"/>🎯 Mettre directement en attente PILP</label>
         </div>
         <!-- Sous-menus contextuels -->
-        <div id="sm-g" style="display:none;"><div class="smbox"><div class="smtit">Localisation du nid</div><div id="lg"><div class="smopt" onclick="sr('lg',this,'Sous terre')">🌍 Sous terre</div><div class="smopt" onclick="sr('lg',this,'Toiture')">🏠 Toiture</div><div class="smopt" onclick="sr('lg',this,'Arbre/Haie')">🌳 Arbre / Haie</div><div class="smopt" onclick="sr('lg',this,'Autre')">📋 Autre</div></div><div id="hgb" style="display:none;margin-top:8px;"><div class="smtit">Hauteur estimée</div><div class="urow"><input type="number" min="0" placeholder="ex. 5" id="hg-val"/><span class="ul2">m</span></div></div><div id="lgab" style="display:none;margin-top:6px;"><input class="fi" type="text" placeholder="Préciser la localisation..." id="lg-autre-txt"/></div></div></div>
-        <div id="sm-f" style="display:none;"><div class="smbox"><div class="smtit">Localisation du nid</div><div id="lf"><div class="smopt" onclick="sr('lf',this,'Arbre')">🌳 Arbre</div><div class="smopt" onclick="sr('lf',this,'Toiture')">🏠 Toiture</div><div class="smopt" onclick="sr('lf',this,'Nichoir')">🐦 Nichoir à oiseaux</div><div class="smopt" onclick="sr('lf',this,'Autre')">📋 Autre</div></div><div id="lfab" style="display:none;margin-top:6px;"><input class="fi" type="text" placeholder="Préciser..." id="lf-autre-txt"/></div><div id="hfb" style="display:none;margin-top:8px;"><div class="smtit">Hauteur estimée</div><div class="urow"><input type="number" min="0" placeholder="ex. 8" id="hf-val"/><span class="ul2">m</span></div></div><div style="margin-top:10px;" class="smtit">Taille du nid</div><div class="smg2" style="gap:6px;"><div class="szo" onclick="sz(this,'Petit')"><div class="a">Petit</div><div class="b">pamplemousse</div></div><div class="szo" onclick="sz(this,'Moyen')"><div class="a">Moyen</div><div class="b">ballon</div></div><div class="szo" onclick="sz(this,'Gros')"><div class="a">Gros</div><div class="b">plus grand</div></div><div class="szo" onclick="sz(this,'Inconnu')"><div class="a">Inconnu</div><div class="b">non visible</div></div></div></div></div>
+        <div id="sm-g" style="display:none;"><div class="smbox">
+          <div class="smtit">Nature du premier nid</div><select class="fi" id="primary-nid-type-g" style="margin-bottom:8px;"><option>Guêpes</option><option>Frelons européens</option><option>Frelons asiatiques</option><option>Nature inconnue</option></select>
+          <div class="smtit">Localisation du premier nid</div><div id="lg"><div class="smopt" onclick="sr('lg',this,'Sous terre')">🌍 Sous terre</div><div class="smopt" onclick="sr('lg',this,'Toiture')">🏠 Toiture</div><div class="smopt" onclick="sr('lg',this,'Arbre/Haie')">🌳 Arbre / Haie</div><div class="smopt" onclick="sr('lg',this,'Autre')">📋 Autre</div></div><div id="hgb" style="display:none;margin-top:8px;"><div class="smtit">Hauteur estimée</div><div class="urow"><input type="number" min="0" placeholder="ex. 5" id="hg-val"/><span class="ul2">m</span></div></div><div id="lgab" style="display:none;margin-top:6px;"><input class="fi" type="text" placeholder="Préciser la localisation..." id="lg-autre-txt"/></div>
+          <div id="extra-nids-g" style="margin-top:10px;"></div><button type="button" class="btn sm" style="width:100%;margin-top:8px;background:#FFF7ED;color:#9A3412;border-color:#FDBA74;" onclick="addAppelExtraNid('g')">+ Ajouter un autre nid</button>
+        </div></div>
+        <div id="sm-f" style="display:none;"><div class="smbox">
+          <div class="smtit">Nature du premier nid</div><select class="fi" id="primary-nid-type-f" style="margin-bottom:8px;"><option selected>Frelons asiatiques</option><option>Frelons européens</option><option>Guêpes</option><option>Nature inconnue</option></select>
+          <div class="smtit">Localisation du premier nid</div><div id="lf"><div class="smopt" onclick="sr('lf',this,'Arbre')">🌳 Arbre</div><div class="smopt" onclick="sr('lf',this,'Toiture')">🏠 Toiture</div><div class="smopt" onclick="sr('lf',this,'Nichoir')">🐦 Nichoir à oiseaux</div><div class="smopt" onclick="sr('lf',this,'Autre')">📋 Autre</div></div><div id="lfab" style="display:none;margin-top:6px;"><input class="fi" type="text" placeholder="Préciser..." id="lf-autre-txt"/></div><div id="hfb" style="display:none;margin-top:8px;"><div class="smtit">Hauteur estimée</div><div class="urow"><input type="number" min="0" placeholder="ex. 8" id="hf-val"/><span class="ul2">m</span></div></div><div style="margin-top:10px;" class="smtit">Taille du nid</div><div class="smg2" style="gap:6px;"><div class="szo" onclick="sz(this,'Petit')"><div class="a">Petit</div><div class="b">pamplemousse</div></div><div class="szo" onclick="sz(this,'Moyen')"><div class="a">Moyen</div><div class="b">ballon</div></div><div class="szo" onclick="sz(this,'Gros')"><div class="a">Gros</div><div class="b">plus grand</div></div><div class="szo" onclick="sz(this,'Inconnu')"><div class="a">Inconnu</div><div class="b">non visible</div></div></div>
+          <div id="extra-nids-f" style="margin-top:10px;"></div><button type="button" class="btn sm" style="width:100%;margin-top:8px;background:#FFF7ED;color:#9A3412;border-color:#FDBA74;" onclick="addAppelExtraNid('f')">+ Ajouter un autre nid</button>
+        </div></div>
         <div id="sm-a" style="display:none;"><div class="smbox"><div class="smtit">Localisation de l'essaim</div><div id="la"><div class="smopt" onclick="sr('la',this,'Arbre')">🌳 Arbre</div><div class="smopt" onclick="sr('la',this,'Haie')">🌿 Haie</div><div class="smopt" onclick="sr('la',this,'Mur')">🧱 Mur</div><div class="smopt" onclick="sr('la',this,'Autre')">📋 Autre</div></div><div id="laab" style="display:none;margin-top:6px;"><input class="fi" type="text" placeholder="Préciser..." id="la-autre-txt"/></div></div></div>
         <div id="sm-n" style="display:none;">
           <div class="smbox">
@@ -782,28 +790,28 @@
   <div class="mod"><div class="mhan"></div><div class="mtit" id="mt">—</div><div class="mid2" id="mi">—</div><div id="mb"></div><button class="mclose" onclick="cM()">Fermer</button></div>
 </div>
 
-<script src="runtime-config.js?v=20260812-recherche-adresses-125"></script>
-<script src="modules/00-preambule.js?v=20260812-recherche-adresses-125" defer></script>
-<script src="modules/01-config-js.js?v=20260812-recherche-adresses-125" defer></script>
-<script src="modules/02-auth-js-partie-1-2-structure-casernes-numerotation.js?v=20260812-recherche-adresses-125" defer></script>
-<script src="modules/03-security-js.js?v=20260812-recherche-adresses-125" defer></script>
-<script src="modules/04-auth-js-partie-2-2-login-session-droits.js?v=20260812-recherche-adresses-125" defer></script>
-<script src="modules/05-admin-js-partie-1-2-vues-globales-superadmin.js?v=20260812-recherche-adresses-125" defer></script>
-<script src="modules/06-ui-js-accueil-js.js?v=20260812-recherche-adresses-125" defer></script>
-<script src="modules/07-appel-js.js?v=20260812-recherche-adresses-125" defer></script>
-<script src="modules/08-interventions-js.js?v=20260812-recherche-adresses-125" defer></script>
-<script src="modules/09-pilp-js.js?v=20260812-recherche-adresses-125" defer></script>
-<script src="modules/10-historique-js.js?v=20260812-recherche-adresses-125" defer></script>
-<script src="modules/11-admin-js-partie-2-2-gestion-utilisateurs.js?v=20260812-recherche-adresses-125" defer></script>
-<script src="modules/12-astreintes-js.js?v=20260812-recherche-adresses-125" defer></script>
-<script src="modules/13-autorisation-js.js?v=20260812-recherche-adresses-125" defer></script>
-<script src="modules/14-stats-js.js?v=20260812-recherche-adresses-125" defer></script>
-<script src="modules/15-storage-js.js?v=20260812-recherche-adresses-125" defer></script>
-<script src="modules/16-email-js.js?v=20260812-recherche-adresses-125" defer></script>
-<script src="modules/17-animal-js.js?v=20260812-recherche-adresses-125" defer></script>
-<script src="modules/18-planning-annuel-js.js?v=20260812-recherche-adresses-125" defer></script>
-<script src="modules/19-onedrive-sync-js.js?v=20260812-recherche-adresses-125" defer></script>
-<script src="modules/20-formations-js.js?v=20260812-recherche-adresses-125" defer></script>
-<script src="modules/21-astreinte-tel-js.js?v=20260812-recherche-adresses-125" defer></script>
+<script src="runtime-config.js?v=20260812-avis-disponibilites-multinids-127"></script>
+<script src="modules/00-preambule.js?v=20260812-avis-disponibilites-multinids-127" defer></script>
+<script src="modules/01-config-js.js?v=20260812-avis-disponibilites-multinids-127" defer></script>
+<script src="modules/02-auth-js-partie-1-2-structure-casernes-numerotation.js?v=20260812-avis-disponibilites-multinids-127" defer></script>
+<script src="modules/03-security-js.js?v=20260812-avis-disponibilites-multinids-127" defer></script>
+<script src="modules/04-auth-js-partie-2-2-login-session-droits.js?v=20260812-avis-disponibilites-multinids-127" defer></script>
+<script src="modules/05-admin-js-partie-1-2-vues-globales-superadmin.js?v=20260812-avis-disponibilites-multinids-127" defer></script>
+<script src="modules/06-ui-js-accueil-js.js?v=20260812-avis-disponibilites-multinids-127" defer></script>
+<script src="modules/07-appel-js.js?v=20260812-avis-disponibilites-multinids-127" defer></script>
+<script src="modules/08-interventions-js.js?v=20260812-avis-disponibilites-multinids-127" defer></script>
+<script src="modules/09-pilp-js.js?v=20260812-avis-disponibilites-multinids-127" defer></script>
+<script src="modules/10-historique-js.js?v=20260812-avis-disponibilites-multinids-127" defer></script>
+<script src="modules/11-admin-js-partie-2-2-gestion-utilisateurs.js?v=20260812-avis-disponibilites-multinids-127" defer></script>
+<script src="modules/12-astreintes-js.js?v=20260812-avis-disponibilites-multinids-127" defer></script>
+<script src="modules/13-autorisation-js.js?v=20260812-avis-disponibilites-multinids-127" defer></script>
+<script src="modules/14-stats-js.js?v=20260812-avis-disponibilites-multinids-127" defer></script>
+<script src="modules/15-storage-js.js?v=20260812-avis-disponibilites-multinids-127" defer></script>
+<script src="modules/16-email-js.js?v=20260812-avis-disponibilites-multinids-127" defer></script>
+<script src="modules/17-animal-js.js?v=20260812-avis-disponibilites-multinids-127" defer></script>
+<script src="modules/18-planning-annuel-js.js?v=20260812-avis-disponibilites-multinids-127" defer></script>
+<script src="modules/19-onedrive-sync-js.js?v=20260812-avis-disponibilites-multinids-127" defer></script>
+<script src="modules/20-formations-js.js?v=20260812-avis-disponibilites-multinids-127" defer></script>
+<script src="modules/21-astreinte-tel-js.js?v=20260812-avis-disponibilites-multinids-127" defer></script>
 </body>
 </html>

@@ -984,15 +984,18 @@ function genRapportInterventionHTML(ivId) {
 
   // Autorisation
   let autBody='';
-  const autoFull=iv._isRenfort?null:_buildAutorisationHTML(ivId,'autorisation');
-  if(autoFull){
+  const autorisationList=Array.isArray(iv._autorisationNids)?iv._autorisationNids:(iv._autorisationData?[iv._autorisationData]:[]);
+  if(!iv._isRenfort)autorisationList.forEach(function(data,index){
+    if(!data)return;
+    const autoFull=_buildAutorisationHTML(ivId,'autorisation',index);
+    if(!autoFull)return;
     const bS=autoFull.indexOf('<body>'),bE=autoFull.lastIndexOf('</body>');
     if(bS>0&&bE>0){
       let ab=autoFull.slice(bS+6,bE).trim();
       ab=ab.replace(/^<div[^>]*class="page"[^>]*>/,'').replace(/<\/div>\s*$/,'');
-      autBody=ab;
+      autBody+='<div class="aut-nid-doc"'+(index?' style="page-break-before:always;break-before:page;padding-top:5mm;"':'')+'><div style="font-size:10pt;font-weight:700;color:#6B3AA0;margin-bottom:3mm;">Nid '+(index+1)+' sur '+autorisationList.length+'</div>'+ab+'</div>';
     }
-  }
+  });
   const avisBody=iv._isRenfort?'':_buildAvisPassageBody(iv);
 
   // Prises en charge animales : joindre la page sapeurs-pompiers de chaque

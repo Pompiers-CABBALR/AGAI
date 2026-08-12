@@ -534,6 +534,18 @@ function saveInterventionConfiguredCrew(iv,fields,selectedVehicle){
 
 const _pendingNextInterventionStarts={};
 
+function reqAvailabilityBadgeHTML(iv){
+  const dispo=iv&&iv.reqDispo;
+  if(!dispo||!dispo.label)return'';
+  const unavailable=dispo.state==='indisponible';
+  const color=unavailable?'#991B1B':'#166534';
+  const bg=unavailable?'#FEE2E2':'#DCFCE7';
+  const icon=unavailable?'&#x274C;':'&#x2705;';
+  return '<div class="iv-req-dispo" title="'+escHtml(dispo.label)+'" style="margin-top:3px;display:flex;align-items:flex-start;gap:4px;font-size:10px;font-weight:600;color:'+color+';">'
+    +'<span style="flex:0 0 auto;background:'+bg+';border-radius:5px;padding:1px 5px;">'+icon+' Requérant</span>'
+    +'<span style="min-width:0;white-space:normal;line-height:1.25;">'+escHtml(dispo.label)+'</span></div>';
+}
+
 // === P8 : Fonction de rendu dédiée (évite XSS + facilite les tests) ===
 /**
  * Génère le HTML d'une ligne d'intervention pour la liste.
@@ -572,6 +584,7 @@ function renderInterventionRow(iv, ag, tireur) {
       <div class="ivrh">&#x1F4C5; ${(iv.h || '').slice(0, 8)}${isRenfortUT ? ' <span style="background:#7C3AED;color:#fff;border-radius:4px;padding:0 5px;font-size:9px;font-weight:700;margin-left:4px;">RENFORT UT</span>' : ''}</div>
       <div class="ivrn">${isPilp ? '&#x1F3AF; ' : ''}${escHtml(iv.n)}${isRenfortUT ? ` <span style="font-size:10px;color:#7C3AED;font-weight:400;">— ${escHtml(iv._caserneSourceNom || '')}</span>` : ''}${iv._avisPassage ? ' <span style="background:#9B59B6;color:#fff;border-radius:4px;padding:0 5px;font-size:9px;font-weight:700;margin-left:4px;">🟣 Avis passage</span>' : ''}</div>
       <div class="ivrc">&#x1F4CD; ${escHtml(interventionAddressLabel(iv))}${iv.eng ? ' · ' + escHtml(iv.eng) : ''}${isRenfortUT && iv._hDebut ? ' · depuis ' + escHtml(iv._hDebut) : ''}${numBadges}</div>
+      ${iv.s==='en-attente'?reqAvailabilityBadgeHTML(iv):''}
     </div>
     <div class="ivrr" onclick="${onclick}">
       ${interventionRouteBadgeHTML(iv)}
@@ -773,6 +786,20 @@ function toggleAvisPassageHour(checkbox,timeId,wrapId){
     input.required=checked;
     if(checked&&!input.value)input.value=getHHMM(N());
   }
+}
+function autorisationDocumentsHTML(iv){
+  if(!iv)return'';
+  const list=Array.isArray(iv._autorisationNids)?iv._autorisationNids:(iv._autorisationData?[iv._autorisationData]:[]);
+  const rows=list.map(function(data,index){
+    if(!data)return'';
+    const nid=interventionNids(iv)[index];
+    const label=nid?[nid.nature,nid.localisation].filter(Boolean).join(' · '):iv.n;
+    return '<div style="background:#fff;border:1px solid #DDD6FE;border-radius:8px;padding:8px;margin-top:6px;">'
+      +'<div style="font-size:11px;font-weight:700;color:#6B3AA0;margin-bottom:6px;">Nid '+(index+1)+(label?' — '+escHtml(label):'')+'</div>'
+      +'<div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn sm" style="background:#185FA5;color:#fff;" onclick="viewPdfDocument(\''+iv.id+'\',\'autorisation\','+index+')">&#x1F4CB; Autorisation</button>'
+      +'<button class="btn sm" style="background:#3B6D11;color:#fff;" onclick="viewPdfDocument(\''+iv.id+'\',\'attestation\','+index+')">&#x1F4CB; Attestation</button></div></div>';
+  }).join('');
+  return rows;
 }
 
 // ────────────────── MODAL ──────────────────
@@ -1025,13 +1052,9 @@ function oM(id){
       <button class="btn sm" style="background:#0F766E;color:#fff;border-color:#0F766E;" onclick="showCompteRenduModal('${iv.id}')">${iv._crValide?'&#x1F512; Voir':iv._crTexte||iv._compteRendu?'&#x270F;&#xFE0F; Modifier':'&#x1F4CB; Rédiger le compte rendu'}</button>
       <button class="btn sm" style="background:#C0392B;color:#fff;" onclick="voirRapportIntervention('${iv.id}')">&#x1F5A8; Rapport PDF</button>
     </div>`:``}    <div class="msep"></div>
-    ${(iv._pdfAutorisation||iv._pdfAttestation||iv._autorisationData)&&_showAutoBtn&&(iv.agr===CU.l||iv._agr2===CU.l||isAdminModeActive())?`<div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:10px;padding:10px 12px;margin-bottom:10px;">
+    ${(iv._pdfAutorisation||iv._pdfAttestation||iv._autorisationData||(Array.isArray(iv._autorisationNids)&&iv._autorisationNids.some(Boolean)))&&_showAutoBtn&&(iv.agr===CU.l||iv._agr2===CU.l||isAdminModeActive())?`<div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:10px;padding:10px 12px;margin-bottom:10px;">
       <div style="font-size:11px;font-weight:700;color:#6B3AA0;margin-bottom:8px;">&#x1F4DD; Documents autorisation / attestation</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        ${(iv._pdfAutorisation||iv._autorisationData)?`<button class="btn sm" style="background:#185FA5;color:#fff;" onclick="viewPdfDocument('${iv.id}','autorisation')">&#x1F4CB; Autorisation</button>`:''}
-        ${(iv._pdfAttestation||iv._autorisationData)?`<button class="btn sm" style="background:#3B6D11;color:#fff;" onclick="viewPdfDocument('${iv.id}','attestation')">&#x1F4CB; Attestation</button>`:''}
-        ${!iv._pdfAutorisation&&iv._autorisationData?`<span style="font-size:10px;color:var(--t2);align-self:center;">&#x26A0;&#xFE0F; Générés à la volée</span>`:'<span style="font-size:10px;color:var(--grn);align-self:center;">&#x2705; Sauvegardés</span>'}
-      </div>
+      ${autorisationDocumentsHTML(iv)}
     </div>`:''}
     ${iv._avisPassage&&(iv.agr===CU.l||iv._agr2===CU.l||hasAdministrativeAccount())?`<div style="background:#FAF5FF;border:1px solid #D8B4FE;border-radius:10px;padding:10px 12px;margin-bottom:10px;">
       <div style="font-size:11px;font-weight:700;color:#6B21A8;margin-bottom:8px;">&#x1F4EC; Avis de passage${getAvisPassageHour(iv)?' — déposé à '+escHtml(getAvisPassageHour(iv)):''}</div>
@@ -1314,9 +1337,16 @@ function clot(id){
   iv.s='terminee';iv._hFin=getHHMM(N());iv.tl.push({s:'terminee',h,who:CU.l+agr2Lbl});
   supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
   (iv.avisIds||[]).forEach(aid=>{const av=IVS.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';av.tl.push({s:'terminee',h,who:CU.l+' (fusion)'});}});
-  if(iv._autorisationData&&iv._autorisationData.nom){
-    iv._pdfAutorisation=_buildAutorisationHTML(id,'autorisation');
-    iv._pdfAttestation=_buildAutorisationHTML(id,'attestation');
+  const autorisationNids=Array.isArray(iv._autorisationNids)?iv._autorisationNids:(iv._autorisationData?[iv._autorisationData]:[]);
+  if(autorisationNids.some(function(data){return data&&data.nom;})){
+    iv._pdfAutorisations=[];iv._pdfAttestations=[];
+    autorisationNids.forEach(function(data,index){
+      if(!data||!data.nom)return;
+      iv._pdfAutorisations[index]=_buildAutorisationHTML(id,'autorisation',index);
+      iv._pdfAttestations[index]=_buildAutorisationHTML(id,'attestation',index);
+    });
+    iv._pdfAutorisation=iv._pdfAutorisations[0]||'';
+    iv._pdfAttestation=iv._pdfAttestations[0]||'';
   }
   if(!iv.eng&&selEng)iv.eng=selEng;
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();

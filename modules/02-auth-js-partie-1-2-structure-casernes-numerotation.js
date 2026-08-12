@@ -127,14 +127,14 @@ function getCurrentAccessScope(){
   };
 }
 let CASERNES=[
-  {id:'CIS01',nom:'UT Cuinchy',                   code:'CUI',couleur:'#C0392B',email:''},
-  {id:'CIS02',nom:'UT Divion',                    code:'DIV',couleur:'#2980B9',email:''},
-  {id:'CIS03',nom:'UT Hersin-Coupigny',           code:'HER',couleur:'#1ABC9C',email:''},
-  {id:'CIS04',nom:'UT Isbergues',                 code:'ISB',couleur:'#8E44AD',email:''},
-  {id:'CIS05',nom:'UT Lapugnoy',                  code:'LAP',couleur:'#E67E22',email:''},
-  {id:'CIS06',nom:'UT Noyelles-lès-Vermelles',code:'NOY',couleur:'#16A085',email:''},
-  {id:'CIS07',nom:'UT Sailly-Labourse',           code:'SAI',couleur:'#D35400',email:''},
-  {id:'EMAJ',nom:'État-Major',                     code:'EMA',couleur:'#1D4ED8',email:'',_emaj:true},
+  {id:'CIS01',nom:'UT Cuinchy',                   code:'CUI',couleur:'#C0392B',email:'',astreintePhone:''},
+  {id:'CIS02',nom:'UT Divion',                    code:'DIV',couleur:'#2980B9',email:'',astreintePhone:''},
+  {id:'CIS03',nom:'UT Hersin-Coupigny',           code:'HER',couleur:'#1ABC9C',email:'',astreintePhone:''},
+  {id:'CIS04',nom:'UT Isbergues',                 code:'ISB',couleur:'#8E44AD',email:'',astreintePhone:''},
+  {id:'CIS05',nom:'UT Lapugnoy',                  code:'LAP',couleur:'#E67E22',email:'',astreintePhone:'06 32 13 28 53'},
+  {id:'CIS06',nom:'UT Noyelles-lès-Vermelles',code:'NOY',couleur:'#16A085',email:'',astreintePhone:''},
+  {id:'CIS07',nom:'UT Sailly-Labourse',           code:'SAI',couleur:'#D35400',email:'',astreintePhone:''},
+  {id:'EMAJ',nom:'État-Major',                     code:'EMA',couleur:'#1D4ED8',email:'',astreintePhone:'',_emaj:true},
 ];
 const CASERNE_DATA={};
 function initCaserneData(cid){

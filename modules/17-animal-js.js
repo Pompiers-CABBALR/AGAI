@@ -783,6 +783,12 @@ function _applyDataObject(data){
   const activeReportSnapshot=activeReportCaserne&&Array.isArray(activeReportCaserne.ivs)
     ?activeReportCaserne.ivs.find(function(iv){return iv&&iv.id===activeReportId;}):null;
   if(data.CASERNES&&data.CASERNES.length){CASERNES.length=0;data.CASERNES.forEach(c=>CASERNES.push(c));}
+  // Migration douce : les sauvegardes antérieures ne possèdent pas encore
+  // le portable d'astreinte. Conserver l'ancien numéro de Lapugnoy et laisser
+  // les autres casernes le renseigner dans l'espace superadmin.
+  CASERNES.forEach(function(c){
+    if(c&&typeof c.astreintePhone==='undefined')c.astreintePhone=c.id==='CIS05'?'06 32 13 28 53':'';
+  });
   // Garantir la présence de la caserne État-Major (espace de saisie du chef de corps)
   if(!CASERNES.find(c=>c.id==='EMAJ')){
     CASERNES.push({id:'EMAJ',nom:'État-Major',code:'EMA',couleur:'#1D4ED8',email:'',_emaj:true});

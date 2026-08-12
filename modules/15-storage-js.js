@@ -12,7 +12,7 @@
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260812-recherche-adresses-125';
+const APP_VERSION='20260812-avis-disponibilites-multinids-127';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -145,20 +145,27 @@ function savePdfDocuments(ivId) {
   // Sauvegarde les documents HTML dans l'IV pour consultation ultérieure
   saveAutorisationData(ivId);
   const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
-  if(!iv._autorisationData)return;
-  // Génère les HTML des deux pages et les stocke
-  iv._pdfAutorisation = _buildAutorisationHTML(ivId, 'autorisation');
-  iv._pdfAttestation  = _buildAutorisationHTML(ivId, 'attestation');
+  const dataList=Array.isArray(iv._autorisationNids)?iv._autorisationNids.filter(Boolean):(iv._autorisationData?[iv._autorisationData]:[]);
+  if(!dataList.length)return;
+  iv._pdfAutorisations=[];iv._pdfAttestations=[];
+  dataList.forEach(function(data,index){
+    if(!data)return;
+    iv._pdfAutorisations[index]=_buildAutorisationHTML(ivId,'autorisation',index);
+    iv._pdfAttestations[index]=_buildAutorisationHTML(ivId,'attestation',index);
+  });
+  iv._pdfAutorisation=iv._pdfAutorisations[0]||'';
+  iv._pdfAttestation=iv._pdfAttestations[0]||'';
   saveData();
 }
 
-function _buildAutorisationHTML(ivId, docType) {
+function _buildAutorisationHTML(ivId, docType, nidIndex) {
   const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return '';
-  if(!iv._autorisationData||(!iv._autorisationData.nom&&!iv._autorisationData.prenom&&!iv._autorisationData.adresse))return '';
-  const cas = CC();
+  const activeIndex=Number.isInteger(nidIndex)?nidIndex:(Number.isInteger(_autorisationActiveNid[ivId])?_autorisationActiveNid[ivId]:0);
+  const saved = autorisationDataForNid(iv,activeIndex);
+  if(!saved||(!saved.nom&&!saved.prenom&&!saved.adresse))return '';
+  const cas = getAvisPassageCaserne(iv);
   let utNom = cas ? cas.nom : ''; utNom = utNom.replace(/^UT\s+/i,'').trim();
   const caserneNom = cas ? cas.nom : '';
-  const saved = iv._autorisationData || {};
   const type = saved.demandeurType || 'Propri\u00e9taire';
   const autreTexte = saved.autreTexte || '';
   const nomComplet = ((saved.prenom||'')+' '+(saved.nom||'')).trim();
@@ -269,12 +276,15 @@ function _buildAutorisationHTML(ivId, docType) {
   return '<!DOCTYPE html><html><head><meta charset="UTF-8">'+css+'</head><body>'+page+'</body></html>';
 }
 
-function viewPdfDocument(ivId, docType) {
+function viewPdfDocument(ivId, docType, nidIndex) {
   const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
-  let html = docType==='autorisation' ? iv._pdfAutorisation : iv._pdfAttestation;
+  const index=Number.isInteger(nidIndex)?nidIndex:0;
+  let html=docType==='autorisation'
+    ?(Array.isArray(iv._pdfAutorisations)?iv._pdfAutorisations[index]:index===0?iv._pdfAutorisation:'')
+    :(Array.isArray(iv._pdfAttestations)?iv._pdfAttestations[index]:index===0?iv._pdfAttestation:'');
   if(!html) {
     // Régénérer à la volée si pas encore sauvegardé
-    html = _buildAutorisationHTML(ivId, docType);
+    html = _buildAutorisationHTML(ivId, docType,index);
   }
   if(!html){showToast('Document non disponible','warn');return;}
   openIframeModal(html);
@@ -301,24 +311,77 @@ function getAvisPassageDateFr(iv){
   return raw.slice(6,8)+'/'+raw.slice(4,6)+'/'+raw.slice(0,4);
 }
 
+function getAvisPassageCaserne(iv){
+  const cid=(iv&&(iv.caserneId||iv._caserneId))||(typeof CURRENT_CASERNE_ID!=='undefined'?CURRENT_CASERNE_ID:'');
+  if(typeof CASERNES!=='undefined'&&Array.isArray(CASERNES)){
+    const found=CASERNES.find(function(item){return item&&item.id===cid;});
+    if(found)return found;
+  }
+  if(typeof CC==='function')return CC();
+  return null;
+}
+function getAvisPassageAstreintePhone(iv){
+  const caserne=getAvisPassageCaserne(iv);
+  return formatCaserneAstreintePhone(caserne&&(caserne.astreintePhone||caserne.telAstreinte)||'')||'—';
+}
+function avisPassageIntervenantName(iv,login){
+  if(!login)return '';
+  if(typeof USERS!=='undefined'&&Array.isArray(USERS)){
+    const user=USERS.find(function(item){return item&&item.l===login;});
+    if(user)return typeof fullName==='function'?fullName(user):((user.nom||'')+' '+(user.prenom||'')).trim();
+  }
+  const snapshots=[];
+  if(iv){
+    if(Array.isArray(iv._equipage1))snapshots.push.apply(snapshots,iv._equipage1);
+    if(Array.isArray(iv._equipage2))snapshots.push.apply(snapshots,iv._equipage2);
+    (Array.isArray(iv._releves)?iv._releves:[]).forEach(function(releve){
+      if(releve&&Array.isArray(releve.nouvelEquipage))snapshots.push.apply(snapshots,releve.nouvelEquipage);
+    });
+  }
+  const snapshot=snapshots.find(function(item){return item&&item.login===login;});
+  return snapshot&&((snapshot.nom||'')+' '+(snapshot.prenom||'')).trim()||login;
+}
+function getAvisPassageIntervenants(iv){
+  if(!iv)return[];
+  const logins=[],seen=new Set();
+  const add=function(login){if(login&&!seen.has(login)){seen.add(login);logins.push(login);}};
+  if(typeof interventionMainReportCrew==='function')interventionMainReportCrew(iv).forEach(function(member){add(member&&member.login);});
+  else add(iv.agr);
+  (Array.isArray(iv._equipage1)?iv._equipage1:[]).forEach(function(member){add(member&&member.login);});
+  add(iv._agr2);
+  (Array.isArray(iv._equipage2)?iv._equipage2:[]).forEach(function(member){add(member&&member.login);});
+  (Array.isArray(iv._releves)?iv._releves:[]).forEach(function(releve){
+    (releve&&Array.isArray(releve.nouvelEquipage)?releve.nouvelEquipage:[]).forEach(function(member){add(member&&member.login);});
+  });
+  return logins.map(function(login){return avisPassageIntervenantName(iv,login);}).filter(Boolean);
+}
+
 function _buildAvisPassageBody(iv){
   if(!iv||!iv._avisPassage)return '';
   const logoSrc=_getLogoSrc();
+  const caserne=getAvisPassageCaserne(iv);
+  const unite=escHtml(String(caserne&&caserne.nom||'').replace(/^UT\s+/i,'').trim()||'—');
+  const caserneNom=escHtml(String(caserne&&caserne.nom||'—'));
+  const astreintePhone=escHtml(getAvisPassageAstreintePhone(iv));
   const dateFr=getAvisPassageDateFr(iv)||'—';
   const heure=getAvisPassageHour(iv)||'—';
   const nom=escHtml(iv.req||'—');
   const objet=escHtml(iv.n||'—');
   const adresse=escHtml([iv.addr||'',iv.addrComp||'',iv.com||''].filter(Boolean).join(', ')||'—');
   return '<div class="avis-document" style="font-family:Calibri,Arial,sans-serif;color:#000;font-size:11pt;">'
-    +'<div style="height:20mm;display:flex;align-items:flex-start;margin-bottom:2mm;"><img src="'+logoSrc+'" alt="Logo" style="width:83.1mm;height:20mm;object-fit:contain;object-position:left top;"></div>'
+    +'<div style="height:18mm;position:relative;display:flex;align-items:flex-start;margin-bottom:1mm;"><img src="'+logoSrc+'" alt="Logo" style="position:absolute;left:0;top:0;width:62mm;height:15mm;object-fit:contain;object-position:left top;"><div style="width:100%;text-align:center;font-size:12pt;line-height:1.25;padding-top:1mm;">Unité territoriale de<br><strong style="font-size:14pt;">'+unite+'</strong></div></div>'
     +'<h2 style="text-align:center;font-size:16pt;font-weight:700;text-decoration:underline;margin:1mm 0 5mm;">AVIS DE PASSAGE</h2>'
-    +'<table style="width:100%;border-collapse:collapse;table-layout:fixed;margin:0 0 7mm;">'
+    +'<table class="avis-main-table" style="width:100%;border-collapse:collapse;table-layout:fixed;margin:0 0 5mm;page-break-inside:avoid;">'
     +'<tr><td style="width:42%;border:1px solid #000;padding:3mm 3.5mm;font-weight:600;">Date du passage :</td><td style="border:1px solid #000;padding:3mm 3.5mm;text-align:center;font-weight:700;">'+dateFr+'</td></tr>'
     +'<tr><td style="border:1px solid #000;padding:3mm 3.5mm;font-weight:600;">Objet de l’intervention</td><td style="border:1px solid #000;padding:3mm 3.5mm;text-align:center;">'+objet+'</td></tr>'
     +'<tr><td style="border:1px solid #000;padding:3mm 3.5mm;font-weight:600;">Nom du propriétaire ou du locataire</td><td style="border:1px solid #000;padding:3mm 3.5mm;text-align:center;">'+nom+'</td></tr>'
     +'<tr><td style="border:1px solid #000;padding:3mm 3.5mm;font-weight:600;">Adresse :</td><td style="border:1px solid #000;padding:3mm 3.5mm;text-align:center;">'+adresse+'</td></tr>'
     +'</table>'
-    +'<p style="font-size:12pt;line-height:1.5;text-align:justify;margin:0;">Suite à votre appel téléphonique, les sapeurs-pompiers se sont présentés à votre domicile à <strong>'+heure.replace(':',' h ')+' min</strong> pour intervenir.</p>'
+    +'<p style="font-size:12pt;line-height:1.4;text-align:justify;margin:0 0 5mm;">Suite à votre appel téléphonique, les sapeurs-pompiers se sont présentés à votre domicile à <strong>'+heure.replace(':',' h ')+' min</strong> pour intervenir.</p>'
+    +'<table class="avis-followup-table" style="width:100%;border-collapse:collapse;table-layout:fixed;margin:0;page-break-inside:avoid;">'
+    +'<tr><td style="width:46%;border:1px solid #000;padding:3mm 3.5mm;vertical-align:top;"><strong>Noms des intervenants</strong><div style="margin-top:2.5mm;line-height:1.35;">'+caserneNom+'</div></td>'
+    +'<td style="border:1px solid #000;padding:3mm 3.5mm;vertical-align:middle;line-height:1.4;">Merci de rappeler au <strong>'+astreintePhone+'</strong> afin de confirmer votre demande d’intervention et reprendre rendez-vous.</td></tr>'
+    +'</table>'
     +'</div>';
 }
 

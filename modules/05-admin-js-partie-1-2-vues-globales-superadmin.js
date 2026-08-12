@@ -297,6 +297,14 @@ function renderSuperAdmin(){
           <button class="btn sm" style="font-size:11px;" onclick="saSaveEmail('${c.id}')">&#x1F4BE; OK</button>
         </div>
       </div>
+      <div style="margin-top:10px;border-top:1px solid #f0f0f0;padding-top:10px;">
+        <div style="font-size:11px;font-weight:600;color:#666;margin-bottom:6px;">&#x1F4F1; PORTABLE D’ASTREINTE</div>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <input class="fi" type="tel" inputmode="tel" id="astreinte-phone-${c.id}" value="${escHtml(c.astreintePhone||'')}" placeholder="06 00 00 00 00" style="flex:1;font-size:11px;padding:4px 8px;"/>
+          <button class="btn sm" style="font-size:11px;" onclick="saSaveAstreintePhone('${c.id}')">&#x1F4BE; OK</button>
+        </div>
+        <div style="font-size:10px;color:#777;margin-top:4px;">Ce numéro est imprimé sur les avis de passage de cette caserne.</div>
+      </div>
     </div>`;
   }).join('');
   const etatMajor=CASERNES.find(c=>c.id==='EMAJ')||{id:'EMAJ',nom:'État-Major',couleur:'#1D4ED8'};
@@ -611,6 +619,22 @@ function saSaveEmail(cid) {
   cas.email = email;
   saveData();
   showToast('E-mail sauvegardé pour ' + cas.nom, 'success');
+}
+
+function formatCaserneAstreintePhone(value){
+  const digits=String(value||'').replace(/\D/g,'').slice(0,10);
+  return digits.replace(/(\d{2})(?=\d)/g,'$1 ').trim();
+}
+function saSaveAstreintePhone(cid){
+  const input=document.getElementById('astreinte-phone-'+cid);
+  const cas=CASERNES.find(function(item){return item.id===cid;});
+  if(!input||!cas)return;
+  const digits=String(input.value||'').replace(/\D/g,'');
+  if(digits&&digits.length!==10){showToast('Le portable d’astreinte doit contenir 10 chiffres.','warn');input.focus();return;}
+  cas.astreintePhone=formatCaserneAstreintePhone(digits);
+  input.value=cas.astreintePhone;
+  saveData(true);
+  showToast('Portable d’astreinte sauvegardé pour '+cas.nom,'success');
 }
 
 
@@ -1599,6 +1623,7 @@ function addCaserne(){
   mb.innerHTML=`<div>
     <div class="fg"><div class="fgl">Nom</div><input class="fi" type="text" id="nc-nom" placeholder="ex. CIS Saint-Venant"/></div>
     <div class="fg"><div class="fgl">Code (3 lettres)</div><input class="fi" type="text" id="nc-code" placeholder="ex. STV" maxlength="5"/></div>
+    <div class="fg"><div class="fgl">Portable d’astreinte</div><input class="fi" type="tel" inputmode="tel" id="nc-astreinte-phone" placeholder="06 00 00 00 00"/></div>
     <div class="fg"><div class="fgl">Couleur</div><div style="display:flex;gap:8px;flex-wrap:wrap;">${colors.map(col=>`<div onclick="this.parentElement.querySelectorAll('div').forEach(d=>d.style.outline='none');this.style.outline='3px solid #333';document.getElementById('nc-color').value='${col}';" style="width:28px;height:28px;border-radius:50%;background:${col};cursor:pointer;"></div>`).join('')}<input type="hidden" id="nc-color" value="${colors[0]}"/></div></div>
     <div class="fg"><div class="fgl">Mot de passe admin caserne</div><input class="fi" type="password" id="nc-pwd" placeholder="Mot de passe"/></div>
     <div id="nc-err" style="font-size:12px;color:#E24B4A;display:none;margin-bottom:8px;"></div>
@@ -1610,11 +1635,12 @@ function confirmAddCaserne(){
   const nom=document.getElementById('nc-nom').value.trim();
   const code=document.getElementById('nc-code').value.trim().toUpperCase();
   const couleur=document.getElementById('nc-color').value;
+  const astreintePhone=formatCaserneAstreintePhone((document.getElementById('nc-astreinte-phone')||{}).value||'');
   const pwd=document.getElementById('nc-pwd').value.trim();
   const err=document.getElementById('nc-err');
   if(!nom||!code||!pwd){err.style.display='block';err.textContent='Tous les champs sont obligatoires.';return;}
   const id='CIS'+String(CASERNES.length+1).padStart(2,'0');
-  CASERNES.push({id,nom,code,couleur});
+  CASERNES.push({id,nom,code,couleur,email:'',astreintePhone});
   initCaserneData(id);
   CASERNE_DATA[id].users[0].p=pwd;
   saveData();cM();renderSuperAdmin();
@@ -1626,6 +1652,7 @@ function editCaserne(id){
   document.getElementById('mb').innerHTML=`<div>
     <div class="fg"><div class="fgl">Nom</div><input class="fi" type="text" id="ec-nom" value="${c.nom}"/></div>
     <div class="fg"><div class="fgl">Code</div><input class="fi" type="text" id="ec-code" value="${c.code}" maxlength="5"/></div>
+    <div class="fg"><div class="fgl">Portable d’astreinte</div><input class="fi" type="tel" inputmode="tel" id="ec-astreinte-phone" value="${escHtml(c.astreintePhone||'')}" placeholder="06 00 00 00 00"/></div>
     <div class="fg"><div class="fgl">Couleur</div><input class="fi" type="color" id="ec-col" value="${c.couleur}"/></div>
     <div class="brow"><button class="btn pr sm" onclick="confirmEditCaserne('${id}')">&#x1F4BE; Enregistrer</button><button class="btn sm" onclick="cM()">Annuler</button></div>
   </div>`;
@@ -1635,6 +1662,7 @@ function confirmEditCaserne(id){
   const c=CASERNES.find(x=>x.id===id);if(!c)return;
   c.nom=document.getElementById('ec-nom').value.trim()||c.nom;
   c.code=document.getElementById('ec-code').value.trim().toUpperCase()||c.code;
+  c.astreintePhone=formatCaserneAstreintePhone((document.getElementById('ec-astreinte-phone')||{}).value||'');
   c.couleur=document.getElementById('ec-col').value;
   saveData();cM();renderSuperAdmin();
 }
