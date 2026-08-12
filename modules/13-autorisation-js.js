@@ -79,6 +79,44 @@ function saveRecognizedNid(ivId){
   try{rI();rAccueil();rHist();}catch(e){}
   showToast('Nid ajouté et enregistré — complétez son autorisation','success');showAutorisationNidPicker(ivId);
 }
+function deleteAdditionalInterventionNid(ivId,nidIndex){
+  const iv=IVS.find(function(item){return item.id===ivId;});if(!iv)return;
+  const index=Number(nidIndex);
+  if(!Number.isInteger(index)||index<=0){showToast('Le nid d’origine de l’appel ne peut pas être supprimé','warn');return;}
+  if(!isInterventionReportChef(iv,CU&&CU.l)||!CU){
+    if(!hasAdministrativeAccount()){showToast('Suppression réservée au chef d’agrès ou à un administrateur','error');return;}
+  }
+  const current=interventionNids(iv);
+  const nid=current[index];if(!nid)return;
+  const label=[nid.nature,nid.localisation].filter(Boolean).join(' — ')||('Nid '+(index+1));
+  confirmModal('Supprimer le nid supplémentaire « '+escHtml(label)+' » ? Son autorisation et son attestation associées seront également supprimées.',function(){
+    if(!Array.isArray(iv._nidsAppel)||!iv._nidsAppel.length)iv._nidsAppel=current.slice();
+    if(index>=iv._nidsAppel.length)return;
+    iv._nidsAppel.splice(index,1);
+    iv._nidsAppel.forEach(function(item,itemIndex){if(item)item.id='nid-'+(itemIndex+1);});
+    if(Array.isArray(iv._autorisationNids))iv._autorisationNids.splice(index,1);
+    if(Array.isArray(iv._pdfAutorisations))iv._pdfAutorisations.splice(index,1);
+    if(Array.isArray(iv._pdfAttestations))iv._pdfAttestations.splice(index,1);
+    delete _autorisationActiveNid[ivId];
+    if(Array.isArray(iv._autorisationNids)&&iv._autorisationNids[0])iv._autorisationData=iv._autorisationNids[0];
+    if(!iv._appelDetails||typeof iv._appelDetails!=='object')iv._appelDetails={};
+    iv._appelDetails['Nids à traiter']=iv._nidsAppel.map(function(item,itemIndex){return nidAppelLabel(item,itemIndex);}).join(' ; ');
+    const stillAsian=iv._nidsAppel.some(function(item){return /frelons? asiatiques?/i.test(String(item&&item.nature||''));});
+    if(!stillAsian&&iv._prioriteFrelonAsiatique){iv.n=iv._natureAppelInitiale||iv.n;iv._prioriteFrelonAsiatique=false;}
+    if(!Array.isArray(iv.tl))iv.tl=[];
+    iv.tl.push({s:'information',h:getH(N()),who:CU&&CU.l||'',note:'Nid supplémentaire supprimé : '+label});
+    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+    if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcPendingDirty!=='undefined'&&typeof _rcId==='function'&&CURRENT_CASERNE_ID){
+      _rcPendingDirty.add(_rcId(CURRENT_CASERNE_ID,'iv',iv.id));
+      if(typeof _rcDirtyGeneration!=='undefined')_rcDirtyGeneration++;
+      if(typeof _rcPersistPendingDirty==='function')_rcPersistPendingDirty();
+    }
+    saveData(true);
+    try{rI();rAccueil();rHist();}catch(e){}
+    showToast('Nid supplémentaire supprimé et intervention mise à jour','success');
+    showAutorisationNidPicker(ivId);
+  });
+}
 function showAutorisationNidPicker(ivId){
   const iv=IVS.find(function(item){return item.id===ivId;});if(!iv)return;
   const nids=interventionNids(iv);
@@ -87,7 +125,7 @@ function showAutorisationNidPicker(ivId){
   document.getElementById('mb').innerHTML='<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Une autorisation et une attestation distinctes sont conservées pour chaque nid.</div>'
     +'<div style="display:flex;flex-direction:column;gap:8px;">'+nids.map(function(nid,index){
       const filled=!!autorisationDataForNid(iv,index).nom;
-      return '<button class="btn" style="text-align:left;display:flex;justify-content:space-between;gap:8px;align-items:center;padding:10px 12px;" onclick="showAutorisationModal(\''+ivId+'\','+index+')"><span><strong>'+escHtml('Nid '+(index+1))+'</strong><br><span style="font-size:11px;color:var(--t2);">'+escHtml([nid.nature,nid.localisation,nid.hauteur,nid.taille].filter(Boolean).join(' · ')||iv.n)+'</span></span><span class="bdg '+(filled?'bg2':'bgr')+'">'+(filled?'Complété':'À compléter')+'</span></button>';
+      return '<div style="display:flex;gap:6px;align-items:stretch;"><button class="btn" style="text-align:left;display:flex;flex:1;min-width:0;justify-content:space-between;gap:8px;align-items:center;padding:10px 12px;" onclick="showAutorisationModal(\''+ivId+'\','+index+')"><span><strong>'+escHtml('Nid '+(index+1))+'</strong><br><span style="font-size:11px;color:var(--t2);">'+escHtml([nid.nature,nid.localisation,nid.hauteur,nid.taille].filter(Boolean).join(' · ')||iv.n)+'</span></span><span class="bdg '+(filled?'bg2':'bgr')+'">'+(filled?'Complété':'À compléter')+'</span></button>'+(index>0?'<button type="button" class="btn" style="color:#B42318;padding:8px 10px;flex:0 0 auto;" title="Supprimer ce nid supplémentaire" aria-label="Supprimer le nid '+(index+1)+'" onclick="deleteAdditionalInterventionNid(\''+ivId+'\','+index+')">🗑️ Supprimer</button>':'')+'</div>';
     }).join('')+'</div><button class="btn" style="width:100%;margin-top:10px;border-style:dashed;color:#9A3412;background:#FFF7ED;" onclick="showAddRecognizedNidModal(\''+ivId+'\')">➕ Nid découvert après reconnaissance</button>';
   document.getElementById('mo').style.display='flex';
 }
