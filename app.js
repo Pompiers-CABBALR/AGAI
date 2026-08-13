@@ -11240,11 +11240,15 @@ function getStIvs(){
   return IVS.filter(function(iv){return !iv._isPilip&&isInterventionComptabilisee(iv)&&statsInterventionInPeriod(iv,prefix);});
 }
 
+function canViewDetailedStatistics(){
+  return GLOBAL_ROLE==='superadmin'||!!(CU&&Array.isArray(CU.rights)&&CU.rights.includes('Administration'));
+}
+
 function rStats(){
   // Nav fixée en haut
   const nav=document.getElementById('stats-nav');
   if(nav){
-    const showPersonnel=hasRight('Administration')||isSuperAdmin();
+    const showPersonnel=canViewDetailedStatistics();
     const vues=[['annuel','Annuel'],['nat-mois','Nature/mois'],['com-mois','Commune/mois'],['nat-com','Commune\u00d7Nature']].concat(showPersonnel?[['appels','Appels'],['pers-ivs','Personnel'],['pers-heures','Personnel/Heures'],['pers-act','Activités serv.'],['pers-form','Formations'],['pers-dispos','Dispos/Semaine']]:[]);
     const btnHtml=vues.map(function(vl){
       const v=vl[0],l=vl[1],actif=stVue===v;
@@ -11335,7 +11339,7 @@ function rStatsContent(){
     });
   }
   if(stVue==='appels'){
-    if(!hasRight('Administration')&&!isSuperAdmin()){body.innerHTML='<div style="padding:24px;text-align:center;color:var(--t2);">Accès restreint.</div>';return;}
+    if(!canViewDetailedStatistics()){body.innerHTML='<div style="padding:24px;text-align:center;color:var(--t2);">Accès restreint.</div>';return;}
     body.innerHTML=rStatsAppels();
     return;
   }
@@ -11446,7 +11450,7 @@ function rStatsContent(){
 
   // Vues personnel (admin only)
   if(stVue==='pers-ivs'||stVue==='pers-heures'||stVue==='pers-dispos'||stVue==='pers-act'||stVue==='pers-form'){
-    if(!hasRight('Administration')&&!isSuperAdmin()){body.innerHTML='<div style="padding:24px;text-align:center;color:var(--t2);">Accès restreint.</div>';return;}
+    if(!canViewDetailedStatistics()){body.innerHTML='<div style="padding:24px;text-align:center;color:var(--t2);">Accès restreint.</div>';return;}
     body.innerHTML=rStatsPersonnel(stVue);
     return;
   }
@@ -11835,6 +11839,38 @@ function calcTauxAgentIV(iv,login){
   return {t100,t150,t200};
 }
 
+function calcExportTauxAgentIV(iv,login){
+  if(!agentInIV(iv,login))return null;
+  const bounds=adminExportInterventionDurationBounds(iv);
+  const dateStr=adminExportInterventionStartDate(iv);
+  if(!bounds.start||!bounds.end||dateStr.length<8)return null;
+  const yr=parseInt(dateStr.slice(0,4),10),mo=parseInt(dateStr.slice(4,6),10)-1,da=parseInt(dateStr.slice(6,8),10);
+  const startParts=String(bounds.start).split(':').map(Number),endParts=String(bounds.end).split(':').map(Number);
+  if([yr,mo,da,startParts[0],startParts[1],endParts[0],endParts[1]].some(function(n){return !Number.isFinite(n);}))return null;
+  let startMin=startParts[0]*60+startParts[1],endMin=endParts[0]*60+endParts[1];
+  if(endMin<startMin)endMin+=1440;
+  const totals={t100:0,t150:0,t200:0};
+  for(let cur=startMin;cur<endMin;cur++){
+    const dayOff=Math.floor(cur/1440),minOfDay=cur%1440,hour=Math.floor(minOfDay/60);
+    const currentDate=new Date(yr,mo,da+dayOff);
+    const category=getInterventionTauxConfigFor(currentDate,hour,adminExportReportType(iv)).categorie;
+    if(category==='jour')totals.t100++;else if(category==='dimFerie')totals.t150++;else totals.t200++;
+  }
+  const shouldRound=getStatsTaux().exportRoundQuarter!==false&&adminExportReportType(iv)!=='SDIS';
+  return {
+    t100:shouldRound?adminExportRoundMinutesQuarter(totals.t100):totals.t100,
+    t150:shouldRound?adminExportRoundMinutesQuarter(totals.t150):totals.t150,
+    t200:shouldRound?adminExportRoundMinutesQuarter(totals.t200):totals.t200
+  };
+}
+
+function statsHoursRealExportCell(realMinutes,exportMinutes,background,borderLeft){
+  const hasValue=realMinutes>0||exportMinutes>0;
+  return '<td style="padding:3px 4px;text-align:center;font-size:10px;'+(borderLeft?'border-left:2px solid '+borderLeft+';':'')+(hasValue?'background:'+background+';':'')+'">'
+    +(hasValue?'<div style="white-space:nowrap;"><span style="font-size:8px;color:var(--t2);">R</span> <strong>'+adminExportMinutesHHMM(realMinutes)+'</strong></div><div style="white-space:nowrap;color:#1D4ED8;"><span style="font-size:8px;">E</span> <strong>'+adminExportMinutesHHMM(exportMinutes)+'</strong></div>':'—')
+    +'</td>';
+}
+
 function agentInIV(iv,login){
   if(iv.agr===login)return true;
   if(iv._equipage1&&iv._equipage1.some(function(e){return e.login===login;}))return true;
@@ -11920,52 +11956,64 @@ function rStatsPersonnel(vue){
 
     let rows='';
     let grand100=0,grand150=0,grand200=0;
+    let grandExport100=0,grandExport150=0,grandExport200=0;
     agents.forEach(function(u){
       const ivAgent=ivsFiltres.filter(function(iv){
         return agentInIV(iv,u.l);
       });
       let tot100=0,tot150=0,tot200=0,hasDonnes=false;
+      let totExport100=0,totExport150=0,totExport200=0;
       const cols=moisActifs.map(function(mi){
         const mStr=annStr+String(mi).padStart(2,'0');
-        const ivMois=ivAgent.filter(function(iv){return statsInterventionInPeriod(iv,mStr)&&iv._hDebut&&iv._hFin;});
+        const ivMois=ivAgent.filter(function(iv){
+          const bounds=adminExportInterventionDurationBounds(iv);
+          return statsInterventionInPeriod(iv,mStr)&&bounds.start&&bounds.end;
+        });
         let m100=0,m150=0,m200=0;
+        let mExport100=0,mExport150=0,mExport200=0;
         ivMois.forEach(function(iv){
           const t=calcTauxAgentIV(iv,u.l);
           if(!t)return;
           m100+=t.t100;m150+=t.t150;m200+=t.t200;
+          const exportT=calcExportTauxAgentIV(iv,u.l);
+          if(exportT){mExport100+=exportT.t100;mExport150+=exportT.t150;mExport200+=exportT.t200;}
         });
         tot100+=m100;tot150+=m150;tot200+=m200;
-        if(m100||m150||m200)hasDonnes=true;
-        return '<td style="padding:3px 4px;text-align:center;font-size:10px;border-left:2px solid #e0e0e0;'+(m100?'background:#EAF3DE;font-weight:600;':'')+'">'+(m100?minToHHMM(m100):'—')+'</td>'
-          +'<td style="padding:3px 4px;text-align:center;font-size:10px;'+(m150?'background:#FEF9C3;font-weight:600;':'')+'">'+(m150?minToHHMM(m150):'—')+'</td>'
-          +'<td style="padding:3px 4px;text-align:center;font-size:10px;'+(m200?'background:#FAEEDA;font-weight:600;':'')+'">'+(m200?minToHHMM(m200):'—')+'</td>';
+        totExport100+=mExport100;totExport150+=mExport150;totExport200+=mExport200;
+        if(m100||m150||m200||mExport100||mExport150||mExport200)hasDonnes=true;
+        return statsHoursRealExportCell(m100,mExport100,'#EAF3DE','#e0e0e0')
+          +statsHoursRealExportCell(m150,mExport150,'#FEF9C3','')
+          +statsHoursRealExportCell(m200,mExport200,'#FAEEDA','');
       }).join('');
       grand100+=tot100;grand150+=tot150;grand200+=tot200;
+      grandExport100+=totExport100;grandExport150+=totExport150;grandExport200+=totExport200;
       const totGen=tot100+tot150+tot200;
+      const totExportGen=totExport100+totExport150+totExport200;
       rows+='<tr style="border-bottom:1px solid #f5f5f5;'+(hasDonnes?'':'opacity:.4;')+'">'
         +'<td style="padding:5px 8px;font-size:11px;white-space:nowrap;">'+fullName(u)+'</td>'
         +'<td style="padding:5px 5px;font-size:10px;color:var(--t2);">'+gradeAbbr(u.grade)+'</td>'
         +cols
-        +'<td style="padding:3px 5px;text-align:center;font-size:10px;font-weight:700;background:#EAF3DE;border-left:2px solid #ccc;">'+(tot100?minToHHMM(tot100):'—')+'</td>'
-        +'<td style="padding:3px 5px;text-align:center;font-size:10px;font-weight:700;background:#FEF9C3;">'+(tot150?minToHHMM(tot150):'—')+'</td>'
-        +'<td style="padding:3px 5px;text-align:center;font-size:10px;font-weight:700;background:#FAEEDA;">'+(tot200?minToHHMM(tot200):'—')+'</td>'
-        +'<td style="padding:3px 5px;text-align:center;font-size:10px;font-weight:700;background:#f0f0f0;">'+(totGen?minToHHMM(totGen):'—')+'</td>'
+        +statsHoursRealExportCell(tot100,totExport100,'#EAF3DE','#ccc')
+        +statsHoursRealExportCell(tot150,totExport150,'#FEF9C3','')
+        +statsHoursRealExportCell(tot200,totExport200,'#FAEEDA','')
+        +statsHoursRealExportCell(totGen,totExportGen,'#F1F5F9','')
         +'</tr>';
     });
     const grandGen=grand100+grand150+grand200;
+    const grandExportGen=grandExport100+grandExport150+grandExport200;
     const footCols=moisActifs.map(function(){return '<td colspan="3" style="border-left:2px solid #666;"></td>';}).join('');
     const footer='<tr style="background:var(--t);color:#fff;font-weight:700;">'
       +'<td style="padding:6px 8px;font-size:11px;">TOTAL GÉNÉRAL</td><td></td>'
       +footCols
-      +'<td style="padding:4px 5px;text-align:center;border-left:2px solid #999;">'+(grand100?minToHHMM(grand100):'—')+'</td>'
-      +'<td style="padding:4px 5px;text-align:center;">'+(grand150?minToHHMM(grand150):'—')+'</td>'
-      +'<td style="padding:4px 5px;text-align:center;">'+(grand200?minToHHMM(grand200):'—')+'</td>'
-      +'<td style="padding:4px 5px;text-align:center;">'+(grandGen?minToHHMM(grandGen):'—')+'</td>'
+      +'<td style="padding:4px 5px;text-align:center;border-left:2px solid #999;"><div>R '+minToHHMM(grand100)+'</div><div style="color:#93C5FD;">E '+minToHHMM(grandExport100)+'</div></td>'
+      +'<td style="padding:4px 5px;text-align:center;"><div>R '+minToHHMM(grand150)+'</div><div style="color:#93C5FD;">E '+minToHHMM(grandExport150)+'</div></td>'
+      +'<td style="padding:4px 5px;text-align:center;"><div>R '+minToHHMM(grand200)+'</div><div style="color:#93C5FD;">E '+minToHHMM(grandExport200)+'</div></td>'
+      +'<td style="padding:4px 5px;text-align:center;"><div>R '+minToHHMM(grandGen)+'</div><div style="color:#93C5FD;">E '+minToHHMM(grandExportGen)+'</div></td>'
       +'</tr>';
 
     return '<div style="background:#fff;border-radius:12px;padding:12px;overflow-x:auto;">'
       +'<div style="font-size:12px;font-weight:600;margin-bottom:4px;">Heures d’interventions par agent et par tranche tarifaire</div>'
-      +'<div style="font-size:11px;color:var(--t2);margin-bottom:8px;">Heures réelles ventilées selon l’horaire. Les taux appliqués restent propres aux rapports INTER, SDIS et RENF.</div>'
+      +'<div style="font-size:11px;color:var(--t2);margin-bottom:6px;">Chaque case affiche <strong>R</strong> : heures réelles et <strong style="color:#1D4ED8;">E</strong> : heures utilisées pour l’export. L’arrondi au quart d’heure est appliqué selon le paramètre du superadmin ; les interventions SDIS restent sans arrondi.</div>'
       +legende
       +'<table style="width:100%;border-collapse:collapse;font-size:11px;">'
       +'<thead>'
@@ -12633,7 +12681,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260813-masquage-numero-animal-unique-136';
+const APP_VERSION='20260813-stats-dispos-heures-export-137';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
