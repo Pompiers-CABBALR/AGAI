@@ -40,7 +40,7 @@ function getStIvs(){
 }
 
 function canViewDetailedStatistics(){
-  return hasAdministrativeAccount();
+  return isAdminModeActive();
 }
 
 function rStats(){
