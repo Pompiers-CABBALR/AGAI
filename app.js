@@ -5105,6 +5105,13 @@ function autorisationDocumentsHTML(iv){
 }
 
 // ────────────────── MODAL ──────────────────
+function interventionAppelDetailValue(iv,key,value){
+  const text=String(value??'');
+  if(key!=='Animaux à prendre en charge')return text;
+  const animalCount=Array.isArray(iv&&iv._animauxAppel)?iv._animauxAppel.length:0;
+  const isSingleAnimal=animalCount===1||(!animalCount&&!text.includes(' ; '));
+  return isSingleAnimal?text.replace(/^\s*1\.\s*/,''):text;
+}
 function oM(id){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
   // Pour un départ SDIS, la synthèse opérationnelle commence à l'acquis
@@ -5288,7 +5295,7 @@ function oM(id){
       const onclick=cliquable?` onclick="showInterventionsLiees('${iv.id}')" style="cursor:pointer;"`:'';
       return `<div${onclick} style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#92400E;${cliquable?'cursor:pointer;':''}">&#x26A0;&#xFE0F; <strong>${autres.length}</strong> autre${autres.length>1?'s':''} intervention${autres.length>1?'s':''} à cette adresse pour ce type${detail}${lien}</div>`;
     })()}
-    ${appelDetailEntries.length?`<div class="mr"><div class="ml">Informations de l'appel</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:3px;">${appelDetailEntries.map(([key,value])=>`<span style="font-size:13px;"><span style="color:var(--t2);">${escHtml(key)} :</span> <strong>${escHtml(String(value))}</strong></span>`).join('')}</div></div></div>`:''}
+    ${appelDetailEntries.length?`<div class="mr"><div class="ml">Informations de l'appel</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:3px;">${appelDetailEntries.map(([key,value])=>`<span style="font-size:13px;"><span style="color:var(--t2);">${escHtml(key)} :</span> <strong>${escHtml(interventionAppelDetailValue(iv,key,value))}</strong></span>`).join('')}</div></div></div>`:''}
     ${(()=>{const compls=(iv.tl||[]).filter(t=>t.s==='info-compl');return compls.length?`<div class="mr"><div class="ml" style="color:#0369A1;">&#x2139;&#xFE0F; Compléments d'information</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:6px;">${compls.map(t=>`<div style="background:#EFF6FF;border-left:3px solid #0369A1;border-radius:6px;padding:6px 10px;font-size:13px;"><div>${escHtml(t.note||'')}</div><div style="font-size:10px;color:var(--t2);margin-top:2px;">&#x1F4C5; ${escHtml(t.h||'')} · ${escHtml(t.who||'')}</div></div>`).join('')}</div></div></div>`:'';})()}
     ${iv._transfertDe?`<div class="mr"><div class="ml">Transfert reçu de</div><div class="mv2" style="color:var(--amb);font-weight:500;">&#x1F500; ${CASERNES.find(c=>c.id===iv._transfertDe)?.nom||iv._transfertDe}</div></div>`:''}
     ${iv._transfertVers?`<div class="mr"><div class="ml">Transféré vers</div><div class="mv2" style="color:#888;">&#x1F500; ${CASERNES.find(c=>c.id===iv._transfertVers)?.nom||iv._transfertVers}</div></div>`:''}
@@ -12626,7 +12633,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260813-alignement-boutons-disponibilite-135';
+const APP_VERSION='20260813-masquage-numero-animal-unique-136';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
