@@ -11241,7 +11241,7 @@ function getStIvs(){
 }
 
 function canViewDetailedStatistics(){
-  return GLOBAL_ROLE==='superadmin'||!!(CU&&Array.isArray(CU.rights)&&CU.rights.includes('Administration'));
+  return hasAdministrativeAccount();
 }
 
 function rStats(){
@@ -12026,21 +12026,24 @@ function rStatsPersonnel(vue){
   } else if(vue==='pers-dispos'){
     // ── Heures de disponibilités par agent × jour de semaine et par mois ──
     const JOURS_COURTS=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
-    const gran=ASTR_CONFIG.granularity||60;
+    const dispoStore=DISPOS&&typeof DISPOS==='object'?DISPOS:{};
+    const piquetStore=PIQUETS&&typeof PIQUETS==='object'?PIQUETS:{};
+    const gran=Math.max(1,parseInt(ASTR_CONFIG&&ASTR_CONFIG.granularity,10)||60);
     const minParSlot=gran;
 
     // Une semaine peut commencer dans l'année précédente ou suivante :
     // chaque journée est donc rattachée à sa date civile réelle.
-    const semaines=Object.keys(DISPOS);
+    const semaines=Object.keys(dispoStore);
 
     function minDispoAgent(login,filtre){
       let total=0;
       // Utiliser la granularité de l'équipe de l'agent (comme lors de la saisie)
       const eq=getEquipeOfUser(login);
-      const agentGran=eq?eq.granularity:gran;
+      const agentGran=Math.max(1,parseInt(eq&&eq.granularity,10)||gran);
       const slotsParJour=Math.floor(1440/agentGran);
       semaines.forEach(function(wk){
-        const d=DISPOS[wk]?.[login];if(!d)return;
+        const weekData=dispoStore[wk]&&typeof dispoStore[wk]==='object'?dispoStore[wk]:{};
+        const d=weekData[login]&&typeof weekData[login]==='object'?weekData[login]:null;if(!d)return;
         const parJour={};
         Object.keys(d).forEach(function(key){
           if(!d[key])return;
@@ -12104,9 +12107,10 @@ function rStatsPersonnel(vue){
     // ── Heures de piquet par agent × semaine ──
     function minPiquetAgent(login,filtre){
       let total=0;
-      const allWks=Object.keys(PIQUETS);
+      const allWks=Object.keys(piquetStore);
       allWks.forEach(function(wk){
-        (PIQUETS[wk]||[]).forEach(function(p){
+        const weekPiquets=Array.isArray(piquetStore[wk])?piquetStore[wk]:[];
+        weekPiquets.forEach(function(p){
           const jourIndex=JOURS_FULL.indexOf(p.jour);
           if(jourIndex<0)return;
           let offset=-1;
@@ -12118,7 +12122,7 @@ function rStatsPersonnel(vue){
           if(filtre&&filtre.type==='jour'&&jourIndex!==filtre.val)return;
           const targetMonth=filtre&&filtre.type==='mois'?filtre.val:stMois;
           if(targetMonth>0&&piquetDate.getMonth()+1!==targetMonth)return;
-          const membres=p.membres&&p.membres.length?p.membres:[
+          const membres=Array.isArray(p.membres)&&p.membres.length?p.membres:[
             p.chefAgres?{login:p.chefAgres,hDebut:p.debut,hFin:p.fin}:null,
             p.conducteur?{login:p.conducteur,hDebut:p.debut,hFin:p.fin}:null,
             p.chefEquipe?{login:p.chefEquipe,hDebut:p.debut,hFin:p.fin}:null,
@@ -12681,7 +12685,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260813-stats-dispos-heures-export-137';
+const APP_VERSION='20260813-stats-dispos-rendu-robuste-138';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
