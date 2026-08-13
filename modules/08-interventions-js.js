@@ -538,9 +538,10 @@ function reqAvailabilityBadgeHTML(iv){
   const dispo=iv&&iv.reqDispo;
   if(!dispo||!dispo.label)return'';
   const unavailable=dispo.state==='indisponible';
-  const color=unavailable?'#991B1B':'#166534';
-  const bg=unavailable?'#FEE2E2':'#DCFCE7';
-  const icon=unavailable?'&#x274C;':'&#x2705;';
+  const mixed=dispo.state==='mixte';
+  const color=mixed?'#854D0E':unavailable?'#991B1B':'#166534';
+  const bg=mixed?'#FEF9C3':unavailable?'#FEE2E2':'#DCFCE7';
+  const icon=mixed?'&#x1F4C5;':unavailable?'&#x274C;':'&#x2705;';
   return '<div class="iv-req-dispo" title="'+escHtml(dispo.label)+'" style="margin-top:3px;display:flex;align-items:flex-start;gap:4px;font-size:10px;font-weight:600;color:'+color+';">'
     +'<span style="flex:0 0 auto;background:'+bg+';border-radius:5px;padding:1px 5px;">'+icon+' Requérant</span>'
     +'<span style="min-width:0;white-space:normal;line-height:1.25;">'+escHtml(dispo.label)+'</span></div>';

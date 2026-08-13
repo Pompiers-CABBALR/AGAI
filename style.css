@@ -845,6 +845,12 @@ button,.btn,.nb,.subtab-btn,.smopt,.fb,.ec,.ivr,[onclick]{
 .appel-phone-add,.appel-phone-remove{width:42px;height:42px;min-width:42px;border:1px solid var(--brd);border-radius:10px;background:#fff;color:var(--red);font-size:22px;font-weight:700;cursor:pointer;}
 .appel-phone-remove{color:var(--t2);font-size:18px;}
 .appel-dispo-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.appel-dispo-period{position:relative;padding:10px;border:1px solid var(--brd);border-radius:10px;background:#fff;}
+.appel-dispo-period+.appel-dispo-period{margin-top:8px;background:#fafafa;}
+.appel-dispo-period-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:end;}
+.appel-dispo-time-grid{margin-top:8px;}
+.appel-dispo-hours-row{display:grid;grid-template-columns:1fr 1fr;gap:7px;}
+.appel-dispo-hours-row.single{grid-template-columns:1fr;}
 .appel-requerant-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 .appel-erp{display:flex;align-items:flex-start;gap:10px;padding:11px 12px;background:#FFF1F0;border:1px solid #F5B7B1;border-radius:10px;cursor:pointer;margin-bottom:10px;}
 .appel-erp input{width:20px;height:20px;flex:0 0 auto;accent-color:var(--red);}
@@ -870,6 +876,12 @@ html.appel-nature-locked .cnt{overflow:hidden!important;}
   .pec-two-col{grid-template-columns:1fr!important;}
   .pec-form-grid{grid-template-columns:minmax(0,1fr)!important;}
   .pec-form-scroll{max-height:calc(var(--app-height) - 145px);}
+}
+@media(max-width:600px){
+  .appel-dispo-period-grid{grid-template-columns:1fr;gap:8px;}
+  .appel-dispo-time-grid{margin-top:8px;}
+  .appel-dispo-hours-row{grid-template-columns:1fr 1fr;}
+  .appel-dispo-period{padding:9px;}
 }
 
 /* Safari zoome automatiquement sur les champs inférieurs à 16 px, y compris

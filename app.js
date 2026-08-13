@@ -4054,62 +4054,69 @@ function nidAppelLabel(nid,index){
   return 'Nid '+(index+1)+' — '+[nid.nature,nid.localisation,nid.hauteur,nid.taille].filter(Boolean).join(' · ');
 }
 function clearReqAvailabilityError(){const err=document.getElementById('req-dispo-error');if(err)err.style.display='none';}
-function addReqAvailabilityDay(){
-  const box=document.getElementById('req-dispo-days');if(!box)return;
-  const row=document.createElement('div');row.className='appel-day-row';
-  const input=document.createElement('input');input.className='fi';input.type='date';input.setAttribute('data-req-dispo-day','');input.addEventListener('change',clearReqAvailabilityError);
-  const remove=document.createElement('button');remove.type='button';remove.className='appel-phone-remove';remove.textContent='−';remove.title='Supprimer ce jour';remove.setAttribute('aria-label','Supprimer ce jour');remove.onclick=()=>row.remove();
-  row.append(input,remove);box.appendChild(row);input.focus();
+function reqAvailabilityPeriodRows(){return[...document.querySelectorAll('#req-dispo-periods [data-req-dispo-period]')];}
+function addReqAvailabilityPeriod(){
+  const box=document.getElementById('req-dispo-periods');if(!box)return;
+  const row=document.createElement('div');row.className='appel-dispo-period';row.setAttribute('data-req-dispo-period','');
+  row.innerHTML='<div class="appel-dispo-period-grid"><div><div class="fgl">État</div><select class="fi" data-req-dispo-state onchange="toggleReqAvailability(this)"><option value="">Non précisé</option><option value="disponible">Disponible</option><option value="indisponible">Indisponible</option></select></div>'
+    +'<div><div class="fgl">Jour concerné <span class="req">*</span></div><div class="appel-day-row"><input class="fi" type="date" data-req-dispo-day onchange="clearReqAvailabilityError()"/><button type="button" class="appel-phone-remove" data-req-dispo-remove aria-label="Supprimer cette disponibilité" title="Supprimer cette disponibilité">−</button></div></div></div>'
+    +'<div class="appel-dispo-period-grid appel-dispo-time-grid"><div><div class="fgl">Précision horaire</div><select class="fi" data-req-dispo-mode onchange="toggleReqAvailability(this)" disabled><option value="journee">Toute la journée</option><option value="avant">Avant une heure</option><option value="entre">Entre deux heures</option><option value="apres">Après une heure</option></select></div>'
+    +'<div data-req-dispo-hours style="display:none;"><div class="fgl" data-req-dispo-h1-label>Horaire</div><div class="appel-dispo-hours-row"><input class="fi" type="time" data-req-dispo-h1 onchange="clearReqAvailabilityError()"/><div data-req-dispo-h2-wrap style="display:none;"><input class="fi" type="time" data-req-dispo-h2 aria-label="Heure de fin" onchange="clearReqAvailabilityError()"/></div></div></div></div>';
+  row.querySelector('[data-req-dispo-remove]').addEventListener('click',function(){row.remove();clearReqAvailabilityError();});
+  box.appendChild(row);row.querySelector('[data-req-dispo-state]').focus();clearReqAvailabilityError();
 }
-function getReqAvailabilityDays(){
-  const seen=new Set();
-  return [...document.querySelectorAll('#req-dispo-days [data-req-dispo-day]')].map(e=>e.value).filter(v=>v&&!seen.has(v)&&seen.add(v)).sort();
-}
+function addReqAvailabilityDay(){addReqAvailabilityPeriod();}
+function getReqAvailabilityDays(){return reqAvailabilityPeriodRows().map(row=>row.querySelector('[data-req-dispo-day]')?.value||'').filter(Boolean);}
 function formatReqAvailabilityDay(value){
   if(!value)return'';
   const d=new Date(value+'T12:00:00');
   return isNaN(d.getTime())?value:d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
 }
 function resetReqAvailability(){
-  const box=document.getElementById('req-dispo-days');
-  if(box){box.querySelectorAll('.appel-day-row').forEach((row,i)=>{if(i>0)row.remove();});const first=box.querySelector('[data-req-dispo-day]');if(first)first.value='';}
-  const state=document.getElementById('req-dispo-state');if(state)state.value='';
-  const mode=document.getElementById('req-dispo-mode');if(mode)mode.value='journee';
-  ['req-dispo-h1','req-dispo-h2'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
-  toggleReqAvailability();
+  const rows=reqAvailabilityPeriodRows();rows.slice(1).forEach(row=>row.remove());
+  const first=rows[0];if(first){
+    const state=first.querySelector('[data-req-dispo-state]'),day=first.querySelector('[data-req-dispo-day]'),mode=first.querySelector('[data-req-dispo-mode]'),h1=first.querySelector('[data-req-dispo-h1]'),h2=first.querySelector('[data-req-dispo-h2]');
+    if(state)state.value='';if(day)day.value='';if(mode)mode.value='journee';if(h1)h1.value='';if(h2)h2.value='';toggleReqAvailability(first);
+  }
+  clearReqAvailabilityError();
 }
-function toggleReqAvailability(){
-  const state=document.getElementById('req-dispo-state')?.value||'';
-  const mode=document.getElementById('req-dispo-mode')?.value||'journee';
-  const details=document.getElementById('req-dispo-details'),hours=document.getElementById('req-dispo-hours'),second=document.getElementById('req-dispo-h2-wrap'),label=document.getElementById('req-dispo-h1-label'),modeSelect=document.getElementById('req-dispo-mode');
+function toggleReqAvailability(source){
+  const row=source?.closest?.('[data-req-dispo-period]')||source||reqAvailabilityPeriodRows()[0];if(!row)return;
+  const state=row.querySelector('[data-req-dispo-state]')?.value||'';
+  const mode=row.querySelector('[data-req-dispo-mode]')?.value||'journee';
+  const hours=row.querySelector('[data-req-dispo-hours]'),second=row.querySelector('[data-req-dispo-h2-wrap]'),label=row.querySelector('[data-req-dispo-h1-label]'),modeSelect=row.querySelector('[data-req-dispo-mode]');
   if(modeSelect)modeSelect.disabled=!state;
-  if(details)details.style.display=state?'block':'none';
-  if(hours)hours.style.display=state&&['avant','entre','apres'].includes(mode)?'grid':'none';
+  if(hours)hours.style.display=state&&['avant','entre','apres'].includes(mode)?'block':'none';
   if(second)second.style.display=mode==='entre'?'':'none';
+  const hoursRow=row.querySelector('.appel-dispo-hours-row');if(hoursRow)hoursRow.classList.toggle('single',mode!=='entre');
   if(label)label.textContent=mode==='avant'?'Avant':mode==='apres'?'Après':'À partir de';
   clearReqAvailabilityError();
 }
+function readReqAvailabilityPeriods(){
+  return reqAvailabilityPeriodRows().map(function(row){return{
+    state:row.querySelector('[data-req-dispo-state]')?.value||'',day:row.querySelector('[data-req-dispo-day]')?.value||'',mode:row.querySelector('[data-req-dispo-mode]')?.value||'journee',
+    h1:row.querySelector('[data-req-dispo-h1]')?.value||'',h2:row.querySelector('[data-req-dispo-h2]')?.value||''
+  };});
+}
+function reqAvailabilityPeriodLabel(period){
+  const horaire=period.mode==='avant'?' avant '+period.h1:period.mode==='entre'?' entre '+period.h1+' et '+period.h2:period.mode==='apres'?' après '+period.h1:' toute la journée';
+  return(period.state==='indisponible'?'Indisponible':'Disponible')+' le '+formatReqAvailabilityDay(period.day)+horaire;
+}
 function getReqAvailability(){
-  const state=document.getElementById('req-dispo-state')?.value||'';
-  const mode=document.getElementById('req-dispo-mode')?.value||'journee';
-  const days=getReqAvailabilityDays();
-  const h1=document.getElementById('req-dispo-h1')?.value||'',h2=document.getElementById('req-dispo-h2')?.value||'';
-  if(!state)return null;
-  const dayLabels=days.map(formatReqAvailabilityDay);
-  const horaire=mode==='avant'?' avant '+h1:mode==='entre'?' entre '+h1+' et '+h2:mode==='apres'?' après '+h1:' toute la journée';
-  const label=(state==='indisponible'?'Indisponible':'Disponible')+' '+(dayLabels.length>1?'les ':'le ')+dayLabels.join(', ')+horaire;
-  return{state,days,mode,h1,h2,label};
+  const periods=readReqAvailabilityPeriods().filter(p=>p.state&&p.day);if(!periods.length)return null;
+  const states=[...new Set(periods.map(p=>p.state))],first=periods[0];
+  return{state:states.length===1?states[0]:'mixte',days:periods.map(p=>p.day),mode:first.mode,h1:first.h1,h2:first.h2,periods,label:periods.map(reqAvailabilityPeriodLabel).join(' ; ')};
 }
 function validateReqAvailability(){
-  const state=document.getElementById('req-dispo-state')?.value||'';
-  if(!state)return true;
-  const days=getReqAvailabilityDays(),mode=document.getElementById('req-dispo-mode')?.value||'journee';
-  const h1=document.getElementById('req-dispo-h1')?.value||'',h2=document.getElementById('req-dispo-h2')?.value||'';
-  let message='';
-  if(!days.length)message='Renseigner au moins un jour.';
-  else if(['avant','entre','apres'].includes(mode)&&!h1)message="Renseigner l'horaire.";
-  else if(mode==='entre'&&!h2)message="Renseigner l'heure de fin.";
-  else if(mode==='entre'&&h2<=h1)message='L’heure de fin doit être après l’heure de début.';
+  const periods=readReqAvailabilityPeriods(),started=periods.filter(p=>p.state||p.day||p.h1||p.h2);let message='';
+  for(let i=0;i<started.length&&!message;i++){
+    const p=started[i],prefix=started.length>1?'Disponibilité '+(i+1)+' : ':'';
+    if(!p.state)message=prefix+'préciser si le requérant est disponible ou indisponible.';
+    else if(!p.day)message=prefix+'renseigner le jour concerné.';
+    else if(['avant','entre','apres'].includes(p.mode)&&!p.h1)message=prefix+"renseigner l'horaire.";
+    else if(p.mode==='entre'&&!p.h2)message=prefix+"renseigner l'heure de fin.";
+    else if(p.mode==='entre'&&p.h2<=p.h1)message=prefix+"l'heure de fin doit être après l'heure de début.";
+  }
   const err=document.getElementById('req-dispo-error');if(err){err.textContent=message;err.style.display=message?'block':'none';}
   return!message;
 }
@@ -4832,9 +4839,10 @@ function reqAvailabilityBadgeHTML(iv){
   const dispo=iv&&iv.reqDispo;
   if(!dispo||!dispo.label)return'';
   const unavailable=dispo.state==='indisponible';
-  const color=unavailable?'#991B1B':'#166534';
-  const bg=unavailable?'#FEE2E2':'#DCFCE7';
-  const icon=unavailable?'&#x274C;':'&#x2705;';
+  const mixed=dispo.state==='mixte';
+  const color=mixed?'#854D0E':unavailable?'#991B1B':'#166534';
+  const bg=mixed?'#FEF9C3':unavailable?'#FEE2E2':'#DCFCE7';
+  const icon=mixed?'&#x1F4C5;':unavailable?'&#x274C;':'&#x2705;';
   return '<div class="iv-req-dispo" title="'+escHtml(dispo.label)+'" style="margin-top:3px;display:flex;align-items:flex-start;gap:4px;font-size:10px;font-weight:600;color:'+color+';">'
     +'<span style="flex:0 0 auto;background:'+bg+';border-radius:5px;padding:1px 5px;">'+icon+' Requérant</span>'
     +'<span style="min-width:0;white-space:normal;line-height:1.25;">'+escHtml(dispo.label)+'</span></div>';
@@ -12615,7 +12623,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260812-presence-historique-connexions-132';
+const APP_VERSION='20260813-disponibilites-requerant-multiples-133';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne

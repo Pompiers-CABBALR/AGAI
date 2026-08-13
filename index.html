@@ -9,7 +9,7 @@
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
 <title>AGAI</title>
-<link rel="stylesheet" href="style.css?v=20260812-presence-historique-connexions-132"/>
+<link rel="stylesheet" href="style.css?v=20260813-disponibilites-requerant-multiples-133"/>
 </head>
 <body>
 
@@ -165,34 +165,38 @@
         </div>
         <div class="fg">
           <div class="fgl">Disponibilité du requérant <span style="font-size:10px;color:var(--t2);">(optionnel)</span></div>
-          <div class="appel-dispo-grid">
-            <div>
-              <div class="fgl">État</div>
-              <select class="fi" id="req-dispo-state" onchange="toggleReqAvailability()">
-                <option value="">Non précisé</option>
-                <option value="disponible">Disponible</option>
-                <option value="indisponible">Indisponible</option>
-              </select>
+          <div id="req-dispo-periods">
+            <div class="appel-dispo-period" data-req-dispo-period>
+              <div class="appel-dispo-period-grid">
+                <div>
+                  <div class="fgl">État</div>
+                  <select class="fi" id="req-dispo-state" data-req-dispo-state onchange="toggleReqAvailability(this)">
+                    <option value="">Non précisé</option>
+                    <option value="disponible">Disponible</option>
+                    <option value="indisponible">Indisponible</option>
+                  </select>
+                </div>
+                <div>
+                  <div class="fgl">Jour concerné <span class="req">*</span></div>
+                  <div class="appel-day-row"><input class="fi" type="date" id="req-dispo-day" data-req-dispo-day onchange="clearReqAvailabilityError()"/><button type="button" class="appel-phone-add" onclick="addReqAvailabilityPeriod()" aria-label="Ajouter une autre disponibilité" title="Ajouter une autre disponibilité">+</button></div>
+                </div>
+              </div>
+              <div class="appel-dispo-period-grid appel-dispo-time-grid">
+                <div>
+                  <div class="fgl">Précision horaire</div>
+                  <select class="fi" id="req-dispo-mode" data-req-dispo-mode onchange="toggleReqAvailability(this)" disabled>
+                    <option value="journee">Toute la journée</option>
+                    <option value="avant">Avant une heure</option>
+                    <option value="entre">Entre deux heures</option>
+                    <option value="apres">Après une heure</option>
+                  </select>
+                </div>
+                <div data-req-dispo-hours style="display:none;">
+                  <div class="fgl" data-req-dispo-h1-label>Horaire</div>
+                  <div class="appel-dispo-hours-row"><input class="fi" type="time" id="req-dispo-h1" data-req-dispo-h1 onchange="clearReqAvailabilityError()"/><div data-req-dispo-h2-wrap style="display:none;"><input class="fi" type="time" id="req-dispo-h2" data-req-dispo-h2 aria-label="Heure de fin" onchange="clearReqAvailabilityError()"/></div></div>
+                </div>
+              </div>
             </div>
-            <div>
-              <div class="fgl">Précision horaire</div>
-              <select class="fi" id="req-dispo-mode" onchange="toggleReqAvailability()" disabled>
-                <option value="journee">Toute la journée</option>
-                <option value="avant">Avant une heure</option>
-                <option value="entre">Entre deux heures</option>
-                <option value="apres">Après une heure</option>
-              </select>
-            </div>
-          </div>
-          <div id="req-dispo-details" style="display:none;margin-top:8px;">
-            <div class="fgl">Jour(s) concerné(s) <span class="req">*</span></div>
-            <div id="req-dispo-days">
-              <div class="appel-day-row"><input class="fi" type="date" data-req-dispo-day onchange="clearReqAvailabilityError()"/><button type="button" class="appel-phone-add" onclick="addReqAvailabilityDay()" aria-label="Ajouter un jour" title="Ajouter un jour">+</button></div>
-            </div>
-          </div>
-          <div id="req-dispo-hours" class="appel-dispo-grid" style="display:none;margin-top:8px;">
-            <div><div class="fgl" id="req-dispo-h1-label">Horaire</div><input class="fi" type="time" id="req-dispo-h1" onchange="clearReqAvailabilityError()"/></div>
-            <div id="req-dispo-h2-wrap" style="display:none;"><div class="fgl">Jusqu'à</div><input class="fi" type="time" id="req-dispo-h2" onchange="clearReqAvailabilityError()"/></div>
           </div>
           <div class="ferr" id="req-dispo-error">Renseigner au moins un jour.</div>
         </div>
@@ -790,28 +794,28 @@
   <div class="mod"><div class="mhan"></div><div class="mtit" id="mt">—</div><div class="mid2" id="mi">—</div><div id="mb"></div><button class="mclose" onclick="cM()">Fermer</button></div>
 </div>
 
-<script src="runtime-config.js?v=20260812-presence-historique-connexions-132"></script>
-<script src="modules/00-preambule.js?v=20260812-presence-historique-connexions-132" defer></script>
-<script src="modules/01-config-js.js?v=20260812-presence-historique-connexions-132" defer></script>
-<script src="modules/02-auth-js-partie-1-2-structure-casernes-numerotation.js?v=20260812-presence-historique-connexions-132" defer></script>
-<script src="modules/03-security-js.js?v=20260812-presence-historique-connexions-132" defer></script>
-<script src="modules/04-auth-js-partie-2-2-login-session-droits.js?v=20260812-presence-historique-connexions-132" defer></script>
-<script src="modules/05-admin-js-partie-1-2-vues-globales-superadmin.js?v=20260812-presence-historique-connexions-132" defer></script>
-<script src="modules/06-ui-js-accueil-js.js?v=20260812-presence-historique-connexions-132" defer></script>
-<script src="modules/07-appel-js.js?v=20260812-presence-historique-connexions-132" defer></script>
-<script src="modules/08-interventions-js.js?v=20260812-presence-historique-connexions-132" defer></script>
-<script src="modules/09-pilp-js.js?v=20260812-presence-historique-connexions-132" defer></script>
-<script src="modules/10-historique-js.js?v=20260812-presence-historique-connexions-132" defer></script>
-<script src="modules/11-admin-js-partie-2-2-gestion-utilisateurs.js?v=20260812-presence-historique-connexions-132" defer></script>
-<script src="modules/12-astreintes-js.js?v=20260812-presence-historique-connexions-132" defer></script>
-<script src="modules/13-autorisation-js.js?v=20260812-presence-historique-connexions-132" defer></script>
-<script src="modules/14-stats-js.js?v=20260812-presence-historique-connexions-132" defer></script>
-<script src="modules/15-storage-js.js?v=20260812-presence-historique-connexions-132" defer></script>
-<script src="modules/16-email-js.js?v=20260812-presence-historique-connexions-132" defer></script>
-<script src="modules/17-animal-js.js?v=20260812-presence-historique-connexions-132" defer></script>
-<script src="modules/18-planning-annuel-js.js?v=20260812-presence-historique-connexions-132" defer></script>
-<script src="modules/19-onedrive-sync-js.js?v=20260812-presence-historique-connexions-132" defer></script>
-<script src="modules/20-formations-js.js?v=20260812-presence-historique-connexions-132" defer></script>
-<script src="modules/21-astreinte-tel-js.js?v=20260812-presence-historique-connexions-132" defer></script>
+<script src="runtime-config.js?v=20260813-disponibilites-requerant-multiples-133"></script>
+<script src="modules/00-preambule.js?v=20260813-disponibilites-requerant-multiples-133" defer></script>
+<script src="modules/01-config-js.js?v=20260813-disponibilites-requerant-multiples-133" defer></script>
+<script src="modules/02-auth-js-partie-1-2-structure-casernes-numerotation.js?v=20260813-disponibilites-requerant-multiples-133" defer></script>
+<script src="modules/03-security-js.js?v=20260813-disponibilites-requerant-multiples-133" defer></script>
+<script src="modules/04-auth-js-partie-2-2-login-session-droits.js?v=20260813-disponibilites-requerant-multiples-133" defer></script>
+<script src="modules/05-admin-js-partie-1-2-vues-globales-superadmin.js?v=20260813-disponibilites-requerant-multiples-133" defer></script>
+<script src="modules/06-ui-js-accueil-js.js?v=20260813-disponibilites-requerant-multiples-133" defer></script>
+<script src="modules/07-appel-js.js?v=20260813-disponibilites-requerant-multiples-133" defer></script>
+<script src="modules/08-interventions-js.js?v=20260813-disponibilites-requerant-multiples-133" defer></script>
+<script src="modules/09-pilp-js.js?v=20260813-disponibilites-requerant-multiples-133" defer></script>
+<script src="modules/10-historique-js.js?v=20260813-disponibilites-requerant-multiples-133" defer></script>
+<script src="modules/11-admin-js-partie-2-2-gestion-utilisateurs.js?v=20260813-disponibilites-requerant-multiples-133" defer></script>
+<script src="modules/12-astreintes-js.js?v=20260813-disponibilites-requerant-multiples-133" defer></script>
+<script src="modules/13-autorisation-js.js?v=20260813-disponibilites-requerant-multiples-133" defer></script>
+<script src="modules/14-stats-js.js?v=20260813-disponibilites-requerant-multiples-133" defer></script>
+<script src="modules/15-storage-js.js?v=20260813-disponibilites-requerant-multiples-133" defer></script>
+<script src="modules/16-email-js.js?v=20260813-disponibilites-requerant-multiples-133" defer></script>
+<script src="modules/17-animal-js.js?v=20260813-disponibilites-requerant-multiples-133" defer></script>
+<script src="modules/18-planning-annuel-js.js?v=20260813-disponibilites-requerant-multiples-133" defer></script>
+<script src="modules/19-onedrive-sync-js.js?v=20260813-disponibilites-requerant-multiples-133" defer></script>
+<script src="modules/20-formations-js.js?v=20260813-disponibilites-requerant-multiples-133" defer></script>
+<script src="modules/21-astreinte-tel-js.js?v=20260813-disponibilites-requerant-multiples-133" defer></script>
 </body>
 </html>
