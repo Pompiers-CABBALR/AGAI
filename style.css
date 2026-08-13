@@ -832,10 +832,10 @@ button,.btn,.nb,.subtab-btn,.smopt,.fb,.ec,.ivr,[onclick]{
 }
 
 /* Prise d'appel tactile */
-.appel-phone-row{display:flex;align-items:center;gap:7px;margin-bottom:7px;}
-.appel-phone-row .fi{flex:1;min-width:0;}
-.appel-day-row{display:flex;align-items:center;gap:7px;margin-bottom:7px;}
-.appel-day-row .fi{flex:1;min-width:0;}
+.appel-phone-row{display:grid;grid-template-columns:minmax(0,1fr) 42px;align-items:center;gap:7px;margin-bottom:7px;}
+.appel-phone-row .fi{width:100%;min-width:0;}
+.appel-day-row{display:grid;grid-template-columns:minmax(0,1fr) 42px;align-items:center;gap:7px;margin-right:calc(-1 * var(--appel-period-padding,0px));margin-bottom:7px;}
+.appel-day-row .fi{width:100%;min-width:0;}
 .appel-animal-row{position:relative;background:#fff;border:1px solid var(--brd);border-radius:10px;padding:10px;margin-top:7px;}
 .appel-animal-title{font-size:11px;font-weight:700;color:var(--t2);margin-bottom:6px;}
 .appel-animal-section+.appel-animal-section{margin-top:9px;}
@@ -845,7 +845,7 @@ button,.btn,.nb,.subtab-btn,.smopt,.fb,.ec,.ivr,[onclick]{
 .appel-phone-add,.appel-phone-remove{width:42px;height:42px;min-width:42px;border:1px solid var(--brd);border-radius:10px;background:#fff;color:var(--red);font-size:22px;font-weight:700;cursor:pointer;}
 .appel-phone-remove{color:var(--t2);font-size:18px;}
 .appel-dispo-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
-.appel-dispo-period{position:relative;padding:10px;border:1px solid var(--brd);border-radius:10px;background:#fff;}
+.appel-dispo-period{--appel-period-padding:10px;position:relative;padding:var(--appel-period-padding);border:1px solid var(--brd);border-radius:10px;background:#fff;}
 .appel-dispo-period+.appel-dispo-period{margin-top:8px;background:#fafafa;}
 .appel-dispo-period-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:end;}
 .appel-dispo-time-grid{margin-top:8px;}
@@ -881,7 +881,7 @@ html.appel-nature-locked .cnt{overflow:hidden!important;}
   .appel-dispo-period-grid{grid-template-columns:1fr;gap:8px;}
   .appel-dispo-time-grid{margin-top:8px;}
   .appel-dispo-hours-row{grid-template-columns:1fr 1fr;}
-  .appel-dispo-period{padding:9px;}
+  .appel-dispo-period{--appel-period-padding:9px;}
 }
 
 /* Safari zoome automatiquement sur les champs inférieurs à 16 px, y compris

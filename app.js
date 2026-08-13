@@ -5127,6 +5127,9 @@ function oM(id){
   const[bc,bt]=bm[iv.s]||['bgr','—'];
   const sdots={'en-attente':'#E24B4A','selectionne':'var(--sel)','en-cours':'var(--amb)','terminee':'var(--grn)','avis-passage':'var(--pur)','modif':'#888','modif-adresse':'#888','modif-heure':'#C2410C','modif-equipier':'#2563EB','modif-engin':'#0F766E','reclasse':'#888','releve':'#0369A1','info-compl':'#0369A1'};
   const tlHtml=(iv.tl||[]).map(t=>`<div class="tl-item"><div class="tl-dot" style="background:${sdots[t.s]||'#aaa'};"></div><div class="tl-info"><span class="tl-status">${bm[t.s]?bm[t.s][1]:t.s}${t.note?` — ${t.note}`:''}</span> <span class="tl-horo">&#x1F4C5; ${t.h}</span><div class="tl-who">${t.who}</div></div></div>`).join('');
+  const appelDetailEntries=iv._appelDetails&&typeof iv._appelDetails==='object'
+    ?Object.entries(iv._appelDetails).filter(([key])=>key!=='Nids à traiter'||!Array.isArray(iv._nidsAppel)||iv._nidsAppel.length!==1)
+    :[];
   const reclassHtml=(ag&&iv.s==='en-cours')?`<div class="reclass-box">
     <div class="reclass-title">Reclasser la nature</div>
     <select class="fi" id="reclass-sel" style="margin-bottom:8px;">${NAT.map(n=>`<option value="${n.l}"${n.l===iv.n?' selected':''}>${n.l}</option>`).join('')}</select>
@@ -5285,7 +5288,7 @@ function oM(id){
       const onclick=cliquable?` onclick="showInterventionsLiees('${iv.id}')" style="cursor:pointer;"`:'';
       return `<div${onclick} style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#92400E;${cliquable?'cursor:pointer;':''}">&#x26A0;&#xFE0F; <strong>${autres.length}</strong> autre${autres.length>1?'s':''} intervention${autres.length>1?'s':''} à cette adresse pour ce type${detail}${lien}</div>`;
     })()}
-    ${iv._appelDetails&&Object.keys(iv._appelDetails).length?`<div class="mr"><div class="ml">Informations de l'appel</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:3px;">${Object.keys(iv._appelDetails).map(k=>`<span style="font-size:13px;"><span style="color:var(--t2);">${escHtml(k)} :</span> <strong>${escHtml(String(iv._appelDetails[k]))}</strong></span>`).join('')}</div></div></div>`:''}
+    ${appelDetailEntries.length?`<div class="mr"><div class="ml">Informations de l'appel</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:3px;">${appelDetailEntries.map(([key,value])=>`<span style="font-size:13px;"><span style="color:var(--t2);">${escHtml(key)} :</span> <strong>${escHtml(String(value))}</strong></span>`).join('')}</div></div></div>`:''}
     ${(()=>{const compls=(iv.tl||[]).filter(t=>t.s==='info-compl');return compls.length?`<div class="mr"><div class="ml" style="color:#0369A1;">&#x2139;&#xFE0F; Compléments d'information</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:6px;">${compls.map(t=>`<div style="background:#EFF6FF;border-left:3px solid #0369A1;border-radius:6px;padding:6px 10px;font-size:13px;"><div>${escHtml(t.note||'')}</div><div style="font-size:10px;color:var(--t2);margin-top:2px;">&#x1F4C5; ${escHtml(t.h||'')} · ${escHtml(t.who||'')}</div></div>`).join('')}</div></div></div>`:'';})()}
     ${iv._transfertDe?`<div class="mr"><div class="ml">Transfert reçu de</div><div class="mv2" style="color:var(--amb);font-weight:500;">&#x1F500; ${CASERNES.find(c=>c.id===iv._transfertDe)?.nom||iv._transfertDe}</div></div>`:''}
     ${iv._transfertVers?`<div class="mr"><div class="ml">Transféré vers</div><div class="mv2" style="color:#888;">&#x1F500; ${CASERNES.find(c=>c.id===iv._transfertVers)?.nom||iv._transfertVers}</div></div>`:''}
@@ -12623,7 +12626,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260813-disponibilites-requerant-multiples-133';
+const APP_VERSION='20260813-alignement-boutons-disponibilite-135';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
