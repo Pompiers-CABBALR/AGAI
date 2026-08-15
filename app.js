@@ -5004,6 +5004,25 @@ function rI(){
           <div class="ivrr"><span class="bdg bp">Avis passage</span>${isAdminModeActive()?`<button class="btn sm" style="font-size:10px;padding:3px 8px;background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="event.stopPropagation();classerAvisPassage('${iv.id}','standard')">&#x1F5C3;&#xFE0F; Classer</button>`:''}</div></div>`).join('')}
       </div>`;
   } else as.style.display='none';
+  // Les avis classés restent accessibles aux administrateurs afin qu'un
+  // classement involontaire puisse être annulé sans perdre le document.
+  const avisClasses=isAdminModeActive()?IVS.filter(iv=>!iv._isPilip&&iv._avisPassageClasse===true&&!iv._avisEnAttente&&iv.s!=='annulee'):[];
+  const acs=document.getElementById('avcsec'),acc=document.getElementById('avcc'),acl=document.getElementById('avcl');
+  if(acc)acc.textContent=avisClasses.length;
+  if(acs&&acl&&avisClasses.length){
+    acs.style.display='block';
+    const classExpanded=acs.dataset.expanded==='1';
+    acl.innerHTML=`
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 4px;">
+        <span style="font-size:12px;color:#6B7280;font-weight:500;">🗃️ ${avisClasses.length} avis classé(s)</span>
+        <button class="btn sm" style="font-size:11px;padding:3px 10px;" onclick="toggleAvisClasses(this)">${classExpanded?'▲ Réduire':'▼ Voir'}</button>
+      </div>
+      <div id="avc-detail" style="display:${classExpanded?'block':'none'};">
+        ${avisClasses.map(iv=>`<div class="ivr avis-passage" onclick="oM('${iv.id}')" style="opacity:.88;">
+          <div class="ivrl"><div class="ivrh">📅 ${escHtml(String(iv.h||'').slice(0,8))}</div><div class="ivrn">${escHtml(iv.n)}</div><div class="ivrc">📍 ${escHtml(interventionAddressLabel(iv))}</div></div>
+          <div class="ivrr"><span class="bdg bgr">Classé</span><button class="btn sm" style="font-size:10px;padding:3px 8px;background:#fff;color:#6B21A8;border-color:#A855F7;" onclick="event.stopPropagation();restaurerAvisPassage('${iv.id}','standard')">↩ Remettre en attente</button></div></div>`).join('')}
+      </div>`;
+  }else if(acs){acs.style.display='none';if(acl)acl.innerHTML='';}
   // Panneau tournée
   const tireurP=isTireurPILP();
   const selNonConf=IVS.filter(iv=>isTdy(iv)&&iv.s==='selectionne'&&iv.agr===CU.l&&!parcConfirmed.has(iv.id)&&!iv._isPilip);
@@ -5088,6 +5107,48 @@ function toggleAvisPassageHour(checkbox,timeId,wrapId){
     input.required=checked;
     if(checked&&!input.value)input.value=getHHMM(N());
   }
+}
+function toggleAvisClasses(btn){
+  const section=document.getElementById('avcsec');if(!section)return;
+  const expanded=section.dataset.expanded==='1';
+  section.dataset.expanded=expanded?'0':'1';
+  const detail=document.getElementById('avc-detail');if(detail)detail.style.display=expanded?'none':'block';
+  if(btn)btn.textContent=expanded?'▼ Voir':'▲ Réduire';
+}
+function toggleAvisClassesPilp(btn){
+  const section=document.getElementById('pilp-avcsec');if(!section)return;
+  const expanded=section.dataset.expanded==='1';
+  section.dataset.expanded=expanded?'0':'1';
+  const detail=document.getElementById('pilp-avc-detail');if(detail)detail.style.display=expanded?'none':'block';
+  if(btn)btn.textContent=expanded?'▼ Voir':'▲ Réduire';
+}
+function restaurerAvisPassage(id,scope){
+  if(!isAdminModeActive()){
+    showToast('Activez vos pouvoirs administrateur pour remettre un avis en attente.','warn');
+    return;
+  }
+  const isPilp=scope==='pilp';
+  const iv=(isPilp?PILP_IVS:IVS).find(function(item){return item&&item.id===id&&item._avisPassageClasse===true;});
+  if(!iv){showToast('Avis classé introuvable.','warn');return;}
+  confirmModal('Remettre cet avis de passage dans la liste des avis en attente ?',function(){
+    const h=getH(N());
+    iv._avisEnAttente=true;
+    iv._avisPassageClasse=false;
+    if(isPilp)iv.s='avis-passage';
+    iv._avisPassageRestaureAt=h;
+    iv._avisPassageRestaurePar=CU.l;
+    if(!Array.isArray(iv.tl))iv.tl=[];
+    iv.tl.push({s:'avis-restaure',h:h,who:CU.l,note:'Avis de passage remis en attente'});
+    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+    if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcPendingDirty!=='undefined'&&typeof _rcId==='function'&&CURRENT_CASERNE_ID){
+      _rcPendingDirty.add(_rcId(CURRENT_CASERNE_ID,isPilp?'pilp':'iv',iv.id));
+      if(typeof _rcDirtyGeneration!=='undefined')_rcDirtyGeneration++;
+      if(typeof _rcPersistPendingDirty==='function')_rcPersistPendingDirty();
+    }
+    cM();rI();rPilp();rAccueil();rStatsHeader();
+    saveData(true);
+    showToast('Avis de passage remis en attente.','success');
+  });
 }
 function classerAvisPassage(id,scope){
   if(!isAdminModeActive()){
@@ -5178,9 +5239,9 @@ function oM(id){
   const dispTransfert=iv._transfertDe?` ↩ transféré de ${CASERNES.find(cas=>cas.id===iv._transfertDe)?.nom||iv._transfertDe}`:'';
   const dispUt=iv._numCaserne?' · UT '+iv._numCaserne:'';
   document.getElementById('mi').textContent=dispApl+dispUt+dispTransfert;
-   const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis de passage'],'avis-classe':['bp','Avis classé'],'modif':['bgr','Modification'],'modif-adresse':['bgr','Adresse corrigée'],'modif-heure':['binfo','Horaire corrigé'],'modif-equipier':['binfo','Équipage corrigé'],'modif-engin':['binfo','Véhicule corrigé'],'reclasse':['bgr','Reclasé'],'releve':['binfo','Relève'],'info-compl':['binfo','ℹ️ Complément d\u2019info']};
+   const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis de passage'],'avis-classe':['bp','Avis classé'],'avis-restaure':['binfo','Avis remis en attente'],'modif':['bgr','Modification'],'modif-adresse':['bgr','Adresse corrigée'],'modif-heure':['binfo','Horaire corrigé'],'modif-equipier':['binfo','Équipage corrigé'],'modif-engin':['binfo','Véhicule corrigé'],'reclasse':['bgr','Reclasé'],'releve':['binfo','Relève'],'info-compl':['binfo','ℹ️ Complément d\u2019info']};
   const[bc,bt]=bm[iv.s]||['bgr','—'];
-  const sdots={'en-attente':'#E24B4A','selectionne':'var(--sel)','en-cours':'var(--amb)','terminee':'var(--grn)','avis-passage':'var(--pur)','avis-classe':'#6B21A8','modif':'#888','modif-adresse':'#888','modif-heure':'#C2410C','modif-equipier':'#2563EB','modif-engin':'#0F766E','reclasse':'#888','releve':'#0369A1','info-compl':'#0369A1'};
+  const sdots={'en-attente':'#E24B4A','selectionne':'var(--sel)','en-cours':'var(--amb)','terminee':'var(--grn)','avis-passage':'var(--pur)','avis-classe':'#6B21A8','avis-restaure':'#2563EB','modif':'#888','modif-adresse':'#888','modif-heure':'#C2410C','modif-equipier':'#2563EB','modif-engin':'#0F766E','reclasse':'#888','releve':'#0369A1','info-compl':'#0369A1'};
   const tlHtml=(iv.tl||[]).map(t=>`<div class="tl-item"><div class="tl-dot" style="background:${sdots[t.s]||'#aaa'};"></div><div class="tl-info"><span class="tl-status">${bm[t.s]?bm[t.s][1]:t.s}${t.note?` — ${t.note}`:''}</span> <span class="tl-horo">&#x1F4C5; ${t.h}</span><div class="tl-who">${t.who}</div></div></div>`).join('');
   const appelDetailEntries=iv._appelDetails&&typeof iv._appelDetails==='object'
     ?Object.entries(iv._appelDetails).filter(([key])=>key!=='Nids à traiter'||!Array.isArray(iv._nidsAppel)||iv._nidsAppel.length!==1)
@@ -5420,7 +5481,7 @@ function oM(id){
     </div>`:''}
     ${iv._avisPassage&&(iv.agr===CU.l||iv._agr2===CU.l||hasAdministrativeAccount())?`<div style="background:#FAF5FF;border:1px solid #D8B4FE;border-radius:10px;padding:10px 12px;margin-bottom:10px;">
       <div style="font-size:11px;font-weight:700;color:#6B21A8;margin-bottom:8px;">&#x1F4EC; Avis de passage${getAvisPassageHour(iv)?' — déposé à '+escHtml(getAvisPassageHour(iv)):''}${iv._avisPassageClasse?' — classé':''}</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn sm" style="background:#7E22CE;color:#fff;border-color:#7E22CE;" onclick="viewAvisPassageDocument('${iv.id}')">&#x1F4CB; Voir l'avis de passage</button>${isAdminModeActive()&&iv._avisEnAttente?`<button class="btn sm" style="background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="classerAvisPassage('${iv.id}','standard')">&#x1F5C3;&#xFE0F; Classer</button>`:''}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn sm" style="background:#7E22CE;color:#fff;border-color:#7E22CE;" onclick="viewAvisPassageDocument('${iv.id}')">&#x1F4CB; Voir l'avis de passage</button>${isAdminModeActive()&&iv._avisEnAttente?`<button class="btn sm" style="background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="classerAvisPassage('${iv.id}','standard')">&#x1F5C3;&#xFE0F; Classer</button>`:''}${isAdminModeActive()&&iv._avisPassageClasse===true&&!iv._avisEnAttente?`<button class="btn sm" style="background:#fff;color:#6B21A8;border-color:#A855F7;" onclick="restaurerAvisPassage('${iv.id}','standard')">↩ Remettre en attente</button>`:''}</div>
     </div>`:''}
     ${(['en-attente','selectionne','en-cours'].includes(iv.s)&&(hasRight('Interventions')||isAgres()||isChef()||isAdminModeActive()))?`<button class="btn sm" style="width:100%;margin-bottom:8px;background:#0369A1;color:#fff;border-color:#0369A1;" onclick="showComplementModal('${iv.id}')">&#x2139;&#xFE0F; Ajouter un complément d'information</button>`:''}
     <details style="background:var(--bg);border-radius:10px;margin-bottom:8px;" id="tl-details-${iv.id}">
@@ -5832,6 +5893,23 @@ function rPilp(){
           <div class="ivrr"><span class="bdg bp">Avis PILP</span>${isAdminModeActive()?`<button class="btn sm" style="font-size:10px;padding:3px 8px;background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="event.stopPropagation();classerAvisPassage('${iv.id}','pilp')">&#x1F5C3;&#xFE0F; Classer</button>`:''}</div></div>`).join('')}
       </div>`;
   } else pas.style.display='none';
+  const avisPClasses=isAdminModeActive()?PILP_IVS.filter(iv=>iv._avisPassageClasse===true&&!iv._avisEnAttente&&iv.s!=='annulee'):[];
+  const pacs=document.getElementById('pilp-avcsec'),pacc=document.getElementById('pilp-avcc'),pacl=document.getElementById('pilp-avcl');
+  if(pacc)pacc.textContent=avisPClasses.length;
+  if(pacs&&pacl&&avisPClasses.length){
+    pacs.style.display='block';
+    const classExpanded=pacs.dataset.expanded==='1';
+    pacl.innerHTML=`
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 4px;">
+        <span style="font-size:12px;color:#6B7280;font-weight:500;">🗃️ ${avisPClasses.length} avis PILP classé(s)</span>
+        <button class="btn sm" style="font-size:11px;padding:3px 10px;" onclick="toggleAvisClassesPilp(this)">${classExpanded?'▲ Réduire':'▼ Voir'}</button>
+      </div>
+      <div id="pilp-avc-detail" style="display:${classExpanded?'block':'none'};">
+        ${avisPClasses.map(iv=>`<div class="ivr avis-passage" onclick="oPilp('${iv.id}')" style="opacity:.88;">
+          <div class="ivrl"><div class="ivrh">📅 ${escHtml(String(iv.h||'').slice(0,8))}</div><div class="ivrn">🎯 ${escHtml(iv.n)}</div><div class="ivrc">📍 ${escHtml(interventionAddressLabel(iv))}</div></div>
+          <div class="ivrr"><span class="bdg bgr">Classé</span><button class="btn sm" style="font-size:10px;padding:3px 8px;background:#fff;color:#6B21A8;border-color:#A855F7;" onclick="event.stopPropagation();restaurerAvisPassage('${iv.id}','pilp')">↩ Remettre en attente</button></div></div>`).join('')}
+      </div>`;
+  }else if(pacs){pacs.style.display='none';if(pacl)pacl.innerHTML='';}
   let list;
   if(fltPilp==='all') list=PILP_IVS.filter(iv=>iv.s!=='avis-passage');
   else if(fltPilp==='mes-sel') list=PILP_IVS.filter(iv=>(iv.s==='selectionne'||iv.s==='en-cours')&&iv.agr===CU.l);
@@ -5886,7 +5964,7 @@ function oPilp(id){
   const pApl=iv._numApl||'';
   const pilpUt=iv._numCaserne?' · UT '+iv._numCaserne:'';
   document.getElementById('mi').textContent=(iv.s==='terminee'?(pApl||iv.id):iv.id)+pilpUt;
-  const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis passage'],'avis-classe':['bp','Avis classé']};
+  const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis passage'],'avis-classe':['bp','Avis classé'],'avis-restaure':['binfo','Avis remis en attente']};
   const[bc,bt]=bm[iv.s]||['bgr','—'];
   let actions='';
   if((ag||tireur||chef)){
@@ -5923,7 +6001,7 @@ function oPilp(id){
       }
     }
   }
-  const sdots={'en-attente':'#E24B4A','en-cours':'var(--amb)','terminee':'var(--grn)','avis-passage':'var(--pur)','avis-classe':'#6B21A8'};
+  const sdots={'en-attente':'#E24B4A','en-cours':'var(--amb)','terminee':'var(--grn)','avis-passage':'var(--pur)','avis-classe':'#6B21A8','avis-restaure':'#2563EB'};
   const tlHtml=(iv.tl||[]).map(t=>`<div class="tl-item"><div class="tl-dot" style="background:${sdots[t.s]||'#aaa'};"></div><div class="tl-info"><span class="tl-status">${bm[t.s]?bm[t.s][1]:t.s}</span> <span class="tl-horo">&#x1F4C5; ${t.h}</span><div class="tl-who">${t.who}</div></div></div>`).join('');
   document.getElementById('mb').innerHTML=`
     <div style="margin-bottom:10px;"><span class="bdg ${bc}">${bt}</span> <span class="bdg bpilp">PILP</span>${iv.rappels?` <span class="bdg bp" style="${isAdminModeActive()?'cursor:pointer;':''}"${isAdminModeActive()?` title="Déjà intervenu ici ?" onclick="showInterventionsLiees('${iv.id}')"`:''}>${iv.rappels} rappel(s)</span>`:''}</div>
@@ -5937,7 +6015,7 @@ function oPilp(id){
     ${iv.tireur?`<div class="mr"><div class="ml">Tireur</div><div class="mv2" style="font-family:monospace;">${iv.tireur}</div></div>`:''}
     ${iv._avisPassage?`<div style="background:#FAF5FF;border:1px solid #D8B4FE;border-radius:10px;padding:10px 12px;margin:8px 0;">
       <div style="font-size:11px;font-weight:700;color:#6B21A8;margin-bottom:8px;">&#x1F4EC; Avis de passage${getAvisPassageHour(iv)?' — déposé à '+escHtml(getAvisPassageHour(iv)):''}${iv._avisPassageClasse?' — classé':''}</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn sm" style="background:#7E22CE;color:#fff;border-color:#7E22CE;" onclick="viewAvisPassageDocument('${iv.id}')">&#x1F4CB; Voir l'avis de passage</button>${isAdminModeActive()&&(iv._avisEnAttente||iv.s==='avis-passage')?`<button class="btn sm" style="background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="classerAvisPassage('${iv.id}','pilp')">&#x1F5C3;&#xFE0F; Classer</button>`:''}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn sm" style="background:#7E22CE;color:#fff;border-color:#7E22CE;" onclick="viewAvisPassageDocument('${iv.id}')">&#x1F4CB; Voir l'avis de passage</button>${isAdminModeActive()&&(iv._avisEnAttente||iv.s==='avis-passage')?`<button class="btn sm" style="background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="classerAvisPassage('${iv.id}','pilp')">&#x1F5C3;&#xFE0F; Classer</button>`:''}${isAdminModeActive()&&iv._avisPassageClasse===true&&!iv._avisEnAttente?`<button class="btn sm" style="background:#fff;color:#6B21A8;border-color:#A855F7;" onclick="restaurerAvisPassage('${iv.id}','pilp')">↩ Remettre en attente</button>`:''}</div>
     </div>`:''}
     <div class="msep"></div>
     <details style="background:var(--bg);border-radius:10px;margin-bottom:8px;">
@@ -12762,7 +12840,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260815-classement-avis-passage-141';
+const APP_VERSION='20260815-recuperation-avis-passage-142';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
