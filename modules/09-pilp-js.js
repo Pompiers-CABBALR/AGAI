@@ -90,7 +90,7 @@ function rPilp(){
       <div id="pilp-av-detail" style="display:${apExpanded?'block':'none'};">
         ${avisP.map(iv=>`<div class="ivr avis-passage" style="cursor:pointer;" onclick="oPilp('${iv.id}')">
           <div class="ivrl"><div class="ivrh">&#x1F4C5; ${escHtml(iv.h.slice(0,8))}</div><div class="ivrn">&#x1F3AF; ${escHtml(iv.n)}</div><div class="ivrc">&#x1F4CD; ${escHtml(iv.com)}${iv.rappels?' · '+Number(iv.rappels)+' rappel(s)':''}</div></div>
-          <div class="ivrr"><span class="bdg bp">Avis PILP</span></div></div>`).join('')}
+          <div class="ivrr"><span class="bdg bp">Avis PILP</span>${isAdminModeActive()?`<button class="btn sm" style="font-size:10px;padding:3px 8px;background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="event.stopPropagation();classerAvisPassage('${iv.id}','pilp')">&#x1F5C3;&#xFE0F; Classer</button>`:''}</div></div>`).join('')}
       </div>`;
   } else pas.style.display='none';
   let list;
@@ -147,7 +147,7 @@ function oPilp(id){
   const pApl=iv._numApl||'';
   const pilpUt=iv._numCaserne?' · UT '+iv._numCaserne:'';
   document.getElementById('mi').textContent=(iv.s==='terminee'?(pApl||iv.id):iv.id)+pilpUt;
-  const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis passage']};
+  const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis passage'],'avis-classe':['bp','Avis classé']};
   const[bc,bt]=bm[iv.s]||['bgr','—'];
   let actions='';
   if((ag||tireur||chef)){
@@ -171,21 +171,20 @@ function oPilp(id){
       </div>
       <div class="brow" style="margin-top:8px;"><button class="btn sm danger" onclick="cSPilp('${id}','en-attente')">↩ En attente</button></div>`;
     } else if(iv.s==='avis-passage'&&(chef||ag)){
-      const canCloseAvis=isChefCentre()||hasRight('Administration');
       const ds=getDS(N()),hh=pad(N().getHours()),mm2=pad(N().getMinutes());
-      if(canCloseAvis){
+      if(isAdminModeActive()){
         actions+=`<div class="clotbox" style="margin-top:10px;">
-          <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Clôturer l'avis de passage PILP</div>
-          <button class="btn gn" style="width:100%;" onclick="clotAvisPilp('${id}')">✅ Clôturer définitivement</button>
+          <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Classer l'avis de passage PILP</div>
+          <button class="btn" style="width:100%;background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="classerAvisPassage('${id}','pilp')">&#x1F5C3;&#xFE0F; Classer l'avis</button>
         </div>`;
       } else {
         actions+=`<div class="clotbox" style="margin-top:10px;background:var(--rl);border:1px solid var(--rd);">
-          <div style="font-size:12px;color:var(--rd);">&#x1F512; La clôture des avis de passage est réservée au chef de centre.</div>
+          <div style="font-size:12px;color:var(--rd);">&#x1F512; Activez les pouvoirs administrateur pour classer cet avis de passage.</div>
         </div>`;
       }
     }
   }
-  const sdots={'en-attente':'#E24B4A','en-cours':'var(--amb)','terminee':'var(--grn)','avis-passage':'var(--pur)'};
+  const sdots={'en-attente':'#E24B4A','en-cours':'var(--amb)','terminee':'var(--grn)','avis-passage':'var(--pur)','avis-classe':'#6B21A8'};
   const tlHtml=(iv.tl||[]).map(t=>`<div class="tl-item"><div class="tl-dot" style="background:${sdots[t.s]||'#aaa'};"></div><div class="tl-info"><span class="tl-status">${bm[t.s]?bm[t.s][1]:t.s}</span> <span class="tl-horo">&#x1F4C5; ${t.h}</span><div class="tl-who">${t.who}</div></div></div>`).join('');
   document.getElementById('mb').innerHTML=`
     <div style="margin-bottom:10px;"><span class="bdg ${bc}">${bt}</span> <span class="bdg bpilp">PILP</span>${iv.rappels?` <span class="bdg bp" style="${isAdminModeActive()?'cursor:pointer;':''}"${isAdminModeActive()?` title="Déjà intervenu ici ?" onclick="showInterventionsLiees('${iv.id}')"`:''}>${iv.rappels} rappel(s)</span>`:''}</div>
@@ -197,6 +196,10 @@ function oPilp(id){
     ${iv.obs?`<div class="mr"><div class="ml">Observations</div><div class="mv2">${escHtml(iv.obs)}</div></div>`:''}
     <div class="mr"><div class="ml">Créé par</div><div class="mv2" style="font-family:monospace;">${iv.agr||'—'}</div></div>
     ${iv.tireur?`<div class="mr"><div class="ml">Tireur</div><div class="mv2" style="font-family:monospace;">${iv.tireur}</div></div>`:''}
+    ${iv._avisPassage?`<div style="background:#FAF5FF;border:1px solid #D8B4FE;border-radius:10px;padding:10px 12px;margin:8px 0;">
+      <div style="font-size:11px;font-weight:700;color:#6B21A8;margin-bottom:8px;">&#x1F4EC; Avis de passage${getAvisPassageHour(iv)?' — déposé à '+escHtml(getAvisPassageHour(iv)):''}${iv._avisPassageClasse?' — classé':''}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn sm" style="background:#7E22CE;color:#fff;border-color:#7E22CE;" onclick="viewAvisPassageDocument('${iv.id}')">&#x1F4CB; Voir l'avis de passage</button>${isAdminModeActive()&&(iv._avisEnAttente||iv.s==='avis-passage')?`<button class="btn sm" style="background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="classerAvisPassage('${iv.id}','pilp')">&#x1F5C3;&#xFE0F; Classer</button>`:''}</div>
+    </div>`:''}
     <div class="msep"></div>
     <details style="background:var(--bg);border-radius:10px;margin-bottom:8px;">
       <summary style="font-size:11px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;padding:10px 12px;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;">
@@ -258,7 +261,9 @@ function clotAvisPilp(id){
       n:iv.n.replace(' — PILP',''),addr:iv.addr,com:iv.com,h:iv.h,op:iv.agr||CU.l,
       s:'terminee',det:iv.obs||'',eng:null,req:iv.req||'',tel:iv.tel||'',obs:'',agr:CU.l,
       rappels:0,avisIds:[],_lienPilp:true,_lienPilpSourceId:iv.id,tl:[...iv.tl],
-      _avisPassage:iv._avisPassage===true,_avisPassageHeure:iv._avisPassageHeure||'',_avisPassageDate:iv._avisPassageDate||'',_avisPassageAt:iv._avisPassageAt||''});
+      _avisPassage:iv._avisPassage===true,_avisEnAttente:iv._avisEnAttente===true,
+      _avisPassageHeure:iv._avisPassageHeure||'',_avisPassageDate:iv._avisPassageDate||'',_avisPassageAt:iv._avisPassageAt||'',
+      _avisPassageClasse:iv._avisPassageClasse===true,_avisPassageClasseAt:iv._avisPassageClasseAt||'',_avisPassageClassePar:iv._avisPassageClassePar||''});
   }
   (iv.avisIds||[]).forEach(aid=>{const av=PILP_IVS.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';av.tl.push({s:'terminee',h,who:CU.l+' (fusion)'});}});
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();

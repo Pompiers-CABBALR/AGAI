@@ -700,7 +700,7 @@ function rI(){
       <div id="av-detail" style="display:${avExpanded?'block':'none'};">
         ${avis.map(iv=>`<div class="ivr avis-passage" onclick="oM('${iv.id}')">
           <div class="ivrl"><div class="ivrh">&#x1F4C5; ${escHtml(iv.h.slice(0,8))}</div><div class="ivrn">${escHtml(iv.n)}</div><div class="ivrc">&#x1F4CD; ${escHtml(interventionAddressLabel(iv))}${iv.rappels?' · '+Number(iv.rappels)+' rappel(s)':''}</div></div>
-          <div class="ivrr"><span class="bdg bp">Avis passage</span></div></div>`).join('')}
+          <div class="ivrr"><span class="bdg bp">Avis passage</span>${isAdminModeActive()?`<button class="btn sm" style="font-size:10px;padding:3px 8px;background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="event.stopPropagation();classerAvisPassage('${iv.id}','standard')">&#x1F5C3;&#xFE0F; Classer</button>`:''}</div></div>`).join('')}
       </div>`;
   } else as.style.display='none';
   // Panneau tournée
@@ -788,6 +788,54 @@ function toggleAvisPassageHour(checkbox,timeId,wrapId){
     if(checked&&!input.value)input.value=getHHMM(N());
   }
 }
+function classerAvisPassage(id,scope){
+  if(!isAdminModeActive()){
+    showToast('Activez vos pouvoirs administrateur pour classer un avis de passage.','warn');
+    return;
+  }
+  const isPilp=scope==='pilp';
+  const iv=(isPilp?PILP_IVS:IVS).find(function(item){return item&&item.id===id;});
+  if(!iv||(!iv._avisPassage&&iv.s!=='avis-passage')){
+    showToast('Avis de passage introuvable.','warn');
+    return;
+  }
+  if(iv._avisPassageClasse===true&&!iv._avisEnAttente&&iv.s!=='avis-passage'){
+    showToast('Cet avis de passage est déjà classé.','info');
+    return;
+  }
+  confirmModal('Classer cet avis de passage ? Il disparaîtra de la liste des avis en attente, mais restera conservé dans la fiche, le rapport et la traçabilité de l’intervention.',function(){
+    const h=getH(N());
+    const heure=getAvisPassageHour(iv);
+    iv._avisEnAttente=false;
+    iv._avisPassageClasse=true;
+    iv._avisPassageClasseAt=h;
+    iv._avisPassageClassePar=CU.l;
+    if(!Array.isArray(iv.tl))iv.tl=[];
+    iv.tl.push({s:'avis-classe',h:h,who:CU.l,note:'Avis de passage classé'+(heure?' (déposé à '+heure+')':'')});
+    // La ligne de l'intervention est explicitement prioritaire jusqu'à la fin
+    // de son envoi. Un rafraîchissement temps réel ne peut ainsi pas rétablir
+    // l'avis dans la liste d'attente avec une ancienne version distante.
+    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+    if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcPendingDirty!=='undefined'&&typeof _rcId==='function'&&CURRENT_CASERNE_ID){
+      _rcPendingDirty.add(_rcId(CURRENT_CASERNE_ID,isPilp?'pilp':'iv',iv.id));
+      if(typeof _rcDirtyGeneration!=='undefined')_rcDirtyGeneration++;
+      if(typeof _rcPersistPendingDirty==='function')_rcPersistPendingDirty();
+    }
+    if(iv.s==='avis-passage'){
+      if(isPilp){
+        clotAvisPilp(id);
+        return;
+      }
+      iv.s='terminee';
+      iv.tl.push({s:'terminee',h:h,who:CU.l,note:'Avis classé'});
+    }
+    // Retirer immédiatement l'avis de la liste avant le lancement de l'envoi.
+    // Le document reste dans l'intervention et dans son historique.
+    cM();rI();rPilp();rAccueil();rStatsHeader();
+    saveData(true);
+    showToast('Avis de passage classé.','success');
+  });
+}
 function autorisationDocumentsHTML(iv){
   if(!iv)return'';
   const list=Array.isArray(iv._autorisationNids)?iv._autorisationNids:(iv._autorisationData?[iv._autorisationData]:[]);
@@ -829,9 +877,9 @@ function oM(id){
   const dispTransfert=iv._transfertDe?` ↩ transféré de ${CASERNES.find(cas=>cas.id===iv._transfertDe)?.nom||iv._transfertDe}`:'';
   const dispUt=iv._numCaserne?' · UT '+iv._numCaserne:'';
   document.getElementById('mi').textContent=dispApl+dispUt+dispTransfert;
-   const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis de passage'],'modif':['bgr','Modification'],'modif-adresse':['bgr','Adresse corrigée'],'modif-heure':['binfo','Horaire corrigé'],'modif-equipier':['binfo','Équipage corrigé'],'modif-engin':['binfo','Véhicule corrigé'],'reclasse':['bgr','Reclasé'],'releve':['binfo','Relève'],'info-compl':['binfo','ℹ️ Complément d\u2019info']};
+   const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis de passage'],'avis-classe':['bp','Avis classé'],'modif':['bgr','Modification'],'modif-adresse':['bgr','Adresse corrigée'],'modif-heure':['binfo','Horaire corrigé'],'modif-equipier':['binfo','Équipage corrigé'],'modif-engin':['binfo','Véhicule corrigé'],'reclasse':['bgr','Reclasé'],'releve':['binfo','Relève'],'info-compl':['binfo','ℹ️ Complément d\u2019info']};
   const[bc,bt]=bm[iv.s]||['bgr','—'];
-  const sdots={'en-attente':'#E24B4A','selectionne':'var(--sel)','en-cours':'var(--amb)','terminee':'var(--grn)','avis-passage':'var(--pur)','modif':'#888','modif-adresse':'#888','modif-heure':'#C2410C','modif-equipier':'#2563EB','modif-engin':'#0F766E','reclasse':'#888','releve':'#0369A1','info-compl':'#0369A1'};
+  const sdots={'en-attente':'#E24B4A','selectionne':'var(--sel)','en-cours':'var(--amb)','terminee':'var(--grn)','avis-passage':'var(--pur)','avis-classe':'#6B21A8','modif':'#888','modif-adresse':'#888','modif-heure':'#C2410C','modif-equipier':'#2563EB','modif-engin':'#0F766E','reclasse':'#888','releve':'#0369A1','info-compl':'#0369A1'};
   const tlHtml=(iv.tl||[]).map(t=>`<div class="tl-item"><div class="tl-dot" style="background:${sdots[t.s]||'#aaa'};"></div><div class="tl-info"><span class="tl-status">${bm[t.s]?bm[t.s][1]:t.s}${t.note?` — ${t.note}`:''}</span> <span class="tl-horo">&#x1F4C5; ${t.h}</span><div class="tl-who">${t.who}</div></div></div>`).join('');
   const appelDetailEntries=iv._appelDetails&&typeof iv._appelDetails==='object'
     ?Object.entries(iv._appelDetails).filter(([key])=>key!=='Nids à traiter'||!Array.isArray(iv._nidsAppel)||iv._nidsAppel.length!==1)
@@ -942,7 +990,6 @@ function oM(id){
     }
   }
   if((chef||isAgres())&&iv.s==='avis-passage'){
-    const canCloseAvis=isChefCentre()||hasRight('Administration');
     const ds=getDS(N()),hh=pad(N().getHours()),mm2=pad(N().getMinutes());
     // Bouton reprendre — visible pour le chef d'agrès qui avait l'intervention
     if(iv.agr===CU.l||isAgres()||chef){
@@ -951,14 +998,14 @@ function oM(id){
         <button class="btn bl" style="width:100%;" onclick="cS('${iv.id}','en-cours')">▶ Remettre en cours</button>
       </div>`;
     }
-    if(canCloseAvis){
+    if(isAdminModeActive()){
       actions+=`<div class="clotbox" style="margin-top:10px;">
-        <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Clôturer l'avis de passage</div>
-        <button class="btn gn" style="width:100%;" onclick="clotAvis('${iv.id}')">✅ Clôturer définitivement</button>
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Classer l'avis de passage</div>
+        <button class="btn" style="width:100%;background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="classerAvisPassage('${iv.id}','standard')">&#x1F5C3;&#xFE0F; Classer l'avis</button>
       </div>`;
     } else {
       actions+=`<div class="clotbox" style="margin-top:10px;background:var(--rl);border:1px solid var(--rd);">
-        <div style="font-size:12px;color:var(--rd);">&#x1F512; La clôture définitive des avis de passage est réservée au chef de centre.</div>
+        <div style="font-size:12px;color:var(--rd);">&#x1F512; Activez les pouvoirs administrateur pour classer cet avis de passage.</div>
       </div>`;
     }
   }
@@ -966,7 +1013,7 @@ function oM(id){
     <div style="margin-bottom:8px;"><span class="bdg ${bc}">${bt}</span>${iv.rappels?` <span class="bdg bp" style="${isAdminModeActive()?'cursor:pointer;':''}"${isAdminModeActive()?` title="Déjà intervenu ici ?" onclick="showInterventionsLiees('${iv.id}')"`:''}>${iv.rappels} rappel(s)</span>`:''}</div>
     ${iv._urgence?'<div style="background:#FEE2E2;border:2px solid #B91C1C;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:800;color:#991B1B;margin-bottom:10px;text-align:center;">🚨 URGENCE — ÉTABLISSEMENT RECEVANT DU PUBLIC (ERP)</div>':''}
     ${iv._sdis?'<div style="background:#DBEAFE;border:1px solid #93C5FD;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;color:#1D4ED8;margin-bottom:10px;text-align:center;">&#x1F691; INTERVENTION SDIS</div>':''}
-    ${iv._avisPassage?'<div style="background:#F3EAF8;border:2px solid #9B59B6;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;color:#6C3483;margin-bottom:10px;text-align:center;">🟣 Un avis de passage a été laissé'+(getAvisPassageHour(iv)?' à '+escHtml(getAvisPassageHour(iv)):'')+' pour cette intervention</div>':''}
+    ${iv._avisPassage?'<div style="background:#F3EAF8;border:2px solid #9B59B6;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;color:#6C3483;margin-bottom:10px;text-align:center;">🟣 Un avis de passage a été laissé'+(getAvisPassageHour(iv)?' à '+escHtml(getAvisPassageHour(iv)):'')+(iv._avisPassageClasse?' — classé':'')+' pour cette intervention</div>':''}
     ${iv._echelleToiture?'<div style="background:#FEF3C7;border:2px solid #F59E0B;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:700;color:#92400E;margin-bottom:10px;text-align:center;">&#x26A0;&#xFE0F; INTERVENTION À FAIRE AVEC ÉCHELLE DE TOIT</div>':''}
     ${iv._epa?'<div style="background:#F3EAF8;border:2px solid #8E44AD;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:700;color:#6C3483;margin-bottom:10px;text-align:center;">&#x1F9F0; INTERVENTION À FAIRE AVEC EPA</div>':''}
     <div class="mr"><div class="ml">Adresse</div><div class="mv2" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">&#x1F4CD; ${escHtml(iv.addr)}, ${escHtml(iv.com)}${iv.addrComp?' · '+escHtml(iv.addrComp):''}${(isAgres()||isChef()||hasRight('Administration'))&&iv.s!=='terminee'?`<button class="btn sm" style="font-size:10px;padding:2px 7px;" onclick="editAdresse('${iv.id}')">✏️ Corriger</button>`:''}<button class="btn sm" style="font-size:10px;padding:2px 7px;background:#4285F4;color:#fff;border-color:#4285F4;" onclick="openMaps('${iv.id}')">🗺️ Maps</button></div></div>
@@ -1071,8 +1118,8 @@ function oM(id){
       ${autorisationDocumentsHTML(iv)}
     </div>`:''}
     ${iv._avisPassage&&(iv.agr===CU.l||iv._agr2===CU.l||hasAdministrativeAccount())?`<div style="background:#FAF5FF;border:1px solid #D8B4FE;border-radius:10px;padding:10px 12px;margin-bottom:10px;">
-      <div style="font-size:11px;font-weight:700;color:#6B21A8;margin-bottom:8px;">&#x1F4EC; Avis de passage${getAvisPassageHour(iv)?' — déposé à '+escHtml(getAvisPassageHour(iv)):''}</div>
-      <button class="btn sm" style="background:#7E22CE;color:#fff;border-color:#7E22CE;" onclick="viewAvisPassageDocument('${iv.id}')">&#x1F4CB; Voir l'avis de passage</button>
+      <div style="font-size:11px;font-weight:700;color:#6B21A8;margin-bottom:8px;">&#x1F4EC; Avis de passage${getAvisPassageHour(iv)?' — déposé à '+escHtml(getAvisPassageHour(iv)):''}${iv._avisPassageClasse?' — classé':''}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn sm" style="background:#7E22CE;color:#fff;border-color:#7E22CE;" onclick="viewAvisPassageDocument('${iv.id}')">&#x1F4CB; Voir l'avis de passage</button>${isAdminModeActive()&&iv._avisEnAttente?`<button class="btn sm" style="background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="classerAvisPassage('${iv.id}','standard')">&#x1F5C3;&#xFE0F; Classer</button>`:''}</div>
     </div>`:''}
     ${(['en-attente','selectionne','en-cours'].includes(iv.s)&&(hasRight('Interventions')||isAgres()||isChef()||isAdminModeActive()))?`<button class="btn sm" style="width:100%;margin-bottom:8px;background:#0369A1;color:#fff;border-color:#0369A1;" onclick="showComplementModal('${iv.id}')">&#x2139;&#xFE0F; Ajouter un complément d'information</button>`:''}
     <details style="background:var(--bg);border-radius:10px;margin-bottom:8px;" id="tl-details-${iv.id}">
