@@ -5652,8 +5652,14 @@ function showBlockModal(enCours){
     </div>`;
   document.getElementById('mo').style.display='flex';
 }
-function cS(id,s){
+function cS(id,s,confirmed){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
+  const previousStatus=iv.s;
+  if(s==='en-attente'&&previousStatus==='en-cours'&&confirmed!==true){
+    const oldStart=iv._hDebut||iv._hDebutReelle||'';
+    confirmModal('Remettre cette intervention en attente ?'+(oldStart?' Le départ enregistré à '+oldStart+' sera annulé.':'')+' Le numéro UT sera retiré et l’intervention devra être sélectionnée puis redémarrée.',function(){cS(id,s,true);});
+    return;
+  }
   if(s==='en-cours'){
     const ec=agresEnCours();
     if(ec&&ec.id!==id){showBlockModal(ec);return;}
@@ -5677,13 +5683,23 @@ function cS(id,s){
     assignInterventionRoute(iv,iv.agr||CU.l);
   }
   if(s==='en-attente'){
+    if(previousStatus==='en-cours'){
+      iv._retourAttenteDepuis='en-cours';
+      iv._hDebutAvantRetourAttente=iv._hDebut||iv._hDebutReelle||'';
+      iv._dateDebutAvantRetourAttente=iv._dateDebut||'';
+      iv._retourAttenteAt=getH(N());
+      iv._retourAttentePar=CU.l;
+    }
     clearInterventionNumbersForPending(iv);
     parcConfirmed.delete(iv.id);
     iv.agr=null;
     delete iv._routeBatchId;delete iv._routeOrder;
   }
   const agr2Label=iv._agr2?(()=>{const u=USERS.find(u=>u.l===iv._agr2);return u?' + '+fullName(u)+' (2\u00e8me)':' + '+iv._agr2;})():'';
-  pushTL(iv,s,CU.l+agr2Label,s==='selectionne'?'Ordre de tournée : '+iv._routeOrder:'');
+  const statusNote=s==='selectionne'
+    ?'Ordre de tournée : '+iv._routeOrder
+    :(s==='en-attente'&&previousStatus==='en-cours'?'Retour en attente confirmé'+(iv._hDebutAvantRetourAttente?' — ancien départ : '+iv._hDebutAvantRetourAttente:''):'');
+  pushTL(iv,s,CU.l+agr2Label,statusNote);
   if(CD())CD().ivs=IVS;
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);
@@ -12840,7 +12856,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260815-recuperation-avis-passage-142';
+const APP_VERSION='20260815-protection-retour-attente-143';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
