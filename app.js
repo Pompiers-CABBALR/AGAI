@@ -7024,6 +7024,7 @@ function showAstrTab(sub,btn){
 // PLANNING — vue hebdomadaire par équipe
 // ══════════════════════════════════════════════════════
 let astrPlanningFilter=new Set(['all']);
+let astrPlanningNowTimer=null;
 function astrWeekNav(dir){astrPlanningWeek+=dir;rAstrPlanning();}
 function setAstrFilter(f,btn){
   if(f==='all'){
@@ -7037,10 +7038,12 @@ function setAstrFilter(f,btn){
   rAstrPlanning();
 }
 function rAstrPlanning(){
+  if(astrPlanningNowTimer){clearTimeout(astrPlanningNowTimer);astrPlanningNowTimer=null;}
   const mon=getMondayOfWeek(astrPlanningWeek);
   const wk=weekKey(mon);
   document.getElementById('astr-week-label').textContent=weekLabel(mon);
-  const todayStr=getDS(TODAY);
+  const now=new Date();
+  const todayStr=getDS(now);
   const gran=EQUIPES.reduce((mn,e)=>Math.min(mn,e.granularity),60)||ASTR_CONFIG.granularity;
 
   // Équipes de garde
@@ -7156,6 +7159,12 @@ function rAstrPlanning(){
     const jourFgs=['#4338CA','#C2410C','#065F46','#BE123C','#0369A1','#92400E','#6D28D9'];
     const bg=isToday?'#E6F1FB':jourBgs[di];
     const fg=isToday?'#185FA5':jourFgs[di];
+    const planningDayStart=new Date(jourDate2);
+    planningDayStart.setHours(startHour,0,0,0);
+    const planningDayEnd=new Date(planningDayStart.getTime()+24*60*60*1000);
+    const currentSlotIndex=now>=planningDayStart&&now<planningDayEnd
+      ?Math.floor((now-planningDayStart)/(gran*60*1000))
+      :-1;
 
     // En-tête du tableau
     html+='<div style="margin-bottom:16px;border:1.5px solid var(--brd);border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.05);">';
@@ -7180,7 +7189,8 @@ function rAstrPlanning(){
     html+='<th class="astr-fct-col" title="Fonction" style="padding:4px 3px;background:var(--bg);border-right:1px solid var(--brd);border-bottom:1px solid var(--brd);font-size:9px;white-space:nowrap;">Fct</th>';
     for(let s=0;s<nbSlots;s++){
       const isHourMark=gran<=60||(s%(60/gran)===0);
-      html+=`<th class="astr-slot-col" style="--astr-slot-width:${gran>=60?30:18}px;padding:3px 2px;background:var(--bg);border-right:0.5px solid #e5e7eb;border-bottom:1px solid var(--brd);text-align:center;font-size:9px;font-weight:400;color:var(--t2);">${heureLabels[s]}</th>`;
+      const currentClass=s===currentSlotIndex?' astr-current-slot astr-current-slot-top':'';
+      html+=`<th class="astr-slot-col${currentClass}"${s===currentSlotIndex?' title="Créneau horaire actuel"':''} style="--astr-slot-width:${gran>=60?30:18}px;padding:3px 2px;background:var(--bg);border-right:0.5px solid #e5e7eb;border-bottom:1px solid var(--brd);text-align:center;font-size:9px;font-weight:400;color:var(--t2);">${heureLabels[s]}</th>`;
     }
     html+='</tr>';
     // Ligne 2 : heures fin (décalées)
@@ -7190,7 +7200,8 @@ function rAstrPlanning(){
     for(let s=0;s<nbSlots;s++){
       const totalMin=(startHour*60+(s+1)*gran)%1440;
       const hh2=Math.floor(totalMin/60);const mm3=totalMin%60;
-      html+=`<th class="astr-slot-col" style="--astr-slot-width:${gran>=60?30:18}px;padding:2px 2px;background:var(--bg);border-right:0.5px solid #e5e7eb;border-bottom:1px solid var(--brd);text-align:center;font-size:9px;font-weight:400;color:#aaa;">${pad(hh2)}h${mm3?pad(mm3):''}</th>`;
+      const currentClass=s===currentSlotIndex?' astr-current-slot':'';
+      html+=`<th class="astr-slot-col${currentClass}" style="--astr-slot-width:${gran>=60?30:18}px;padding:2px 2px;background:var(--bg);border-right:0.5px solid #e5e7eb;border-bottom:1px solid var(--brd);text-align:center;font-size:9px;font-weight:400;color:#aaa;">${pad(hh2)}h${mm3?pad(mm3):''}</th>`;
     }
     html+='</tr></thead><tbody>';
 
@@ -7211,6 +7222,7 @@ function rAstrPlanning(){
       html+=`<td class="astr-fct-col" title="${escHtml(displayFonction)}" style="padding:3px 3px;border-bottom:0.5px solid #f0f0f0;border-right:1px solid var(--brd);font-size:9px;color:var(--t2);white-space:nowrap;text-align:center;">${displayFonction}</td>`;
 
       for(let s=0;s<nbSlots;s++){
+        const currentCellClass=s===currentSlotIndex?' class="astr-current-slot"':'';
         // Minutes du slot dans la journée (avec gestion passage minuit)
         const slotRawMin=startHour*60+s*gran;
         const slotAbsMin=slotRawMin%1440; // heure réelle dans la journée
@@ -7256,20 +7268,20 @@ function rAstrPlanning(){
           roleCounts[roleKey][s]++;
           if(hasPiquet){
             // Disponible ET en piquet : fond vert clair + croix couleur équipe
-            html+=`<td style="padding:0;border-bottom:0.5px solid #f0f0f0;border-right:0.5px solid #e5e7eb;text-align:center;background:#DCFCE7;"><span style="font-size:11px;font-weight:700;color:${eqColor};">X</span></td>`;
+            html+=`<td${currentCellClass} style="padding:0;border-bottom:0.5px solid #f0f0f0;border-right:0.5px solid #e5e7eb;text-align:center;background:#DCFCE7;"><span style="font-size:11px;font-weight:700;color:${eqColor};">X</span></td>`;
           } else {
             // Disponible : vert
-            html+=`<td style="padding:0;border-bottom:0.5px solid #f0f0f0;border-right:0.5px solid #e5e7eb;background:#22C55E;"></td>`;
+            html+=`<td${currentCellClass} style="padding:0;border-bottom:0.5px solid #f0f0f0;border-right:0.5px solid #e5e7eb;background:#22C55E;"></td>`;
           }
         } else if(hasPiquet){
           // En piquet sans dispo renseignée : fond blanc + croix couleur équipe (ne compte pas dans y)
-          html+=`<td style="padding:0;border-bottom:0.5px solid #f0f0f0;border-right:0.5px solid #e5e7eb;text-align:center;background:#fff;"><span style="font-size:11px;font-weight:700;color:${eqColor};">X</span></td>`;
+          html+=`<td${currentCellClass} style="padding:0;border-bottom:0.5px solid #f0f0f0;border-right:0.5px solid #e5e7eb;text-align:center;background:#fff;"><span style="font-size:11px;font-weight:700;color:${eqColor};">X</span></td>`;
         } else if(DISPOS[wk]?.[login]?.[dispoDay+'_'+dispoIdx]===false){
           // Indisponible : rouge
-          html+=`<td style="padding:0;border-bottom:0.5px solid #f0f0f0;border-right:0.5px solid #e5e7eb;background:#EF4444;"></td>`;
+          html+=`<td${currentCellClass} style="padding:0;border-bottom:0.5px solid #f0f0f0;border-right:0.5px solid #e5e7eb;background:#EF4444;"></td>`;
         } else {
           // Non renseigné : blanc
-          html+=`<td style="padding:0;border-bottom:0.5px solid #f0f0f0;border-right:0.5px solid #e5e7eb;background:#fff;"></td>`;
+          html+=`<td${currentCellClass} style="padding:0;border-bottom:0.5px solid #f0f0f0;border-right:0.5px solid #e5e7eb;background:#fff;"></td>`;
         }
       }
       html+='</tr>';
@@ -7314,6 +7326,7 @@ function rAstrPlanning(){
 
     // Une seule ligne par rôle : X / D
     ROLE_KEYS.forEach(function(rk){
+      const isLastRole=rk===ROLE_KEYS[ROLE_KEYS.length-1];
       html+=`<tr style="background:var(--bg);">`;
       html+=`<td style="padding:3px 8px;border-right:1px solid var(--brd);border-bottom:0.5px solid #e5e7eb;position:sticky;left:0;background:var(--bg);font-size:10px;font-weight:600;color:var(--t2);white-space:nowrap;">${ROLE_LABELS[rk]}</td>`;
       html+=`<td class="astr-fct-col" style="border-right:1px solid var(--brd);border-bottom:0.5px solid #e5e7eb;background:var(--bg);"></td>`;
@@ -7321,7 +7334,8 @@ function rAstrPlanning(){
         const x=roleCountsX[rk][s];
         const d=roleCounts[rk][s];
         const hasAny=x>0||d>0;
-        html+=`<td style="padding:1px 2px;border-right:0.5px solid #e5e7eb;border-bottom:0.5px solid #e5e7eb;text-align:center;font-size:9px;white-space:nowrap;">`
+        const currentCellClass=s===currentSlotIndex?` class="astr-current-slot${isLastRole?' astr-current-slot-bottom':''}"`:'';
+        html+=`<td${currentCellClass} style="padding:1px 2px;border-right:0.5px solid #e5e7eb;border-bottom:0.5px solid #e5e7eb;text-align:center;font-size:9px;white-space:nowrap;">`
           +(hasAny
             ?`<span style="color:#854F0B;font-weight:700;">${x||'0'}</span><span style="color:#aaa;">/</span><span style="color:#0369A1;font-weight:700;">${d||'0'}</span>`
             :`<span style="color:#e5e7eb;">—</span>`)
@@ -7335,6 +7349,16 @@ function rAstrPlanning(){
 
   document.getElementById('astr-planning-grid').innerHTML=html;
 
+  // Le repère change automatiquement au prochain début de créneau tant que
+  // le planning reste affiché.
+  const granMs=gran*60*1000;
+  const minuteOfDay=now.getHours()*60+now.getMinutes();
+  const elapsedInSlot=(minuteOfDay%gran)*60*1000+now.getSeconds()*1000+now.getMilliseconds();
+  astrPlanningNowTimer=setTimeout(function(){
+    const planning=document.getElementById('astr-planning');
+    if(planning&&planning.style.display!=='none')rAstrPlanning();
+  },Math.max(1000,granMs-elapsedInSlot+100));
+
   // Légende
   const sansEqLeg=USERS.filter(u=>!EQUIPES.some(e=>e.membres.includes(u.l)));
   document.getElementById('astr-legende').innerHTML=
@@ -7342,6 +7366,7 @@ function rAstrPlanning(){
     +'<div style="display:flex;align-items:center;gap:5px;font-size:11px;"><div style="width:20px;height:12px;border-radius:2px;background:#DCFCE7;border:1px solid #16A34A;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:10px;color:#166534;">X</div>Dispo + piquet</div>'
     +'<div style="display:flex;align-items:center;gap:5px;font-size:11px;"><div style="width:20px;height:12px;border-radius:2px;background:#EF4444;border:1px solid #DC2626;"></div>Indisponible</div>'
     +'<div style="display:flex;align-items:center;gap:5px;font-size:11px;"><div style="width:20px;height:12px;border-radius:2px;background:#fff;border:1px solid #e5e7eb;"></div>Non renseign\u00e9</div>'
+    +'<div style="display:flex;align-items:center;gap:5px;font-size:11px;"><div style="width:20px;height:12px;border-radius:2px;background:#DBEAFE;border:2px solid #2563EB;box-sizing:border-box;"></div>Cr\u00e9neau actuel</div>'
     +'<div style="font-size:11px;color:var(--t2);margin-left:8px;"><span style="color:#854F0B;font-weight:700;">x</span> = piquets &nbsp;/&nbsp; <span style="color:#0369A1;font-weight:700;">y</span> = dispos</div>'
     +sortEquipes(EQUIPES).map(e=>`<div style="display:flex;align-items:center;gap:5px;font-size:11px;"><div style="width:20px;height:12px;border-radius:2px;background:${e.color};"></div>${e.nom}</div>`).join('');
 }
@@ -12685,7 +12710,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260813-stats-pouvoirs-admin-139';
+const APP_VERSION='20260815-planning-creneau-actuel-140';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
