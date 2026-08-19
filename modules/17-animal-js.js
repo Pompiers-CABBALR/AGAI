@@ -770,6 +770,7 @@ function _buildDataObject(){
       astrTelData:JSON.parse(JSON.stringify(d.astrTelData||{})),
       astrTelParams:{...(d.astrTelParams||{})},
       statsTaux:{...(d.statsTaux||{})},
+      adminLogins:Array.isArray(d.adminLogins)?[...d.adminLogins]:(d.adminLogin?[d.adminLogin]:[]),
       adminLogin:d.adminLogin||'',
       formations:JSON.parse(JSON.stringify(d.formations||[])),
     };
@@ -840,6 +841,8 @@ function _applyDataObject(data){
         if(src.astrTelData&&!dispoLocked)dst.astrTelData=src.astrTelData;
         if(src.astrTelParams)dst.astrTelParams=src.astrTelParams;
         if(src.statsTaux)dst.statsTaux=src.statsTaux;
+        if(src.adminLogins!==undefined)dst.adminLogins=Array.isArray(src.adminLogins)?[...src.adminLogins]:[];
+        else if(src.adminLogin!==undefined)dst.adminLogins=src.adminLogin?[src.adminLogin]:[];
         if(src.adminLogin!==undefined)dst.adminLogin=src.adminLogin;
         if(src._initCompteurs!==undefined)dst._initCompteurs=src._initCompteurs;
       }
@@ -1809,6 +1812,7 @@ function _rcSplitCaserne(cid, d){
     astrTelData: JSON.parse(JSON.stringify(d.astrTelData||{})),
     astrTelParams: Object.assign({},d.astrTelParams||{}),
     statsTaux: Object.assign({},d.statsTaux||{}),
+    adminLogins: Array.isArray(d.adminLogins)?[...d.adminLogins]:(d.adminLogin?[d.adminLogin]:[]),
     adminLogin: d.adminLogin||''
   };
   rows.push({ id:_rcId(cid,'config','main'), caserne:cid, type:'config', data:cfg, deleted:false });
@@ -1819,7 +1823,7 @@ function _rcSplitCaserne(cid, d){
 function _rcAssembleCaserne(rows){
   const out = { users:[], ivs:[], pilpIvs:[], equipes:[], fmpas:[], formStag:[], formForm:[], renforts:[], activites:[],
                 dispos:{}, piquets:{}, planningRotations:{}, disposValidated:{}, piquetsValidated:{}, astrConfig:{},
-                astrTelData:{}, astrTelParams:{}, statsTaux:{} };
+                astrTelData:{}, astrTelParams:{}, statsTaux:{}, adminLogins:[], adminLogin:'' };
   const listMap = {iv:'ivs', pilp:'pilpIvs', equipe:'equipes', fmpa:'fmpas', formStag:'formStag', formForm:'formForm', renfort:'renforts', activite:'activites'};
   rows.forEach(function(r){
     if(r.deleted) return; // on ignore les enregistrements supprimés à la reconstruction
@@ -1838,7 +1842,8 @@ function _rcAssembleCaserne(rows){
       out.astrTelData=c.astrTelData||{};
       out.astrTelParams=c.astrTelParams||{};
       out.statsTaux=c.statsTaux||{};
-      out.adminLogin=c.adminLogin||'';
+      out.adminLogins=Array.isArray(c.adminLogins)?[...c.adminLogins]:(c.adminLogin?[c.adminLogin]:[]);
+      out.adminLogin=c.adminLogin||out.adminLogins[0]||'';
     }
   });
   return out;

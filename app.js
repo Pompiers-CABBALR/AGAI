@@ -216,28 +216,43 @@ function repairKnownChefCorpsAssignment(){
 function accountNameKey(account){
   return String((account&&account.prenom||'')+' '+(account&&account.nom||'')).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z]/g,'');
 }
-function getCaserneAdmin(caserneId){
+function getCaserneAdmins(caserneId){
   const data=CASERNE_DATA[caserneId];
-  if(!data||!Array.isArray(data.users))return null;
-  let admin=data.adminLogin&&data.users.find(function(user){return user&&user.l===data.adminLogin&&!user._isSA;});
-  // Migration corrective connue : l'administrateur désigné de Lapugnoy est Pascal Douvrin.
-  if(!admin&&caserneId==='CIS05')admin=data.users.find(function(user){return accountNameKey(user)==='pascaldouvrin';});
-  if(!admin){
-    const candidates=data.users.filter(function(user){return user&&!user._isSA&&Array.isArray(user.rights)&&user.rights.includes('Administration');});
-    candidates.sort(function(a,b){return String(a.nom||'').localeCompare(String(b.nom||''),'fr')||String(a.prenom||'').localeCompare(String(b.prenom||''),'fr');});
-    admin=candidates[0]||null;
+  if(!data||!Array.isArray(data.users))return [];
+  const declared=[];
+  (Array.isArray(data.adminLogins)?data.adminLogins:[]).forEach(function(login){
+    if(login&&!declared.includes(login))declared.push(login);
+  });
+  // Compatibilité avec les anciennes sauvegardes qui ne contenaient qu'un adminLogin.
+  if(data.adminLogin&&!declared.includes(data.adminLogin))declared.push(data.adminLogin);
+  data.users.forEach(function(user){
+    if(user&&!user._isSA&&Array.isArray(user.rights)&&user.rights.includes('Administration')&&!declared.includes(user.l))declared.push(user.l);
+  });
+  // Migration corrective connue : Pascal Douvrin reste administrateur de Lapugnoy.
+  if(!declared.length&&caserneId==='CIS05'){
+    const pascal=data.users.find(function(user){return accountNameKey(user)==='pascaldouvrin';});
+    if(pascal)declared.push(pascal.l);
   }
-  if(admin)data.adminLogin=admin.l;
-  return admin;
+  const admins=declared.map(function(login){
+    return data.users.find(function(user){return user&&user.l===login&&!user._isSA;});
+  }).filter(Boolean);
+  data.adminLogins=admins.map(function(admin){return admin.l;});
+  data.adminLogin=data.adminLogins[0]||'';
+  return admins;
 }
+function getCaserneAdmin(caserneId){return getCaserneAdmins(caserneId)[0]||null;}
 function normalizeCaserneAdminAssignments(){
   OP_CASERNES().forEach(function(caserne){
     const data=CASERNE_DATA[caserne.id];if(!data||!Array.isArray(data.users))return;
-    const admin=getCaserneAdmin(caserne.id);if(!admin)return;
-    data.adminLogin=admin.l;
+    const admins=getCaserneAdmins(caserne.id);
+    const adminLogins=new Set(admins.map(function(admin){return admin.l;}));
+    data.adminLogins=[...adminLogins];
+    data.adminLogin=data.adminLogins[0]||'';
     data.users.forEach(function(user){
       user.rights=Array.isArray(user.rights)?user.rights:[];
-      if(user.l===admin.l){if(!user.rights.includes('Administration'))user.rights.push('Administration');}
+      if(user._isSA){
+        ["Prise d'appel","Interventions","Historique complet","Chef d'agrès","Tireur PILP","Administration"].forEach(function(right){if(!user.rights.includes(right))user.rights.push(right);});
+      } else if(adminLogins.has(user.l)){if(!user.rights.includes('Administration'))user.rights.push('Administration');}
       else user.rights=user.rights.filter(function(right){return right!=='Administration';});
       user.appRole=deriveAccountRole(user);
     });
@@ -297,7 +312,7 @@ function initCaserneData(cid){
   // Aucun administrateur avec un mot de passe connu n'est créé automatiquement.
   const defaultUsers=[];
   CASERNE_DATA[cid]={
-    users:defaultUsers,
+    users:defaultUsers,adminLogins:[],adminLogin:'',
     ivs:[],pilpIvs:[],equipes:[],dispos:{},piquets:{},planningRotations:{},disposValidated:{},piquetsValidated:{},renforts:[],
     astrConfig:{granularity:60,engins:['VTU-01','VTU-02','VTU-03','VPI'],deadline:{dayOfWeek:5,hour:23,minute:59},deadlinePiquet:{dayOfWeek:0,hour:18,minute:0},weekStartDay:1,weekStartHour:0},
   };
@@ -434,6 +449,8 @@ function syncCaserneContext(){
       existing.matricule=sa.matricule||'';
       existing.caserneId=CURRENT_CASERNE_ID;
       existing.appRole='superadmin';
+      existing.rights=Array.isArray(existing.rights)?existing.rights:[];
+      ["Prise d'appel","Interventions","Historique complet","Chef d'agrès","Tireur PILP","Administration"].forEach(function(right){if(!existing.rights.includes(right))existing.rights.push(right);});
       // Le mot de passe reste toujours aligné sur celui du compte superadmin,
       // pour qu'un seul et même mot de passe donne l'accès superadmin ET l'accès
       // utilisateur normal (évite toute divergence entre les deux).
@@ -1405,19 +1422,19 @@ function renderSuperAdmin(){
         <!-- Admins casernes -->
         ${OP_CASERNES().map(c=>{
           const d=CASERNE_DATA[c.id]||{users:[]};
-          const admin=getCaserneAdmin(c.id);
+          const admins=getCaserneAdmins(c.id);
+          const adminLogins=new Set(admins.map(a=>a.l));
           const responsableFormation=d.users?.find(u=>u.responsableFormation===true);
           return `<div style="background:${c.couleur}11;border-radius:10px;padding:12px;border:1px solid ${c.couleur}33;">
-            <div style="font-size:11px;font-weight:700;color:${c.couleur};margin-bottom:6px;text-transform:uppercase;">&#x1F6E1;️ Admin ${c.nom}</div>
-            ${admin?`<div style="font-size:13px;font-weight:600;">${admin.prenom} ${admin.nom}</div>
-              <div style="font-size:11px;color:#666;font-family:monospace;margin:3px 0;">${admin.l}</div>
-              <button class="btn sm" style="font-size:11px;margin-top:6px;" onclick="editAdminCaserne('${c.id}')">&#x1F511; Modifier mot de passe</button>`
-            :`<div style="font-size:12px;color:#999;">Aucun admin défini</div>`}
-            <select class="fi" style="font-size:11px;padding:4px 6px;width:100%;margin-top:7px;" onchange="setCaserneAdmin('${c.id}',this.value)">
-              <option value="">— Désigner l'administrateur —</option>
-              ${[...(d.users||[])].filter(u=>!u._isSA).sort((a,b)=>(a.nom+' '+a.prenom).localeCompare(b.nom+' '+b.prenom,'fr')).map(u=>`<option value="${u.l}"${admin&&admin.l===u.l?' selected':''}>${u.nom} ${u.prenom}</option>`).join('')}
-            </select>
-            <div style="font-size:10px;color:#777;margin-top:4px;">Désignation unique, modifiable uniquement par le superadmin.</div>
+            <div style="font-size:11px;font-weight:700;color:${c.couleur};margin-bottom:6px;text-transform:uppercase;">&#x1F6E1;️ Admins ${c.nom}</div>
+            ${admins.length?admins.map(admin=>`<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:4px 0;border-bottom:1px solid ${c.couleur}22;">
+              <div><div style="font-size:12px;font-weight:600;">${admin.prenom} ${admin.nom}</div><div style="font-size:10px;color:#666;font-family:monospace;">${admin.l}</div></div>
+              <button class="btn sm" style="font-size:10px;white-space:nowrap;" onclick="editAdminCaserne('${c.id}','${admin.l}')">&#x1F511; Modifier</button>
+            </div>`).join(''):`<div style="font-size:12px;color:#999;">Aucun admin local défini</div>`}
+            <div style="margin-top:7px;max-height:120px;overflow:auto;background:#fff;border:1px solid ${c.couleur}22;border-radius:7px;padding:5px 7px;">
+              ${[...(d.users||[])].filter(u=>!u._isSA).sort((a,b)=>(a.nom+' '+a.prenom).localeCompare(b.nom+' '+b.prenom,'fr')).map(u=>`<label style="display:flex;align-items:center;gap:6px;font-size:11px;padding:3px 0;cursor:pointer;"><input type="checkbox" ${adminLogins.has(u.l)?'checked':''} onchange="setCaserneAdmin('${c.id}','${u.l}',this.checked)"> ${u.nom} ${u.prenom}</label>`).join('')}
+            </div>
+            <div style="font-size:10px;color:#777;margin-top:4px;">Plusieurs administrateurs locaux peuvent être désignés. Le superadmin conserve toujours l'accès à toutes les casernes.</div>
             <div style="border-top:1px solid ${c.couleur}33;margin-top:10px;padding-top:9px;">
               <div style="font-size:10px;font-weight:700;color:#6D28D9;text-transform:uppercase;margin-bottom:5px;">🎓 Responsable formation</div>
               <select class="fi" style="font-size:11px;padding:4px 6px;width:100%;" onchange="setResponsableFormation('${c.id}',this.value)">
@@ -2107,23 +2124,32 @@ function setChefCorpsAccount(login){
   saveData(true);renderSuperAdmin();
   showToast('Chef de corps enregistr\u00e9 : '+fullName(account),'success');
 }
-function setCaserneAdmin(caserneId,login){
-  if(!isSuperAdmin()){showToast('Seul le super-administrateur peut d\u00e9signer un administrateur de caserne.','warn');return;}
+function setCaserneAdmin(caserneId,login,enabled){
+  if(GLOBAL_ROLE!=='superadmin'){showToast('Seul le super-administrateur peut d\u00e9signer les administrateurs de caserne.','warn');return;}
   const data=CASERNE_DATA[caserneId];
   if(!data||!Array.isArray(data.users))return;
   const selected=login&&data.users.find(function(user){return user&&user.l===login&&!user._isSA;});
   if(login&&!selected){showToast('Compte introuvable dans cette caserne.','warn');renderSuperAdmin();return;}
-  data.adminLogin=selected?selected.l:'';
+  const current=new Set(getCaserneAdmins(caserneId).map(function(admin){return admin.l;}));
+  const shouldEnable=typeof enabled==='boolean'?enabled:!current.has(login);
+  if(selected&&shouldEnable)current.add(selected.l);
+  else if(login)current.delete(login);
+  data.adminLogins=[...current];
+  data.adminLogin=data.adminLogins[0]||'';
   data.users.forEach(function(user){
     user.rights=Array.isArray(user.rights)?user.rights:[];
-    if(selected&&user.l===selected.l){if(!user.rights.includes('Administration'))user.rights.push('Administration');}
+    if(user._isSA){
+      ["Prise d'appel","Interventions","Historique complet","Chef d'agrès","Tireur PILP","Administration"].forEach(function(right){if(!user.rights.includes(right))user.rights.push(right);});
+    } else if(current.has(user.l)){if(!user.rights.includes('Administration'))user.rights.push('Administration');}
     else user.rights=user.rights.filter(function(right){return right!=='Administration';});
     user.caserneId=caserneId;user.appRole=deriveAccountRole(user);
   });
   if(CURRENT_CASERNE_ID===caserneId)syncCaserneContext();
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-  saveData(true);renderSuperAdmin();
-  showToast(selected?'Administrateur de caserne enregistr\u00e9 : '+fullName(selected):'Administrateur de caserne retir\u00e9','success');
+  saveData(true);
+  const globalView=document.getElementById('global-view');
+  if(globalView&&globalView.style.display!=='none')renderSuperAdmin();else rAdm();
+  showToast(selected&&shouldEnable?'Administrateur ajout\u00e9 : '+fullName(selected):'Administrateur retir\u00e9 : '+(selected?fullName(selected):login),'success');
 }
 function setResponsableFormation(caserneId,login){
   if(!isSuperAdmin()){showToast('Seul le super-administrateur peut d\u00e9finir le responsable formation.','warn');return;}
@@ -2402,9 +2428,9 @@ async function saveCompteSpecial(role){
   }
   saveData();cM();renderSuperAdmin();
 }
-function editAdminCaserne(cid){
+function editAdminCaserne(cid,adminLogin){
   const d=CASERNE_DATA[cid]||{users:[]};
-  const admin=getCaserneAdmin(cid);
+  const admin=(adminLogin&&d.users.find(function(user){return user&&user.l===adminLogin&&!user._isSA;}))||getCaserneAdmin(cid);
   const cas=CASERNES.find(c=>c.id===cid);
   if(!admin||!cas)return;
   document.getElementById('mt').textContent='Admin — '+cas.nom;
@@ -2431,7 +2457,7 @@ function editAdminCaserne(cid){
     </div>
     <div id="adm-err" style="font-size:12px;color:#E24B4A;display:none;margin-bottom:8px;"></div>
     <div class="brow">
-      <button class="btn pr sm" onclick="saveAdminCaserne('${cid}')">&#x1F4BE; Enregistrer</button>
+      <button class="btn pr sm" onclick="saveAdminCaserne('${cid}','${admin.l}')">&#x1F4BE; Enregistrer</button>
       <button class="btn sm" onclick="cM()">Annuler</button>
     </div>
   </div>`;
@@ -2443,9 +2469,9 @@ function editAdminCaserne(cid){
   };
   document.getElementById('mo').style.display='flex';
 }
-async function saveAdminCaserne(cid){
+async function saveAdminCaserne(cid,adminLogin){
   const d=CASERNE_DATA[cid]||{users:[]};
-  const admin=getCaserneAdmin(cid);
+  const admin=(adminLogin&&d.users.find(function(user){return user&&user.l===adminLogin&&!user._isSA;}))||getCaserneAdmin(cid);
   const cas=CASERNES.find(c=>c.id===cid);
   if(!admin||!cas)return;
   const prenom=document.getElementById('adm-prenom').value.trim();
@@ -2460,7 +2486,9 @@ async function saveAdminCaserne(cid){
   if(pwdErr){err.style.display='block';err.textContent=pwdErr;return;}
   const oldLogin=admin.l;
   admin.prenom=prenom;admin.nom=nom;admin.grade=grade;admin.l=login;
-  d.adminLogin=login;
+  const adminLogins=getCaserneAdmins(cid).map(function(item){return item.l===oldLogin?login:item.l;});
+  d.adminLogins=[...new Set(adminLogins)];
+  d.adminLogin=d.adminLogins[0]||'';
   if(mdp){admin.p=await hashPassword(mdp);} // P1
   cas.couleur=couleur;
   if(oldLogin!==login){
@@ -6795,6 +6823,7 @@ function rAdm(){
   const RIGHTS_SHORT=['Prise d\'appel','Interventions','Historique complet','Chef d\'agrès','Tireur PILP','Administration','Formation'];
   // USERS contient déjà le superadmin via syncCaserneContext
   const sorted=sortByName(USERS);
+  const caserneAdminLogins=new Set(getCaserneAdmins(CURRENT_CASERNE_ID).map(function(admin){return admin.l;}));
   tbody.innerHTML=sorted.map(u=>{
     const isSA=u._isSA===true;
     // Le superadmin peut modifier sa propre ligne ; les autres ne peuvent pas toucher au SA
@@ -6818,7 +6847,14 @@ function rAdm(){
       </div>
     </td>`;
     const rightsCell=(isSA&&!saEditable)?RIGHTS_SHORT.map(()=>'<td style="text-align:center;"><input type="checkbox" checked disabled></td>').join('')
-      :RIGHTS_SHORT.map(r=>`<td style="text-align:center;"><input type="checkbox" ${u.rights.includes(r)?'checked':''} onchange="updateRight('${u.l}','${r.replace(/'/g,"\\'")}',this.checked)" ${(r==='Administration'&&!isSuperAdmin())||isSA?'disabled':''}></td>`).join('');
+      :RIGHTS_SHORT.map(r=>{
+        if(r==='Administration'){
+          const adminChecked=caserneAdminLogins.has(u.l);
+          const adminDisabled=isSA||GLOBAL_ROLE!=='superadmin';
+          return `<td style="text-align:center;"><input type="checkbox" ${adminChecked?'checked':''} onchange="setCaserneAdmin('${CURRENT_CASERNE_ID}','${u.l}',this.checked)" ${adminDisabled?'disabled':''} title="${adminDisabled?'Seul le superadmin peut modifier les administrateurs locaux':'Ajouter ou retirer cet administrateur local'}"></td>`;
+        }
+        return `<td style="text-align:center;"><input type="checkbox" ${u.rights.includes(r)?'checked':''} onchange="updateRight('${u.l}','${r.replace(/'/g,"\\'")}',this.checked)" ${isSA?'disabled':''}></td>`;
+      }).join('');
     const delCell=(isSA)?'<td></td>':`<td><button class="del-btn" onclick="delUser('${u.l}')" ${u.l===CU.l?'disabled':''}>✕</button></td>`;
     const matriculeCell=(isSA&&!saEditable)?`<td style="font-size:11px;color:var(--t2);">${u.matricule||'—'}</td>`:`<td><input type="text" value="${u.matricule||''}" data-login="${u.l}" data-field="matricule" onchange="updateUser(this.dataset.login,this.dataset.field,this.value)" placeholder="Matricule" style="width:70px;padding:3px 6px;border:1px solid var(--brd);border-radius:5px;font-size:12px;"/></td>`;
     // Cellule Fonctions formateur
@@ -6931,8 +6967,8 @@ function updateFormateurFn(login,fn,checked){
   if(profPanel&&profPanel.style.display!=='none'&&CU&&CU.l===login)rProfil();
 }
 function updateRight(login,right,checked){
-  if(right==='Administration'&&!isSuperAdmin()){
-    showToast('La d\u00e9signation des administrateurs est r\u00e9serv\u00e9e au super-administrateur.','warn');rAdm();return;
+  if(right==='Administration'){
+    setCaserneAdmin(CURRENT_CASERNE_ID,login,checked);return;
   }
   const u=USERS.find(x=>x.l===login);if(!u)return;
   if(checked&&!u.rights.includes(right))u.rights.push(right);
@@ -12856,7 +12892,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260815-protection-retour-attente-143';
+const APP_VERSION='20260819-multi-admins-caserne-144';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -15147,6 +15183,7 @@ function _buildDataObject(){
       astrTelData:JSON.parse(JSON.stringify(d.astrTelData||{})),
       astrTelParams:{...(d.astrTelParams||{})},
       statsTaux:{...(d.statsTaux||{})},
+      adminLogins:Array.isArray(d.adminLogins)?[...d.adminLogins]:(d.adminLogin?[d.adminLogin]:[]),
       adminLogin:d.adminLogin||'',
       formations:JSON.parse(JSON.stringify(d.formations||[])),
     };
@@ -15217,6 +15254,8 @@ function _applyDataObject(data){
         if(src.astrTelData&&!dispoLocked)dst.astrTelData=src.astrTelData;
         if(src.astrTelParams)dst.astrTelParams=src.astrTelParams;
         if(src.statsTaux)dst.statsTaux=src.statsTaux;
+        if(src.adminLogins!==undefined)dst.adminLogins=Array.isArray(src.adminLogins)?[...src.adminLogins]:[];
+        else if(src.adminLogin!==undefined)dst.adminLogins=src.adminLogin?[src.adminLogin]:[];
         if(src.adminLogin!==undefined)dst.adminLogin=src.adminLogin;
         if(src._initCompteurs!==undefined)dst._initCompteurs=src._initCompteurs;
       }
@@ -16186,6 +16225,7 @@ function _rcSplitCaserne(cid, d){
     astrTelData: JSON.parse(JSON.stringify(d.astrTelData||{})),
     astrTelParams: Object.assign({},d.astrTelParams||{}),
     statsTaux: Object.assign({},d.statsTaux||{}),
+    adminLogins: Array.isArray(d.adminLogins)?[...d.adminLogins]:(d.adminLogin?[d.adminLogin]:[]),
     adminLogin: d.adminLogin||''
   };
   rows.push({ id:_rcId(cid,'config','main'), caserne:cid, type:'config', data:cfg, deleted:false });
@@ -16196,7 +16236,7 @@ function _rcSplitCaserne(cid, d){
 function _rcAssembleCaserne(rows){
   const out = { users:[], ivs:[], pilpIvs:[], equipes:[], fmpas:[], formStag:[], formForm:[], renforts:[], activites:[],
                 dispos:{}, piquets:{}, planningRotations:{}, disposValidated:{}, piquetsValidated:{}, astrConfig:{},
-                astrTelData:{}, astrTelParams:{}, statsTaux:{} };
+                astrTelData:{}, astrTelParams:{}, statsTaux:{}, adminLogins:[], adminLogin:'' };
   const listMap = {iv:'ivs', pilp:'pilpIvs', equipe:'equipes', fmpa:'fmpas', formStag:'formStag', formForm:'formForm', renfort:'renforts', activite:'activites'};
   rows.forEach(function(r){
     if(r.deleted) return; // on ignore les enregistrements supprimés à la reconstruction
@@ -16215,7 +16255,8 @@ function _rcAssembleCaserne(rows){
       out.astrTelData=c.astrTelData||{};
       out.astrTelParams=c.astrTelParams||{};
       out.statsTaux=c.statsTaux||{};
-      out.adminLogin=c.adminLogin||'';
+      out.adminLogins=Array.isArray(c.adminLogins)?[...c.adminLogins]:(c.adminLogin?[c.adminLogin]:[]);
+      out.adminLogin=c.adminLogin||out.adminLogins[0]||'';
     }
   });
   return out;

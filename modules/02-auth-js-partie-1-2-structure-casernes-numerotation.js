@@ -63,28 +63,43 @@ function repairKnownChefCorpsAssignment(){
 function accountNameKey(account){
   return String((account&&account.prenom||'')+' '+(account&&account.nom||'')).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z]/g,'');
 }
-function getCaserneAdmin(caserneId){
+function getCaserneAdmins(caserneId){
   const data=CASERNE_DATA[caserneId];
-  if(!data||!Array.isArray(data.users))return null;
-  let admin=data.adminLogin&&data.users.find(function(user){return user&&user.l===data.adminLogin&&!user._isSA;});
-  // Migration corrective connue : l'administrateur désigné de Lapugnoy est Pascal Douvrin.
-  if(!admin&&caserneId==='CIS05')admin=data.users.find(function(user){return accountNameKey(user)==='pascaldouvrin';});
-  if(!admin){
-    const candidates=data.users.filter(function(user){return user&&!user._isSA&&Array.isArray(user.rights)&&user.rights.includes('Administration');});
-    candidates.sort(function(a,b){return String(a.nom||'').localeCompare(String(b.nom||''),'fr')||String(a.prenom||'').localeCompare(String(b.prenom||''),'fr');});
-    admin=candidates[0]||null;
+  if(!data||!Array.isArray(data.users))return [];
+  const declared=[];
+  (Array.isArray(data.adminLogins)?data.adminLogins:[]).forEach(function(login){
+    if(login&&!declared.includes(login))declared.push(login);
+  });
+  // Compatibilité avec les anciennes sauvegardes qui ne contenaient qu'un adminLogin.
+  if(data.adminLogin&&!declared.includes(data.adminLogin))declared.push(data.adminLogin);
+  data.users.forEach(function(user){
+    if(user&&!user._isSA&&Array.isArray(user.rights)&&user.rights.includes('Administration')&&!declared.includes(user.l))declared.push(user.l);
+  });
+  // Migration corrective connue : Pascal Douvrin reste administrateur de Lapugnoy.
+  if(!declared.length&&caserneId==='CIS05'){
+    const pascal=data.users.find(function(user){return accountNameKey(user)==='pascaldouvrin';});
+    if(pascal)declared.push(pascal.l);
   }
-  if(admin)data.adminLogin=admin.l;
-  return admin;
+  const admins=declared.map(function(login){
+    return data.users.find(function(user){return user&&user.l===login&&!user._isSA;});
+  }).filter(Boolean);
+  data.adminLogins=admins.map(function(admin){return admin.l;});
+  data.adminLogin=data.adminLogins[0]||'';
+  return admins;
 }
+function getCaserneAdmin(caserneId){return getCaserneAdmins(caserneId)[0]||null;}
 function normalizeCaserneAdminAssignments(){
   OP_CASERNES().forEach(function(caserne){
     const data=CASERNE_DATA[caserne.id];if(!data||!Array.isArray(data.users))return;
-    const admin=getCaserneAdmin(caserne.id);if(!admin)return;
-    data.adminLogin=admin.l;
+    const admins=getCaserneAdmins(caserne.id);
+    const adminLogins=new Set(admins.map(function(admin){return admin.l;}));
+    data.adminLogins=[...adminLogins];
+    data.adminLogin=data.adminLogins[0]||'';
     data.users.forEach(function(user){
       user.rights=Array.isArray(user.rights)?user.rights:[];
-      if(user.l===admin.l){if(!user.rights.includes('Administration'))user.rights.push('Administration');}
+      if(user._isSA){
+        ["Prise d'appel","Interventions","Historique complet","Chef d'agrès","Tireur PILP","Administration"].forEach(function(right){if(!user.rights.includes(right))user.rights.push(right);});
+      } else if(adminLogins.has(user.l)){if(!user.rights.includes('Administration'))user.rights.push('Administration');}
       else user.rights=user.rights.filter(function(right){return right!=='Administration';});
       user.appRole=deriveAccountRole(user);
     });
@@ -144,7 +159,7 @@ function initCaserneData(cid){
   // Aucun administrateur avec un mot de passe connu n'est créé automatiquement.
   const defaultUsers=[];
   CASERNE_DATA[cid]={
-    users:defaultUsers,
+    users:defaultUsers,adminLogins:[],adminLogin:'',
     ivs:[],pilpIvs:[],equipes:[],dispos:{},piquets:{},planningRotations:{},disposValidated:{},piquetsValidated:{},renforts:[],
     astrConfig:{granularity:60,engins:['VTU-01','VTU-02','VTU-03','VPI'],deadline:{dayOfWeek:5,hour:23,minute:59},deadlinePiquet:{dayOfWeek:0,hour:18,minute:0},weekStartDay:1,weekStartHour:0},
   };
@@ -281,6 +296,8 @@ function syncCaserneContext(){
       existing.matricule=sa.matricule||'';
       existing.caserneId=CURRENT_CASERNE_ID;
       existing.appRole='superadmin';
+      existing.rights=Array.isArray(existing.rights)?existing.rights:[];
+      ["Prise d'appel","Interventions","Historique complet","Chef d'agrès","Tireur PILP","Administration"].forEach(function(right){if(!existing.rights.includes(right))existing.rights.push(right);});
       // Le mot de passe reste toujours aligné sur celui du compte superadmin,
       // pour qu'un seul et même mot de passe donne l'accès superadmin ET l'accès
       // utilisateur normal (évite toute divergence entre les deux).
