@@ -3564,22 +3564,31 @@ function cv(){
   if(!isNaN(h)&&!isNaN(s)&&h>0&&s>0){b.style.display='';document.getElementById('vv').textContent=(h*s).toFixed(1)+' m³';}else b.style.display='none';
 }
 
-// Lance un itinéraire Google Maps. Priorité aux interventions COCHÉES (sélectionnées) ;
-// si aucune n'est cochée, prend toutes les interventions à traiter (en attente + en cours).
+function sortInterventionsForOwnRoute(interventions){
+  return (interventions||[]).slice().sort(function(a,b){
+    const ao=Number(a._routeOrder)||9999,bo=Number(b._routeOrder)||9999;
+    if(ao!==bo)return ao-bo;
+    const as=String(a._selectedAt||a.h||''),bs=String(b._selectedAt||b.h||'');
+    return as.localeCompare(bs);
+  });
+}
+// L'itinéraire ne reprend que les interventions sélectionnées par le chef
+// d'agrès connecté. Aucune intervention en attente ou sélectionnée par un autre
+// équipage ne doit être ajoutée automatiquement.
 function lancerItineraireTournee(){
-  const cochees=IVS.filter(iv=>iv.s==='selectionne'&&!iv._isPilip&&iv.addr);
-  const base=cochees.length?cochees:IVS.filter(iv=>['en-attente','selectionne','en-cours'].includes(iv.s)&&!iv._isPilip&&iv.addr);
-  if(!base.length){showToast('Aucune intervention à traiter pour un itinéraire.','warn');return;}
-  const quoi=cochees.length?'des interventions cochées':'des interventions à traiter';
-  if(base.length>1)showToast('Itinéraire '+quoi+' ('+base.length+') ouvert dans Google Maps.','info');
+  const base=sortInterventionsForOwnRoute(IVS.filter(function(iv){
+    return iv.s==='selectionne'&&iv.agr===CU.l&&!iv._isPilip&&iv.addr;
+  }));
+  if(!base.length){showToast('Sélectionnez d\u2019abord vos interventions avant de créer l\u2019itinéraire.','warn');return;}
+  if(base.length>1)showToast('Itinéraire de votre sélection ('+base.length+') ouvert dans Google Maps.','info');
   openMapsItineraire(base.map(iv=>iv.id));
 }
 function lancerItinerairePilp(){
-  const cochees=PILP_IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l&&iv.addr);
-  const base=cochees.length?cochees:PILP_IVS.filter(iv=>['en-attente','selectionne','en-cours'].includes(iv.s)&&iv.addr);
-  if(!base.length){showToast('Aucune intervention PILP à traiter pour un itinéraire.','warn');return;}
-  const quoi=cochees.length?'des interventions PILP cochées':'des interventions PILP à traiter';
-  if(base.length>1)showToast('Itinéraire '+quoi+' ('+base.length+') ouvert dans Google Maps.','info');
+  const base=sortInterventionsForOwnRoute(PILP_IVS.filter(function(iv){
+    return iv.s==='selectionne'&&iv.agr===CU.l&&iv.addr;
+  }));
+  if(!base.length){showToast('Sélectionnez d\u2019abord vos interventions PILP avant de créer l\u2019itinéraire.','warn');return;}
+  if(base.length>1)showToast('Itinéraire de votre sélection PILP ('+base.length+') ouvert dans Google Maps.','info');
   openMapsItineraire(base.map(iv=>iv.id));
 }
 
@@ -12892,7 +12901,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260819-multi-admins-caserne-144';
+const APP_VERSION='20260820-itineraire-selection-personnelle-145';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
