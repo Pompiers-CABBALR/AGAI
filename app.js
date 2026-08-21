@@ -749,6 +749,24 @@ const TODAY=N(),TDP=getDS(TODAY);
 function isTdy(iv){return (iv.h||'').startsWith(TDP);}
 function hO(h){const d=new Date(TODAY);d.setHours(d.getHours()-h);return getH(d);}
 function nm(s){return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
+// Comparaison tolérante des adresses saisies manuellement : « 12 bis »,
+// « 12bis », « 12 BIS » et « 12 Bis » désignent la même adresse.
+// Les autres éléments de l'adresse restent obligatoires afin de ne pas
+// confondre deux rues ou deux communes différentes.
+function normalizeInterventionAddressForMatch(value){
+  return nm(String(value||''))
+    .replace(/[’']/g,' ')
+    .replace(/[\-‐‑‒–—―,.;:()]/g,' ')
+    .replace(/\b(\d+)\s*b(?:is)?\b/g,'$1bis')
+    .replace(/\b(\d+)\s*t(?:er)?\b/g,'$1ter')
+    .replace(/\b(\d+)\s*q(?:uater)?\b/g,'$1quater')
+    .replace(/\s+/g,' ')
+    .trim();
+}
+function sameInterventionAddress(first,second){
+  const a=normalizeInterventionAddressForMatch(first),b=normalizeInterventionAddressForMatch(second);
+  return !!a&&a===b;
+}
 function mkTL(s,h,who){return {s,h,who};}
 function hasFormationRight(){
   if(!CU)return false;
@@ -3542,9 +3560,9 @@ function checkDejaIntervenu(){
   const addr=(document.getElementById('fa')?.value||'').trim();
   const nat=selNat||'';
   if(!selC2||!addr||addr.length<4||!nat){box.innerHTML='';box.style.display='none';return;}
-  const na=nm(addr), nn=nm(nat), nc=nm(selC2);
+  const nn=nm(nat), nc=nm(selC2);
   const memes=[].concat(IVS||[],PILP_IVS||[]).filter(function(x){
-    return nm(x.addr)===na && nm(x.com)===nc && nm(x.n)===nn && x.s!=='annulee';
+    return sameInterventionAddress(x.addr,addr) && nm(x.com)===nc && nm(x.n)===nn && x.s!=='annulee';
   });
   if(!memes.length){box.innerHTML='';box.style.display='none';return;}
   const avisAttente=memes.filter(function(x){return x._avisEnAttente;});
@@ -4223,8 +4241,8 @@ function enr(){
   const _adr=document.getElementById('fa')?document.getElementById('fa').value.trim():'';
   const nidsAppel=getAppelNids();
   const natureAppel=appelNaturePrioritaire(nidsAppel);
-  const exIv=IVS.filter(iv=>iv._avisEnAttente&&!iv._isPilip&&nm(iv.addr)===nm(_adr)&&nm(iv.n)===nm(natureAppel));
-  const exPilp=PILP_IVS.filter(iv=>iv._avisEnAttente&&nm(iv.addr)===nm(_adr)&&nm(iv.n)===nm(natureAppel));
+  const exIv=IVS.filter(iv=>iv._avisEnAttente&&!iv._isPilip&&sameInterventionAddress(iv.addr,_adr)&&nm(iv.n)===nm(natureAppel));
+  const exPilp=PILP_IVS.filter(iv=>iv._avisEnAttente&&sameInterventionAddress(iv.addr,_adr)&&nm(iv.n)===nm(natureAppel));
   // Lever l'indicateur "en attente" sur ces interventions (le requérant a rappelé).
   exIv.concat(exPilp).forEach(iv=>{iv._avisEnAttente=false;iv._avisRappele=true;});
   exPilp.forEach(iv=>iv.rappels=(iv.rappels||0)+1);
@@ -5430,8 +5448,8 @@ function oM(id){
       </div>
     </div>
     ${(()=>{
-      const na=nm(iv.addr),nn=nm(iv.n);
-      const autres=[].concat(IVS||[],PILP_IVS||[]).filter(x=>x.id!==iv.id&&nm(x.addr)===na&&nm(x.n)===nn&&x.s!=='annulee');
+      const nn=nm(iv.n);
+      const autres=[].concat(IVS||[],PILP_IVS||[]).filter(x=>x.id!==iv.id&&sameInterventionAddress(x.addr,iv.addr)&&nm(x.com)===nm(iv.com)&&nm(x.n)===nn&&x.s!=='annulee');
       if(!autres.length)return '';
       const avisN=autres.filter(x=>x._avisEnAttente).length;
       const cliquable=isAdminModeActive();
@@ -10022,10 +10040,10 @@ function showInterventionsLiees(id){
   if(!isAdminModeActive()){showToast('Consultation réservée aux administrateurs.','warn');return;}
   const iv=IVS.find(function(v){return v.id===id;})||PILP_IVS.find(function(v){return v.id===id;});
   if(!iv)return;
-  const adrRef=nm(iv.addr), natRef=nm(iv.n);
+  const adrRef=normalizeInterventionAddressForMatch(iv.addr), natRef=nm(iv.n), communeRef=nm(iv.com);
   // Même adresse exacte ET même nature d'intervention (hors celle consultée).
   const toutes=[].concat(IVS||[],PILP_IVS||[]).filter(function(x){return x.id!==id;});
-  const memeLieuType=toutes.filter(function(x){return adrRef&&nm(x.addr)===adrRef&&nm(x.n)===natRef;});
+  const memeLieuType=toutes.filter(function(x){return adrRef&&sameInterventionAddress(x.addr,iv.addr)&&nm(x.com)===communeRef&&nm(x.n)===natRef;});
   const fmtLigne=function(x){
     const stLbl={'en-attente':'En attente','selectionne':'Sélectionné','en-cours':'En cours','terminee':'Terminée','avis-passage':'Avis de passage','annulee':'Annulée'}[x.s]||x.s;
     return '<div style="background:#fff;border:1px solid var(--brd);border-radius:8px;padding:8px 10px;margin-bottom:6px;cursor:pointer;" onclick="oM(\''+x.id+'\')">'
@@ -12901,7 +12919,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260820-itineraire-selection-personnelle-145';
+const APP_VERSION='20260821-adresses-bis-normalisees-146';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne

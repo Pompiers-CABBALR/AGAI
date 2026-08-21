@@ -596,6 +596,24 @@ const TODAY=N(),TDP=getDS(TODAY);
 function isTdy(iv){return (iv.h||'').startsWith(TDP);}
 function hO(h){const d=new Date(TODAY);d.setHours(d.getHours()-h);return getH(d);}
 function nm(s){return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
+// Comparaison tolérante des adresses saisies manuellement : « 12 bis »,
+// « 12bis », « 12 BIS » et « 12 Bis » désignent la même adresse.
+// Les autres éléments de l'adresse restent obligatoires afin de ne pas
+// confondre deux rues ou deux communes différentes.
+function normalizeInterventionAddressForMatch(value){
+  return nm(String(value||''))
+    .replace(/[’']/g,' ')
+    .replace(/[\-‐‑‒–—―,.;:()]/g,' ')
+    .replace(/\b(\d+)\s*b(?:is)?\b/g,'$1bis')
+    .replace(/\b(\d+)\s*t(?:er)?\b/g,'$1ter')
+    .replace(/\b(\d+)\s*q(?:uater)?\b/g,'$1quater')
+    .replace(/\s+/g,' ')
+    .trim();
+}
+function sameInterventionAddress(first,second){
+  const a=normalizeInterventionAddressForMatch(first),b=normalizeInterventionAddressForMatch(second);
+  return !!a&&a===b;
+}
 function mkTL(s,h,who){return {s,h,who};}
 function hasFormationRight(){
   if(!CU)return false;

@@ -112,9 +112,9 @@ function checkDejaIntervenu(){
   const addr=(document.getElementById('fa')?.value||'').trim();
   const nat=selNat||'';
   if(!selC2||!addr||addr.length<4||!nat){box.innerHTML='';box.style.display='none';return;}
-  const na=nm(addr), nn=nm(nat), nc=nm(selC2);
+  const nn=nm(nat), nc=nm(selC2);
   const memes=[].concat(IVS||[],PILP_IVS||[]).filter(function(x){
-    return nm(x.addr)===na && nm(x.com)===nc && nm(x.n)===nn && x.s!=='annulee';
+    return sameInterventionAddress(x.addr,addr) && nm(x.com)===nc && nm(x.n)===nn && x.s!=='annulee';
   });
   if(!memes.length){box.innerHTML='';box.style.display='none';return;}
   const avisAttente=memes.filter(function(x){return x._avisEnAttente;});
@@ -793,8 +793,8 @@ function enr(){
   const _adr=document.getElementById('fa')?document.getElementById('fa').value.trim():'';
   const nidsAppel=getAppelNids();
   const natureAppel=appelNaturePrioritaire(nidsAppel);
-  const exIv=IVS.filter(iv=>iv._avisEnAttente&&!iv._isPilip&&nm(iv.addr)===nm(_adr)&&nm(iv.n)===nm(natureAppel));
-  const exPilp=PILP_IVS.filter(iv=>iv._avisEnAttente&&nm(iv.addr)===nm(_adr)&&nm(iv.n)===nm(natureAppel));
+  const exIv=IVS.filter(iv=>iv._avisEnAttente&&!iv._isPilip&&sameInterventionAddress(iv.addr,_adr)&&nm(iv.n)===nm(natureAppel));
+  const exPilp=PILP_IVS.filter(iv=>iv._avisEnAttente&&sameInterventionAddress(iv.addr,_adr)&&nm(iv.n)===nm(natureAppel));
   // Lever l'indicateur "en attente" sur ces interventions (le requérant a rappelé).
   exIv.concat(exPilp).forEach(iv=>{iv._avisEnAttente=false;iv._avisRappele=true;});
   exPilp.forEach(iv=>iv.rappels=(iv.rappels||0)+1);

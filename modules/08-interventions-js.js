@@ -1092,8 +1092,8 @@ function oM(id){
       </div>
     </div>
     ${(()=>{
-      const na=nm(iv.addr),nn=nm(iv.n);
-      const autres=[].concat(IVS||[],PILP_IVS||[]).filter(x=>x.id!==iv.id&&nm(x.addr)===na&&nm(x.n)===nn&&x.s!=='annulee');
+      const nn=nm(iv.n);
+      const autres=[].concat(IVS||[],PILP_IVS||[]).filter(x=>x.id!==iv.id&&sameInterventionAddress(x.addr,iv.addr)&&nm(x.com)===nm(iv.com)&&nm(x.n)===nn&&x.s!=='annulee');
       if(!autres.length)return '';
       const avisN=autres.filter(x=>x._avisEnAttente).length;
       const cliquable=isAdminModeActive();

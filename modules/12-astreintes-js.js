@@ -2982,10 +2982,10 @@ function showInterventionsLiees(id){
   if(!isAdminModeActive()){showToast('Consultation réservée aux administrateurs.','warn');return;}
   const iv=IVS.find(function(v){return v.id===id;})||PILP_IVS.find(function(v){return v.id===id;});
   if(!iv)return;
-  const adrRef=nm(iv.addr), natRef=nm(iv.n);
+  const adrRef=normalizeInterventionAddressForMatch(iv.addr), natRef=nm(iv.n), communeRef=nm(iv.com);
   // Même adresse exacte ET même nature d'intervention (hors celle consultée).
   const toutes=[].concat(IVS||[],PILP_IVS||[]).filter(function(x){return x.id!==id;});
-  const memeLieuType=toutes.filter(function(x){return adrRef&&nm(x.addr)===adrRef&&nm(x.n)===natRef;});
+  const memeLieuType=toutes.filter(function(x){return adrRef&&sameInterventionAddress(x.addr,iv.addr)&&nm(x.com)===communeRef&&nm(x.n)===natRef;});
   const fmtLigne=function(x){
     const stLbl={'en-attente':'En attente','selectionne':'Sélectionné','en-cours':'En cours','terminee':'Terminée','avis-passage':'Avis de passage','annulee':'Annulée'}[x.s]||x.s;
     return '<div style="background:#fff;border:1px solid var(--brd);border-radius:8px;padding:8px 10px;margin-bottom:6px;cursor:pointer;" onclick="oM(\''+x.id+'\')">'
