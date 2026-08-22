@@ -514,6 +514,16 @@ function makeInterventionRecordId(displayNum){
   return String(displayNum||'APL')+'-R'+Date.now().toString(36)+'-'+random;
 }
 
+// Numero lisible affiche aux utilisateurs. Les anciens enregistrements peuvent
+// ne pas avoir _numApl et conserver uniquement l identifiant technique unique.
+function interventionDisplayCallNumber(iv){
+  const stored=String(iv&&iv._numApl||'').trim();
+  if(stored)return stored;
+  const technical=String(iv&&iv.id||'').trim();
+  const match=technical.match(/^(APL_\d{4}_\d+)/);
+  return match?match[1]:(technical||'\u2014');
+}
+
 // Compteur Inter Renfort : par caserne, depuis début d'année
 function nextRenfortNum(annee){
   const y=String(annee);
@@ -5496,7 +5506,7 @@ function oM(id){
   const _showAutoBtn=(_isOwnAgres_||chef||isAdminModeActive())&&!iv._isRenfort;
   document.getElementById('mt').textContent=iv.n;
     // Seul le numéro APL est affiché (numérotation INT désactivée)
-  const dispApl=iv._numApl||iv.id;
+  const dispApl=interventionDisplayCallNumber(iv);
   const dispTransfert=iv._transfertDe?` ↩ transféré de ${CASERNES.find(cas=>cas.id===iv._transfertDe)?.nom||iv._transfertDe}`:'';
   const dispUt=iv._numCaserne?' · UT '+iv._numCaserne:'';
   document.getElementById('mi').textContent=dispApl+dispUt+dispTransfert;
@@ -6113,7 +6123,7 @@ function creerPILP(ivId){
   // Elle n'a PAS encore de numéro INT — ce sera attribué à son passage En cours.
   const pilpId=nextPilpId(annee);
   PILP_IVS.unshift({
-    id:pilpId,ivRef:iv.id,_numApl:iv._numApl||iv.id,
+    id:pilpId,ivRef:iv.id,_numApl:interventionDisplayCallNumber(iv),
     // Pas de _numCaserne ni _numGlobal ici — attribués au passage En cours
     n:'Nid de frelons asiatiques — PILP',addr,com:iv.com,h,req,tel,
     localisation:document.getElementById('pf-loc').value,
@@ -6352,7 +6362,7 @@ function clotAvisPilp(id){
   const iv=PILP_IVS.find(v=>v.id===id);if(!iv)return;
   const h=getH(N());iv.s='terminee';iv.tl.push({s:'terminee',h,who:CU.l});
   if(iv._numCaserne&&!IVS.some(function(item){return item&&item._lienPilpSourceId===iv.id;})){
-    IVS.unshift({id:String(iv.id)+'_historique',_numApl:iv._numApl||iv.id,_numCaserne:iv._numCaserne,_numGlobal:iv._numGlobal,_numMois:iv._numMois,
+    IVS.unshift({id:String(iv.id)+'_historique',_numApl:interventionDisplayCallNumber(iv),_numCaserne:iv._numCaserne,_numGlobal:iv._numGlobal,_numMois:iv._numMois,
       n:iv.n.replace(' — PILP',''),addr:iv.addr,com:iv.com,h:iv.h,op:iv.agr||CU.l,
       s:'terminee',det:iv.obs||'',eng:null,req:iv.req||'',tel:iv.tel||'',obs:'',agr:CU.l,
       rappels:0,avisIds:[],_lienPilp:true,_lienPilpSourceId:iv.id,tl:[...iv.tl],
@@ -6423,7 +6433,7 @@ function findActiveChiefConflict(login,excludeId){
 }
 function operationalConflictLabel(iv){
   if(!iv)return '';
-  return (iv._numApl||iv.id||'Intervention')+' — '+(iv.n||'')+(iv.com?' ('+iv.com+')':'');
+  return interventionDisplayCallNumber(iv)+' — '+(iv.n||'')+(iv.com?' ('+iv.com+')':'');
 }
 function showOperationalConflict(kind,value,iv){
   const isVehicle=kind==='vehicle';
@@ -6744,7 +6754,7 @@ function rHistLegacy(){
       const tm=Object.values(grp[y][m]).reduce((s,d)=>s+d.length,0);
       return `<div class="hsub" onclick="tg('hm${y}${m}','am${y}${m}')">${MO[parseInt(m)]}<span class="bdg bgr" style="margin-left:6px;">${tm}</span><span id="am${y}${m}" style="margin-left:auto;">▼</span></div>
       <div id="hm${y}${m}">${ds.map(d=>{const ivd=grp[y][m][d];return `<div class="hdl">${d}/${m}/${y} — ${ivd.length} intervention(s)</div>${ivd.map(iv=>`<div class="hm${iv._crValide&&iv._impressions&&iv._impressions.length?' report-complete':''}" onclick="${iv._isPilp?`oPilp('${iv.id}')`:`oM('${iv.id}')`}">
-  <span style="font-family:monospace;font-size:10px;color:var(--t3);">${iv._numCaserne||iv.id}</span>
+  <span style="font-family:monospace;font-size:10px;color:var(--t3);">${iv._numCaserne||interventionDisplayCallNumber(iv)}</span>
   <span style="flex:1;font-size:12px;color:var(--t);${iv.s==='annulee'?'text-decoration:line-through;color:#999;':''}">
     ${iv.n}
     ${iv._numGlobal||iv._numCaserne||iv._numMois||iv._numRenfort?`<span style="font-size:10px;font-weight:600;margin-left:6px;">
@@ -6812,7 +6822,7 @@ function historyReportOrder(iv){
 function historyRowHTML(iv){
   const click=iv._isPilp?"oPilp('"+escHtml(iv.id)+"')":"oM('"+escHtml(iv.id)+"')";
   return `<div class="hm hist-entry${iv._crValide&&iv._impressions&&iv._impressions.length?' report-complete':''}" data-hsearch="${escHtml(historySearchBlob(iv))}" onclick="${click}">
-  <span style="font-family:monospace;font-size:10px;color:var(--t3);">${escHtml(iv._numCaserne||iv.id)}</span>
+  <span style="font-family:monospace;font-size:10px;color:var(--t3);">${escHtml(iv._numCaserne||interventionDisplayCallNumber(iv))}</span>
   <span style="flex:1;font-size:12px;color:var(--t);${iv.s==='annulee'?'text-decoration:line-through;color:#999;':''}">
     ${escHtml(iv.n||'Intervention')}
     ${iv._numGlobal||iv._numCaserne||iv._numMois||iv._numRenfort?`<span style="font-size:10px;font-weight:600;margin-left:6px;">
@@ -9442,7 +9452,7 @@ function confirmerTransfert(id){
 function refugeAnimalier(id){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
   document.getElementById('mt').textContent='&#x1F43E; Refuge animalier';
-  document.getElementById('mi').textContent=iv._numApl||iv.id;
+  document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
   document.getElementById('mb').innerHTML=`<div>
     <div style="background:#EAF3DE;border:1px solid #A9D18E;border-radius:10px;padding:12px;margin-bottom:12px;font-size:13px;color:#1E6B1E;text-align:center;">
       &#x1F43E; L'intervention sera transmise au refuge animalier et archivée.
@@ -9506,7 +9516,7 @@ function confirmerAnnulation(id){
 function demandeEchelleToiture(ivId){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
   document.getElementById('mt').textContent='\U0001FA9C \u00c9chelle de toit requise';
-  document.getElementById('mi').textContent=iv.id;
+  document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
   document.getElementById('mb').innerHTML=`<div>
     <div style="background:#FEF3C7;border:2px solid #F59E0B;border-radius:10px;padding:12px;margin-bottom:12px;font-size:14px;font-weight:700;color:#92400E;text-align:center;">
       &#x26A0;&#xFE0F; INTERVENTION \u00c0 FAIRE AVEC \u00c9CHELLE DE TOIT
@@ -9525,16 +9535,20 @@ function confirmerEchelleToiture(ivId){
   const h=getH(N());const annee=new Date().getFullYear();
   const numApl=nextAplNum(annee);
   incCallCounter();
-  IVS.unshift({id:makeInterventionRecordId(numApl),_numApl:numApl,n:iv.n,addr:iv.addr,addrComp:iv.addrComp||'',com:iv.com,
+  const newIv={id:makeInterventionRecordId(numApl),_numApl:numApl,n:iv.n,addr:iv.addr,addrComp:iv.addrComp||'',com:iv.com,
     h,op:CU.l,s:'en-attente',det:obs,eng:null,req:iv.req,tel:iv.tel,obs:'',agr:null,
-    rappels:0,avisIds:[],_echelleToiture:true,tl:[mkTL('en-attente',h,CU.l)]});
+    rappels:0,avisIds:[],_echelleToiture:true,tl:[mkTL('en-attente',h,CU.l)]};
+  IVS.unshift(newIv);
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);
+  showToast('Demande avec \u00e9chelle enregistr\u00e9e \u2713','success');
   cM();rI();rAccueil();
 }
 // ── Inter. SDIS ──
 function demandeEPA(ivId){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
   document.getElementById('mt').textContent='&#x1F9F0; EPA requis';
-  document.getElementById('mi').textContent=iv.id;
+  document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
   document.getElementById('mb').innerHTML='<div>'
     +'<div style="background:#F3EAF8;border:2px solid #8E44AD;border-radius:10px;padding:12px;margin-bottom:12px;font-size:14px;font-weight:700;color:#6C3483;text-align:center;">'
     +'&#x1F9F0; INTERVENTION À FAIRE AVEC EPA</div>'
@@ -9551,15 +9565,19 @@ function confirmerEPA(ivId){
   const h=getH(N());const annee=new Date().getFullYear();
   const numApl=nextAplNum(annee);
   incCallCounter();
-  IVS.unshift({id:makeInterventionRecordId(numApl),_numApl:numApl,n:iv.n,addr:iv.addr,addrComp:iv.addrComp||'',com:iv.com,
+  const newIv={id:makeInterventionRecordId(numApl),_numApl:numApl,n:iv.n,addr:iv.addr,addrComp:iv.addrComp||'',com:iv.com,
     h,op:CU.l,s:'en-attente',det:obs,eng:null,req:iv.req,tel:iv.tel,obs:'',agr:null,
-    rappels:0,avisIds:[],_epa:true,tl:[mkTL('en-attente',h,CU.l)]});
+    rappels:0,avisIds:[],_epa:true,tl:[mkTL('en-attente',h,CU.l)]};
+  IVS.unshift(newIv);
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);
+  showToast('Demande EPA enregistr\u00e9e \u2713','success');
   cM();rI();rAccueil();
 }
 function demandeSDIS(ivId){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
   document.getElementById('mt').textContent='&#x1F691; Inter. SDIS';
-  document.getElementById('mi').textContent=iv._numApl||iv.id;
+  document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
   document.getElementById('mb').innerHTML=`<div>
     <div style="background:#DBEAFE;border:1px solid #93C5FD;border-radius:10px;padding:12px;margin-bottom:12px;font-size:13px;color:#1D4ED8;text-align:center;">
       &#x1F691; L'intervention actuelle sera clôturée et recréée en cours avec la mention SDIS.
@@ -10217,7 +10235,7 @@ function confirmerDepart(id){
 function editRequerant(id){
   const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
   document.getElementById('mt').textContent='Corriger le requ\u00e9rant';
-  document.getElementById('mi').textContent=iv.id;
+  document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
   const initBanner=iv._reqInit
     ?'<div style="background:#FEF9C3;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:#713F12;">'
       +'Informations initiales conserv\u00e9es : <strong>'+iv._reqInit+'</strong>'+(iv._telInit?' \u00b7 '+iv._telInit:'')+'</div>'
@@ -11602,7 +11620,7 @@ function editAdresse(ivId){
   if(overlay)overlay.classList.add('address-edit-modal','keyboard-aware-modal');
   editCommuneSelected=iv.com||null;editAddrSelected=!!iv.addr;editAddrSelectedValue=iv.addr||'';
   document.getElementById('mt').textContent='Corriger l’adresse et la commune';
-  document.getElementById('mi').textContent=iv.id;
+  document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
   document.getElementById('mb').innerHTML=`
     <div>
       <div class="fg"><div class="fgl">Commune <span class="req">*</span></div>
@@ -13259,7 +13277,7 @@ function exportAdminMonthlyExcel(){
       const rapportAuteur=adminExportInterventionChef(iv);
       const isSdis=adminExportReportType(iv)==='SDIS';
       return [
-        iv._numMois||'',iv._numCaserne||iv._numApl||iv.id||'',iv._numSDIS||'',iv._numGlobal||'',
+        iv._numMois||'',iv._numCaserne||interventionDisplayCallNumber(iv),iv._numSDIS||'',iv._numGlobal||'',
         adminExportDateCompact(adminExportInterventionStartDate(iv)),adminExportReportType(iv),
         rates.taux1,rates.heures1,rates.taux2,rates.heures2,iv._km||'',
         iv.n||'',iv.req||'',[(iv.addr||''),(iv.addrComp||'')].filter(Boolean).join(' — '),iv.com||'',
@@ -13329,7 +13347,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260822-indemnites-detail-journalier-160';
+const APP_VERSION='20260822-historique-apl-echelle-sync-161';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne

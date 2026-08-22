@@ -35,7 +35,7 @@ function creerPILP(ivId){
   // Elle n'a PAS encore de numéro INT — ce sera attribué à son passage En cours.
   const pilpId=nextPilpId(annee);
   PILP_IVS.unshift({
-    id:pilpId,ivRef:iv.id,_numApl:iv._numApl||iv.id,
+    id:pilpId,ivRef:iv.id,_numApl:interventionDisplayCallNumber(iv),
     // Pas de _numCaserne ni _numGlobal ici — attribués au passage En cours
     n:'Nid de frelons asiatiques — PILP',addr,com:iv.com,h,req,tel,
     localisation:document.getElementById('pf-loc').value,
@@ -274,7 +274,7 @@ function clotAvisPilp(id){
   const iv=PILP_IVS.find(v=>v.id===id);if(!iv)return;
   const h=getH(N());iv.s='terminee';iv.tl.push({s:'terminee',h,who:CU.l});
   if(iv._numCaserne&&!IVS.some(function(item){return item&&item._lienPilpSourceId===iv.id;})){
-    IVS.unshift({id:String(iv.id)+'_historique',_numApl:iv._numApl||iv.id,_numCaserne:iv._numCaserne,_numGlobal:iv._numGlobal,_numMois:iv._numMois,
+    IVS.unshift({id:String(iv.id)+'_historique',_numApl:interventionDisplayCallNumber(iv),_numCaserne:iv._numCaserne,_numGlobal:iv._numGlobal,_numMois:iv._numMois,
       n:iv.n.replace(' — PILP',''),addr:iv.addr,com:iv.com,h:iv.h,op:iv.agr||CU.l,
       s:'terminee',det:iv.obs||'',eng:null,req:iv.req||'',tel:iv.tel||'',obs:'',agr:CU.l,
       rappels:0,avisIds:[],_lienPilp:true,_lienPilpSourceId:iv.id,tl:[...iv.tl],
@@ -345,7 +345,7 @@ function findActiveChiefConflict(login,excludeId){
 }
 function operationalConflictLabel(iv){
   if(!iv)return '';
-  return (iv._numApl||iv.id||'Intervention')+' — '+(iv.n||'')+(iv.com?' ('+iv.com+')':'');
+  return interventionDisplayCallNumber(iv)+' — '+(iv.n||'')+(iv.com?' ('+iv.com+')':'');
 }
 function showOperationalConflict(kind,value,iv){
   const isVehicle=kind==='vehicle';

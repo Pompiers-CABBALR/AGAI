@@ -361,6 +361,16 @@ function makeInterventionRecordId(displayNum){
   return String(displayNum||'APL')+'-R'+Date.now().toString(36)+'-'+random;
 }
 
+// Numero lisible affiche aux utilisateurs. Les anciens enregistrements peuvent
+// ne pas avoir _numApl et conserver uniquement l identifiant technique unique.
+function interventionDisplayCallNumber(iv){
+  const stored=String(iv&&iv._numApl||'').trim();
+  if(stored)return stored;
+  const technical=String(iv&&iv.id||'').trim();
+  const match=technical.match(/^(APL_\d{4}_\d+)/);
+  return match?match[1]:(technical||'\u2014');
+}
+
 // Compteur Inter Renfort : par caserne, depuis début d'année
 function nextRenfortNum(annee){
   const y=String(annee);

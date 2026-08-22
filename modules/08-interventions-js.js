@@ -934,7 +934,7 @@ function oM(id){
   const _showAutoBtn=(_isOwnAgres_||chef||isAdminModeActive())&&!iv._isRenfort;
   document.getElementById('mt').textContent=iv.n;
     // Seul le numéro APL est affiché (numérotation INT désactivée)
-  const dispApl=iv._numApl||iv.id;
+  const dispApl=interventionDisplayCallNumber(iv);
   const dispTransfert=iv._transfertDe?` ↩ transféré de ${CASERNES.find(cas=>cas.id===iv._transfertDe)?.nom||iv._transfertDe}`:'';
   const dispUt=iv._numCaserne?' · UT '+iv._numCaserne:'';
   document.getElementById('mi').textContent=dispApl+dispUt+dispTransfert;

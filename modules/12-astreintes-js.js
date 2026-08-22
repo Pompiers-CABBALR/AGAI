@@ -2177,7 +2177,7 @@ function confirmerTransfert(id){
 function refugeAnimalier(id){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
   document.getElementById('mt').textContent='&#x1F43E; Refuge animalier';
-  document.getElementById('mi').textContent=iv._numApl||iv.id;
+  document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
   document.getElementById('mb').innerHTML=`<div>
     <div style="background:#EAF3DE;border:1px solid #A9D18E;border-radius:10px;padding:12px;margin-bottom:12px;font-size:13px;color:#1E6B1E;text-align:center;">
       &#x1F43E; L'intervention sera transmise au refuge animalier et archivée.
@@ -2241,7 +2241,7 @@ function confirmerAnnulation(id){
 function demandeEchelleToiture(ivId){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
   document.getElementById('mt').textContent='\U0001FA9C \u00c9chelle de toit requise';
-  document.getElementById('mi').textContent=iv.id;
+  document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
   document.getElementById('mb').innerHTML=`<div>
     <div style="background:#FEF3C7;border:2px solid #F59E0B;border-radius:10px;padding:12px;margin-bottom:12px;font-size:14px;font-weight:700;color:#92400E;text-align:center;">
       &#x26A0;&#xFE0F; INTERVENTION \u00c0 FAIRE AVEC \u00c9CHELLE DE TOIT
@@ -2260,16 +2260,20 @@ function confirmerEchelleToiture(ivId){
   const h=getH(N());const annee=new Date().getFullYear();
   const numApl=nextAplNum(annee);
   incCallCounter();
-  IVS.unshift({id:makeInterventionRecordId(numApl),_numApl:numApl,n:iv.n,addr:iv.addr,addrComp:iv.addrComp||'',com:iv.com,
+  const newIv={id:makeInterventionRecordId(numApl),_numApl:numApl,n:iv.n,addr:iv.addr,addrComp:iv.addrComp||'',com:iv.com,
     h,op:CU.l,s:'en-attente',det:obs,eng:null,req:iv.req,tel:iv.tel,obs:'',agr:null,
-    rappels:0,avisIds:[],_echelleToiture:true,tl:[mkTL('en-attente',h,CU.l)]});
+    rappels:0,avisIds:[],_echelleToiture:true,tl:[mkTL('en-attente',h,CU.l)]};
+  IVS.unshift(newIv);
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);
+  showToast('Demande avec \u00e9chelle enregistr\u00e9e \u2713','success');
   cM();rI();rAccueil();
 }
 // ── Inter. SDIS ──
 function demandeEPA(ivId){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
   document.getElementById('mt').textContent='&#x1F9F0; EPA requis';
-  document.getElementById('mi').textContent=iv.id;
+  document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
   document.getElementById('mb').innerHTML='<div>'
     +'<div style="background:#F3EAF8;border:2px solid #8E44AD;border-radius:10px;padding:12px;margin-bottom:12px;font-size:14px;font-weight:700;color:#6C3483;text-align:center;">'
     +'&#x1F9F0; INTERVENTION À FAIRE AVEC EPA</div>'
@@ -2286,15 +2290,19 @@ function confirmerEPA(ivId){
   const h=getH(N());const annee=new Date().getFullYear();
   const numApl=nextAplNum(annee);
   incCallCounter();
-  IVS.unshift({id:makeInterventionRecordId(numApl),_numApl:numApl,n:iv.n,addr:iv.addr,addrComp:iv.addrComp||'',com:iv.com,
+  const newIv={id:makeInterventionRecordId(numApl),_numApl:numApl,n:iv.n,addr:iv.addr,addrComp:iv.addrComp||'',com:iv.com,
     h,op:CU.l,s:'en-attente',det:obs,eng:null,req:iv.req,tel:iv.tel,obs:'',agr:null,
-    rappels:0,avisIds:[],_epa:true,tl:[mkTL('en-attente',h,CU.l)]});
+    rappels:0,avisIds:[],_epa:true,tl:[mkTL('en-attente',h,CU.l)]};
+  IVS.unshift(newIv);
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);
+  showToast('Demande EPA enregistr\u00e9e \u2713','success');
   cM();rI();rAccueil();
 }
 function demandeSDIS(ivId){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
   document.getElementById('mt').textContent='&#x1F691; Inter. SDIS';
-  document.getElementById('mi').textContent=iv._numApl||iv.id;
+  document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
   document.getElementById('mb').innerHTML=`<div>
     <div style="background:#DBEAFE;border:1px solid #93C5FD;border-radius:10px;padding:12px;margin-bottom:12px;font-size:13px;color:#1D4ED8;text-align:center;">
       &#x1F691; L'intervention actuelle sera clôturée et recréée en cours avec la mention SDIS.
@@ -2952,7 +2960,7 @@ function confirmerDepart(id){
 function editRequerant(id){
   const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
   document.getElementById('mt').textContent='Corriger le requ\u00e9rant';
-  document.getElementById('mi').textContent=iv.id;
+  document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
   const initBanner=iv._reqInit
     ?'<div style="background:#FEF9C3;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:#713F12;">'
       +'Informations initiales conserv\u00e9es : <strong>'+iv._reqInit+'</strong>'+(iv._telInit?' \u00b7 '+iv._telInit:'')+'</div>'

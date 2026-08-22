@@ -1606,7 +1606,7 @@ function exportAdminMonthlyExcel(){
       const rapportAuteur=adminExportInterventionChef(iv);
       const isSdis=adminExportReportType(iv)==='SDIS';
       return [
-        iv._numMois||'',iv._numCaserne||iv._numApl||iv.id||'',iv._numSDIS||'',iv._numGlobal||'',
+        iv._numMois||'',iv._numCaserne||interventionDisplayCallNumber(iv),iv._numSDIS||'',iv._numGlobal||'',
         adminExportDateCompact(adminExportInterventionStartDate(iv)),adminExportReportType(iv),
         rates.taux1,rates.heures1,rates.taux2,rates.heures2,iv._km||'',
         iv.n||'',iv.req||'',[(iv.addr||''),(iv.addrComp||'')].filter(Boolean).join(' — '),iv.com||'',

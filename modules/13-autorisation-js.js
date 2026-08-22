@@ -735,7 +735,7 @@ function editAdresse(ivId){
   if(overlay)overlay.classList.add('address-edit-modal','keyboard-aware-modal');
   editCommuneSelected=iv.com||null;editAddrSelected=!!iv.addr;editAddrSelectedValue=iv.addr||'';
   document.getElementById('mt').textContent='Corriger l’adresse et la commune';
-  document.getElementById('mi').textContent=iv.id;
+  document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
   document.getElementById('mb').innerHTML=`
     <div>
       <div class="fg"><div class="fgl">Commune <span class="req">*</span></div>
