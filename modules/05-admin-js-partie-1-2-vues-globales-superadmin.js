@@ -327,6 +327,14 @@ function renderSuperAdmin(){
         </label>
         <div style="font-size:10px;color:#777;margin-top:4px;">Si cette option est désactivée, la vue affiche uniquement les heures utilisées pour l’export.</div>
       </div>
+      <div style="margin-top:10px;border-top:1px solid #f0f0f0;padding-top:10px;">
+        <div style="font-size:11px;font-weight:600;color:#666;margin-bottom:6px;">💶 STATISTIQUES DES INDEMNITÉS</div>
+        <label style="display:flex;align-items:flex-start;gap:7px;font-size:11px;cursor:pointer;line-height:1.35;">
+          <input type="checkbox" style="margin-top:2px;accent-color:${c.couleur};" ${d._indemnitesAdmins===true?'checked':''} onchange="saSetIndemnitesAdmins('${c.id}',this.checked)">
+          <span>Autoriser les admins de ${c.nom}</span>
+        </label>
+        <div style="font-size:10px;color:#777;margin-top:4px;">Désactivé par défaut : seul le super-administrateur voit cette rubrique.</div>
+      </div>
     </div>`;
   }).join('');
   const etatMajor=CASERNES.find(c=>c.id==='EMAJ')||{id:'EMAJ',nom:'État-Major',couleur:'#1D4ED8'};
@@ -470,6 +478,7 @@ function renderSuperAdmin(){
         <button class="btn" style="font-size:12px;" onclick="showReferentiel()">&#x1F4CB; Référentiel</button>
         <button class="btn" style="font-size:12px;" onclick="showAstrTelParams()">📞 Paramètres astreinte tél.</button>
         <button class="btn" style="font-size:12px;" onclick="showReferentiel('taux')">📊 Référentiels rapports et taux</button>
+        <button class="btn" style="font-size:12px;" onclick="showIndemnityParams()">💶 Barèmes des indemnités</button>
         <button class="btn pr" onclick="addCaserne()">+ Nouvelle caserne</button>
         <button class="btn pr" onclick="addSuperAdmin()">+ Super Admin</button>
       </div>
@@ -651,6 +660,70 @@ function saSetPersonnelHoursMode(cid,showReal){
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);
   showToast(showReal?'Statistiques : heures réelles affichées':'Statistiques : heures utilisées pour l’export affichées','success');
+}
+
+function saSetIndemnitesAdmins(cid,allowed){
+  if(!isSuperAdmin()){showToast('Réglage réservé au super-administrateur','warn');return;}
+  if(!CASERNE_DATA[cid])return;
+  CASERNE_DATA[cid]._indemnitesAdmins=allowed===true;
+  if(CURRENT_CASERNE_ID===cid)syncCaserneContext();
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);
+  showToast(allowed?'Indemnités accessibles aux admins de la caserne':'Indemnités réservées au super-administrateur','success');
+}
+
+const DEFAULT_INDEMNITY_SCALE={
+  id:'indem-2025-12-01',effectiveDate:'2025-12-01',updateDate:'2025-11-28',
+  complement:'NOR : INTE2522673A du 17 novembre 2025',
+  rates:{sapeur:8.71,caporal:9.35,sousOfficier:10.55,officier:13.11}
+};
+function getIndemnityHistory(){
+  if(!CASERNE_DATA._global||typeof CASERNE_DATA._global!=='object')CASERNE_DATA._global={};
+  if(!Array.isArray(CASERNE_DATA._global.indemnityHistory)||!CASERNE_DATA._global.indemnityHistory.length){
+    CASERNE_DATA._global.indemnityHistory=[JSON.parse(JSON.stringify(DEFAULT_INDEMNITY_SCALE))];
+  }
+  return CASERNE_DATA._global.indemnityHistory.slice().sort(function(a,b){return String(a.effectiveDate||'').localeCompare(String(b.effectiveDate||''));});
+}
+function indemnityScaleForDate(dateIso){
+  const date=String(dateIso||'').slice(0,10);let scale=null;
+  getIndemnityHistory().forEach(function(item){if(item&&item.effectiveDate&&item.effectiveDate<=date)scale=item;});
+  return scale;
+}
+function indemnityGradeGroup(grade){
+  const value=nm(String(grade||'')).replace(/[^a-z0-9]+/g,' ').trim();
+  if(/lieutenant|capitaine|commandant|colonel/.test(value))return 'officier';
+  if(/sergent|adjudant/.test(value))return 'sousOfficier';
+  if(/caporal/.test(value))return 'caporal';
+  if(/sapeur|(^| )(1cl|2cl)( |$)/.test(value))return 'sapeur';
+  return '';
+}
+function indemnityEuro(value){return Number(value||0).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';}
+function showIndemnityParams(){
+  if(!isSuperAdmin()){showToast('Accès réservé au super-administrateur','warn');return;}
+  const body=document.getElementById('gv-body');if(!body)return;
+  const history=getIndemnityHistory().slice().reverse(),latestRates=(history[0]&&history[0].rates)||DEFAULT_INDEMNITY_SCALE.rates;
+  const rows=history.map(function(item,index){const r=item.rates||{};return '<tr style="border-bottom:1px solid #eee;'+(index===0?'background:#ECFDF5;':'')+'">'
+    +'<td style="padding:8px;white-space:nowrap;">'+escHtml(item.effectiveDate||'—')+(index===0?' <span style="color:#047857;font-weight:700;">Actuel</span>':'')+'</td><td style="padding:8px;white-space:nowrap;">'+escHtml(item.updateDate||'—')+'</td>'
+    +'<td style="padding:8px;text-align:right;">'+indemnityEuro(r.sapeur)+'</td><td style="padding:8px;text-align:right;">'+indemnityEuro(r.caporal)+'</td><td style="padding:8px;text-align:right;">'+indemnityEuro(r.sousOfficier)+'</td><td style="padding:8px;text-align:right;">'+indemnityEuro(r.officier)+'</td><td style="padding:8px;min-width:240px;">'+escHtml(item.complement||'')+'</td></tr>';}).join('');
+  body.innerHTML='<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap;"><button class="btn" onclick="renderSuperAdmin()">← Retour</button><h2 style="font-size:19px;">💶 Barèmes des indemnités</h2></div>'
+    +'<div style="background:#fff;border:1px solid #eee;border-radius:14px;padding:16px;margin-bottom:16px;"><div style="font-size:14px;font-weight:700;margin-bottom:5px;">Ajouter un nouveau barème à 100 %</div><div style="font-size:11px;color:#666;margin-bottom:12px;">Le nouveau montant s’appliquera à compter de sa date de mise en place. Les calculs antérieurs conserveront leur ancien barème.</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;"><label class="fg"><span class="fgl">Date de mise à jour</span><input class="fi" id="ind-update" type="date"></label><label class="fg"><span class="fgl">Date de mise en place *</span><input class="fi" id="ind-effective" type="date"></label>'
+    +'<label class="fg"><span class="fgl">Sapeur (€ / h)</span><input class="fi" id="ind-sapeur" type="number" min="0" step="0.01" value="'+Number(latestRates.sapeur||0).toFixed(2)+'"></label><label class="fg"><span class="fgl">Caporal (€ / h)</span><input class="fi" id="ind-caporal" type="number" min="0" step="0.01" value="'+Number(latestRates.caporal||0).toFixed(2)+'"></label><label class="fg"><span class="fgl">Sous-officier (€ / h)</span><input class="fi" id="ind-sousoff" type="number" min="0" step="0.01" value="'+Number(latestRates.sousOfficier||0).toFixed(2)+'"></label><label class="fg"><span class="fgl">Officier (€ / h)</span><input class="fi" id="ind-officier" type="number" min="0" step="0.01" value="'+Number(latestRates.officier||0).toFixed(2)+'"></label></div>'
+    +'<label class="fg" style="margin-top:10px;"><span class="fgl">Complément / référence</span><input class="fi" id="ind-complement" value="NOR : INTE2522673A du 17 novembre 2025"></label><button class="btn pr" style="margin-top:10px;" onclick="saveIndemnityScale()">💾 Ajouter le barème</button></div>'
+    +'<div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:12px;margin-bottom:16px;font-size:11px;line-height:1.6;"><strong>Groupes de grades utilisés</strong><br><strong>Sapeur :</strong> Sapeur 2e classe, Sapeur 1e classe · <strong>Caporal :</strong> Caporal, Caporal-chef<br><strong>Sous-officier :</strong> Sergent, Sergent-chef, Adjudant, Adjudant-chef · <strong>Officier :</strong> Lieutenant, Capitaine, Commandant, Lieutenant-colonel, Colonel</div>'
+    +'<div style="background:#fff;border:1px solid #eee;border-radius:14px;padding:16px;"><div style="font-size:14px;font-weight:700;margin-bottom:10px;">Historique conservé</div><div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:11px;min-width:980px;"><thead><tr style="background:#f5f5f5;"><th style="padding:8px;text-align:left;">Mise en place</th><th style="padding:8px;text-align:left;">Mise à jour</th><th style="padding:8px;">Sapeur</th><th style="padding:8px;">Caporal</th><th style="padding:8px;">Sous-officier</th><th style="padding:8px;">Officier</th><th style="padding:8px;text-align:left;">Complément</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+}
+function saveIndemnityScale(){
+  if(!isSuperAdmin())return;
+  const effective=document.getElementById('ind-effective')?.value||'',updated=document.getElementById('ind-update')?.value||'';
+  const get=function(id){return Number(String(document.getElementById(id)?.value||'').replace(',','.'));};
+  const rates={sapeur:get('ind-sapeur'),caporal:get('ind-caporal'),sousOfficier:get('ind-sousoff'),officier:get('ind-officier')};
+  if(!effective){showToast('Renseignez la date de mise en place','warn');return;}
+  if(Object.keys(rates).some(function(k){return !Number.isFinite(rates[k])||rates[k]<0;})){showToast('Vérifiez les quatre montants','warn');return;}
+  const history=getIndemnityHistory();if(history.some(function(item){return item.effectiveDate===effective;})){showToast('Un barème existe déjà à cette date de mise en place','warn');return;}
+  history.push({id:'indem-'+effective+'-'+Date.now(),effectiveDate:effective,updateDate:updated,complement:document.getElementById('ind-complement')?.value.trim()||'',rates:rates});
+  CASERNE_DATA._global.indemnityHistory=history.sort(function(a,b){return a.effectiveDate.localeCompare(b.effectiveDate);});
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();saveData(true);showToast('Nouveau barème enregistré','success');showIndemnityParams();
 }
 
 function formatCaserneAstreintePhone(value){

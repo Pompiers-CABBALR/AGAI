@@ -42,13 +42,21 @@ function getStIvs(){
 function canViewDetailedStatistics(){
   return isAdminModeActive();
 }
+function canViewIndemnitesStatistics(){
+  if(!isAdminModeActive())return false;
+  if(isSuperAdmin())return true;
+  const data=typeof CD==='function'?CD():null;
+  return !!(data&&data._indemnitesAdmins===true);
+}
 
 function rStats(){
   // Nav fixée en haut
   const nav=document.getElementById('stats-nav');
   if(nav){
     const showPersonnel=canViewDetailedStatistics();
-    const vues=[['annuel','Annuel'],['nat-mois','Nature/mois'],['com-mois','Commune/mois'],['nat-com','Commune\u00d7Nature']].concat(showPersonnel?[['appels','Appels'],['pers-ivs','Personnel'],['pers-heures','Personnel/Heures'],['pers-act','Activités serv.'],['pers-form','Formations'],['pers-dispos','Dispos/Semaine']]:[]);
+    const vues=[['annuel','Annuel'],['nat-mois','Nature/mois'],['com-mois','Commune/mois'],['nat-com','Commune\u00d7Nature']]
+      .concat(showPersonnel?[['appels','Appels'],['pers-ivs','Personnel'],['pers-heures','Personnel/Heures'],['pers-act','Activités serv.'],['pers-form','Formations'],['pers-dispos','Dispos/Semaine']]:[])
+      .concat(canViewIndemnitesStatistics()?[['indemnites','Indemnités']]:[]);
     const btnHtml=vues.map(function(vl){
       const v=vl[0],l=vl[1],actif=stVue===v;
       return '<button onclick="stVue=\''+v+'\';if(stVue===\'annuel\')stMois=0;rStats()" style="padding:5px 10px;border-radius:8px;border:1px solid #ccc;cursor:pointer;font-size:11px;font-weight:'+(actif?'700':'400')+';background:'+(actif?'#C0392B':'#f5f5f5')+';color:'+(actif?'#fff':'#333')+';">'+l+'</button>';
@@ -124,6 +132,109 @@ function rStatsAppels(){
     +'</table></div></div>';
 }
 
+function rStatsIndemnites(){
+  const categories=[
+    {key:'ast',label:'Astreintes téléphoniques'},
+    {key:'ac',label:'Activités de service'},
+    {key:'fa',label:'Frais administratifs'},
+    {key:'inter100',label:'100 %',hint:'INTER + RENF'},
+    {key:'inter150',label:'150 %',hint:'INTER + RENF'},
+    {key:'inter200',label:'200 %',hint:'INTER + RENF'},
+    {key:'sdis100',label:'SDIS 100 %'},
+    {key:'sdis150',label:'SDIS 150 %'},
+    {key:'sdis200',label:'SDIS 200 %'},
+    {key:'formateur',label:'Formateurs',hint:'FORM'},
+    {key:'formation',label:'Formations',hint:'FOR'}
+  ];
+  const subtotalDefs=[
+    {key:'subtotalInter',label:'Sous-total Intercommunales',keys:['ast','ac','fa','inter100','inter150','inter200']},
+    {key:'subtotalSdis',label:'Sous-total SDIS',keys:['sdis100','sdis150','sdis200']},
+    {key:'subtotalForm',label:'Sous-total Formations',keys:['formateur','formation']}
+  ];
+  const agents=[...(USERS||[])].filter(function(u){return u&&u.l&&!u._isSA;}).sort(function(a,b){return fullName(a).localeCompare(fullName(b),'fr');});
+  const rates=getStatsTaux();
+  function emptyValue(){return {minutes:0,amount:0};}
+  function emptyRow(user){const values={};categories.forEach(function(c){values[c.key]=emptyValue();});return {user:user,values:values,unknownGrade:false};}
+  const rowsByLogin={};agents.forEach(function(user){rowsByLogin[user.l]=emptyRow(user);});
+  function dateInPeriod(dateIso){
+    const prefix=String(stAnnee)+(stMois>0?'-'+String(stMois).padStart(2,'0'):'');
+    return String(dateIso||'').startsWith(prefix);
+  }
+  function add(login,key,minutes,dateIso,percentage){
+    const row=rowsByLogin[login],mins=Math.max(0,Number(minutes)||0);if(!row||!mins||!dateInPeriod(dateIso))return;
+    const scale=indemnityScaleForDate(dateIso);if(!scale)return;
+    const group=indemnityGradeGroup(row.user.grade),base=group?Number(scale.rates&&scale.rates[group]):0;
+    row.values[key].minutes+=mins;
+    if(!group||!Number.isFinite(base)){row.unknownGrade=true;return;}
+    row.values[key].amount+=(mins/60)*base*(Number(percentage)||0)/100;
+  }
+  function interventionIsoDate(iv){const key=statsInterventionDateKey(iv);return key&&key.length>=8?key.slice(0,4)+'-'+key.slice(4,6)+'-'+key.slice(6,8):'';}
+  (IVS||[]).filter(function(iv){return iv&&!iv._isPilip&&isInterventionComptabilisee(iv);}).forEach(function(iv){
+    const dateIso=interventionIsoDate(iv);if(!dateInPeriod(dateIso)||!indemnityScaleForDate(dateIso))return;
+    const report=String(adminExportReportType(iv)||'INTER').toUpperCase();
+    agents.forEach(function(user){
+      // Reprendre les heures indemnisables de l’export : arrondi au quart
+      // d’heure pour INTER/RENF si activé, sans arrondi pour le SDIS.
+      const split=calcExportTauxAgentIV(iv,user.l);if(!split)return;
+      const isSdis=report==='SDIS',prefix=isSdis?'sdis':'inter';
+      const p100=isSdis?rates.sdisJour:(report==='RENF'?rates.renfJour:rates.interJour);
+      const p150=isSdis?rates.sdisDimFerie:(report==='RENF'?rates.renfDimFerie:rates.interDimFerie);
+      const p200=isSdis?rates.sdisNuit:(report==='RENF'?rates.renfNuit:rates.interNuit);
+      add(user.l,prefix+'100',split.t100,dateIso,p100);add(user.l,prefix+'150',split.t150,dateIso,p150);add(user.l,prefix+'200',split.t200,dateIso,p200);
+    });
+  });
+  (actGetData()||[]).forEach(function(activity){
+    const date=String(activity.date||'').slice(0,10);if(!dateInPeriod(date))return;
+    const key=activityIsFraisAdministratifs(activity)?'fa':'ac',percentage=key==='fa'?rates.fraisAdmin:rates.actSvc,minutes=statsActivityRecordedMinutes(activity);
+    const logins=new Set([].concat(activity.participants||[],activity.auteur||[]));logins.forEach(function(login){add(login,key,minutes,date,percentage);});
+  });
+  (fmpaGetData()||[]).forEach(function(f){
+    const date=String(f.date||'').slice(0,10),minutes=statsFmpaRecordedMinutes(f);if(!dateInPeriod(date))return;
+    (f.participants||[]).forEach(function(login){add(login,'ac',minutes,date,rates.fmpaStag);});
+    (f.formateurs||[]).forEach(function(login){add(login,'formateur',minutes,date,rates.fmpaForm);});
+  });
+  function addFormationDays(list,key,percentage){
+    (list||[]).forEach(function(f){
+      if(!f.ddebut||!f.dfin)return;
+      const dayMinutes=formSlotMins(f.hmatind,f.hmatinf)+formSlotMins(f.hapremd,f.hapremf);if(!dayMinutes)return;
+      const start=new Date(f.ddebut+'T12:00:00'),end=new Date(f.dfin+'T12:00:00');
+      for(let day=new Date(start);day<=end;day.setDate(day.getDate()+1)){
+        const date=day.getFullYear()+'-'+String(day.getMonth()+1).padStart(2,'0')+'-'+String(day.getDate()).padStart(2,'0');
+        (f.participants||[]).forEach(function(login){add(login,key,dayMinutes,date,percentage);});
+      }
+    });
+  }
+  addFormationDays(formStagGetData(),'formation',rates.formStag);
+  addFormationDays(formFormGetData(),'formateur',rates.formRate);
+  const months=stMois>0?[stMois]:Array.from({length:12},function(_,i){return i+1;});
+  agents.forEach(function(user){
+    months.forEach(function(month){
+      const data=astrTelGetMonth(user.l,stAnnee,month-1)||{};
+      Object.keys(data).forEach(function(day){
+        const date=String(stAnnee)+'-'+String(month).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+        add(user.l,'ast',(Number(data[day])||0)*60,date,rates.astrTel);
+      });
+    });
+  });
+  function sumValues(row,keys){return keys.reduce(function(sum,key){const value=row.values[key]||emptyValue();sum.minutes+=value.minutes;sum.amount+=value.amount;return sum;},emptyValue());}
+  function cell(value,background){return '<td style="padding:6px;text-align:center;border-left:1px solid #ddd;min-width:112px;'+(value.minutes?'background:'+background+';':'')+'"><div style="font-weight:700;white-space:nowrap;">'+(value.minutes?adminExportMinutesHHMM(Math.round(value.minutes)):'—')+'</div><div style="font-size:10px;color:#166534;white-space:nowrap;">'+(value.minutes?indemnityEuro(value.amount):'')+'</div></td>';}
+  function totalsForRow(row){
+    subtotalDefs.forEach(function(def){row.values[def.key]=sumValues(row,def.keys);});
+    row.values.total=sumValues(row,categories.map(function(c){return c.key;}));
+  }
+  const rows=Object.keys(rowsByLogin).map(function(login){const row=rowsByLogin[login];totalsForRow(row);return row;});
+  const grand={values:{}};categories.concat(subtotalDefs).concat([{key:'total'}]).forEach(function(c){grand.values[c.key]=emptyValue();});
+  rows.forEach(function(row){Object.keys(grand.values).forEach(function(key){grand.values[key].minutes+=row.values[key].minutes;grand.values[key].amount+=row.values[key].amount;});});
+  const headers=categories.map(function(c){return '<th style="padding:7px;min-width:112px;border-left:1px solid #ddd;">'+c.label+(c.hint?'<div style="font-size:9px;font-weight:400;">'+c.hint+'</div>':'')+'</th>';}).join('')
+    +subtotalDefs.map(function(c){return '<th style="padding:7px;min-width:125px;border-left:2px solid #999;background:#EEF2FF;">'+c.label+'</th>';}).join('')+'<th style="padding:7px;min-width:125px;border-left:2px solid #555;background:#EAF3DE;">TOTAL</th>';
+  const bodyRows=rows.map(function(row){return '<tr style="border-bottom:1px solid #eee;"><td style="padding:7px 9px;white-space:nowrap;position:sticky;left:0;background:#fff;z-index:1;"><strong>'+escHtml(fullName(row.user))+'</strong><div style="font-size:10px;color:#666;">'+escHtml(row.user.grade||'—')+(row.unknownGrade?' · <span style="color:#B45309;">grade non classé</span>':'')+'</div></td>'
+    +categories.map(function(c){return cell(row.values[c.key],'#F8FAFC');}).join('')+subtotalDefs.map(function(c){return cell(row.values[c.key],'#EEF2FF');}).join('')+cell(row.values.total,'#EAF3DE')+'</tr>';}).join('');
+  const footer='<tr style="background:#222;color:#fff;font-weight:700;"><td style="padding:8px;position:sticky;left:0;background:#222;">TOTAL</td>'+categories.map(function(c){return cell(grand.values[c.key],'#222');}).join('')+subtotalDefs.map(function(c){return cell(grand.values[c.key],'#222');}).join('')+cell(grand.values.total,'#222')+'</tr>';
+  const period=stMois>0?ST_MOIS[stMois-1]+' '+stAnnee:'Année '+stAnnee;
+  return '<div style="background:#fff;border-radius:12px;padding:14px;"><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;"><div><div style="font-size:16px;font-weight:700;">💶 Indemnités par agent — '+period+'</div><div style="font-size:11px;color:#666;margin-top:3px;">Chaque case indique les heures indemnisables puis le montant calculé selon le grade, le taux et le barème applicable à la date. L’arrondi d’export INTER/RENF est respecté ; le SDIS reste sans arrondi.</div></div><div style="font-size:11px;background:#FFF7ED;border:1px solid #FDBA74;border-radius:9px;padding:7px 10px;">Calcul actif depuis le 01/12/2025</div></div>'
+    +'<div style="overflow-x:auto;border:1px solid #ddd;border-radius:10px;"><table style="border-collapse:collapse;font-size:11px;min-width:1900px;width:100%;"><thead><tr style="background:#f5f5f5;"><th style="padding:7px 9px;text-align:left;min-width:180px;position:sticky;left:0;background:#f5f5f5;z-index:2;">Agent</th>'+headers+'</tr></thead><tbody>'+bodyRows+'</tbody><tfoot>'+footer+'</tfoot></table></div></div>';
+}
+
 function rStatsContent(){
   const body=document.getElementById('stats-body');
   if(!body)return;
@@ -141,6 +252,10 @@ function rStatsContent(){
     if(!canViewDetailedStatistics()){body.innerHTML='<div style="padding:24px;text-align:center;color:var(--t2);">Accès restreint.</div>';return;}
     body.innerHTML=rStatsAppels();
     return;
+  }
+  if(stVue==='indemnites'){
+    if(!canViewIndemnitesStatistics()){body.innerHTML='<div style="padding:24px;text-align:center;color:var(--t2);">Accès restreint.</div>';return;}
+    body.innerHTML=rStatsIndemnites();return;
   }
   const ivs=getStIvs();
   const total=ivs.length;

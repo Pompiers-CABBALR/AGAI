@@ -747,7 +747,7 @@ function _buildDataObject(){
   Object.keys(CASERNE_DATA).forEach(cid=>{
     const d=CASERNE_DATA[cid];
     // Clés globales (non liées à une caserne)
-    if(cid==='_cabbalrActif'||cid==='_initCabbalr'){
+    if(cid==='_cabbalrActif'||cid==='_initCabbalr'||cid==='_global'){
       data.CASERNE_DATA[cid]=d;
       return;
     }
@@ -770,6 +770,8 @@ function _buildDataObject(){
       astrTelData:JSON.parse(JSON.stringify(d.astrTelData||{})),
       astrTelParams:{...(d.astrTelParams||{})},
       statsTaux:{...(d.statsTaux||{})},
+      _statsPersonnelHoursReal:d._statsPersonnelHoursReal===true,
+      _indemnitesAdmins:d._indemnitesAdmins===true,
       adminLogins:Array.isArray(d.adminLogins)?[...d.adminLogins]:(d.adminLogin?[d.adminLogin]:[]),
       adminLogin:d.adminLogin||'',
       formations:JSON.parse(JSON.stringify(d.formations||[])),
@@ -841,6 +843,8 @@ function _applyDataObject(data){
         if(src.astrTelData&&!dispoLocked)dst.astrTelData=src.astrTelData;
         if(src.astrTelParams)dst.astrTelParams=src.astrTelParams;
         if(src.statsTaux)dst.statsTaux=src.statsTaux;
+        if(src._statsPersonnelHoursReal!==undefined)dst._statsPersonnelHoursReal=src._statsPersonnelHoursReal===true;
+        if(src._indemnitesAdmins!==undefined)dst._indemnitesAdmins=src._indemnitesAdmins===true;
         if(src.adminLogins!==undefined)dst.adminLogins=Array.isArray(src.adminLogins)?[...src.adminLogins]:[];
         else if(src.adminLogin!==undefined)dst.adminLogins=src.adminLogin?[src.adminLogin]:[];
         if(src.adminLogin!==undefined)dst.adminLogin=src.adminLogin;
@@ -1812,6 +1816,8 @@ function _rcSplitCaserne(cid, d){
     astrTelData: JSON.parse(JSON.stringify(d.astrTelData||{})),
     astrTelParams: Object.assign({},d.astrTelParams||{}),
     statsTaux: Object.assign({},d.statsTaux||{}),
+    _statsPersonnelHoursReal:d._statsPersonnelHoursReal===true,
+    _indemnitesAdmins:d._indemnitesAdmins===true,
     adminLogins: Array.isArray(d.adminLogins)?[...d.adminLogins]:(d.adminLogin?[d.adminLogin]:[]),
     adminLogin: d.adminLogin||''
   };
@@ -1823,7 +1829,7 @@ function _rcSplitCaserne(cid, d){
 function _rcAssembleCaserne(rows){
   const out = { users:[], ivs:[], pilpIvs:[], equipes:[], fmpas:[], formStag:[], formForm:[], renforts:[], activites:[],
                 dispos:{}, piquets:{}, planningRotations:{}, disposValidated:{}, piquetsValidated:{}, astrConfig:{},
-                astrTelData:{}, astrTelParams:{}, statsTaux:{}, adminLogins:[], adminLogin:'' };
+                astrTelData:{}, astrTelParams:{}, statsTaux:{}, _statsPersonnelHoursReal:false, _indemnitesAdmins:false, adminLogins:[], adminLogin:'' };
   const listMap = {iv:'ivs', pilp:'pilpIvs', equipe:'equipes', fmpa:'fmpas', formStag:'formStag', formForm:'formForm', renfort:'renforts', activite:'activites'};
   rows.forEach(function(r){
     if(r.deleted) return; // on ignore les enregistrements supprimés à la reconstruction
@@ -1842,6 +1848,8 @@ function _rcAssembleCaserne(rows){
       out.astrTelData=c.astrTelData||{};
       out.astrTelParams=c.astrTelParams||{};
       out.statsTaux=c.statsTaux||{};
+      out._statsPersonnelHoursReal=c._statsPersonnelHoursReal===true;
+      out._indemnitesAdmins=c._indemnitesAdmins===true;
       out.adminLogins=Array.isArray(c.adminLogins)?[...c.adminLogins]:(c.adminLogin?[c.adminLogin]:[]);
       out.adminLogin=c.adminLogin||out.adminLogins[0]||'';
     }
@@ -1860,7 +1868,8 @@ function _rcSplitAll(data){
     LOGIN_HISTORY:data.LOGIN_HISTORY,
     LOGIN_HISTORY_DELETED:data.LOGIN_HISTORY_DELETED,
     _cabbalrActif:(data.CASERNE_DATA&&data.CASERNE_DATA._cabbalrActif),
-    _initCabbalr:(data.CASERNE_DATA&&data.CASERNE_DATA._initCabbalr)
+    _initCabbalr:(data.CASERNE_DATA&&data.CASERNE_DATA._initCabbalr),
+    _global:(data.CASERNE_DATA&&data.CASERNE_DATA._global)
   }, deleted:false });
   // Une ligne autonome par session permet aux comptes de caserne d'enregistrer
   // leur connexion et leur présence sans droit d'écriture sur la ligne globale.
@@ -1985,7 +1994,7 @@ async function _rcProtectSensitiveGlobalRow(rows){
     const records=await resp.json();
     const remote=Array.isArray(records)&&records[0]&&records[0].data||null;
     if(!remote||!Array.isArray(remote.GLOBAL_ACCOUNTS))throw new Error('comptes globaux distants absents');
-    const protectedKeys=['GLOBAL_ACCOUNTS','CASERNES','NAT','ACT_TYPES','REPORT_TYPES','COM','ENGIN_TYPES','_cabbalrActif','_initCabbalr'];
+    const protectedKeys=['GLOBAL_ACCOUNTS','CASERNES','NAT','ACT_TYPES','REPORT_TYPES','COM','ENGIN_TYPES','_cabbalrActif','_initCabbalr','_global'];
     protectedKeys.forEach(function(key){if(remote[key]!==undefined)globalRow.data[key]=remote[key];});
     globalRow.data.LOGIN_HISTORY_DELETED=Object.assign({},remote.LOGIN_HISTORY_DELETED||{},globalRow.data.LOGIN_HISTORY_DELETED||{});
     globalRow.data.LOGIN_HISTORY=_mergeLoginHistory(globalRow.data.LOGIN_HISTORY||[],remote.LOGIN_HISTORY||[],globalRow.data.LOGIN_HISTORY_DELETED);
@@ -2122,6 +2131,7 @@ async function _rcPull(silent){
           if(!data.CASERNE_DATA)data.CASERNE_DATA={};
           if(g._cabbalrActif!==undefined)data.CASERNE_DATA._cabbalrActif=g._cabbalrActif;
           if(g._initCabbalr!==undefined)data.CASERNE_DATA._initCabbalr=g._initCabbalr;
+          if(g._global!==undefined)data.CASERNE_DATA._global=g._global;
         }
         return;
       }

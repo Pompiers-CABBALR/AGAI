@@ -1519,6 +1519,14 @@ function renderSuperAdmin(){
         </label>
         <div style="font-size:10px;color:#777;margin-top:4px;">Si cette option est désactivée, la vue affiche uniquement les heures utilisées pour l’export.</div>
       </div>
+      <div style="margin-top:10px;border-top:1px solid #f0f0f0;padding-top:10px;">
+        <div style="font-size:11px;font-weight:600;color:#666;margin-bottom:6px;">💶 STATISTIQUES DES INDEMNITÉS</div>
+        <label style="display:flex;align-items:flex-start;gap:7px;font-size:11px;cursor:pointer;line-height:1.35;">
+          <input type="checkbox" style="margin-top:2px;accent-color:${c.couleur};" ${d._indemnitesAdmins===true?'checked':''} onchange="saSetIndemnitesAdmins('${c.id}',this.checked)">
+          <span>Autoriser les admins de ${c.nom}</span>
+        </label>
+        <div style="font-size:10px;color:#777;margin-top:4px;">Désactivé par défaut : seul le super-administrateur voit cette rubrique.</div>
+      </div>
     </div>`;
   }).join('');
   const etatMajor=CASERNES.find(c=>c.id==='EMAJ')||{id:'EMAJ',nom:'État-Major',couleur:'#1D4ED8'};
@@ -1662,6 +1670,7 @@ function renderSuperAdmin(){
         <button class="btn" style="font-size:12px;" onclick="showReferentiel()">&#x1F4CB; Référentiel</button>
         <button class="btn" style="font-size:12px;" onclick="showAstrTelParams()">📞 Paramètres astreinte tél.</button>
         <button class="btn" style="font-size:12px;" onclick="showReferentiel('taux')">📊 Référentiels rapports et taux</button>
+        <button class="btn" style="font-size:12px;" onclick="showIndemnityParams()">💶 Barèmes des indemnités</button>
         <button class="btn pr" onclick="addCaserne()">+ Nouvelle caserne</button>
         <button class="btn pr" onclick="addSuperAdmin()">+ Super Admin</button>
       </div>
@@ -1843,6 +1852,70 @@ function saSetPersonnelHoursMode(cid,showReal){
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);
   showToast(showReal?'Statistiques : heures réelles affichées':'Statistiques : heures utilisées pour l’export affichées','success');
+}
+
+function saSetIndemnitesAdmins(cid,allowed){
+  if(!isSuperAdmin()){showToast('Réglage réservé au super-administrateur','warn');return;}
+  if(!CASERNE_DATA[cid])return;
+  CASERNE_DATA[cid]._indemnitesAdmins=allowed===true;
+  if(CURRENT_CASERNE_ID===cid)syncCaserneContext();
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);
+  showToast(allowed?'Indemnités accessibles aux admins de la caserne':'Indemnités réservées au super-administrateur','success');
+}
+
+const DEFAULT_INDEMNITY_SCALE={
+  id:'indem-2025-12-01',effectiveDate:'2025-12-01',updateDate:'2025-11-28',
+  complement:'NOR : INTE2522673A du 17 novembre 2025',
+  rates:{sapeur:8.71,caporal:9.35,sousOfficier:10.55,officier:13.11}
+};
+function getIndemnityHistory(){
+  if(!CASERNE_DATA._global||typeof CASERNE_DATA._global!=='object')CASERNE_DATA._global={};
+  if(!Array.isArray(CASERNE_DATA._global.indemnityHistory)||!CASERNE_DATA._global.indemnityHistory.length){
+    CASERNE_DATA._global.indemnityHistory=[JSON.parse(JSON.stringify(DEFAULT_INDEMNITY_SCALE))];
+  }
+  return CASERNE_DATA._global.indemnityHistory.slice().sort(function(a,b){return String(a.effectiveDate||'').localeCompare(String(b.effectiveDate||''));});
+}
+function indemnityScaleForDate(dateIso){
+  const date=String(dateIso||'').slice(0,10);let scale=null;
+  getIndemnityHistory().forEach(function(item){if(item&&item.effectiveDate&&item.effectiveDate<=date)scale=item;});
+  return scale;
+}
+function indemnityGradeGroup(grade){
+  const value=nm(String(grade||'')).replace(/[^a-z0-9]+/g,' ').trim();
+  if(/lieutenant|capitaine|commandant|colonel/.test(value))return 'officier';
+  if(/sergent|adjudant/.test(value))return 'sousOfficier';
+  if(/caporal/.test(value))return 'caporal';
+  if(/sapeur|(^| )(1cl|2cl)( |$)/.test(value))return 'sapeur';
+  return '';
+}
+function indemnityEuro(value){return Number(value||0).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';}
+function showIndemnityParams(){
+  if(!isSuperAdmin()){showToast('Accès réservé au super-administrateur','warn');return;}
+  const body=document.getElementById('gv-body');if(!body)return;
+  const history=getIndemnityHistory().slice().reverse(),latestRates=(history[0]&&history[0].rates)||DEFAULT_INDEMNITY_SCALE.rates;
+  const rows=history.map(function(item,index){const r=item.rates||{};return '<tr style="border-bottom:1px solid #eee;'+(index===0?'background:#ECFDF5;':'')+'">'
+    +'<td style="padding:8px;white-space:nowrap;">'+escHtml(item.effectiveDate||'—')+(index===0?' <span style="color:#047857;font-weight:700;">Actuel</span>':'')+'</td><td style="padding:8px;white-space:nowrap;">'+escHtml(item.updateDate||'—')+'</td>'
+    +'<td style="padding:8px;text-align:right;">'+indemnityEuro(r.sapeur)+'</td><td style="padding:8px;text-align:right;">'+indemnityEuro(r.caporal)+'</td><td style="padding:8px;text-align:right;">'+indemnityEuro(r.sousOfficier)+'</td><td style="padding:8px;text-align:right;">'+indemnityEuro(r.officier)+'</td><td style="padding:8px;min-width:240px;">'+escHtml(item.complement||'')+'</td></tr>';}).join('');
+  body.innerHTML='<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap;"><button class="btn" onclick="renderSuperAdmin()">← Retour</button><h2 style="font-size:19px;">💶 Barèmes des indemnités</h2></div>'
+    +'<div style="background:#fff;border:1px solid #eee;border-radius:14px;padding:16px;margin-bottom:16px;"><div style="font-size:14px;font-weight:700;margin-bottom:5px;">Ajouter un nouveau barème à 100 %</div><div style="font-size:11px;color:#666;margin-bottom:12px;">Le nouveau montant s’appliquera à compter de sa date de mise en place. Les calculs antérieurs conserveront leur ancien barème.</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;"><label class="fg"><span class="fgl">Date de mise à jour</span><input class="fi" id="ind-update" type="date"></label><label class="fg"><span class="fgl">Date de mise en place *</span><input class="fi" id="ind-effective" type="date"></label>'
+    +'<label class="fg"><span class="fgl">Sapeur (€ / h)</span><input class="fi" id="ind-sapeur" type="number" min="0" step="0.01" value="'+Number(latestRates.sapeur||0).toFixed(2)+'"></label><label class="fg"><span class="fgl">Caporal (€ / h)</span><input class="fi" id="ind-caporal" type="number" min="0" step="0.01" value="'+Number(latestRates.caporal||0).toFixed(2)+'"></label><label class="fg"><span class="fgl">Sous-officier (€ / h)</span><input class="fi" id="ind-sousoff" type="number" min="0" step="0.01" value="'+Number(latestRates.sousOfficier||0).toFixed(2)+'"></label><label class="fg"><span class="fgl">Officier (€ / h)</span><input class="fi" id="ind-officier" type="number" min="0" step="0.01" value="'+Number(latestRates.officier||0).toFixed(2)+'"></label></div>'
+    +'<label class="fg" style="margin-top:10px;"><span class="fgl">Complément / référence</span><input class="fi" id="ind-complement" value="NOR : INTE2522673A du 17 novembre 2025"></label><button class="btn pr" style="margin-top:10px;" onclick="saveIndemnityScale()">💾 Ajouter le barème</button></div>'
+    +'<div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:12px;margin-bottom:16px;font-size:11px;line-height:1.6;"><strong>Groupes de grades utilisés</strong><br><strong>Sapeur :</strong> Sapeur 2e classe, Sapeur 1e classe · <strong>Caporal :</strong> Caporal, Caporal-chef<br><strong>Sous-officier :</strong> Sergent, Sergent-chef, Adjudant, Adjudant-chef · <strong>Officier :</strong> Lieutenant, Capitaine, Commandant, Lieutenant-colonel, Colonel</div>'
+    +'<div style="background:#fff;border:1px solid #eee;border-radius:14px;padding:16px;"><div style="font-size:14px;font-weight:700;margin-bottom:10px;">Historique conservé</div><div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:11px;min-width:980px;"><thead><tr style="background:#f5f5f5;"><th style="padding:8px;text-align:left;">Mise en place</th><th style="padding:8px;text-align:left;">Mise à jour</th><th style="padding:8px;">Sapeur</th><th style="padding:8px;">Caporal</th><th style="padding:8px;">Sous-officier</th><th style="padding:8px;">Officier</th><th style="padding:8px;text-align:left;">Complément</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+}
+function saveIndemnityScale(){
+  if(!isSuperAdmin())return;
+  const effective=document.getElementById('ind-effective')?.value||'',updated=document.getElementById('ind-update')?.value||'';
+  const get=function(id){return Number(String(document.getElementById(id)?.value||'').replace(',','.'));};
+  const rates={sapeur:get('ind-sapeur'),caporal:get('ind-caporal'),sousOfficier:get('ind-sousoff'),officier:get('ind-officier')};
+  if(!effective){showToast('Renseignez la date de mise en place','warn');return;}
+  if(Object.keys(rates).some(function(k){return !Number.isFinite(rates[k])||rates[k]<0;})){showToast('Vérifiez les quatre montants','warn');return;}
+  const history=getIndemnityHistory();if(history.some(function(item){return item.effectiveDate===effective;})){showToast('Un barème existe déjà à cette date de mise en place','warn');return;}
+  history.push({id:'indem-'+effective+'-'+Date.now(),effectiveDate:effective,updateDate:updated,complement:document.getElementById('ind-complement')?.value.trim()||'',rates:rates});
+  CASERNE_DATA._global.indemnityHistory=history.sort(function(a,b){return a.effectiveDate.localeCompare(b.effectiveDate);});
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();saveData(true);showToast('Nouveau barème enregistré','success');showIndemnityParams();
 }
 
 function formatCaserneAstreintePhone(value){
@@ -11509,13 +11582,21 @@ function getStIvs(){
 function canViewDetailedStatistics(){
   return isAdminModeActive();
 }
+function canViewIndemnitesStatistics(){
+  if(!isAdminModeActive())return false;
+  if(isSuperAdmin())return true;
+  const data=typeof CD==='function'?CD():null;
+  return !!(data&&data._indemnitesAdmins===true);
+}
 
 function rStats(){
   // Nav fixée en haut
   const nav=document.getElementById('stats-nav');
   if(nav){
     const showPersonnel=canViewDetailedStatistics();
-    const vues=[['annuel','Annuel'],['nat-mois','Nature/mois'],['com-mois','Commune/mois'],['nat-com','Commune\u00d7Nature']].concat(showPersonnel?[['appels','Appels'],['pers-ivs','Personnel'],['pers-heures','Personnel/Heures'],['pers-act','Activités serv.'],['pers-form','Formations'],['pers-dispos','Dispos/Semaine']]:[]);
+    const vues=[['annuel','Annuel'],['nat-mois','Nature/mois'],['com-mois','Commune/mois'],['nat-com','Commune\u00d7Nature']]
+      .concat(showPersonnel?[['appels','Appels'],['pers-ivs','Personnel'],['pers-heures','Personnel/Heures'],['pers-act','Activités serv.'],['pers-form','Formations'],['pers-dispos','Dispos/Semaine']]:[])
+      .concat(canViewIndemnitesStatistics()?[['indemnites','Indemnités']]:[]);
     const btnHtml=vues.map(function(vl){
       const v=vl[0],l=vl[1],actif=stVue===v;
       return '<button onclick="stVue=\''+v+'\';if(stVue===\'annuel\')stMois=0;rStats()" style="padding:5px 10px;border-radius:8px;border:1px solid #ccc;cursor:pointer;font-size:11px;font-weight:'+(actif?'700':'400')+';background:'+(actif?'#C0392B':'#f5f5f5')+';color:'+(actif?'#fff':'#333')+';">'+l+'</button>';
@@ -11591,6 +11672,109 @@ function rStatsAppels(){
     +'</table></div></div>';
 }
 
+function rStatsIndemnites(){
+  const categories=[
+    {key:'ast',label:'Astreintes téléphoniques'},
+    {key:'ac',label:'Activités de service'},
+    {key:'fa',label:'Frais administratifs'},
+    {key:'inter100',label:'100 %',hint:'INTER + RENF'},
+    {key:'inter150',label:'150 %',hint:'INTER + RENF'},
+    {key:'inter200',label:'200 %',hint:'INTER + RENF'},
+    {key:'sdis100',label:'SDIS 100 %'},
+    {key:'sdis150',label:'SDIS 150 %'},
+    {key:'sdis200',label:'SDIS 200 %'},
+    {key:'formateur',label:'Formateurs',hint:'FORM'},
+    {key:'formation',label:'Formations',hint:'FOR'}
+  ];
+  const subtotalDefs=[
+    {key:'subtotalInter',label:'Sous-total Intercommunales',keys:['ast','ac','fa','inter100','inter150','inter200']},
+    {key:'subtotalSdis',label:'Sous-total SDIS',keys:['sdis100','sdis150','sdis200']},
+    {key:'subtotalForm',label:'Sous-total Formations',keys:['formateur','formation']}
+  ];
+  const agents=[...(USERS||[])].filter(function(u){return u&&u.l&&!u._isSA;}).sort(function(a,b){return fullName(a).localeCompare(fullName(b),'fr');});
+  const rates=getStatsTaux();
+  function emptyValue(){return {minutes:0,amount:0};}
+  function emptyRow(user){const values={};categories.forEach(function(c){values[c.key]=emptyValue();});return {user:user,values:values,unknownGrade:false};}
+  const rowsByLogin={};agents.forEach(function(user){rowsByLogin[user.l]=emptyRow(user);});
+  function dateInPeriod(dateIso){
+    const prefix=String(stAnnee)+(stMois>0?'-'+String(stMois).padStart(2,'0'):'');
+    return String(dateIso||'').startsWith(prefix);
+  }
+  function add(login,key,minutes,dateIso,percentage){
+    const row=rowsByLogin[login],mins=Math.max(0,Number(minutes)||0);if(!row||!mins||!dateInPeriod(dateIso))return;
+    const scale=indemnityScaleForDate(dateIso);if(!scale)return;
+    const group=indemnityGradeGroup(row.user.grade),base=group?Number(scale.rates&&scale.rates[group]):0;
+    row.values[key].minutes+=mins;
+    if(!group||!Number.isFinite(base)){row.unknownGrade=true;return;}
+    row.values[key].amount+=(mins/60)*base*(Number(percentage)||0)/100;
+  }
+  function interventionIsoDate(iv){const key=statsInterventionDateKey(iv);return key&&key.length>=8?key.slice(0,4)+'-'+key.slice(4,6)+'-'+key.slice(6,8):'';}
+  (IVS||[]).filter(function(iv){return iv&&!iv._isPilip&&isInterventionComptabilisee(iv);}).forEach(function(iv){
+    const dateIso=interventionIsoDate(iv);if(!dateInPeriod(dateIso)||!indemnityScaleForDate(dateIso))return;
+    const report=String(adminExportReportType(iv)||'INTER').toUpperCase();
+    agents.forEach(function(user){
+      // Reprendre les heures indemnisables de l’export : arrondi au quart
+      // d’heure pour INTER/RENF si activé, sans arrondi pour le SDIS.
+      const split=calcExportTauxAgentIV(iv,user.l);if(!split)return;
+      const isSdis=report==='SDIS',prefix=isSdis?'sdis':'inter';
+      const p100=isSdis?rates.sdisJour:(report==='RENF'?rates.renfJour:rates.interJour);
+      const p150=isSdis?rates.sdisDimFerie:(report==='RENF'?rates.renfDimFerie:rates.interDimFerie);
+      const p200=isSdis?rates.sdisNuit:(report==='RENF'?rates.renfNuit:rates.interNuit);
+      add(user.l,prefix+'100',split.t100,dateIso,p100);add(user.l,prefix+'150',split.t150,dateIso,p150);add(user.l,prefix+'200',split.t200,dateIso,p200);
+    });
+  });
+  (actGetData()||[]).forEach(function(activity){
+    const date=String(activity.date||'').slice(0,10);if(!dateInPeriod(date))return;
+    const key=activityIsFraisAdministratifs(activity)?'fa':'ac',percentage=key==='fa'?rates.fraisAdmin:rates.actSvc,minutes=statsActivityRecordedMinutes(activity);
+    const logins=new Set([].concat(activity.participants||[],activity.auteur||[]));logins.forEach(function(login){add(login,key,minutes,date,percentage);});
+  });
+  (fmpaGetData()||[]).forEach(function(f){
+    const date=String(f.date||'').slice(0,10),minutes=statsFmpaRecordedMinutes(f);if(!dateInPeriod(date))return;
+    (f.participants||[]).forEach(function(login){add(login,'ac',minutes,date,rates.fmpaStag);});
+    (f.formateurs||[]).forEach(function(login){add(login,'formateur',minutes,date,rates.fmpaForm);});
+  });
+  function addFormationDays(list,key,percentage){
+    (list||[]).forEach(function(f){
+      if(!f.ddebut||!f.dfin)return;
+      const dayMinutes=formSlotMins(f.hmatind,f.hmatinf)+formSlotMins(f.hapremd,f.hapremf);if(!dayMinutes)return;
+      const start=new Date(f.ddebut+'T12:00:00'),end=new Date(f.dfin+'T12:00:00');
+      for(let day=new Date(start);day<=end;day.setDate(day.getDate()+1)){
+        const date=day.getFullYear()+'-'+String(day.getMonth()+1).padStart(2,'0')+'-'+String(day.getDate()).padStart(2,'0');
+        (f.participants||[]).forEach(function(login){add(login,key,dayMinutes,date,percentage);});
+      }
+    });
+  }
+  addFormationDays(formStagGetData(),'formation',rates.formStag);
+  addFormationDays(formFormGetData(),'formateur',rates.formRate);
+  const months=stMois>0?[stMois]:Array.from({length:12},function(_,i){return i+1;});
+  agents.forEach(function(user){
+    months.forEach(function(month){
+      const data=astrTelGetMonth(user.l,stAnnee,month-1)||{};
+      Object.keys(data).forEach(function(day){
+        const date=String(stAnnee)+'-'+String(month).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+        add(user.l,'ast',(Number(data[day])||0)*60,date,rates.astrTel);
+      });
+    });
+  });
+  function sumValues(row,keys){return keys.reduce(function(sum,key){const value=row.values[key]||emptyValue();sum.minutes+=value.minutes;sum.amount+=value.amount;return sum;},emptyValue());}
+  function cell(value,background){return '<td style="padding:6px;text-align:center;border-left:1px solid #ddd;min-width:112px;'+(value.minutes?'background:'+background+';':'')+'"><div style="font-weight:700;white-space:nowrap;">'+(value.minutes?adminExportMinutesHHMM(Math.round(value.minutes)):'—')+'</div><div style="font-size:10px;color:#166534;white-space:nowrap;">'+(value.minutes?indemnityEuro(value.amount):'')+'</div></td>';}
+  function totalsForRow(row){
+    subtotalDefs.forEach(function(def){row.values[def.key]=sumValues(row,def.keys);});
+    row.values.total=sumValues(row,categories.map(function(c){return c.key;}));
+  }
+  const rows=Object.keys(rowsByLogin).map(function(login){const row=rowsByLogin[login];totalsForRow(row);return row;});
+  const grand={values:{}};categories.concat(subtotalDefs).concat([{key:'total'}]).forEach(function(c){grand.values[c.key]=emptyValue();});
+  rows.forEach(function(row){Object.keys(grand.values).forEach(function(key){grand.values[key].minutes+=row.values[key].minutes;grand.values[key].amount+=row.values[key].amount;});});
+  const headers=categories.map(function(c){return '<th style="padding:7px;min-width:112px;border-left:1px solid #ddd;">'+c.label+(c.hint?'<div style="font-size:9px;font-weight:400;">'+c.hint+'</div>':'')+'</th>';}).join('')
+    +subtotalDefs.map(function(c){return '<th style="padding:7px;min-width:125px;border-left:2px solid #999;background:#EEF2FF;">'+c.label+'</th>';}).join('')+'<th style="padding:7px;min-width:125px;border-left:2px solid #555;background:#EAF3DE;">TOTAL</th>';
+  const bodyRows=rows.map(function(row){return '<tr style="border-bottom:1px solid #eee;"><td style="padding:7px 9px;white-space:nowrap;position:sticky;left:0;background:#fff;z-index:1;"><strong>'+escHtml(fullName(row.user))+'</strong><div style="font-size:10px;color:#666;">'+escHtml(row.user.grade||'—')+(row.unknownGrade?' · <span style="color:#B45309;">grade non classé</span>':'')+'</div></td>'
+    +categories.map(function(c){return cell(row.values[c.key],'#F8FAFC');}).join('')+subtotalDefs.map(function(c){return cell(row.values[c.key],'#EEF2FF');}).join('')+cell(row.values.total,'#EAF3DE')+'</tr>';}).join('');
+  const footer='<tr style="background:#222;color:#fff;font-weight:700;"><td style="padding:8px;position:sticky;left:0;background:#222;">TOTAL</td>'+categories.map(function(c){return cell(grand.values[c.key],'#222');}).join('')+subtotalDefs.map(function(c){return cell(grand.values[c.key],'#222');}).join('')+cell(grand.values.total,'#222')+'</tr>';
+  const period=stMois>0?ST_MOIS[stMois-1]+' '+stAnnee:'Année '+stAnnee;
+  return '<div style="background:#fff;border-radius:12px;padding:14px;"><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;"><div><div style="font-size:16px;font-weight:700;">💶 Indemnités par agent — '+period+'</div><div style="font-size:11px;color:#666;margin-top:3px;">Chaque case indique les heures indemnisables puis le montant calculé selon le grade, le taux et le barème applicable à la date. L’arrondi d’export INTER/RENF est respecté ; le SDIS reste sans arrondi.</div></div><div style="font-size:11px;background:#FFF7ED;border:1px solid #FDBA74;border-radius:9px;padding:7px 10px;">Calcul actif depuis le 01/12/2025</div></div>'
+    +'<div style="overflow-x:auto;border:1px solid #ddd;border-radius:10px;"><table style="border-collapse:collapse;font-size:11px;min-width:1900px;width:100%;"><thead><tr style="background:#f5f5f5;"><th style="padding:7px 9px;text-align:left;min-width:180px;position:sticky;left:0;background:#f5f5f5;z-index:2;">Agent</th>'+headers+'</tr></thead><tbody>'+bodyRows+'</tbody><tfoot>'+footer+'</tfoot></table></div></div>';
+}
+
 function rStatsContent(){
   const body=document.getElementById('stats-body');
   if(!body)return;
@@ -11608,6 +11792,10 @@ function rStatsContent(){
     if(!canViewDetailedStatistics()){body.innerHTML='<div style="padding:24px;text-align:center;color:var(--t2);">Accès restreint.</div>';return;}
     body.innerHTML=rStatsAppels();
     return;
+  }
+  if(stVue==='indemnites'){
+    if(!canViewIndemnitesStatistics()){body.innerHTML='<div style="padding:24px;text-align:center;color:var(--t2);">Accès restreint.</div>';return;}
+    body.innerHTML=rStatsIndemnites();return;
   }
   const ivs=getStIvs();
   const total=ivs.length;
@@ -12969,7 +13157,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260822-stats-activites-heures-reelles-149';
+const APP_VERSION='20260822-statistiques-indemnites-150';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -15237,7 +15425,7 @@ function _buildDataObject(){
   Object.keys(CASERNE_DATA).forEach(cid=>{
     const d=CASERNE_DATA[cid];
     // Clés globales (non liées à une caserne)
-    if(cid==='_cabbalrActif'||cid==='_initCabbalr'){
+    if(cid==='_cabbalrActif'||cid==='_initCabbalr'||cid==='_global'){
       data.CASERNE_DATA[cid]=d;
       return;
     }
@@ -15260,6 +15448,8 @@ function _buildDataObject(){
       astrTelData:JSON.parse(JSON.stringify(d.astrTelData||{})),
       astrTelParams:{...(d.astrTelParams||{})},
       statsTaux:{...(d.statsTaux||{})},
+      _statsPersonnelHoursReal:d._statsPersonnelHoursReal===true,
+      _indemnitesAdmins:d._indemnitesAdmins===true,
       adminLogins:Array.isArray(d.adminLogins)?[...d.adminLogins]:(d.adminLogin?[d.adminLogin]:[]),
       adminLogin:d.adminLogin||'',
       formations:JSON.parse(JSON.stringify(d.formations||[])),
@@ -15331,6 +15521,8 @@ function _applyDataObject(data){
         if(src.astrTelData&&!dispoLocked)dst.astrTelData=src.astrTelData;
         if(src.astrTelParams)dst.astrTelParams=src.astrTelParams;
         if(src.statsTaux)dst.statsTaux=src.statsTaux;
+        if(src._statsPersonnelHoursReal!==undefined)dst._statsPersonnelHoursReal=src._statsPersonnelHoursReal===true;
+        if(src._indemnitesAdmins!==undefined)dst._indemnitesAdmins=src._indemnitesAdmins===true;
         if(src.adminLogins!==undefined)dst.adminLogins=Array.isArray(src.adminLogins)?[...src.adminLogins]:[];
         else if(src.adminLogin!==undefined)dst.adminLogins=src.adminLogin?[src.adminLogin]:[];
         if(src.adminLogin!==undefined)dst.adminLogin=src.adminLogin;
@@ -16302,6 +16494,8 @@ function _rcSplitCaserne(cid, d){
     astrTelData: JSON.parse(JSON.stringify(d.astrTelData||{})),
     astrTelParams: Object.assign({},d.astrTelParams||{}),
     statsTaux: Object.assign({},d.statsTaux||{}),
+    _statsPersonnelHoursReal:d._statsPersonnelHoursReal===true,
+    _indemnitesAdmins:d._indemnitesAdmins===true,
     adminLogins: Array.isArray(d.adminLogins)?[...d.adminLogins]:(d.adminLogin?[d.adminLogin]:[]),
     adminLogin: d.adminLogin||''
   };
@@ -16313,7 +16507,7 @@ function _rcSplitCaserne(cid, d){
 function _rcAssembleCaserne(rows){
   const out = { users:[], ivs:[], pilpIvs:[], equipes:[], fmpas:[], formStag:[], formForm:[], renforts:[], activites:[],
                 dispos:{}, piquets:{}, planningRotations:{}, disposValidated:{}, piquetsValidated:{}, astrConfig:{},
-                astrTelData:{}, astrTelParams:{}, statsTaux:{}, adminLogins:[], adminLogin:'' };
+                astrTelData:{}, astrTelParams:{}, statsTaux:{}, _statsPersonnelHoursReal:false, _indemnitesAdmins:false, adminLogins:[], adminLogin:'' };
   const listMap = {iv:'ivs', pilp:'pilpIvs', equipe:'equipes', fmpa:'fmpas', formStag:'formStag', formForm:'formForm', renfort:'renforts', activite:'activites'};
   rows.forEach(function(r){
     if(r.deleted) return; // on ignore les enregistrements supprimés à la reconstruction
@@ -16332,6 +16526,8 @@ function _rcAssembleCaserne(rows){
       out.astrTelData=c.astrTelData||{};
       out.astrTelParams=c.astrTelParams||{};
       out.statsTaux=c.statsTaux||{};
+      out._statsPersonnelHoursReal=c._statsPersonnelHoursReal===true;
+      out._indemnitesAdmins=c._indemnitesAdmins===true;
       out.adminLogins=Array.isArray(c.adminLogins)?[...c.adminLogins]:(c.adminLogin?[c.adminLogin]:[]);
       out.adminLogin=c.adminLogin||out.adminLogins[0]||'';
     }
@@ -16350,7 +16546,8 @@ function _rcSplitAll(data){
     LOGIN_HISTORY:data.LOGIN_HISTORY,
     LOGIN_HISTORY_DELETED:data.LOGIN_HISTORY_DELETED,
     _cabbalrActif:(data.CASERNE_DATA&&data.CASERNE_DATA._cabbalrActif),
-    _initCabbalr:(data.CASERNE_DATA&&data.CASERNE_DATA._initCabbalr)
+    _initCabbalr:(data.CASERNE_DATA&&data.CASERNE_DATA._initCabbalr),
+    _global:(data.CASERNE_DATA&&data.CASERNE_DATA._global)
   }, deleted:false });
   // Une ligne autonome par session permet aux comptes de caserne d'enregistrer
   // leur connexion et leur présence sans droit d'écriture sur la ligne globale.
@@ -16475,7 +16672,7 @@ async function _rcProtectSensitiveGlobalRow(rows){
     const records=await resp.json();
     const remote=Array.isArray(records)&&records[0]&&records[0].data||null;
     if(!remote||!Array.isArray(remote.GLOBAL_ACCOUNTS))throw new Error('comptes globaux distants absents');
-    const protectedKeys=['GLOBAL_ACCOUNTS','CASERNES','NAT','ACT_TYPES','REPORT_TYPES','COM','ENGIN_TYPES','_cabbalrActif','_initCabbalr'];
+    const protectedKeys=['GLOBAL_ACCOUNTS','CASERNES','NAT','ACT_TYPES','REPORT_TYPES','COM','ENGIN_TYPES','_cabbalrActif','_initCabbalr','_global'];
     protectedKeys.forEach(function(key){if(remote[key]!==undefined)globalRow.data[key]=remote[key];});
     globalRow.data.LOGIN_HISTORY_DELETED=Object.assign({},remote.LOGIN_HISTORY_DELETED||{},globalRow.data.LOGIN_HISTORY_DELETED||{});
     globalRow.data.LOGIN_HISTORY=_mergeLoginHistory(globalRow.data.LOGIN_HISTORY||[],remote.LOGIN_HISTORY||[],globalRow.data.LOGIN_HISTORY_DELETED);
@@ -16612,6 +16809,7 @@ async function _rcPull(silent){
           if(!data.CASERNE_DATA)data.CASERNE_DATA={};
           if(g._cabbalrActif!==undefined)data.CASERNE_DATA._cabbalrActif=g._cabbalrActif;
           if(g._initCabbalr!==undefined)data.CASERNE_DATA._initCabbalr=g._initCabbalr;
+          if(g._global!==undefined)data.CASERNE_DATA._global=g._global;
         }
         return;
       }
