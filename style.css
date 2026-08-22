@@ -126,6 +126,28 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .acc-stat-lbl{font-size:12px;color:var(--t2);line-height:1.4;text-align:center;width:100%;}
 .accueil-stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}
 @media(min-width:480px){.accueil-stats{grid-template-columns:repeat(4,1fr);}}
+/* Statistiques — tableau des indemnités sans défilement horizontal */
+.indem-table-container{width:100%;overflow-x:hidden;border:1px solid #ddd;border-radius:10px;}
+.indem-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:clamp(8px,.62vw,11px);}
+.indem-table th,.indem-table td{padding:6px 2px;text-align:center;vertical-align:middle;overflow:hidden;line-height:1.16;}
+.indem-table .indem-agent-col{width:12%;text-align:left;padding-left:7px;padding-right:5px;}
+.indem-table .indem-value-col{width:auto;border-left:1px solid #ddd;}
+.indem-table .indem-subtotal-col{border-left:2px solid #999;background:#EEF2FF;}
+.indem-table .indem-total-col{border-left:2px solid #555;background:#EAF3DE;}
+.indem-table .indem-head-label{display:block;white-space:normal;overflow-wrap:anywhere;}
+.indem-table .indem-hours,.indem-table .indem-amount{font-size:clamp(10px,.78vw,12px);font-weight:700;white-space:nowrap;letter-spacing:-.015em;}
+.indem-table .indem-amount{color:#166534;margin-top:2px;}
+.indem-table .indem-row{cursor:pointer;border-bottom:1px solid #eee;}
+.indem-table .indem-row:hover>td{box-shadow:inset 0 1px #E8A49D,inset 0 -1px #E8A49D;}
+.indem-table .indem-row.is-selected>td{box-shadow:inset 0 2px var(--red),inset 0 -2px var(--red);}
+.indem-table .indem-row.is-selected>td:first-child{box-shadow:inset 2px 0 var(--red),inset 0 2px var(--red),inset 0 -2px var(--red);background:#FEF2F2!important;color:var(--rd);}
+.indem-table .indem-row.is-selected>td:last-child{box-shadow:inset -2px 0 var(--red),inset 0 2px var(--red),inset 0 -2px var(--red);}
+.indem-table tfoot .indem-amount{color:#D1FAE5;}
+@media(max-width:1280px){
+  .indem-table .indem-agent-col{width:11%;padding-left:4px;}
+  .indem-table th,.indem-table td{padding:5px 1px;}
+  .indem-table .indem-grade{display:none;}
+}
 .acc-agenda-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px;}
 .acc-agenda-card{min-width:0;border:1px solid var(--brd);border-left:4px solid var(--agenda-color,#3B82F6);border-radius:10px;background:var(--agenda-bg,#EFF6FF);color:var(--agenda-text,#1E3A5F);overflow:hidden;}
 .acc-agenda-card summary{display:flex;align-items:flex-start;gap:7px;padding:9px;cursor:pointer;list-style:none;min-width:0;}

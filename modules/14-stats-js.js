@@ -132,24 +132,34 @@ function rStatsAppels(){
     +'</table></div></div>';
 }
 
+let statsIndemnitySelectedLogin='';
+function selectIndemnityAgent(login){
+  statsIndemnitySelectedLogin=String(login||'');
+  document.querySelectorAll('.indem-row[data-agent-login]').forEach(function(row){
+    const selected=row.getAttribute('data-agent-login')===statsIndemnitySelectedLogin;
+    row.classList.toggle('is-selected',selected);
+    row.setAttribute('aria-selected',selected?'true':'false');
+  });
+}
+
 function rStatsIndemnites(){
   const categories=[
-    {key:'ast',label:'Astreintes téléphoniques'},
-    {key:'ac',label:'Activités de service'},
-    {key:'fa',label:'Frais administratifs'},
-    {key:'inter100',label:'100 %',hint:'INTER + RENF'},
-    {key:'inter150',label:'150 %',hint:'INTER + RENF'},
-    {key:'inter200',label:'200 %',hint:'INTER + RENF'},
-    {key:'sdis100',label:'SDIS 100 %'},
-    {key:'sdis150',label:'SDIS 150 %'},
-    {key:'sdis200',label:'SDIS 200 %'},
-    {key:'formateur',label:'Formateurs',hint:'FORM'},
-    {key:'formation',label:'Formations',hint:'FOR'}
+    {key:'ast',label:'Astreintes téléphoniques',short:'Astr. tél.'},
+    {key:'ac',label:'Activités de service',short:'Act. serv.'},
+    {key:'fa',label:'Frais administratifs',short:'Frais adm.'},
+    {key:'inter100',label:'Intercommunales à 100 %',short:'INTER 100',hint:'INTER + RENF'},
+    {key:'inter150',label:'Intercommunales à 150 %',short:'INTER 150',hint:'INTER + RENF'},
+    {key:'inter200',label:'Intercommunales à 200 %',short:'INTER 200',hint:'INTER + RENF'},
+    {key:'sdis100',label:'SDIS à 100 %',short:'SDIS 100'},
+    {key:'sdis150',label:'SDIS à 150 %',short:'SDIS 150'},
+    {key:'sdis200',label:'SDIS à 200 %',short:'SDIS 200'},
+    {key:'formateur',label:'Formateurs',short:'Formateur',hint:'FORM'},
+    {key:'formation',label:'Formations',short:'Formation',hint:'FOR'}
   ];
   const subtotalDefs=[
-    {key:'subtotalInter',label:'Sous-total Intercommunales',keys:['ast','ac','fa','inter100','inter150','inter200']},
-    {key:'subtotalSdis',label:'Sous-total SDIS',keys:['sdis100','sdis150','sdis200']},
-    {key:'subtotalForm',label:'Sous-total Formations',keys:['formateur','formation']}
+    {key:'subtotalInter',label:'Sous-total Intercommunales',short:'S/T Interco.',keys:['ast','ac','fa','inter100','inter150','inter200']},
+    {key:'subtotalSdis',label:'Sous-total SDIS',short:'S/T SDIS',keys:['sdis100','sdis150','sdis200']},
+    {key:'subtotalForm',label:'Sous-total Formations',short:'S/T Form.',keys:['formateur','formation']}
   ];
   // Un superadministrateur rattaché à la caserne reste un agent opérationnel :
   // son statut d’administration ne doit pas l’exclure de ses indemnités.
@@ -219,7 +229,10 @@ function rStatsIndemnites(){
     });
   });
   function sumValues(row,keys){return keys.reduce(function(sum,key){const value=row.values[key]||emptyValue();sum.minutes+=value.minutes;sum.amount+=value.amount;return sum;},emptyValue());}
-  function cell(value,background){return '<td style="padding:6px;text-align:center;border-left:1px solid #ddd;min-width:112px;'+(value.minutes?'background:'+background+';':'')+'"><div style="font-weight:700;white-space:nowrap;">'+(value.minutes?adminExportMinutesHHMM(Math.round(value.minutes)):'—')+'</div><div style="font-size:10px;color:#166534;white-space:nowrap;">'+(value.minutes?indemnityEuro(value.amount):'')+'</div></td>';}
+  function cell(value,background,extraClass){
+    const hasValue=value.minutes>0,forceBackground=background==='#222';
+    return '<td class="indem-value-col '+(extraClass||'')+'" style="'+(hasValue||forceBackground?'background:'+background+';':'')+'"><div class="indem-hours">'+(hasValue?adminExportMinutesHHMM(Math.round(value.minutes)):'—')+'</div><div class="indem-amount">'+(hasValue?indemnityEuro(value.amount):'&nbsp;')+'</div></td>';
+  }
   function totalsForRow(row){
     subtotalDefs.forEach(function(def){row.values[def.key]=sumValues(row,def.keys);});
     row.values.total=sumValues(row,categories.map(function(c){return c.key;}));
@@ -227,14 +240,17 @@ function rStatsIndemnites(){
   const rows=Object.keys(rowsByLogin).map(function(login){const row=rowsByLogin[login];totalsForRow(row);return row;});
   const grand={values:{}};categories.concat(subtotalDefs).concat([{key:'total'}]).forEach(function(c){grand.values[c.key]=emptyValue();});
   rows.forEach(function(row){Object.keys(grand.values).forEach(function(key){grand.values[key].minutes+=row.values[key].minutes;grand.values[key].amount+=row.values[key].amount;});});
-  const headers=categories.map(function(c){return '<th style="padding:7px;min-width:112px;border-left:1px solid #ddd;">'+c.label+(c.hint?'<div style="font-size:9px;font-weight:400;">'+c.hint+'</div>':'')+'</th>';}).join('')
-    +subtotalDefs.map(function(c){return '<th style="padding:7px;min-width:125px;border-left:2px solid #999;background:#EEF2FF;">'+c.label+'</th>';}).join('')+'<th style="padding:7px;min-width:125px;border-left:2px solid #555;background:#EAF3DE;">TOTAL</th>';
-  const bodyRows=rows.map(function(row){return '<tr style="border-bottom:1px solid #eee;"><td style="padding:7px 9px;white-space:nowrap;position:sticky;left:0;background:#fff;z-index:1;"><strong>'+escHtml(fullName(row.user))+'</strong><div style="font-size:10px;color:#666;">'+escHtml(row.user.grade||'—')+(row.unknownGrade?' · <span style="color:#B45309;">grade non classé</span>':'')+'</div></td>'
-    +categories.map(function(c){return cell(row.values[c.key],'#F8FAFC');}).join('')+subtotalDefs.map(function(c){return cell(row.values[c.key],'#EEF2FF');}).join('')+cell(row.values.total,'#EAF3DE')+'</tr>';}).join('');
-  const footer='<tr style="background:#222;color:#fff;font-weight:700;"><td style="padding:8px;position:sticky;left:0;background:#222;">TOTAL</td>'+categories.map(function(c){return cell(grand.values[c.key],'#222');}).join('')+subtotalDefs.map(function(c){return cell(grand.values[c.key],'#222');}).join('')+cell(grand.values.total,'#222')+'</tr>';
+  const headers=categories.map(function(c){return '<th class="indem-value-col" title="'+escHtml(c.label)+'"><span class="indem-head-label">'+escHtml(c.short||c.label)+'</span>'+(c.hint?'<span class="indem-head-label" style="font-size:.82em;font-weight:400;">'+escHtml(c.hint)+'</span>':'')+'</th>';}).join('')
+    +subtotalDefs.map(function(c){return '<th class="indem-value-col indem-subtotal-col" title="'+escHtml(c.label)+'"><span class="indem-head-label">'+escHtml(c.short||c.label)+'</span></th>';}).join('')+'<th class="indem-value-col indem-total-col"><span class="indem-head-label">TOTAL</span></th>';
+  const bodyRows=rows.map(function(row){
+    const login=String(row.user.l||''),encodedLogin=encodeURIComponent(login),selected=login===statsIndemnitySelectedLogin;
+    return '<tr class="indem-row'+(selected?' is-selected':'')+'" data-agent-login="'+escHtml(login)+'" tabindex="0" aria-selected="'+(selected?'true':'false')+'" onclick="selectIndemnityAgent(decodeURIComponent(\''+encodedLogin+'\'))" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();selectIndemnityAgent(decodeURIComponent(\''+encodedLogin+'\'));}"><td class="indem-agent-col"><strong>'+escHtml(fullName(row.user))+'</strong><div class="indem-grade" style="font-size:10px;color:#666;">'+escHtml(row.user.grade||'—')+(row.unknownGrade?' · <span style="color:#B45309;">grade non classé</span>':'')+'</div></td>'
+      +categories.map(function(c){return cell(row.values[c.key],'#F8FAFC','');}).join('')+subtotalDefs.map(function(c){return cell(row.values[c.key],'#EEF2FF','indem-subtotal-col');}).join('')+cell(row.values.total,'#EAF3DE','indem-total-col')+'</tr>';
+  }).join('');
+  const footer='<tr style="background:#222;color:#fff;font-weight:700;"><td class="indem-agent-col" style="background:#222;">TOTAL</td>'+categories.map(function(c){return cell(grand.values[c.key],'#222','');}).join('')+subtotalDefs.map(function(c){return cell(grand.values[c.key],'#222','indem-subtotal-col');}).join('')+cell(grand.values.total,'#222','indem-total-col')+'</tr>';
   const period=stMois>0?ST_MOIS[stMois-1]+' '+stAnnee:'Année '+stAnnee;
-  return '<div style="background:#fff;border-radius:12px;padding:14px;"><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;"><div><div style="font-size:16px;font-weight:700;">💶 Indemnités par agent — '+period+'</div><div style="font-size:11px;color:#666;margin-top:3px;">Chaque case indique les heures indemnisables puis le montant calculé selon le grade, le taux et le barème applicable à la date. L’arrondi d’export INTER/RENF est respecté ; le SDIS reste sans arrondi.</div></div><div style="font-size:11px;background:#FFF7ED;border:1px solid #FDBA74;border-radius:9px;padding:7px 10px;">Calcul actif depuis le 01/12/2025</div></div>'
-    +'<div style="overflow-x:auto;border:1px solid #ddd;border-radius:10px;"><table style="border-collapse:collapse;font-size:11px;min-width:1900px;width:100%;"><thead><tr style="background:#f5f5f5;"><th style="padding:7px 9px;text-align:left;min-width:180px;position:sticky;left:0;background:#f5f5f5;z-index:2;">Agent</th>'+headers+'</tr></thead><tbody>'+bodyRows+'</tbody><tfoot>'+footer+'</tfoot></table></div></div>';
+  return '<div style="background:#fff;border-radius:12px;padding:14px;"><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;"><div><div style="font-size:16px;font-weight:700;">💶 Indemnités par agent — '+period+'</div><div style="font-size:11px;color:#666;margin-top:3px;">Chaque case indique les heures indemnisables puis le montant calculé, avec la même taille de texte. Cliquez sur un agent pour mettre sa ligne en évidence. L’arrondi d’export INTER/RENF est respecté ; le SDIS reste sans arrondi.</div></div><div style="font-size:11px;background:#FFF7ED;border:1px solid #FDBA74;border-radius:9px;padding:7px 10px;">Calcul actif depuis le 01/12/2025</div></div>'
+    +'<div class="indem-table-container"><table class="indem-table"><thead><tr style="background:#f5f5f5;"><th class="indem-agent-col">Agent</th>'+headers+'</tr></thead><tbody>'+bodyRows+'</tbody><tfoot>'+footer+'</tfoot></table></div></div>';
 }
 
 function rStatsContent(){
