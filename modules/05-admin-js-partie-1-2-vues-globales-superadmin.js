@@ -319,6 +319,14 @@ function renderSuperAdmin(){
         </div>
         <div style="font-size:10px;color:#777;margin-top:4px;">Ce numéro est imprimé sur les avis de passage de cette caserne.</div>
       </div>
+      <div style="margin-top:10px;border-top:1px solid #f0f0f0;padding-top:10px;">
+        <div style="font-size:11px;font-weight:600;color:#666;margin-bottom:6px;">&#x23F1; STATISTIQUES PERSONNEL / HEURES</div>
+        <label style="display:flex;align-items:flex-start;gap:7px;font-size:11px;cursor:pointer;line-height:1.35;">
+          <input type="checkbox" style="margin-top:2px;accent-color:${c.couleur};" ${d._statsPersonnelHoursReal===true?'checked':''} onchange="saSetPersonnelHoursMode('${c.id}',this.checked)">
+          <span>Afficher les heures réelles pour ${c.nom}</span>
+        </label>
+        <div style="font-size:10px;color:#777;margin-top:4px;">Si cette option est désactivée, la vue affiche uniquement les heures utilisées pour l’export.</div>
+      </div>
     </div>`;
   }).join('');
   const etatMajor=CASERNES.find(c=>c.id==='EMAJ')||{id:'EMAJ',nom:'État-Major',couleur:'#1D4ED8'};
@@ -633,6 +641,16 @@ function saSaveEmail(cid) {
   cas.email = email;
   saveData();
   showToast('E-mail sauvegardé pour ' + cas.nom, 'success');
+}
+
+function saSetPersonnelHoursMode(cid,showReal){
+  if(!isSuperAdmin()){showToast('Réglage réservé au super-administrateur','warn');return;}
+  if(!CASERNE_DATA[cid])return;
+  CASERNE_DATA[cid]._statsPersonnelHoursReal=showReal===true;
+  if(CURRENT_CASERNE_ID===cid)syncCaserneContext();
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);
+  showToast(showReal?'Statistiques : heures réelles affichées':'Statistiques : heures utilisées pour l’export affichées','success');
 }
 
 function formatCaserneAstreintePhone(value){

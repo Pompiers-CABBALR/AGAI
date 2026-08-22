@@ -1511,6 +1511,14 @@ function renderSuperAdmin(){
         </div>
         <div style="font-size:10px;color:#777;margin-top:4px;">Ce numéro est imprimé sur les avis de passage de cette caserne.</div>
       </div>
+      <div style="margin-top:10px;border-top:1px solid #f0f0f0;padding-top:10px;">
+        <div style="font-size:11px;font-weight:600;color:#666;margin-bottom:6px;">&#x23F1; STATISTIQUES PERSONNEL / HEURES</div>
+        <label style="display:flex;align-items:flex-start;gap:7px;font-size:11px;cursor:pointer;line-height:1.35;">
+          <input type="checkbox" style="margin-top:2px;accent-color:${c.couleur};" ${d._statsPersonnelHoursReal===true?'checked':''} onchange="saSetPersonnelHoursMode('${c.id}',this.checked)">
+          <span>Afficher les heures réelles pour ${c.nom}</span>
+        </label>
+        <div style="font-size:10px;color:#777;margin-top:4px;">Si cette option est désactivée, la vue affiche uniquement les heures utilisées pour l’export.</div>
+      </div>
     </div>`;
   }).join('');
   const etatMajor=CASERNES.find(c=>c.id==='EMAJ')||{id:'EMAJ',nom:'État-Major',couleur:'#1D4ED8'};
@@ -1825,6 +1833,16 @@ function saSaveEmail(cid) {
   cas.email = email;
   saveData();
   showToast('E-mail sauvegardé pour ' + cas.nom, 'success');
+}
+
+function saSetPersonnelHoursMode(cid,showReal){
+  if(!isSuperAdmin()){showToast('Réglage réservé au super-administrateur','warn');return;}
+  if(!CASERNE_DATA[cid])return;
+  CASERNE_DATA[cid]._statsPersonnelHoursReal=showReal===true;
+  if(CURRENT_CASERNE_ID===cid)syncCaserneContext();
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);
+  showToast(showReal?'Statistiques : heures réelles affichées':'Statistiques : heures utilisées pour l’export affichées','success');
 }
 
 function formatCaserneAstreintePhone(value){
@@ -12117,10 +12135,15 @@ function calcExportTauxAgentIV(iv,login){
   };
 }
 
-function statsHoursRealExportCell(realMinutes,exportMinutes,background,borderLeft){
-  const hasValue=realMinutes>0||exportMinutes>0;
+function statsPersonnelHoursShowReal(){
+  const data=typeof CD==='function'?CD():null;
+  return !!(data&&data._statsPersonnelHoursReal===true);
+}
+function statsHoursRealExportCell(realMinutes,exportMinutes,background,borderLeft,showReal){
+  const minutes=showReal?realMinutes:exportMinutes;
+  const hasValue=minutes>0;
   return '<td style="padding:3px 4px;text-align:center;font-size:10px;'+(borderLeft?'border-left:2px solid '+borderLeft+';':'')+(hasValue?'background:'+background+';':'')+'">'
-    +(hasValue?'<div style="white-space:nowrap;"><span style="font-size:8px;color:var(--t2);">R</span> <strong>'+adminExportMinutesHHMM(realMinutes)+'</strong></div><div style="white-space:nowrap;color:#1D4ED8;"><span style="font-size:8px;">E</span> <strong>'+adminExportMinutesHHMM(exportMinutes)+'</strong></div>':'—')
+    +(hasValue?'<strong style="white-space:nowrap;">'+adminExportMinutesHHMM(minutes)+'</strong>':'—')
     +'</td>';
 }
 
@@ -12175,6 +12198,7 @@ function rStatsPersonnel(vue){
   } else if(vue==='pers-heures'){
     function minToHHMM(m){return pad(Math.floor(m/60))+':'+pad(m%60);}
     const moisActifs=stMois>0?[stMois]:Array.from({length:12},function(_,i){return i+1;});
+    const showRealHours=statsPersonnelHoursShowReal();
     const configuredRates=getStatsTaux();
     const rateBadge=function(code,jour,dim,nuit){
       return '<span style="background:#F8FAFC;border:1px solid var(--brd);border-radius:6px;padding:3px 8px;font-size:10px;"><strong>'+code+'</strong> : jour '+jour+' % · dim./férié '+dim+' % · nuit '+nuit+' %</span>';
@@ -12234,9 +12258,9 @@ function rStatsPersonnel(vue){
         tot100+=m100;tot150+=m150;tot200+=m200;
         totExport100+=mExport100;totExport150+=mExport150;totExport200+=mExport200;
         if(m100||m150||m200||mExport100||mExport150||mExport200)hasDonnes=true;
-        return statsHoursRealExportCell(m100,mExport100,'#EAF3DE','#e0e0e0')
-          +statsHoursRealExportCell(m150,mExport150,'#FEF9C3','')
-          +statsHoursRealExportCell(m200,mExport200,'#FAEEDA','');
+        return statsHoursRealExportCell(m100,mExport100,'#EAF3DE','#e0e0e0',showRealHours)
+          +statsHoursRealExportCell(m150,mExport150,'#FEF9C3','',showRealHours)
+          +statsHoursRealExportCell(m200,mExport200,'#FAEEDA','',showRealHours);
       }).join('');
       grand100+=tot100;grand150+=tot150;grand200+=tot200;
       grandExport100+=totExport100;grandExport150+=totExport150;grandExport200+=totExport200;
@@ -12246,10 +12270,10 @@ function rStatsPersonnel(vue){
         +'<td style="padding:5px 8px;font-size:11px;white-space:nowrap;">'+fullName(u)+'</td>'
         +'<td style="padding:5px 5px;font-size:10px;color:var(--t2);">'+gradeAbbr(u.grade)+'</td>'
         +cols
-        +statsHoursRealExportCell(tot100,totExport100,'#EAF3DE','#ccc')
-        +statsHoursRealExportCell(tot150,totExport150,'#FEF9C3','')
-        +statsHoursRealExportCell(tot200,totExport200,'#FAEEDA','')
-        +statsHoursRealExportCell(totGen,totExportGen,'#F1F5F9','')
+        +statsHoursRealExportCell(tot100,totExport100,'#EAF3DE','#ccc',showRealHours)
+        +statsHoursRealExportCell(tot150,totExport150,'#FEF9C3','',showRealHours)
+        +statsHoursRealExportCell(tot200,totExport200,'#FAEEDA','',showRealHours)
+        +statsHoursRealExportCell(totGen,totExportGen,'#F1F5F9','',showRealHours)
         +'</tr>';
     });
     const grandGen=grand100+grand150+grand200;
@@ -12258,15 +12282,14 @@ function rStatsPersonnel(vue){
     const footer='<tr style="background:var(--t);color:#fff;font-weight:700;">'
       +'<td style="padding:6px 8px;font-size:11px;">TOTAL GÉNÉRAL</td><td></td>'
       +footCols
-      +'<td style="padding:4px 5px;text-align:center;border-left:2px solid #999;"><div>R '+minToHHMM(grand100)+'</div><div style="color:#93C5FD;">E '+minToHHMM(grandExport100)+'</div></td>'
-      +'<td style="padding:4px 5px;text-align:center;"><div>R '+minToHHMM(grand150)+'</div><div style="color:#93C5FD;">E '+minToHHMM(grandExport150)+'</div></td>'
-      +'<td style="padding:4px 5px;text-align:center;"><div>R '+minToHHMM(grand200)+'</div><div style="color:#93C5FD;">E '+minToHHMM(grandExport200)+'</div></td>'
-      +'<td style="padding:4px 5px;text-align:center;"><div>R '+minToHHMM(grandGen)+'</div><div style="color:#93C5FD;">E '+minToHHMM(grandExportGen)+'</div></td>'
+      +'<td style="padding:4px 5px;text-align:center;border-left:2px solid #999;">'+minToHHMM(showRealHours?grand100:grandExport100)+'</td>'
+      +'<td style="padding:4px 5px;text-align:center;">'+minToHHMM(showRealHours?grand150:grandExport150)+'</td>'
+      +'<td style="padding:4px 5px;text-align:center;">'+minToHHMM(showRealHours?grand200:grandExport200)+'</td>'
+      +'<td style="padding:4px 5px;text-align:center;">'+minToHHMM(showRealHours?grandGen:grandExportGen)+'</td>'
       +'</tr>';
 
     return '<div style="background:#fff;border-radius:12px;padding:12px;overflow-x:auto;">'
-      +'<div style="font-size:12px;font-weight:600;margin-bottom:4px;">Heures d’interventions par agent et par tranche tarifaire</div>'
-      +'<div style="font-size:11px;color:var(--t2);margin-bottom:6px;">Chaque case affiche <strong>R</strong> : heures réelles et <strong style="color:#1D4ED8;">E</strong> : heures utilisées pour l’export. L’arrondi au quart d’heure est appliqué selon le paramètre du superadmin ; les interventions SDIS restent sans arrondi.</div>'
+      +'<div style="font-size:12px;font-weight:600;margin-bottom:6px;">Heures d’interventions par agent et par tranche tarifaire — '+(showRealHours?'heures réelles':'heures utilisées pour l’export')+'</div>'
       +legende
       +'<table style="width:100%;border-collapse:collapse;font-size:11px;">'
       +'<thead>'
@@ -12938,7 +12961,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260822-stats-formations-heures-reelles-147';
+const APP_VERSION='20260822-affichage-heures-par-caserne-148';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
