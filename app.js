@@ -11759,10 +11759,10 @@ function showStatsTauxParams(){
       <span style="font-size:11px;color:var(--t2);">${desc}</span>
     </div>
   </div>`;
-  document.getElementById('mt').textContent='📊 Taux de pondération des statistiques';
+  document.getElementById('mt').textContent='📊 Paramètres des taux et de l’export';
   document.getElementById('mi').textContent='';
   document.getElementById('mb').innerHTML=`<div>
-    <div style="font-size:12px;color:var(--t2);margin-bottom:12px;">Ces taux s'appliquent au calcul des heures pondérées dans les statistiques Personnel.</div>
+    <div style="font-size:12px;color:var(--t2);margin-bottom:12px;">Ces taux sont utilisés pour l’export administratif. Les statistiques des activités et des formations conservent les heures exactes enregistrées sur les feuilles.</div>
     <div style="font-size:12px;font-weight:700;color:var(--red);margin:4px 0 8px;">🚒 Interventions</div>
     ${row('Interventions — journée (07h–22h)','interJour',t.interJour??100,'% des heures réelles')}
     ${row('Interventions — dimanche et jour férié (07h–22h)','interDimFerie',t.interDimFerie??150,'% des heures réelles')}
@@ -11799,9 +11799,22 @@ function applyStatsTaux(){
 }
 
 // ── Stats activités de service ──
+// La vue statistique reprend la durée exacte de la feuille. Le taux AC reste
+// appliqué uniquement dans l'export administratif.
+function statsActivityRecordedMinutes(activity){
+  if(!activity)return 0;
+  if(activity.hDebut&&activity.hFin){
+    const debut=String(activity.hDebut).split(':').map(Number),fin=String(activity.hFin).split(':').map(Number);
+    if(!debut.some(Number.isNaN)&&!fin.some(Number.isNaN)){
+      let minutes=(fin[0]*60+fin[1])-(debut[0]*60+debut[1]);
+      if(minutes<0)minutes+=1440;
+      return minutes;
+    }
+  }
+  return activity.duree?dureeValeurMinutes(activity.duree):0;
+}
 function rStatsActivites(){
   const annStr=String(stAnnee);
-  const tauxAct=getStatsTaux().actSvc;
   const agents=[...USERS].sort((a,b)=>a.nom.localeCompare(b.nom,'fr')||a.prenom.localeCompare(b.prenom,'fr'));
   const allData=actGetData().filter(a=>!activityIsFraisAdministratifs(a)||canAccessFraisAdministratifs());
   const data=allData.filter(a=>a.date&&a.date.startsWith(annStr));
@@ -11819,12 +11832,7 @@ function rStatsActivites(){
       const mStr=annStr+'-'+String(mi).padStart(2,'0');
       const items=data.filter(a=>a.date.startsWith(mStr)&&((a.participants||[]).includes(u.l)||a.auteur===u.l));
       let mins=0;
-      items.forEach(a=>{
-        if(a.hDebut&&a.hFin){
-          const [h,m]=a.hDebut.split(':').map(Number),[h2,m2]=a.hFin.split(':').map(Number);
-          let d=(h2*60+m2)-(h*60+m);if(d<0)d+=1440;mins+=Math.round(d*tauxAct/100);
-        } else if(a.duree){mins+=Math.round(dureeValeurMinutes(a.duree)*tauxAct/100);}
-      });
+      items.forEach(a=>{mins+=statsActivityRecordedMinutes(a);});
       totBrut+=mins;
       return '<td style="padding:3px 5px;text-align:center;font-size:10px;border-left:1px solid #e0e0e0;'+(mins?'font-weight:700;background:#EAF3DE;':'')+'">'+(mins?minToHHMM(mins):'—')+'</td>';
     }).join('');
@@ -11845,7 +11853,7 @@ function rStatsActivites(){
     +'</tr>';
 
   return '<div style="background:#fff;border-radius:12px;padding:12px;overflow-x:auto;">'
-    +'<div style="font-size:12px;font-weight:600;margin-bottom:8px;">Heures pondérées d\'activités de service ('+tauxAct+' %) par agent — '+stAnnee+(stMois>0?' — '+ST_MOIS_COURT[stMois-1]:'')+'</div>'
+    +'<div style="font-size:12px;font-weight:600;margin-bottom:8px;">Heures enregistrées d\'activités de service par agent — '+stAnnee+(stMois>0?' — '+ST_MOIS_COURT[stMois-1]:'')+'</div>'
     +'<table style="width:100%;border-collapse:collapse;font-size:11px;">'
     +'<thead><tr style="background:#f5f5f5;"><th style="padding:5px 8px;text-align:left;min-width:120px;">Agent</th><th style="padding:5px 5px;font-size:10px;">Grade</th>'
     +thMois
@@ -12961,7 +12969,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260822-affichage-heures-par-caserne-148';
+const APP_VERSION='20260822-stats-activites-heures-reelles-149';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
