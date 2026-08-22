@@ -133,6 +133,7 @@ function rStatsAppels(){
 }
 
 let statsIndemnitySelectedLogin='';
+let statsIndemnityDailyDetails={};
 function selectIndemnityAgent(login){
   statsIndemnitySelectedLogin=String(login||'');
   document.querySelectorAll('.indem-row[data-agent-login]').forEach(function(row){
@@ -140,6 +141,17 @@ function selectIndemnityAgent(login){
     row.classList.toggle('is-selected',selected);
     row.setAttribute('aria-selected',selected?'true':'false');
   });
+  const panel=document.getElementById('indem-agent-daily-detail');
+  if(panel)panel.innerHTML=indemnityAgentDailyDetailHTML(statsIndemnitySelectedLogin);
+}
+function indemnityAgentDailyDetailHTML(login){
+  const detail=statsIndemnityDailyDetails[String(login||'')];
+  if(!detail)return '';
+  const rows=(detail.days||[]).map(function(day){
+    const parts=(day.categories||[]).map(function(category){return '<span style="display:inline-block;background:#F1F5F9;border-radius:6px;padding:2px 6px;margin:1px 3px 1px 0;white-space:nowrap;">'+escHtml(category.label)+' : '+adminExportMinutesHHMM(Math.round(category.minutes))+' · '+indemnityEuro(category.amount)+'</span>';}).join('');
+    return '<tr><td style="padding:7px 8px;white-space:nowrap;">'+escHtml(day.label)+'</td><td style="padding:7px 8px;text-align:center;font-weight:700;">'+adminExportMinutesHHMM(Math.round(day.minutes))+'</td><td style="padding:7px 8px;text-align:right;font-weight:700;color:#166534;white-space:nowrap;">'+indemnityEuro(day.amount)+'</td><td style="padding:5px 8px;font-size:10px;">'+parts+'</td></tr>';
+  }).join('');
+  return '<div style="margin-top:12px;border:2px solid #111;border-radius:10px;overflow:hidden;"><div style="display:flex;justify-content:space-between;gap:10px;align-items:center;background:#F8FAFC;padding:9px 11px;border-bottom:2px solid #111;"><strong>Détail journalier — '+escHtml(detail.label)+'</strong><span style="font-size:11px;color:#475569;">'+detail.days.length+' jour'+(detail.days.length>1?'s':'')+'</span></div>'+(rows?'<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:#fff;border-bottom:1px solid #CBD5E1;"><th style="padding:6px 8px;text-align:left;">Date</th><th style="padding:6px 8px;text-align:center;">Heures</th><th style="padding:6px 8px;text-align:right;">Montant</th><th style="padding:6px 8px;text-align:left;">Répartition</th></tr></thead><tbody>'+rows+'</tbody></table></div>':'<div style="padding:14px;text-align:center;color:#64748B;">Aucune heure indemnisable sur cette période.</div>')+'</div>';
 }
 
 function rStatsIndemnites(){
@@ -166,7 +178,7 @@ function rStatsIndemnites(){
   const agents=[...(USERS||[])].filter(function(u){return u&&u.l;}).sort(function(a,b){return fullName(a).localeCompare(fullName(b),'fr');});
   const rates=getStatsTaux();
   function emptyValue(){return {minutes:0,amount:0};}
-  function emptyRow(user){const values={};categories.forEach(function(c){values[c.key]=emptyValue();});return {user:user,values:values,unknownGrade:false};}
+  function emptyRow(user){const values={};categories.forEach(function(c){values[c.key]=emptyValue();});return {user:user,values:values,daily:{},unknownGrade:false};}
   const rowsByLogin={};agents.forEach(function(user){rowsByLogin[user.l]=emptyRow(user);});
   function dateInPeriod(dateIso){
     const prefix=String(stAnnee)+(stMois>0?'-'+String(stMois).padStart(2,'0'):'');
@@ -175,10 +187,13 @@ function rStatsIndemnites(){
   function add(login,key,minutes,dateIso,percentage){
     const row=rowsByLogin[login],mins=Math.max(0,Number(minutes)||0);if(!row||!mins||!dateInPeriod(dateIso))return;
     const scale=indemnityScaleForDate(dateIso);if(!scale)return;
+    const daily=row.daily[dateIso]||(row.daily[dateIso]={}),dailyValue=daily[key]||(daily[key]=emptyValue());
     const group=indemnityGradeGroup(row.user.grade),base=group?Number(scale.rates&&scale.rates[group]):0;
     row.values[key].minutes+=mins;
+    dailyValue.minutes+=mins;
     if(!group||!Number.isFinite(base)){row.unknownGrade=true;return;}
-    row.values[key].amount+=(mins/60)*base*(Number(percentage)||0)/100;
+    const amount=(mins/60)*base*(Number(percentage)||0)/100;
+    row.values[key].amount+=amount;dailyValue.amount+=amount;
   }
   function interventionIsoDate(iv){const key=statsInterventionDateKey(iv);return key&&key.length>=8?key.slice(0,4)+'-'+key.slice(4,6)+'-'+key.slice(6,8):'';}
   (IVS||[]).filter(function(iv){return iv&&!iv._isPilip&&isInterventionComptabilisee(iv);}).forEach(function(iv){
@@ -238,6 +253,16 @@ function rStatsIndemnites(){
     row.values.total=sumValues(row,categories.map(function(c){return c.key;}));
   }
   const rows=Object.keys(rowsByLogin).map(function(login){const row=rowsByLogin[login];totalsForRow(row);return row;});
+  statsIndemnityDailyDetails={};
+  rows.forEach(function(row){
+    const days=Object.keys(row.daily).sort().map(function(date){
+      const values=row.daily[date],active=categories.filter(function(category){return values[category.key]&&values[category.key].minutes>0;}).map(function(category){return {label:category.short||category.label,minutes:values[category.key].minutes,amount:values[category.key].amount};});
+      const total=active.reduce(function(sum,value){sum.minutes+=value.minutes;sum.amount+=value.amount;return sum;},emptyValue());
+      const parts=date.split('-');
+      return {date:date,label:parts.length===3?parts[2]+'/'+parts[1]+'/'+parts[0]:date,minutes:total.minutes,amount:total.amount,categories:active};
+    });
+    statsIndemnityDailyDetails[row.user.l]={label:fullName(row.user),days:days};
+  });
   const grand={values:{}};categories.concat(subtotalDefs).concat([{key:'total'}]).forEach(function(c){grand.values[c.key]=emptyValue();});
   rows.forEach(function(row){Object.keys(grand.values).forEach(function(key){grand.values[key].minutes+=row.values[key].minutes;grand.values[key].amount+=row.values[key].amount;});});
   function rateLabel(value){const n=Number(value);return (Number.isFinite(n)?n.toLocaleString('fr-FR',{maximumFractionDigits:2}):'0')+'%';}
@@ -265,8 +290,8 @@ function rStatsIndemnites(){
   }).join('');
   const footer='<tr style="background:#222;color:#fff;font-weight:700;"><td class="indem-agent-col" style="background:#222;">TOTAL</td>'+categories.map(function(c){return cell(grand.values[c.key],'#222',categoryCellClass(c));}).join('')+subtotalDefs.map(function(c,index){return cell(grand.values[c.key],'#222','indem-subtotal-col'+(index===0?' indem-total-group-start':''));}).join('')+cell(grand.values.total,'#222','indem-total-col')+'</tr>';
   const period=stMois>0?ST_MOIS[stMois-1]+' '+stAnnee:'Année '+stAnnee;
-  return '<div style="background:#fff;border-radius:12px;padding:14px;"><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;"><div><div style="font-size:16px;font-weight:700;">💶 Indemnités par agent — '+period+'</div><div style="font-size:11px;color:#666;margin-top:3px;">Chaque case indique les heures indemnisables puis le montant calculé, avec la même taille de texte. Cliquez sur un agent pour mettre sa ligne en évidence. L’arrondi d’export INTER/RENF est respecté ; le SDIS reste sans arrondi.</div></div><div style="font-size:11px;background:#FFF7ED;border:1px solid #FDBA74;border-radius:9px;padding:7px 10px;">Calcul actif depuis le 01/12/2025</div></div>'
-    +'<div class="indem-table-container"><table class="indem-table"><thead>'+groupedHeaders+headers+'</thead><tbody>'+bodyRows+'</tbody><tfoot>'+footer+'</tfoot></table></div></div>';
+  return '<div style="background:#fff;border-radius:12px;padding:14px;"><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;"><div style="font-size:16px;font-weight:700;">💶 Indemnités par agent — '+period+'</div><div style="font-size:11px;background:#FFF7ED;border:1px solid #FDBA74;border-radius:9px;padding:7px 10px;">Calcul actif depuis le 01/12/2025</div></div>'
+    +'<div class="indem-table-container"><table class="indem-table"><thead>'+groupedHeaders+headers+'</thead><tbody>'+bodyRows+'</tbody><tfoot>'+footer+'</tfoot></table></div><div id="indem-agent-daily-detail">'+indemnityAgentDailyDetailHTML(statsIndemnitySelectedLogin)+'</div></div>';
 }
 
 function rStatsContent(){
