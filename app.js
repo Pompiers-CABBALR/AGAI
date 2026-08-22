@@ -11691,7 +11691,9 @@ function rStatsIndemnites(){
     {key:'subtotalSdis',label:'Sous-total SDIS',keys:['sdis100','sdis150','sdis200']},
     {key:'subtotalForm',label:'Sous-total Formations',keys:['formateur','formation']}
   ];
-  const agents=[...(USERS||[])].filter(function(u){return u&&u.l&&!u._isSA;}).sort(function(a,b){return fullName(a).localeCompare(fullName(b),'fr');});
+  // Un superadministrateur rattaché à la caserne reste un agent opérationnel :
+  // son statut d’administration ne doit pas l’exclure de ses indemnités.
+  const agents=[...(USERS||[])].filter(function(u){return u&&u.l;}).sort(function(a,b){return fullName(a).localeCompare(fullName(b),'fr');});
   const rates=getStatsTaux();
   function emptyValue(){return {minutes:0,amount:0};}
   function emptyRow(user){const values={};categories.forEach(function(c){values[c.key]=emptyValue();});return {user:user,values:values,unknownGrade:false};}
@@ -13157,7 +13159,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260822-statistiques-indemnites-150';
+const APP_VERSION='20260822-indemnites-superadmin-agent-151';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
