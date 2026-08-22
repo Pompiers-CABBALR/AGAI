@@ -1419,6 +1419,50 @@ window.setInterval(function(){
   if(globalView&&globalView.style.display!=='none'&&GLOBAL_ROLE==='superadmin')refreshLoginHistoryPanel();
 },30000);
 
+const SUPERADMIN_SECTIONS=[
+  {id:'casernes',icon:'🏠',label:'Casernes'},
+  {id:'acces',icon:'🔑',label:'Accès et rôles'},
+  {id:'numerotation',icon:'🔢',label:'Numérotation'},
+  {id:'parametres',icon:'⚙️',label:'Paramètres'},
+  {id:'referentiels',icon:'📋',label:'Référentiels'},
+  {id:'connexions',icon:'🔐',label:'Connexions'},
+  {id:'maintenance',icon:'🛠️',label:'Maintenance'}
+];
+let superAdminActiveSection=(function(){
+  try{
+    const saved=sessionStorage.getItem('agai-superadmin-section');
+    if(SUPERADMIN_SECTIONS.some(function(item){return item.id===saved;}))return saved;
+  }catch(e){}
+  return 'casernes';
+})();
+function rememberSuperAdminSection(section){
+  if(!SUPERADMIN_SECTIONS.some(function(item){return item.id===section;}))section='casernes';
+  superAdminActiveSection=section;
+  try{sessionStorage.setItem('agai-superadmin-section',section);}catch(e){}
+}
+function renderSuperAdminSubnav(){
+  return '<nav class="sa-subnav" aria-label="Rubriques Super Admin">'+SUPERADMIN_SECTIONS.map(function(item){
+    const active=item.id===superAdminActiveSection;
+    return '<button type="button" class="sa-subnav-btn'+(active?' active':'')+'" data-sa-nav="'+item.id+'" aria-selected="'+(active?'true':'false')+'" onclick="setSuperAdminSection(\''+item.id+'\')">'+item.icon+' '+item.label+'</button>';
+  }).join('')+'</nav>';
+}
+function applySuperAdminSection(){
+  document.querySelectorAll('#gv-body [data-sa-section]').forEach(function(section){
+    section.hidden=section.getAttribute('data-sa-section')!==superAdminActiveSection;
+  });
+  document.querySelectorAll('#gv-body [data-sa-nav]').forEach(function(button){
+    const active=button.getAttribute('data-sa-nav')===superAdminActiveSection;
+    button.classList.toggle('active',active);
+    button.setAttribute('aria-selected',active?'true':'false');
+  });
+}
+function setSuperAdminSection(section){
+  rememberSuperAdminSection(section);
+  applySuperAdminSection();
+  const body=document.getElementById('gv-body');
+  if(body)body.scrollIntoView({block:'start',behavior:'smooth'});
+}
+
 function renderSuperAdmin(){
   const repairedChefCorps=repairKnownChefCorpsAssignment();
   if(repairedChefCorps){
@@ -1584,7 +1628,14 @@ function renderSuperAdmin(){
     <div style="font-size:10px;color:#64748B;margin-top:9px;">Cet espace est distinct des casernes opérationnelles et ne possède pas d'administrateur de caserne.</div>
   </div>`;
   body.innerHTML=`
-    ${comptesHtml}
+    ${renderSuperAdminSubnav()}
+    <section class="sa-section" data-sa-section="acces">
+      ${comptesHtml}
+      <div style="display:flex;justify-content:flex-end;margin:-6px 0 16px;">
+        <button class="btn pr" onclick="addSuperAdmin()">+ Super Admin</button>
+      </div>
+    </section>
+    <section class="sa-section" data-sa-section="numerotation">
     <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;border:1px solid #eee;">
       <div style="font-size:14px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px;">⚙️ Paramètres globaux de numérotation
         <span style="font-size:11px;color:#999;font-weight:400;">Transition et démarrage en cours d'année</span>
@@ -1662,6 +1713,13 @@ function renderSuperAdmin(){
         }).join('')}
       </div>
     </div>
+    </section>
+    <section class="sa-section" data-sa-section="parametres">
+    <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;border:1px solid #eee;">
+      <div style="font-size:14px;font-weight:700;margin-bottom:4px;">📞 Astreinte téléphonique</div>
+      <div style="font-size:12px;color:#666;margin-bottom:12px;">Gérez les règles et paramètres de l'astreinte téléphonique.</div>
+      <button class="btn" style="font-size:12px;" onclick="rememberSuperAdminSection('parametres');showAstrTelParams()">Ouvrir les paramètres</button>
+    </div>
     <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;border:1px solid #eee;">
       <div style="font-size:14px;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:8px;">&#x1F510; Déconnexion automatique</div>
       <div style="font-size:12px;color:#666;margin-bottom:12px;">Délai d'inactivité en arrière-plan (app quittée, écran verrouillé) avant déconnexion. 0 = désactivé.</div>
@@ -1690,16 +1748,13 @@ function renderSuperAdmin(){
       </div>
       <div id="sa-feries-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;"></div>
     </div>
+    </section>
+    <section class="sa-section" data-sa-section="casernes">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
       <h2 style="font-size:18px;font-weight:700;">Casernes</h2>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button class="btn" style="font-size:12px;" onclick="saAccederChefCorps()">&#x1F396;️ Vue chef de corps</button>
-        <button class="btn" style="font-size:12px;" onclick="showReferentiel()">&#x1F4CB; Référentiel</button>
-        <button class="btn" style="font-size:12px;" onclick="showAstrTelParams()">📞 Paramètres astreinte tél.</button>
-        <button class="btn" style="font-size:12px;" onclick="showReferentiel('taux')">📊 Référentiels rapports et taux</button>
-        <button class="btn" style="font-size:12px;" onclick="showIndemnityParams()">💶 Barèmes des indemnités</button>
         <button class="btn pr" onclick="addCaserne()">+ Nouvelle caserne</button>
-        <button class="btn pr" onclick="addSuperAdmin()">+ Super Admin</button>
       </div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;">${etatMajorHtml}${casHtml}</div>
@@ -1707,6 +1762,19 @@ function renderSuperAdmin(){
       <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;">Statistiques globales</h3>
       ${renderGlobalStats()}
     </div>
+    </section>
+    <section class="sa-section" data-sa-section="referentiels">
+      <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;border:1px solid #eee;">
+        <h2 style="font-size:18px;font-weight:700;margin-bottom:4px;">📋 Référentiels et barèmes</h2>
+        <div style="font-size:12px;color:#666;margin-bottom:14px;">Choisissez la rubrique que vous souhaitez consulter ou modifier.</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;">
+          <button class="btn" style="min-height:46px;font-size:12px;" onclick="rememberSuperAdminSection('referentiels');showReferentiel()">&#x1F4CB; Communes, natures et activités</button>
+          <button class="btn" style="min-height:46px;font-size:12px;" onclick="rememberSuperAdminSection('referentiels');showReferentiel('taux')">📊 Rapports et taux</button>
+          <button class="btn" style="min-height:46px;font-size:12px;" onclick="rememberSuperAdminSection('referentiels');showIndemnityParams()">💶 Barèmes des indemnités</button>
+        </div>
+      </div>
+    </section>
+    <section class="sa-section" data-sa-section="parametres">
     <div style="margin-top:20px;background:#fff;border-radius:14px;padding:16px;border:1px solid #eee;">
       <h3 style="font-size:15px;font-weight:700;margin-bottom:4px;">&#x1F5BC;&#xFE0F; Logo des documents (Autorisation / Attestation / Avis de passage)</h3>
       <div style="font-size:12px;color:#666;margin-bottom:12px;">Ce logo apparaît en haut à gauche de l'autorisation, de l'attestation d'intervention et de l'avis de passage. Taille recommandée : 1,5 cm de haut × 6 cm de large.</div>
@@ -1732,6 +1800,8 @@ function renderSuperAdmin(){
         <button class="btn sm" onclick="saSaveFourriereEmail()">&#x1F4BE; Sauvegarder</button>
       </div>
     </div>
+    </section>
+    <section class="sa-section" data-sa-section="connexions">
     <div style="margin-top:20px;background:#fff;border-radius:14px;padding:16px;border:1px solid #eee;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
         <h3 style="font-size:15px;font-weight:700;margin:0;">🔐 Historique des connexions</h3>
@@ -1742,6 +1812,8 @@ function renderSuperAdmin(){
       </div>
       <div id="login-history-content">${renderLoginHistorySummary()}${renderLoginHistoryByCaserne()}</div>
     </div>
+    </section>
+    <section class="sa-section" data-sa-section="maintenance">
     <div style="margin-top:20px;background:#FEF2F2;border-radius:14px;padding:16px;border:1px solid #FECACA;">
       <h3 style="font-size:15px;font-weight:700;margin-bottom:4px;color:#C0392B;">⚠️ Zone dangereuse — Gestion des interventions</h3>
       <div style="font-size:12px;color:#666;margin-bottom:12px;">Ces actions sont irr\u00e9versibles. \u00c0 utiliser avec pr\u00e9caution.</div>
@@ -1758,7 +1830,9 @@ function renderSuperAdmin(){
             </div>
           </div>`).join('')}
       </div>
-    </div>`;
+    </div>
+    </section>`;
+  applySuperAdminSection();
   // Initialise la prévisualisation du logo
   const _lprev=document.getElementById('sa-logo-preview');
   if(_lprev){_lprev.src=_getLogoSrc();_lprev.style.display='block';}
@@ -13200,7 +13274,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260822-transfert-depart-priorite-153';
+const APP_VERSION='20260822-navigation-superadmin-154';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
