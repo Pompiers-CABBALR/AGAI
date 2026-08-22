@@ -1388,6 +1388,7 @@ function cS(id,s,confirmed){
       iv._dateDebutAvantRetourAttente=iv._dateDebut||'';
       iv._retourAttenteAt=getH(N());
       iv._retourAttentePar=CU.l;
+      clearInterventionDepartureForPending(iv,CU.l);
     }
     clearInterventionNumbersForPending(iv);
     parcConfirmed.delete(iv.id);

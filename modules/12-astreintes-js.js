@@ -2768,8 +2768,9 @@ function updateEquipageExclusions(){refreshEquipageSelects();}
 
 function showPersonnelModal(id){
   const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
-  const heure=_pendingNextInterventionStarts[id]||getHHMM(N());
-  const chained=!!_pendingNextInterventionStarts[id];
+  const interruptedHandoff=findInterruptedDepartureHandoff(CU.l,id);
+  const heure=interruptedHandoff?interruptedHandoff.handoff.heure:(_pendingNextInterventionStarts[id]||getHHMM(N()));
+  const chained=!interruptedHandoff&&!!_pendingNextInterventionStarts[id];
   const wk=weekKey(getMondayOfWeek(0));
 
   // Piquet du CA principal
@@ -2838,6 +2839,7 @@ function showPersonnelModal(id){
     '<div>'
     +'<div style="background:#FEF0E7;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#854F0B;">'
     +'\u23F1\uFE0F Heure de d\u00e9part : <strong>'+heure+'</strong>'
+    +(interruptedHandoff?' <span style="font-size:10px;font-weight:600;color:#B45309;">(départ repris de '+escHtml(interruptedHandoff.source.id)+')</span>':'')
     +(chained?' <span style="font-size:10px;font-weight:600;color:#7C3AED;">(enchaînée après l’intervention précédente)</span>':'')+'</div>'
     +'<div style="font-size:12px;font-weight:700;color:var(--t);margin-bottom:8px;">&#x1F692; Engin 1 \u2014 '+fullName(USERS.find(function(u){return u.l===CU.l;})||{prenom:CU.l,nom:''})+'</div>'
     +'<div class="fg" style="margin-bottom:8px;"><div class="fgl">Engin engag\u00e9</div>'
@@ -2878,9 +2880,11 @@ function buildEquipage2Dyn(enginVal){
 
 function confirmerDepart(id){
   const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
-  const chained=!!_pendingNextInterventionStarts[id];
+  const interruptedHandoff=findInterruptedDepartureHandoff(CU.l,id);
+  const chained=!interruptedHandoff&&!!_pendingNextInterventionStarts[id];
+  const restartedAfterPending=iv._retourAttenteDepuis==='en-cours';
   const chainedPreviousId=iv._chainPreviousInterventionId||'';
-  const heure=_pendingNextInterventionStarts[id]||getHHMM(N());
+  const heure=interruptedHandoff?interruptedHandoff.handoff.heure:(_pendingNextInterventionStarts[id]||getHHMM(N()));
   const engin1=document.getElementById('pers-engin')?.value||'';
   const engin2=document.getElementById('pers-engin2')?.value||'';
   const agr2=iv._agr2||'';
@@ -2906,6 +2910,12 @@ function confirmerDepart(id){
   iv._hDebut=heure;
   if(!iv._hDebutReelle)iv._hDebutReelle=heure;
   if(!iv._hDebutInitiale)iv._hDebutInitiale=heure;
+  if(interruptedHandoff){
+    const source=interruptedHandoff.source,handoff=interruptedHandoff.handoff;
+    iv._departureInheritedFromInterventionId=source.id;
+    iv._departureInheritedDate=handoff.date||'';
+    handoff.available=false;handoff.consumedBy=iv.id;handoff.consumedAt=getH(N());
+  }
   // Compléter les infos des agents renfort (absents de USERS) pour l'affichage et le PDF
   const _renfortList=_getRenfortPersonnel();
   const _enrich=function(arr){arr.forEach(function(e){if(e&&e.login&&!USERS.find(function(u){return u.l===e.login;})){const rf=_renfortList.find(function(r){return r.login===e.login;});if(rf){e.renfort=true;e.nom=rf.nom;e.prenom=rf.prenom;e.grade=rf.grade;e.caserneNom=rf.caserneNom;}}});};
@@ -2930,7 +2940,8 @@ function confirmerDepart(id){
   const agr2Label=agr2?(function(){const u=USERS.find(function(u){return u.l===agr2;});return u?' + '+fullName(u)+' (2\u00e8me)':' + '+agr2;})():'';
   const persLabel=' ['+eq1.concat(eq2).map(function(e){const u=USERS.find(function(x){return x.l===e.login;});return e.role+': '+(u?fullName(u):e.login);}).join(', ')+']';
   pushTL(iv,'en-cours',CU.l+agr2Label+persLabel,
-    chained?'Début enchaîné à '+heure+' après l’intervention précédente':'Départ réel à '+heure);
+    interruptedHandoff?'Départ à '+heure+' repris de l’intervention '+interruptedHandoff.source.id:(restartedAfterPending?'Nouveau départ à '+heure+' après retour en attente':(chained?'Début enchaîné à '+heure+' après l’intervention précédente':'Départ réel à '+heure)));
+  delete iv._retourAttenteDepuis;
   assignInterventionNumbersAtStart(iv);
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);cM();rI();rStatsHeader(); // push immédiat : changement de statut partagé

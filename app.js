@@ -614,6 +614,33 @@ function clearInterventionNumbersForPending(iv){
   if(iv._isRenfort)iv._numRenfort=null;
   delete iv._numberedAtStart;
 }
+function clearInterventionDepartureForPending(iv,who){
+  if(!iv)return;
+  const oldStart=iv._hDebut||iv._hDebutReelle||iv._hDebutInitiale||'';
+  const oldDate=iv._dateDebut||statsInterventionDateKey(iv)||'';
+  if(oldStart){
+    if(!Array.isArray(iv._departuresInterrupted))iv._departuresInterrupted=[];
+    iv._departuresInterrupted.push({heure:oldStart,date:oldDate,retourAttente:getH(N()),auteur:who||CU&&CU.l||''});
+    // L’équipage est déjà parti : si une autre intervention prioritaire est
+    // engagée juste après, elle doit reprendre ce départ réel.
+    iv._departureHandoff={heure:oldStart,date:String(oldDate||'').replace(/\D/g,'').slice(0,8),chef:iv.agr||who||CU&&CU.l||'',sourceId:iv.id,createdAt:getH(N()),available:true};
+  }
+  delete iv._hDebut;delete iv._hDebutReelle;delete iv._hDebutInitiale;delete iv._dateDebut;
+  delete iv._hFin;delete iv._duree;delete iv._startLockedByChain;delete iv._chainedFromInterventionId;
+  delete iv._chainPreviousInterventionId;delete _pendingNextInterventionStarts[iv.id];
+}
+function interventionStampMillis(stamp){
+  const d=String(stamp||'').replace(/\D/g,'');if(d.length<12)return 0;
+  const date=new Date(Number(d.slice(0,4)),Number(d.slice(4,6))-1,Number(d.slice(6,8)),Number(d.slice(8,10)),Number(d.slice(10,12)));
+  return Number.isFinite(date.getTime())?date.getTime():0;
+}
+function findInterruptedDepartureHandoff(chefLogin,targetId){
+  const now=Date.now();
+  return (IVS||[]).map(function(source){return {source:source,handoff:source&&source._departureHandoff};}).filter(function(item){
+    const h=item.handoff,source=item.source;if(!h||h.available!==true||source.id===targetId||source.s!=='en-attente'||h.chef!==chefLogin)return false;
+    const created=interventionStampMillis(h.createdAt);return created>0&&now-created>=0&&now-created<=6*60*60*1000;
+  }).sort(function(a,b){return String(b.handoff.createdAt||'').localeCompare(String(a.handoff.createdAt||''));})[0]||null;
+}
 
 function agaiRepairNumberingByStartOrder(){
   const cid=CURRENT_CASERNE_ID;
@@ -5849,6 +5876,7 @@ function cS(id,s,confirmed){
       iv._dateDebutAvantRetourAttente=iv._dateDebut||'';
       iv._retourAttenteAt=getH(N());
       iv._retourAttentePar=CU.l;
+      clearInterventionDepartureForPending(iv,CU.l);
     }
     clearInterventionNumbersForPending(iv);
     parcConfirmed.delete(iv.id);
@@ -9931,8 +9959,9 @@ function updateEquipageExclusions(){refreshEquipageSelects();}
 
 function showPersonnelModal(id){
   const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
-  const heure=_pendingNextInterventionStarts[id]||getHHMM(N());
-  const chained=!!_pendingNextInterventionStarts[id];
+  const interruptedHandoff=findInterruptedDepartureHandoff(CU.l,id);
+  const heure=interruptedHandoff?interruptedHandoff.handoff.heure:(_pendingNextInterventionStarts[id]||getHHMM(N()));
+  const chained=!interruptedHandoff&&!!_pendingNextInterventionStarts[id];
   const wk=weekKey(getMondayOfWeek(0));
 
   // Piquet du CA principal
@@ -10001,6 +10030,7 @@ function showPersonnelModal(id){
     '<div>'
     +'<div style="background:#FEF0E7;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#854F0B;">'
     +'\u23F1\uFE0F Heure de d\u00e9part : <strong>'+heure+'</strong>'
+    +(interruptedHandoff?' <span style="font-size:10px;font-weight:600;color:#B45309;">(départ repris de '+escHtml(interruptedHandoff.source.id)+')</span>':'')
     +(chained?' <span style="font-size:10px;font-weight:600;color:#7C3AED;">(enchaînée après l’intervention précédente)</span>':'')+'</div>'
     +'<div style="font-size:12px;font-weight:700;color:var(--t);margin-bottom:8px;">&#x1F692; Engin 1 \u2014 '+fullName(USERS.find(function(u){return u.l===CU.l;})||{prenom:CU.l,nom:''})+'</div>'
     +'<div class="fg" style="margin-bottom:8px;"><div class="fgl">Engin engag\u00e9</div>'
@@ -10041,9 +10071,11 @@ function buildEquipage2Dyn(enginVal){
 
 function confirmerDepart(id){
   const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
-  const chained=!!_pendingNextInterventionStarts[id];
+  const interruptedHandoff=findInterruptedDepartureHandoff(CU.l,id);
+  const chained=!interruptedHandoff&&!!_pendingNextInterventionStarts[id];
+  const restartedAfterPending=iv._retourAttenteDepuis==='en-cours';
   const chainedPreviousId=iv._chainPreviousInterventionId||'';
-  const heure=_pendingNextInterventionStarts[id]||getHHMM(N());
+  const heure=interruptedHandoff?interruptedHandoff.handoff.heure:(_pendingNextInterventionStarts[id]||getHHMM(N()));
   const engin1=document.getElementById('pers-engin')?.value||'';
   const engin2=document.getElementById('pers-engin2')?.value||'';
   const agr2=iv._agr2||'';
@@ -10069,6 +10101,12 @@ function confirmerDepart(id){
   iv._hDebut=heure;
   if(!iv._hDebutReelle)iv._hDebutReelle=heure;
   if(!iv._hDebutInitiale)iv._hDebutInitiale=heure;
+  if(interruptedHandoff){
+    const source=interruptedHandoff.source,handoff=interruptedHandoff.handoff;
+    iv._departureInheritedFromInterventionId=source.id;
+    iv._departureInheritedDate=handoff.date||'';
+    handoff.available=false;handoff.consumedBy=iv.id;handoff.consumedAt=getH(N());
+  }
   // Compléter les infos des agents renfort (absents de USERS) pour l'affichage et le PDF
   const _renfortList=_getRenfortPersonnel();
   const _enrich=function(arr){arr.forEach(function(e){if(e&&e.login&&!USERS.find(function(u){return u.l===e.login;})){const rf=_renfortList.find(function(r){return r.login===e.login;});if(rf){e.renfort=true;e.nom=rf.nom;e.prenom=rf.prenom;e.grade=rf.grade;e.caserneNom=rf.caserneNom;}}});};
@@ -10093,7 +10131,8 @@ function confirmerDepart(id){
   const agr2Label=agr2?(function(){const u=USERS.find(function(u){return u.l===agr2;});return u?' + '+fullName(u)+' (2\u00e8me)':' + '+agr2;})():'';
   const persLabel=' ['+eq1.concat(eq2).map(function(e){const u=USERS.find(function(x){return x.l===e.login;});return e.role+': '+(u?fullName(u):e.login);}).join(', ')+']';
   pushTL(iv,'en-cours',CU.l+agr2Label+persLabel,
-    chained?'Début enchaîné à '+heure+' après l’intervention précédente':'Départ réel à '+heure);
+    interruptedHandoff?'Départ à '+heure+' repris de l’intervention '+interruptedHandoff.source.id:(restartedAfterPending?'Nouveau départ à '+heure+' après retour en attente':(chained?'Début enchaîné à '+heure+' après l’intervention précédente':'Départ réel à '+heure)));
+  delete iv._retourAttenteDepuis;
   assignInterventionNumbersAtStart(iv);
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);cM();rI();rStatsHeader(); // push immédiat : changement de statut partagé
@@ -12785,6 +12824,8 @@ function adminExportTimeCompact(h){
   return h.slice(9,11)+':'+h.slice(11,13);
 }
 function adminExportInterventionStartDate(iv){
+  const inherited=String(iv&&iv._departureInheritedDate||'').replace(/\D/g,'').slice(0,8);
+  if(/^\d{8}$/.test(inherited))return inherited;
   const timeline=Array.isArray(iv&&iv.tl)?iv.tl:[];
   const departure=timeline.find(function(entry){
     return entry&&entry.s==='en-cours'&&/^\d{8}/.test(String(entry.h||''));
@@ -13159,7 +13200,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260822-indemnites-superadmin-agent-151';
+const APP_VERSION='20260822-transfert-depart-priorite-153';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne

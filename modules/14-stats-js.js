@@ -1245,6 +1245,8 @@ function adminExportTimeCompact(h){
   return h.slice(9,11)+':'+h.slice(11,13);
 }
 function adminExportInterventionStartDate(iv){
+  const inherited=String(iv&&iv._departureInheritedDate||'').replace(/\D/g,'').slice(0,8);
+  if(/^\d{8}$/.test(inherited))return inherited;
   const timeline=Array.isArray(iv&&iv.tl)?iv.tl:[];
   const departure=timeline.find(function(entry){
     return entry&&entry.s==='en-cours'&&/^\d{8}/.test(String(entry.h||''));

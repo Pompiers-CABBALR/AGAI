@@ -461,6 +461,33 @@ function clearInterventionNumbersForPending(iv){
   if(iv._isRenfort)iv._numRenfort=null;
   delete iv._numberedAtStart;
 }
+function clearInterventionDepartureForPending(iv,who){
+  if(!iv)return;
+  const oldStart=iv._hDebut||iv._hDebutReelle||iv._hDebutInitiale||'';
+  const oldDate=iv._dateDebut||statsInterventionDateKey(iv)||'';
+  if(oldStart){
+    if(!Array.isArray(iv._departuresInterrupted))iv._departuresInterrupted=[];
+    iv._departuresInterrupted.push({heure:oldStart,date:oldDate,retourAttente:getH(N()),auteur:who||CU&&CU.l||''});
+    // L’équipage est déjà parti : si une autre intervention prioritaire est
+    // engagée juste après, elle doit reprendre ce départ réel.
+    iv._departureHandoff={heure:oldStart,date:String(oldDate||'').replace(/\D/g,'').slice(0,8),chef:iv.agr||who||CU&&CU.l||'',sourceId:iv.id,createdAt:getH(N()),available:true};
+  }
+  delete iv._hDebut;delete iv._hDebutReelle;delete iv._hDebutInitiale;delete iv._dateDebut;
+  delete iv._hFin;delete iv._duree;delete iv._startLockedByChain;delete iv._chainedFromInterventionId;
+  delete iv._chainPreviousInterventionId;delete _pendingNextInterventionStarts[iv.id];
+}
+function interventionStampMillis(stamp){
+  const d=String(stamp||'').replace(/\D/g,'');if(d.length<12)return 0;
+  const date=new Date(Number(d.slice(0,4)),Number(d.slice(4,6))-1,Number(d.slice(6,8)),Number(d.slice(8,10)),Number(d.slice(10,12)));
+  return Number.isFinite(date.getTime())?date.getTime():0;
+}
+function findInterruptedDepartureHandoff(chefLogin,targetId){
+  const now=Date.now();
+  return (IVS||[]).map(function(source){return {source:source,handoff:source&&source._departureHandoff};}).filter(function(item){
+    const h=item.handoff,source=item.source;if(!h||h.available!==true||source.id===targetId||source.s!=='en-attente'||h.chef!==chefLogin)return false;
+    const created=interventionStampMillis(h.createdAt);return created>0&&now-created>=0&&now-created<=6*60*60*1000;
+  }).sort(function(a,b){return String(b.handoff.createdAt||'').localeCompare(String(a.handoff.createdAt||''));})[0]||null;
+}
 
 function agaiRepairNumberingByStartOrder(){
   const cid=CURRENT_CASERNE_ID;
