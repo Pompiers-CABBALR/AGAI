@@ -11851,7 +11851,7 @@ function rStatsIndemnites(){
   (actGetData()||[]).forEach(function(activity){
     const date=String(activity.date||'').slice(0,10);if(!dateInPeriod(date))return;
     const key=activityIsFraisAdministratifs(activity)?'fa':'ac',percentage=key==='fa'?rates.fraisAdmin:rates.actSvc,minutes=statsActivityRecordedMinutes(activity);
-    const logins=new Set([].concat(activity.participants||[],activity.auteur||[]));logins.forEach(function(login){add(login,key,minutes,date,percentage);});
+    activityParticipantLogins(activity).forEach(function(login){add(login,key,minutes,date,percentage);});
   });
   (fmpaGetData()||[]).forEach(function(f){
     const date=String(f.date||'').slice(0,10),minutes=statsFmpaRecordedMinutes(f);if(!dateInPeriod(date))return;
@@ -12165,7 +12165,7 @@ function rStatsActivites(){
     let totBrut=0;
     const cols=moisActifs.map(mi=>{
       const mStr=annStr+'-'+String(mi).padStart(2,'0');
-      const items=data.filter(a=>a.date.startsWith(mStr)&&((a.participants||[]).includes(u.l)||a.auteur===u.l));
+      const items=data.filter(a=>a.date.startsWith(mStr)&&activityParticipantLogins(a).includes(u.l));
       let mins=0;
       items.forEach(a=>{mins+=statsActivityRecordedMinutes(a);});
       totBrut+=mins;
@@ -13101,9 +13101,7 @@ function adminExportActivityReportType(a){
   return reportTypeCode('ac');
 }
 function adminExportActivityRegisterRow(a,exportRates){
-  const agents=[a.auteur].concat(a.participants||[]).filter(function(login,index,list){
-    return login&&list.indexOf(login)===index;
-  });
+  const agents=activityParticipantLogins(a);
   const reportType=adminExportActivityReportType(a);
   const rate=reportType===reportTypeCode('fa')?exportRates.fraisAdmin:reportType===reportTypeCode('depl')?'':exportRates.actSvc;
   return adminExportRegisterRow({
@@ -13306,7 +13304,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260822-indemnites-separateurs-noirs-158';
+const APP_VERSION='20260822-indemnites-frais-participants-159';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -18457,6 +18455,9 @@ function actGetData(){ return (CURRENT_CASERNE_ID&&CASERNE_DATA[CURRENT_CASERNE_
 function activityIsFraisAdministratifs(a){
   const category=a&&a.categorie?a.categorie:defaultActivityCategory(a&&a.type);
   return isAdminExpenseCategory(category)||defaultActivityCategory(a&&a.type)===ADMIN_EXPENSE_CATEGORY;
+}
+function activityParticipantLogins(a){
+  return Array.from(new Set((Array.isArray(a&&a.participants)?a.participants:[]).map(function(login){return String(login||'').trim();}).filter(Boolean)));
 }
 function activityVisibleInHistory(a){
   if(hasAdministrativeAccount())return true;

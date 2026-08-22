@@ -1094,6 +1094,9 @@ function activityIsFraisAdministratifs(a){
   const category=a&&a.categorie?a.categorie:defaultActivityCategory(a&&a.type);
   return isAdminExpenseCategory(category)||defaultActivityCategory(a&&a.type)===ADMIN_EXPENSE_CATEGORY;
 }
+function activityParticipantLogins(a){
+  return Array.from(new Set((Array.isArray(a&&a.participants)?a.participants:[]).map(function(login){return String(login||'').trim();}).filter(Boolean)));
+}
 function activityVisibleInHistory(a){
   if(hasAdministrativeAccount())return true;
   if(!CU)return false;
