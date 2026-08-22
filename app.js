@@ -1885,18 +1885,20 @@ function saDeleteIvModal(cid){
   if(!ivs.length){showToast('Aucune intervention pour cette caserne.','warn');return;}
   document.getElementById('mt').textContent='Supprimer des interventions — '+(cas?cas.nom:cid);
   document.getElementById('mi').textContent='';
-  const listHtml=ivs.slice(0,100).map(function(iv){
+  const listHtml=ivs.map(function(iv){
     const date=iv.h?iv.h.slice(0,4)+'-'+iv.h.slice(4,6)+'-'+iv.h.slice(6,8):'?';
     const heure=iv.h&&iv.h.length>9?iv.h.slice(9,11)+':'+iv.h.slice(11,13):'';
-    return '<label style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-bottom:1px solid #f5f5f5;cursor:pointer;">'
+    const appel=String(iv._numApl||(/^APL_/.test(String(iv.id||''))?iv.id:'')||iv.id||'—');
+    const searchText=[appel,iv.n||'',iv.addr||'',iv.com||'',date,heure,iv.s||''].join(' ');
+    return '<label class="sa-iv-delete-row" data-search="'+escHtml(searchText)+'" style="display:flex;align-items:center;gap:8px;padding:6px;border-bottom:1px solid #f5f5f5;cursor:pointer;">'
       +'<input type="checkbox" class="sa-iv-chk" value="'+iv.id+'" style="accent-color:#E24B4A;"/>'
-      +'<span style="font-size:11px;flex:1;"><strong>'+date+(heure?' '+heure:'')+'</strong> '+(iv.id.startsWith('PILP')?'🎯 ':'')+(iv.n||'')+(iv.com?' — '+iv.com:'')+'</span>'
+      +'<span style="font-size:11px;flex:1;min-width:0;"><span style="display:inline-block;font-family:monospace;font-weight:700;color:#B42318;background:#FEF3F2;border-radius:5px;padding:1px 5px;margin-right:5px;">Appel '+escHtml(appel)+'</span><strong>'+date+(heure?' '+heure:'')+'</strong> '+(iv.id.startsWith('PILP')?'🎯 ':'')+escHtml(iv.n||'')+(iv.addr?' — '+escHtml(iv.addr):'')+(iv.com?', '+escHtml(iv.com):'')+'</span>'
       +'<span style="font-size:10px;color:#999;">'+iv.s+'</span>'
       +'</label>';
   }).join('');
   document.getElementById('mb').innerHTML=
     '<div>'
-    +(ivs.length>100?'<div style="font-size:11px;color:var(--amb);margin-bottom:6px;">Affichage limité aux 100 dernières. Utilisez "Remettre à zéro" pour tout supprimer.</div>':'')
+    +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;"><input class="fi" type="search" style="flex:1;min-width:220px;margin:0;" placeholder="Rechercher par n° d’appel, nature, adresse ou commune…" oninput="saFilterDeleteIvs(this.value)"><span id="sa-delete-visible-count" style="font-size:11px;color:var(--t2);">'+ivs.length+' résultat'+(ivs.length>1?'s':'')+'</span></div>'
     +'<div style="display:flex;gap:8px;margin-bottom:8px;">'
     +'<button class="btn sm" onclick="document.querySelectorAll(\'.sa-iv-chk\').forEach(c=>c.checked=true)">Tout sélectionner</button>'
     +'<button class="btn sm" onclick="document.querySelectorAll(\'.sa-iv-chk\').forEach(c=>c.checked=false)">Tout décocher</button>'
@@ -1907,6 +1909,18 @@ function saDeleteIvModal(cid){
     +'<button class="btn sm" onclick="cM()">Annuler</button>'
     +'</div></div>';
   document.getElementById('mo').style.display='flex';
+}
+
+function saFilterDeleteIvs(value){
+  const query=nm(value).trim();
+  let visible=0;
+  document.querySelectorAll('.sa-iv-delete-row').forEach(function(row){
+    const match=!query||nm(row.dataset.search||'').includes(query);
+    row.style.display=match?'flex':'none';
+    if(match)visible++;
+  });
+  const count=document.getElementById('sa-delete-visible-count');
+  if(count)count.textContent=visible+' résultat'+(visible>1?'s':'');
 }
 
 function saConfirmDeleteIvs(cid){
@@ -11823,9 +11837,21 @@ function rStatsActivites(){
 }
 
 // ── Stats formations ──
+// Les statistiques affichent le temps réellement enregistré sur la feuille.
+// Les taux (75 %, 100 %, etc.) restent réservés à l'export administratif.
+function statsFmpaRecordedMinutes(f){
+  if(!f||!f.hDebut||!f.hFin)return 0;
+  const debut=f.hDebut.split(':').map(Number),fin=f.hFin.split(':').map(Number);
+  if(debut.some(Number.isNaN)||fin.some(Number.isNaN))return 0;
+  let minutes=(fin[0]*60+fin[1])-(debut[0]*60+debut[1]);
+  if(minutes<0)minutes+=1440;
+  return minutes;
+}
+function statsFormationRecordedMinutes(f){
+  return f?formMinsTotal(f):0;
+}
 function rStatsFormations(){
   const annStr=String(stAnnee);
-  const tauxFormation=getStatsTaux();
   const agents=[...USERS].sort((a,b)=>a.nom.localeCompare(b.nom,'fr')||a.prenom.localeCompare(b.prenom,'fr'));
   function minToHHMM(m){return pad(Math.floor(m/60))+':'+pad(m%60);}
 
@@ -11837,13 +11863,6 @@ function rStatsFormations(){
   const stagAll=formStagGetData().filter(f=>f.ddebut&&f.ddebut.startsWith(annStr));
   const formAll=formFormGetData().filter(f=>f.ddebut&&f.ddebut.startsWith(annStr));
 
-  function fmpaMinsPour(f){
-    if(!f.hDebut||!f.hFin)return 0;
-    const [h,m]=f.hDebut.split(':').map(Number),[h2,m2]=f.hFin.split(':').map(Number);
-    let d=(h2*60+m2)-(h*60+m);
-    if(d<0)d+=1440;
-    return d;
-  }
   function filtMois(arr,mi,dateField){
     const mStr=annStr+'-'+String(mi).padStart(2,'0');
     return arr.filter(f=>(f[dateField]||'').startsWith(mStr));
@@ -11863,12 +11882,12 @@ function rStatsFormations(){
       const form=filtMois(formAll,mi,'ddebut');
       let mins=0;
       fmpas.forEach(f=>{
-        const m=fmpaMinsPour(f);
-        if((f.participants||[]).includes(u.l)){const mp=Math.round(m*tauxFormation.fmpaStag/100);mins+=mp;totFmpaStag+=mp;}
-        if((f.formateurs||[]).includes(u.l)){const mp=Math.round(m*tauxFormation.fmpaForm/100);mins+=mp;totFmpaForm+=mp;}
+        const m=statsFmpaRecordedMinutes(f);
+        if((f.participants||[]).includes(u.l)){mins+=m;totFmpaStag+=m;}
+        if((f.formateurs||[]).includes(u.l)){mins+=m;totFmpaForm+=m;}
       });
-      stag.forEach(f=>{if((f.participants||[]).includes(u.l)){const m=Math.round(formMinsTotal(f)*tauxFormation.formStag/100);mins+=m;totStag+=m;}});
-      form.forEach(f=>{if((f.participants||[]).includes(u.l)){const m=Math.round(formMinsTotal(f)*tauxFormation.formForm/100);mins+=m;totForm+=m;}});
+      stag.forEach(f=>{if((f.participants||[]).includes(u.l)){const m=statsFormationRecordedMinutes(f);mins+=m;totStag+=m;}});
+      form.forEach(f=>{if((f.participants||[]).includes(u.l)){const m=statsFormationRecordedMinutes(f);mins+=m;totForm+=m;}});
       totBrut+=mins;
       return '<td style="padding:3px 5px;text-align:center;font-size:10px;border-left:1px solid #e0e0e0;'+(mins?'font-weight:700;background:#EAF3DE;':'')+'">'+(mins?minToHHMM(mins):'—')+'</td>';
     }).join('');
@@ -11909,7 +11928,7 @@ function rStatsFormations(){
     +'</div>';
 
   return '<div style="background:#fff;border-radius:12px;padding:12px;overflow-x:auto;">'
-    +'<div style="font-size:12px;font-weight:600;margin-bottom:6px;">Heures pondérées de formations par agent — '+stAnnee+(stMois>0?' — '+ST_MOIS_COURT[stMois-1]:'')+'</div>'
+    +'<div style="font-size:12px;font-weight:600;margin-bottom:6px;">Heures enregistrées de formations par agent — '+stAnnee+(stMois>0?' — '+ST_MOIS_COURT[stMois-1]:'')+'</div>'
     +legende
     +'<table style="width:100%;border-collapse:collapse;font-size:11px;">'
     +'<thead><tr style="background:#f5f5f5;"><th style="padding:5px 8px;text-align:left;min-width:120px;">Agent</th><th style="padding:5px 5px;font-size:10px;">Grade</th>'
@@ -12919,7 +12938,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260821-adresses-bis-normalisees-146';
+const APP_VERSION='20260822-stats-formations-heures-reelles-147';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne

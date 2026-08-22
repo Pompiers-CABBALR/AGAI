@@ -693,18 +693,20 @@ function saDeleteIvModal(cid){
   if(!ivs.length){showToast('Aucune intervention pour cette caserne.','warn');return;}
   document.getElementById('mt').textContent='Supprimer des interventions — '+(cas?cas.nom:cid);
   document.getElementById('mi').textContent='';
-  const listHtml=ivs.slice(0,100).map(function(iv){
+  const listHtml=ivs.map(function(iv){
     const date=iv.h?iv.h.slice(0,4)+'-'+iv.h.slice(4,6)+'-'+iv.h.slice(6,8):'?';
     const heure=iv.h&&iv.h.length>9?iv.h.slice(9,11)+':'+iv.h.slice(11,13):'';
-    return '<label style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-bottom:1px solid #f5f5f5;cursor:pointer;">'
+    const appel=String(iv._numApl||(/^APL_/.test(String(iv.id||''))?iv.id:'')||iv.id||'—');
+    const searchText=[appel,iv.n||'',iv.addr||'',iv.com||'',date,heure,iv.s||''].join(' ');
+    return '<label class="sa-iv-delete-row" data-search="'+escHtml(searchText)+'" style="display:flex;align-items:center;gap:8px;padding:6px;border-bottom:1px solid #f5f5f5;cursor:pointer;">'
       +'<input type="checkbox" class="sa-iv-chk" value="'+iv.id+'" style="accent-color:#E24B4A;"/>'
-      +'<span style="font-size:11px;flex:1;"><strong>'+date+(heure?' '+heure:'')+'</strong> '+(iv.id.startsWith('PILP')?'🎯 ':'')+(iv.n||'')+(iv.com?' — '+iv.com:'')+'</span>'
+      +'<span style="font-size:11px;flex:1;min-width:0;"><span style="display:inline-block;font-family:monospace;font-weight:700;color:#B42318;background:#FEF3F2;border-radius:5px;padding:1px 5px;margin-right:5px;">Appel '+escHtml(appel)+'</span><strong>'+date+(heure?' '+heure:'')+'</strong> '+(iv.id.startsWith('PILP')?'🎯 ':'')+escHtml(iv.n||'')+(iv.addr?' — '+escHtml(iv.addr):'')+(iv.com?', '+escHtml(iv.com):'')+'</span>'
       +'<span style="font-size:10px;color:#999;">'+iv.s+'</span>'
       +'</label>';
   }).join('');
   document.getElementById('mb').innerHTML=
     '<div>'
-    +(ivs.length>100?'<div style="font-size:11px;color:var(--amb);margin-bottom:6px;">Affichage limité aux 100 dernières. Utilisez "Remettre à zéro" pour tout supprimer.</div>':'')
+    +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;"><input class="fi" type="search" style="flex:1;min-width:220px;margin:0;" placeholder="Rechercher par n° d’appel, nature, adresse ou commune…" oninput="saFilterDeleteIvs(this.value)"><span id="sa-delete-visible-count" style="font-size:11px;color:var(--t2);">'+ivs.length+' résultat'+(ivs.length>1?'s':'')+'</span></div>'
     +'<div style="display:flex;gap:8px;margin-bottom:8px;">'
     +'<button class="btn sm" onclick="document.querySelectorAll(\'.sa-iv-chk\').forEach(c=>c.checked=true)">Tout sélectionner</button>'
     +'<button class="btn sm" onclick="document.querySelectorAll(\'.sa-iv-chk\').forEach(c=>c.checked=false)">Tout décocher</button>'
@@ -715,6 +717,18 @@ function saDeleteIvModal(cid){
     +'<button class="btn sm" onclick="cM()">Annuler</button>'
     +'</div></div>';
   document.getElementById('mo').style.display='flex';
+}
+
+function saFilterDeleteIvs(value){
+  const query=nm(value).trim();
+  let visible=0;
+  document.querySelectorAll('.sa-iv-delete-row').forEach(function(row){
+    const match=!query||nm(row.dataset.search||'').includes(query);
+    row.style.display=match?'flex':'none';
+    if(match)visible++;
+  });
+  const count=document.getElementById('sa-delete-visible-count');
+  if(count)count.textContent=visible+' résultat'+(visible>1?'s':'');
 }
 
 function saConfirmDeleteIvs(cid){
