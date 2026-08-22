@@ -132,6 +132,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .indem-table th,.indem-table td{padding:6px 2px;text-align:center;vertical-align:middle;overflow:hidden;line-height:1.16;}
 .indem-table .indem-agent-col{width:12%;text-align:left;padding-left:7px;padding-right:5px;}
 .indem-table .indem-value-col{width:auto;border-left:1px solid #ddd;}
+.indem-table .indem-group-head th{background:#fff;border:1px solid #333;padding:4px 3px;font-size:clamp(9px,.75vw,12px);font-weight:700;}
+.indem-table .indem-subhead th{background:#fff;border:1px solid #333;padding:4px 2px;font-size:clamp(9px,.7vw,11px);font-weight:600;}
+.indem-table .indem-group-start{border-left:2px solid #333!important;}
 .indem-table .indem-subtotal-col{border-left:2px solid #999;background:#EEF2FF;}
 .indem-table .indem-total-col{border-left:2px solid #555;background:#EAF3DE;}
 .indem-table .indem-head-label{display:block;white-space:normal;overflow-wrap:anywhere;}

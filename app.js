@@ -11893,17 +11893,33 @@ function rStatsIndemnites(){
   const rows=Object.keys(rowsByLogin).map(function(login){const row=rowsByLogin[login];totalsForRow(row);return row;});
   const grand={values:{}};categories.concat(subtotalDefs).concat([{key:'total'}]).forEach(function(c){grand.values[c.key]=emptyValue();});
   rows.forEach(function(row){Object.keys(grand.values).forEach(function(key){grand.values[key].minutes+=row.values[key].minutes;grand.values[key].amount+=row.values[key].amount;});});
-  const headers=categories.map(function(c){return '<th class="indem-value-col" title="'+escHtml(c.label)+'"><span class="indem-head-label">'+escHtml(c.short||c.label)+'</span>'+(c.hint?'<span class="indem-head-label" style="font-size:.82em;font-weight:400;">'+escHtml(c.hint)+'</span>':'')+'</th>';}).join('')
-    +subtotalDefs.map(function(c){return '<th class="indem-value-col indem-subtotal-col" title="'+escHtml(c.label)+'"><span class="indem-head-label">'+escHtml(c.short||c.label)+'</span></th>';}).join('')+'<th class="indem-value-col indem-total-col"><span class="indem-head-label">TOTAL</span></th>';
+  function rateLabel(value){const n=Number(value);return (Number.isFinite(n)?n.toLocaleString('fr-FR',{maximumFractionDigits:2}):'0')+'%';}
+  const categoryHeaderLabels={
+    ast:rateLabel(rates.astrTel),ac:rateLabel(rates.actSvc),fa:'FA',
+    inter100:'100%',inter150:'150%',inter200:'200%',
+    sdis100:'100%',sdis150:'150%',sdis200:'200%',
+    formateur:'Formateur',formation:'Formation'
+  };
+  function categoryCellClass(category){return category.key==='sdis100'||category.key==='formateur'?'indem-group-start':'';}
+  const groupedHeaders='<tr class="indem-group-head"><th class="indem-agent-col" rowspan="2">Agent</th>'
+    +'<th colspan="6">Indemnités intercommunales</th>'
+    +'<th colspan="3">Indemnités en complémentarité du SDIS</th>'
+    +'<th colspan="2">Indemnités formations</th>'
+    +'<th colspan="4">'+(stMois>0?'Total mensuel':'Total annuel')+'</th></tr>';
+  const headers='<tr class="indem-subhead">'+categories.map(function(c){return '<th class="indem-value-col '+categoryCellClass(c)+'" title="'+escHtml(c.label)+'"><span class="indem-head-label">'+escHtml(categoryHeaderLabels[c.key]||c.short||c.label)+'</span></th>';}).join('')
+    +'<th class="indem-value-col indem-subtotal-col" title="Sous-total Intercommunales"><span class="indem-head-label">CABBALR</span></th>'
+    +'<th class="indem-value-col indem-subtotal-col" title="Sous-total SDIS"><span class="indem-head-label">SDIS</span></th>'
+    +'<th class="indem-value-col indem-subtotal-col" title="Sous-total Formations"><span class="indem-head-label">Formations</span></th>'
+    +'<th class="indem-value-col indem-total-col"><span class="indem-head-label">Total</span></th></tr>';
   const bodyRows=rows.map(function(row){
     const login=String(row.user.l||''),encodedLogin=encodeURIComponent(login),selected=login===statsIndemnitySelectedLogin;
     return '<tr class="indem-row'+(selected?' is-selected':'')+'" data-agent-login="'+escHtml(login)+'" tabindex="0" aria-selected="'+(selected?'true':'false')+'" onclick="selectIndemnityAgent(decodeURIComponent(\''+encodedLogin+'\'))" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();selectIndemnityAgent(decodeURIComponent(\''+encodedLogin+'\'));}"><td class="indem-agent-col"><strong>'+escHtml(fullName(row.user))+'</strong><div class="indem-grade" style="font-size:10px;color:#666;">'+escHtml(row.user.grade||'—')+(row.unknownGrade?' · <span style="color:#B45309;">grade non classé</span>':'')+'</div></td>'
-      +categories.map(function(c){return cell(row.values[c.key],'#F8FAFC','');}).join('')+subtotalDefs.map(function(c){return cell(row.values[c.key],'#EEF2FF','indem-subtotal-col');}).join('')+cell(row.values.total,'#EAF3DE','indem-total-col')+'</tr>';
+      +categories.map(function(c){return cell(row.values[c.key],'#F8FAFC',categoryCellClass(c));}).join('')+subtotalDefs.map(function(c){return cell(row.values[c.key],'#EEF2FF','indem-subtotal-col');}).join('')+cell(row.values.total,'#EAF3DE','indem-total-col')+'</tr>';
   }).join('');
-  const footer='<tr style="background:#222;color:#fff;font-weight:700;"><td class="indem-agent-col" style="background:#222;">TOTAL</td>'+categories.map(function(c){return cell(grand.values[c.key],'#222','');}).join('')+subtotalDefs.map(function(c){return cell(grand.values[c.key],'#222','indem-subtotal-col');}).join('')+cell(grand.values.total,'#222','indem-total-col')+'</tr>';
+  const footer='<tr style="background:#222;color:#fff;font-weight:700;"><td class="indem-agent-col" style="background:#222;">TOTAL</td>'+categories.map(function(c){return cell(grand.values[c.key],'#222',categoryCellClass(c));}).join('')+subtotalDefs.map(function(c){return cell(grand.values[c.key],'#222','indem-subtotal-col');}).join('')+cell(grand.values.total,'#222','indem-total-col')+'</tr>';
   const period=stMois>0?ST_MOIS[stMois-1]+' '+stAnnee:'Année '+stAnnee;
   return '<div style="background:#fff;border-radius:12px;padding:14px;"><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;"><div><div style="font-size:16px;font-weight:700;">💶 Indemnités par agent — '+period+'</div><div style="font-size:11px;color:#666;margin-top:3px;">Chaque case indique les heures indemnisables puis le montant calculé, avec la même taille de texte. Cliquez sur un agent pour mettre sa ligne en évidence. L’arrondi d’export INTER/RENF est respecté ; le SDIS reste sans arrondi.</div></div><div style="font-size:11px;background:#FFF7ED;border:1px solid #FDBA74;border-radius:9px;padding:7px 10px;">Calcul actif depuis le 01/12/2025</div></div>'
-    +'<div class="indem-table-container"><table class="indem-table"><thead><tr style="background:#f5f5f5;"><th class="indem-agent-col">Agent</th>'+headers+'</tr></thead><tbody>'+bodyRows+'</tbody><tfoot>'+footer+'</tfoot></table></div></div>';
+    +'<div class="indem-table-container"><table class="indem-table"><thead>'+groupedHeaders+headers+'</thead><tbody>'+bodyRows+'</tbody><tfoot>'+footer+'</tfoot></table></div></div>';
 }
 
 function rStatsContent(){
@@ -13290,7 +13306,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260822-indemnites-lisibles-155';
+const APP_VERSION='20260822-indemnites-groupes-156';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
