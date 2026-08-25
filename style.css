@@ -1107,11 +1107,16 @@ html.appel-nature-locked .cnt{overflow:hidden!important;}
   .nav{justify-content:center;}
 }
 .astrtel-agent-row{border-radius:4px;transition:outline-color .15s ease,background .15s ease;}
-.astrtel-agent-row.is-active{
-  outline:2px solid rgba(198,56,43,.55);
-  outline-offset:1px;
+.astrtel-agent-row.is-active>div{
+  box-shadow:inset 0 2px #C6382B,inset 0 -2px #C6382B;
 }
-.astrtel-agent-row.is-active>div:first-child{font-weight:700;color:var(--red);}
+.astrtel-agent-row.is-active>div:first-child{
+  box-shadow:inset 2px 0 #C6382B,inset 0 2px #C6382B,inset 0 -2px #C6382B;
+  font-weight:700;color:var(--red);
+}
+.astrtel-agent-row.is-active>div:last-child{
+  box-shadow:inset -2px 0 #C6382B,inset 0 2px #C6382B,inset 0 -2px #C6382B;
+}
 .astrtel-header-row{
   position:sticky;
   top:0;

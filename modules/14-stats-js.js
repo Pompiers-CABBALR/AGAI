@@ -755,43 +755,37 @@ function getAgentPresenceOnIV(iv,login){
   // Est-il dans l'équipage initial ?
   const inEq1=iv._equipage1&&iv._equipage1.some(function(e){return e.login===login;});
   const inEq2=iv._equipage2&&iv._equipage2.some(function(e){return e.login===login;});
+  const vraiesReleves=(iv._releves||[]).filter(function(releve){return releve&&!releve.isRenfort&&!releve.isRenfortInterne;});
 
-  if(!iv._releves||!iv._releves.length){
+  if(!vraiesReleves.length){
     // Pas de relève : toute la durée
     if(inEq1||inEq2||iv.agr===login)periodes.push({hDebut:iv._hDebut,hFin});
-    return periodes;
-  }
-
-  // Avec relèves : calculer les périodes de présence
-  // Équipage initial → jusqu'à la 1ère relève qui le remplace
-  if(inEq1||inEq2||iv.agr===login){
-    const premiereReleve=iv._releves.find(function(r){
-      return r.ancienEquipage.some(function(e){return e.login===login;});
-    });
-    if(premiereReleve){
-      // Remplacé à hReleve, retour à hRetour
-      const anc=premiereReleve.ancienEquipage.find(function(e){return e.login===login;});
-      periodes.push({hDebut:iv._hDebut,hFin:premiereReleve.hReleve});
-      // Temps de route retour (hReleve → hRetour)
-      // Non compté comme intervention (en route)
-    } else {
-      // Jamais remplacé : toute la durée
-      periodes.push({hDebut:iv._hDebut,hFin});
+  }else{
+    // Avec relèves : l'équipage initial reste présent jusqu'à son remplacement.
+    if(inEq1||inEq2||iv.agr===login){
+      const premiereReleve=vraiesReleves.find(function(r){
+        return (r.ancienEquipage||[]).some(function(e){return e.login===login;});
+      });
+      periodes.push({hDebut:iv._hDebut,hFin:premiereReleve?premiereReleve.hReleve:hFin});
     }
+    vraiesReleves.forEach(function(r,releveIdx){
+      const membre=(r.nouvelEquipage||[]).find(function(e){return e.login===login;});
+      if(!membre)return;
+      const hDebut=membre.hDebut||r.hReleve;
+      const releveSuivante=vraiesReleves.slice(releveIdx+1).find(function(r2){
+        return (r2.ancienEquipage||[]).some(function(e){return e.login===login;});
+      });
+      periodes.push({hDebut:hDebut,hFin:releveSuivante?releveSuivante.hReleve:hFin});
+    });
   }
 
-  // Dans les relèves en tant que remplaçant
-  iv._releves.forEach(function(r){
-    const membre=r.nouvelEquipage.find(function(e){return e.login===login;});
-    if(!membre)return;
-    const hDebut=membre.hDebut||r.hReleve;
-    // Jusqu'à la relève suivante qui le remplace, ou fin de l'intervention
-    const releveIdx=iv._releves.indexOf(r);
-    const releveSuivante=iv._releves.slice(releveIdx+1).find(function(r2){
-      return r2.ancienEquipage.some(function(e){return e.login===login;});
-    });
-    const hFinMembre=releveSuivante?releveSuivante.hReleve:hFin;
-    periodes.push({hDebut,hFin:hFinMembre});
+  // Un renfort interne ou UT est un équipage supplémentaire : sa présence
+  // commence à l'heure de son arrivée et se termine avec l'intervention.
+  interventionInternalReinforcements(iv).forEach(function(renfort){
+    if((renfort.equipage||[]).some(function(member){return member&&member.login===login;}))periodes.push({hDebut:renfort.hDebut||iv._hDebut,hFin:hFin});
+  });
+  (iv._releves||[]).filter(function(releve){return releve&&releve.isRenfort&&!releve.isRenfortInterne;}).forEach(function(releve){
+    if((releve.nouvelEquipage||[]).some(function(member){return member&&member.login===login;}))periodes.push({hDebut:releve.hReleve||iv._hDebut,hFin:hFin});
   });
 
   return periodes;
@@ -869,6 +863,7 @@ function agentInIV(iv,login){
   if(iv._releves&&iv._releves.some(function(r){
     return r.nouvelEquipage.some(function(e){return e.login===login;});
   }))return true;
+  if(interventionInternalReinforcements(iv).some(function(renfort){return (renfort.equipage||[]).some(function(member){return member&&member.login===login;});}))return true;
   return false;
 }
 function rStatsPersonnel(vue){
@@ -1435,6 +1430,7 @@ function adminExportInterventionPresents(iv){
   (iv._equipage1||[]).forEach(function(e){add(e.login,e.role);});
   (iv._equipage2||[]).forEach(function(e){add(e.login,e.role);});
   (iv._releves||[]).forEach(function(r){(r.nouvelEquipage||[]).forEach(function(e){add(e.login,e.role);});});
+  interventionInternalReinforcements(iv).forEach(function(renfort){(renfort.equipage||[]).forEach(function(e){add(e.login,e.role);});});
   return out;
 }
 function adminExportPeople(logins){

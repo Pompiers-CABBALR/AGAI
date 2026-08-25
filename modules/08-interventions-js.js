@@ -147,7 +147,9 @@ function interventionAddressLabel(iv){
 function isInterventionReportChef(iv,login){
   if(!iv||!login)return false;
   if(iv.agr===login||iv._agr2===login)return true;
-  return [iv._equipage1,iv._equipage2].some(function(equipage){
+  const crews=[iv._equipage1,iv._equipage2];
+  interventionInternalReinforcements(iv).forEach(function(renfort){crews.push(renfort.equipage||[]);});
+  return crews.some(function(equipage){
     return Array.isArray(equipage)&&equipage.some(function(member){
       if(!member||member.login!==login)return false;
       const role=String(member.role||'').toLowerCase();
@@ -184,6 +186,174 @@ function interventionMainReportCrew(iv){
     });
   }
   return crew;
+}
+function allConfiguredCrewSlotsForVehicle(vehicle,roleConfig){
+  const counters={},slots=[];
+  const definitions=Array.isArray(roleConfig)&&roleConfig.length?roleConfig:getEnginRoles(vehicle);
+  (Array.isArray(definitions)?definitions:[]).forEach(function(definition){
+    const role=definition&&definition.role||'Agent';
+    const key=interventionRoleKey(role)||'agent';
+    const count=Math.max(0,parseInt(definition&&definition.n,10)||0);
+    for(let index=0;index<count;index++){
+      counters[key]=(counters[key]||0)+1;
+      slots.push({role:role,key:key,ordinal:counters[key]});
+    }
+  });
+  const totals={};
+  slots.forEach(function(slot){totals[slot.key]=(totals[slot.key]||0)+1;});
+  slots.forEach(function(slot){slot.total=totals[slot.key]||1;});
+  return slots;
+}
+function interventionInternalReinforcements(iv){
+  if(!iv)return [];
+  const modern=(Array.isArray(iv._renfortsInternes)?iv._renfortsInternes:[]).filter(Boolean).map(function(item,index){
+    if(!item.id)item.id='ri-'+String(index+1)+'-'+String(item.hDebut||'').replace(/\D/g,'');
+    return item;
+  });
+  const legacy=[];
+  (Array.isArray(iv._releves)?iv._releves:[]).forEach(function(releve,index){
+    if(!releve||!releve.isRenfortInterne||releve._migratedInternal)return;
+    legacy.push({
+      id:'legacy-ri-'+index,
+      hDebut:releve.hReleve||iv._hDebut||'',
+      engin:releve.enginRenfort||releve.engin||'',
+      equipage:(Array.isArray(releve.nouvelEquipage)?releve.nouvelEquipage:[]).filter(function(member){return member&&member.renfortInterne;}),
+      roleConfig:Array.isArray(releve.roleConfig)?releve.roleConfig:null,
+      _legacyReleveIndex:index
+    });
+  });
+  return modern.concat(legacy);
+}
+function interventionSupplementaryCrewRecords(iv){
+  const records=[];
+  if(iv&&(iv._engin2||(Array.isArray(iv._equipage2)&&iv._equipage2.length))){
+    records.push({id:'secondary',kind:'secondary',label:'Deuxième véhicule',engin:iv._engin2||'',equipage:Array.isArray(iv._equipage2)?iv._equipage2:[],roleConfig:iv._engin2RoleConfig||null,hDebut:iv._hDebut||''});
+  }
+  interventionInternalReinforcements(iv).forEach(function(item,index){
+    records.push(Object.assign({kind:'internal',label:'Renfort interne '+(index+1)},item));
+  });
+  return records;
+}
+function interventionCrewBadgesHTML(crew,color){
+  const members=Array.isArray(crew)?crew:[];
+  if(!members.length)return '<span style="font-size:11px;color:#64748B;">Aucun agent renseigné.</span>';
+  return members.map(function(member){
+    return '<span style="display:inline-flex;align-items:center;gap:4px;background:#fff;border:1px solid '+color+';border-radius:7px;padding:3px 7px;font-size:11px;">'
+      +'<span style="font-weight:700;color:#1D4ED8;">'+escHtml(member.role||'Agent')+'</span> '+escHtml(interventionTeammateName(member.login))+'</span>';
+  }).join('');
+}
+function interventionSupplementaryCrewOptions(iv,recordId,currentLogin){
+  const occupied=new Set();
+  interventionMainReportCrew(iv).forEach(function(member){if(member&&member.login)occupied.add(member.login);});
+  interventionSupplementaryCrewRecords(iv).forEach(function(record){
+    if(record.id===recordId)return;
+    (record.equipage||[]).forEach(function(member){if(member&&member.login)occupied.add(member.login);});
+  });
+  (Array.isArray(iv&&iv._releves)?iv._releves:[]).filter(function(releve){return releve&&releve.isRenfort&&!releve.isRenfortInterne;}).forEach(function(releve){
+    (releve.nouvelEquipage||[]).forEach(function(member){if(member&&member.login)occupied.add(member.login);});
+  });
+  if(currentLogin)occupied.delete(currentLogin);
+  const candidates=(USERS||[]).filter(function(user){return user&&user.l&&(user.l===currentLogin||!occupied.has(user.l));}).slice().sort(function(a,b){return fullName(a).localeCompare(fullName(b),'fr');});
+  let html='<option value="">— Aucun agent —</option>';
+  html+=candidates.map(function(user){return '<option value="'+escHtml(user.l)+'"'+(user.l===currentLogin?' selected':'')+'>'+escHtml(fullName(user))+'</option>';}).join('');
+  if(currentLogin&&!candidates.some(function(user){return user.l===currentLogin;}))html+='<option value="'+escHtml(currentLogin)+'" selected>'+escHtml(interventionTeammateName(currentLogin))+'</option>';
+  return html;
+}
+function supplementaryCrewDomKey(recordId){return String(recordId||'crew').replace(/[^a-zA-Z0-9_-]/g,'-');}
+function interventionSupplementaryCrewFieldsHTML(iv,record,vehicle){
+  const key=supplementaryCrewDomKey(record.id);
+  const slots=allConfiguredCrewSlotsForVehicle(vehicle,record.roleConfig);
+  const currentCrew=Array.isArray(record.equipage)?record.equipage:[];
+  const used=new Set();
+  return slots.map(function(slot){
+    const matches=currentCrew.filter(function(member){return member&&interventionRoleKey(member.role)===slot.key&&!used.has(member.login);});
+    let current=matches[slot.ordinal-1]||matches[0]||null;
+    if(!current)current=currentCrew.find(function(member){return member&&!used.has(member.login);})||null;
+    if(current)used.add(current.login);
+    const label=slot.role+(slot.total>1?' '+slot.ordinal:'');
+    return '<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;">'+escHtml(label)+'</div><select class="fi" data-supplementary-slot="1" data-record-id="'+escHtml(record.id)+'" data-role-label="'+escHtml(slot.role)+'" data-role-key="'+escHtml(slot.key)+'" data-role-ordinal="'+slot.ordinal+'" id="cr-supp-'+key+'-'+slot.key+'-'+slot.ordinal+'">'+interventionSupplementaryCrewOptions(iv,record.id,current&&current.login||'')+'</select></div>';
+  }).join('');
+}
+function interventionSupplementaryVehicleOptions(iv,record){
+  const current=record&&record.engin||'';
+  const vehicles=[current].concat(ASTR_CONFIG&&Array.isArray(ASTR_CONFIG.engins)?ASTR_CONFIG.engins:[]).filter(Boolean);
+  const unique=[];
+  vehicles.forEach(function(vehicle){if(!unique.some(function(existing){return nm(existing)===nm(vehicle);}))unique.push(vehicle);});
+  return unique.map(function(vehicle){return '<option value="'+escHtml(vehicle)+'"'+(nm(vehicle)===nm(current)?' selected':'')+'>'+escHtml(vehicle)+'</option>';}).join('');
+}
+function interventionSupplementaryCrewsEditorHTML(iv){
+  if(!iv||!CU)return '';
+  const records=interventionSupplementaryCrewRecords(iv);
+  if(!records.length)return '';
+  const canManage=isInterventionReportChef(iv,CU.l)||hasAdministrativeAccount();
+  return records.map(function(record,index){
+    const key=supplementaryCrewDomKey(record.id);
+    const title=record.kind==='internal'?'🏠 '+record.label:'🚒 '+record.label;
+    const summary='<div style="display:flex;flex-wrap:wrap;gap:5px;margin:6px 0 9px;">'+interventionCrewBadgesHTML(record.equipage,'#A7F3D0')+'</div>';
+    if(!canManage)return '<div style="background:#F0FDFA;border:1px solid #99F6E4;border-radius:10px;padding:10px 12px;margin-bottom:10px;"><div style="font-size:12px;font-weight:700;color:#0F766E;">'+title+' · '+escHtml(record.engin||'Véhicule non renseigné')+'</div>'+summary+'</div>';
+    const fields=interventionSupplementaryCrewFieldsHTML(iv,record,record.engin||'');
+    return '<div style="background:#F0FDFA;border:1px solid #5EEAD4;border-radius:10px;padding:10px 12px;margin-bottom:10px;">'
+      +'<div style="font-size:12px;font-weight:700;color:#0F766E;margin-bottom:7px;">'+title+'</div>'+summary
+      +'<div class="fg" style="margin:0 0 9px;"><div class="fgl" style="font-size:11px;">Corriger le véhicule</div><select class="fi" id="cr-supp-vehicle-'+key+'" onchange="refreshSupplementaryCrewForVehicle(\''+escHtml(iv.id)+'\',\''+escHtml(record.id)+'\',this.value)">'+interventionSupplementaryVehicleOptions(iv,record)+'</select></div>'
+      +'<div class="cr-teammate-grid" id="cr-supp-fields-'+key+'">'+(fields||'<div style="font-size:11px;color:#64748B;">Sélectionnez un véhicule.</div>')
+      +'<button class="btn sm" style="background:#0F766E;color:#fff;white-space:nowrap;" onclick="saveSupplementaryInterventionCrew(\''+escHtml(iv.id)+'\',\''+escHtml(record.id)+'\')">💾 Enregistrer ce véhicule et son équipage</button></div></div>';
+  }).join('');
+}
+function refreshSupplementaryCrewForVehicle(ivId,recordId,vehicle){
+  const iv=IVS.find(function(item){return item.id===ivId;});if(!iv)return;
+  let record=interventionSupplementaryCrewRecords(iv).find(function(item){return item.id===recordId;});
+  const container=document.getElementById('cr-supp-fields-'+supplementaryCrewDomKey(recordId));
+  if(!record||!container)return;
+  record=Object.assign({},record,{roleConfig:null,engin:vehicle});
+  container.innerHTML=interventionSupplementaryCrewFieldsHTML(iv,record,vehicle)
+    +'<button class="btn sm" style="background:#0F766E;color:#fff;white-space:nowrap;" onclick="saveSupplementaryInterventionCrew(\''+escHtml(ivId)+'\',\''+escHtml(recordId)+'\')">💾 Enregistrer ce véhicule et son équipage</button>';
+}
+function mutableInternalReinforcement(iv,recordId){
+  if(!Array.isArray(iv._renfortsInternes))iv._renfortsInternes=[];
+  let target=iv._renfortsInternes.find(function(item){return item&&item.id===recordId;});
+  if(target)return target;
+  const legacy=interventionInternalReinforcements(iv).find(function(item){return item.id===recordId&&Number.isInteger(item._legacyReleveIndex);});
+  if(!legacy)return null;
+  target={id:'ri-'+Date.now(),hDebut:legacy.hDebut||iv._hDebut||'',engin:legacy.engin||'',equipage:(legacy.equipage||[]).map(function(member){return Object.assign({},member);}),roleConfig:legacy.roleConfig||null};
+  iv._renfortsInternes.push(target);
+  if(iv._releves&&iv._releves[legacy._legacyReleveIndex])iv._releves[legacy._legacyReleveIndex]._migratedInternal=true;
+  return target;
+}
+function saveSupplementaryInterventionCrew(ivId,recordId){
+  const iv=IVS.find(function(item){return item.id===ivId;});if(!iv||!CU)return;
+  if(!isInterventionReportChef(iv,CU.l)&&!hasAdministrativeAccount()){showToast('Modification réservée au chef d’agrès ou à un administrateur.','warn');return;}
+  const key=supplementaryCrewDomKey(recordId);
+  const vehicleField=document.getElementById('cr-supp-vehicle-'+key);
+  const vehicle=vehicleField&&vehicleField.value||'';
+  if(!vehicle){showToast('Sélectionnez le véhicule de cet équipage.','warn');return;}
+  const fields=Array.from(document.querySelectorAll('[data-supplementary-slot="1"][data-record-id="'+recordId+'"]'));
+  const crew=fields.map(function(field){return {role:field.dataset.roleLabel||'Agent',login:field.value||''};}).filter(function(member){return member.login;});
+  const logins=crew.map(function(member){return member.login;});
+  if(new Set(logins).size!==logins.length){showToast('Un agent ne peut pas occuper deux places dans le même véhicule.','warn');return;}
+  if(!crew.some(function(member){return interventionRoleKey(member.role)==='chefdagres';})){showToast('Renseignez le chef d’agrès de ce véhicule.','warn');return;}
+  const otherVehicles=interventionVehicleNames(iv).filter(function(name){
+    const current=interventionSupplementaryCrewRecords(iv).find(function(record){return record.id===recordId;});
+    return !current||nm(name)!==nm(current.engin||'');
+  });
+  if(otherVehicles.some(function(name){return nm(name)===nm(vehicle);})){showToast('Ce véhicule est déjà engagé sur cette intervention.','warn');return;}
+  const occupied=new Set();
+  interventionMainReportCrew(iv).forEach(function(member){if(member&&member.login)occupied.add(member.login);});
+  interventionSupplementaryCrewRecords(iv).forEach(function(record){if(record.id!==recordId)(record.equipage||[]).forEach(function(member){if(member&&member.login)occupied.add(member.login);});});
+  const duplicate=logins.find(function(login){return occupied.has(login);});
+  if(duplicate){showToast(interventionTeammateName(duplicate)+' est déjà affecté à un autre véhicule de cette intervention.','warn');return;}
+  for(const login of logins){const conflict=findActivePersonnelConflict(login,iv.id);if(conflict){showOperationalConflict('personnel',login,conflict);return;}}
+  const vehicleConflict=findActiveVehicleConflict(vehicle,iv.id);if(vehicleConflict){showOperationalConflict('vehicle',vehicle,vehicleConflict);return;}
+  const reportField=document.getElementById('cr-texte');if(reportField)writeCompteRenduDraft(ivId,reportField.value);
+  let target;
+  if(recordId==='secondary'){
+    iv._engin2=vehicle;iv._equipage2=crew;iv._engin2RoleConfig=JSON.parse(JSON.stringify(getEnginRoles(vehicle)));target={kind:'secondary'};
+  }else{
+    target=mutableInternalReinforcement(iv,recordId);if(!target)return;
+    target.engin=vehicle;target.equipage=crew;target.roleConfig=JSON.parse(JSON.stringify(getEnginRoles(vehicle)));
+  }
+  pushTL(iv,'modif-equipage',CU.l,(recordId==='secondary'?'Deuxième véhicule':'Renfort interne')+' corrigé : '+vehicle+' · '+crew.map(function(member){return member.role+' '+interventionTeammateName(member.login);}).join(', '));
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);rI();rHist();showCompteRenduModal(ivId);showToast('Véhicule et équipage enregistrés dans le rapport.','success');
 }
 function interventionMainCrewRoleMember(iv,roleKey){
   const crew=Array.isArray(iv&&iv._equipage1)?iv._equipage1:[];
@@ -296,6 +466,9 @@ function interventionCrewRoleOptions(iv,roleKey,currentLogin,emptyLabel,allowMai
         if(!allowMainCrewReassignment||!isMainCrew)occupied.add(member.login);
       }
     });
+  });
+  interventionInternalReinforcements(iv).forEach(function(renfort){
+    (renfort.equipage||[]).forEach(function(member){if(member&&member.login&&member.login!==currentLogin)occupied.add(member.login);});
   });
   if(iv.agr)occupied.add(iv.agr);
   if(iv._agr2)occupied.add(iv._agr2);
@@ -476,6 +649,7 @@ function saveInterventionConfiguredCrew(iv,fields,selectedVehicle){
   });
   const logins=selected.map(function(item){return item.login;}).filter(Boolean);
   const occupiedOutside=[iv._agr2].concat((Array.isArray(iv._equipage2)?iv._equipage2:[]).map(function(member){return member&&member.login;})).filter(Boolean);
+  interventionInternalReinforcements(iv).forEach(function(renfort){(renfort.equipage||[]).forEach(function(member){if(member&&member.login)occupiedOutside.push(member.login);});});
   if(new Set(logins).size!==logins.length||logins.includes(iv.agr)||logins.some(function(login){return occupiedOutside.includes(login);})){
     showToast('Chaque place de l’équipage doit être occupée par un agent différent.','warn');return;
   }
@@ -1112,7 +1286,9 @@ function oM(id){
     ${(iv.eng||detailStart||detailEnd)?'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:8px;margin:6px 0;">'+(iv.eng?'<div style="background:var(--bg);border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Engin</div><span class="bdg bb">'+iv.eng+'</span></div>':'')+(detailStart?'<div style="background:#FEF9EC;border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--amb);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">&#x23F1; Début</div><div style="font-weight:700;color:var(--amb);font-size:15px;">'+detailStart+'</div></div>':'')+(detailEnd?'<div style="background:#F0FAF0;border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--grn);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">&#x2705; Fin</div><div style="font-weight:700;color:var(--grn);font-size:15px;">'+detailEnd+'</div></div>':'')+(detailStart&&detailEnd?'<div style="background:#F0F4FF;border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--pur);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">&#x23F3; Durée</div><div style="font-weight:700;color:var(--pur);font-size:15px;">'+dureeHHMM(detailStart,detailEnd)+'</div></div>':'')+'</div>':''}
     ${iv._equipage1?`<div class="mr"><div class="ml">&#x1F692; ${iv._engin1||'Engin 1'}</div><div class="mv2"><div style="display:flex;flex-wrap:wrap;gap:4px;">${iv._equipage1.map(e=>{const u=USERS.find(x=>x.l===e.login);const nom=u?fullName(u):((e.prenom||e.nom)?((e.prenom||'')+' '+(e.nom||'')).trim():e.login);return'<span style="background:'+(e.renfort?'#F5F3FF':'#EEF2FF')+';color:'+(e.renfort?'#6D28D9':'#3730A3')+';border-radius:6px;padding:2px 8px;font-size:11px;">'+(e.renfort?'&#x1F692; ':'')+'<span style="font-size:9px;opacity:.7;">'+e.role+'</span> '+nom+(e.renfort&&e.caserneNom?' <span style="font-size:9px;opacity:.7;">('+e.caserneNom+')</span>':'')+'</span>';}).join('')}</div></div></div>`:''}
     ${iv._equipage2?`<div class="mr"><div class="ml">&#x1F692; ${iv._engin2||'Engin 2'}</div><div class="mv2"><div style="display:flex;flex-wrap:wrap;gap:4px;">${iv._equipage2.map(e=>{const u=USERS.find(x=>x.l===e.login);const nom=u?fullName(u):((e.prenom||e.nom)?((e.prenom||'')+' '+(e.nom||'')).trim():e.login);return'<span style="background:'+(e.renfort?'#F5F3FF':'#F0FDF4')+';color:'+(e.renfort?'#6D28D9':'#166534')+';border-radius:6px;padding:2px 8px;font-size:11px;">'+(e.renfort?'&#x1F692; ':'')+'<span style="font-size:9px;opacity:.7;">'+e.role+'</span> '+nom+(e.renfort&&e.caserneNom?' <span style="font-size:9px;opacity:.7;">('+e.caserneNom+')</span>':'')+'</span>';}).join('')}</div></div></div>`:''}
-    ${(iv._releves&&iv._releves.filter(r=>!r.isRenfort).length)?`<div class="mr"><div class="ml" style="color:#0369A1;">&#x1F504; Relèves</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:6px;">${iv._releves.filter(r=>!r.isRenfort).map((r,ri)=>{
+    ${interventionInternalReinforcements(iv).length?`<div class="mr"><div class="ml" style="color:#047857;">🏠 Renforts internes</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:6px;">${interventionInternalReinforcements(iv).map((renfort,index)=>'<div style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:8px;padding:8px 10px;"><div style="font-size:11px;font-weight:700;color:#047857;margin-bottom:5px;">Renfort interne '+(index+1)+' · '+(renfort.engin||'Véhicule à corriger')+' · '+(renfort.hDebut||'')+'</div><div style="display:flex;flex-wrap:wrap;gap:4px;">'+(renfort.equipage||[]).map(e=>{const u=USERS.find(x=>x.l===e.login);return'<span style="background:#fff;color:#065F46;border:1px solid #A7F3D0;border-radius:6px;padding:2px 8px;font-size:10px;"><span style="opacity:.75;">'+(e.role||'Agent')+'</span> '+(u?fullName(u):e.login)+'</span>';}).join('')+'</div></div>').join('')}</div></div></div>`:''}
+    ${(iv._releves&&iv._releves.filter(r=>!r.isRenfort&&!r.isRenfortInterne).length)?`<div class="mr"><div class="ml" style="color:#0369A1;">&#x1F504; Relèves</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:6px;">${iv._releves.filter(r=>!r.isRenfort&&!r.isRenfortInterne).map((r,ri)=>{
+      const originalReleveIndex=iv._releves.indexOf(r);
       const enAttenteRetour=r.ancienEquipage.filter(e=>!e.hRetour);
       const rentres=r.ancienEquipage.filter(e=>e.hRetour);
       return'<div style="background:#F0F9FF;border-radius:8px;padding:8px 10px;border:1px solid #BAE6FD;">'
@@ -1120,7 +1296,7 @@ function oM(id){
         +'<div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:4px;">'
         +r.nouvelEquipage.map(e=>{const u=USERS.find(x=>x.l===e.login);return'<span style="background:#DBEAFE;color:#1D4ED8;border-radius:5px;padding:2px 7px;font-size:10px;"><span style="opacity:.7;">'+e.role+'</span> '+(u?fullName(u):e.login)+'</span>';}).join('')
         +'</div>'
-        +(enAttenteRetour.length?'<div style="font-size:10px;color:#854F0B;margin-top:4px;display:flex;align-items:center;flex-wrap:wrap;gap:6px;">En route retour : <span>'+enAttenteRetour.map(e=>{const u=USERS.find(x=>x.l===e.login);return u?fullName(u):e.login;}).join(', ')+'</span>'+(iv.agr===CU.l||iv._agr2===CU.l||enAttenteRetour.some(e=>e.login===CU.l)?'<button class="btn sm" style="font-size:9px;padding:1px 6px;background:#0369A1;color:#fff;" onclick="confirmerRetour(\''+iv.id+'\','+ri+',\'\')">&#x2705; Retour caserne (tous)</button>':'')+'</div>':'')
+        +(enAttenteRetour.length?'<div style="font-size:10px;color:#854F0B;margin-top:4px;display:flex;align-items:center;flex-wrap:wrap;gap:6px;">En route retour : <span>'+enAttenteRetour.map(e=>{const u=USERS.find(x=>x.l===e.login);return u?fullName(u):e.login;}).join(', ')+'</span>'+(iv.agr===CU.l||iv._agr2===CU.l||enAttenteRetour.some(e=>e.login===CU.l)?'<button class="btn sm" style="font-size:9px;padding:1px 6px;background:#0369A1;color:#fff;" onclick="confirmerRetour(\''+iv.id+'\','+originalReleveIndex+',\'\')">&#x2705; Retour caserne (tous)</button>':'')+'</div>':'')
         +(rentres.length?'<div style="font-size:10px;color:#3B6D11;margin-top:2px;">Rentrés : '+rentres.map(e=>{const u=USERS.find(x=>x.l===e.login);return(u?fullName(u):e.login)+' ('+e.hRetour+')';}).join(', ')+'</div>':'')
         +'</div>';
     }).join('')}</div></div></div>`:''}
@@ -1170,7 +1346,7 @@ function oM(id){
     }).join('')}</div></div></div>`:''}
     ${iv._isRenfort?`<div class="mr"><div class="ml" style="color:#7C3AED;">&#x1F692; Mode Renfort UT</div><div class="mv2" style="font-size:12px;background:#F5F3FF;border-radius:8px;padding:8px 12px;border:1px solid #DDD6FE;"><span style="font-weight:600;color:#7C3AED;">Renfort pour ${iv._caserneSourceNom||iv._caserneSource||''}</span><br><span style="font-size:11px;color:var(--t2);">Votre caserne est intervenue en renfort sur cette intervention.</span></div></div>`:''}
     ${iv.det?`<div class="mr"><div class="ml">Détails</div><div class="mv2">${escHtml(iv.det)}</div></div>`:''}
-    ${iv.s==='terminee'&&(iv._crTexte||iv._compteRendu)&&(isInterventionReportChef(iv,CU.l)||(iv._equipage1||[]).some(function(e){return e.login===CU.l;})||(iv._equipage2||[]).some(function(e){return e.login===CU.l;})||hasAdministrativeAccount())?`<div class="mr"><div class="ml" style="color:#0F766E;">&#x1F4CB; Compte rendu${iv._crValide?' &#x1F512;':''}</div><div class="mv2" style="white-space:pre-wrap;font-size:12px;background:#F0FDFA;border-radius:8px;padding:8px 10px;border:1px solid #99F6E4;">${iv._crTexte||iv._compteRendu}</div></div>`:''}
+    ${iv.s==='terminee'&&(iv._crTexte||iv._compteRendu)&&(isInterventionReportChef(iv,CU.l)||agentInIV(iv,CU.l)||hasAdministrativeAccount())?`<div class="mr"><div class="ml" style="color:#0F766E;">&#x1F4CB; Compte rendu${iv._crValide?' &#x1F512;':''}</div><div class="mv2" style="white-space:pre-wrap;font-size:12px;background:#F0FDFA;border-radius:8px;padding:8px 10px;border:1px solid #99F6E4;">${iv._crTexte||iv._compteRendu}</div></div>`:''}
     ${iv.s==='terminee'&&(isInterventionReportChef(iv,CU.l)||hasAdministrativeAccount())?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 2px 0;">
       <button class="btn sm" style="background:#0F766E;color:#fff;border-color:#0F766E;" onclick="showCompteRenduModal('${iv.id}')">${iv._crValide?'&#x1F512; Voir':iv._crTexte||iv._compteRendu?'&#x270F;&#xFE0F; Modifier':'&#x1F4CB; Rédiger le compte rendu'}</button>
       <button class="btn sm" style="background:#C0392B;color:#fff;" onclick="voirRapportIntervention('${iv.id}')">&#x1F5A8; Rapport PDF</button>

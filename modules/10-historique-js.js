@@ -118,6 +118,9 @@ function historyCrewMembers(iv){
       (Array.isArray(releve&&releve[key])?releve[key]:[]).forEach(function(member){if(member)add(member.login,member.role||'');});
     });
   });
+  interventionInternalReinforcements(iv).forEach(function(renfort){
+    (Array.isArray(renfort&&renfort.equipage)?renfort.equipage:[]).forEach(function(member){if(member)add(member.login,member.role||'');});
+  });
   return members;
 }
 function historyCrewRoleLabel(role){

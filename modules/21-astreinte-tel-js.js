@@ -72,25 +72,34 @@ function astrTelSetHeure(login,y,m,day,val){
     h=disponible;
     showToast('Le total de la journée ne peut pas dépasser 24:00 ('+astrTelFormatHeures(autres)+' déjà attribuées)','warn');
   }
+  const previous=parseFloat(d[k][day])||0;
+  if(Math.abs(previous-h)<(1/120))return h;
   if(h>0)d[k][day]=h;
   else delete d[k][day];
   _jbEditLock=Date.now();
   if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcPendingDirty!=='undefined'&&typeof _rcId==='function'){
     _rcPendingDirty.add(_rcId(CURRENT_CASERNE_ID,'config','main'));
   }
-  saveData();
+  if(typeof syncCaserneContext==='function')syncCaserneContext();
+  saveData(true);
   return h;
+}
+let _astrTelInputSaveTimer=0;
+function astrTelScheduleSave(el){
+  clearTimeout(_astrTelInputSaveTimer);
+  _astrTelInputSaveTimer=setTimeout(function(){astrTelCommitInput(el);},650);
 }
 function astrTelCommitInput(el){
   if(!el)return;
+  clearTimeout(_astrTelInputSaveTimer);
   const h=astrTelSetHeure(el.dataset.login,astrTelAnnee,astrTelMois,parseInt(el.dataset.day,10),el.value);
   if(h===null){el.value=el.defaultValue;return;}
   el.value=h>0?astrTelFormatHeures(h):'';
   el.defaultValue=el.value;
   const cell=el.parentElement;
   if(cell){
-    cell.style.background=h>0?'var(--bl)':'#fff';
-    cell.style.borderColor=h>0?'var(--blu)':'var(--brd)';
+    cell.style.background=h>0?'var(--bl)':(cell.dataset.emptyBg||'#fff');
+    cell.style.borderColor=h>0?'var(--blu)':(cell.dataset.emptyBorder||'var(--brd)');
     el.style.fontWeight=h>0?'700':'400';
     el.style.color=h>0?'#1e3a5f':'var(--t2)';
   }
@@ -266,10 +275,12 @@ function astrTelRenderGrid(){
       const borderColor=h>0?'var(--blu)':isFerie?'#C084FC':'var(--brd)';
       const color=h>0?'#1e3a5f':'var(--t2)';
       if(canEdit){
-        rows+=`<div${isFerie?' title="Jour férié"':''} style="background:${bg};border:1px solid ${borderColor};border-radius:3px;">
+        rows+=`<div${isFerie?' title="Jour férié"':''} data-empty-bg="${isFerie?'#F3E8FF':isWE?'#fdf0f0':'#fff'}" data-empty-border="${isFerie?'#C084FC':'var(--brd)'}" style="background:${bg};border:1px solid ${borderColor};border-radius:3px;">
           <input type="text" inputmode="numeric" pattern="[0-9:]*" maxlength="5" value="${h?astrTelFormatHeures(h):''}"
             data-login="${u.l}" data-day="${d}" data-agent="${agents.indexOf(u)}"
+            oninput="astrTelScheduleSave(this)"
             onchange="astrTelCommitInput(this)"
+            onblur="astrTelCommitInput(this)"
             onfocus="astrTelHighlightRow(this);this.select();"
             onkeydown="astrTelNavKey(event,this,${agents.indexOf(u)},${d},${nbJ},${agents.length})"
             aria-label="${u.nom} ${u.prenom}, ${d} ${ASTRTEL_MOIS_NOMS[m]} : nombre d'heures"
@@ -340,7 +351,8 @@ function astrTelSaveParams(){
       CASERNE_DATA[cas.id].astrTelParams.quota=val;
     });
   }
-  saveData();
+  if(typeof syncCaserneContext==='function')syncCaserneContext();
+  saveData(true);
   showToast('Quota astreinte téléphonique mis à jour : '+val+'h ✓','success');
   cM();
 }

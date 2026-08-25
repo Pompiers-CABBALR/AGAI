@@ -2818,13 +2818,13 @@ function showPersonnelModal(id){
 
   const u2=agr2?USERS.find(function(u){return u.l===agr2;}):null;
 
-  // ── Équipage engin 2 (si 2ème chef) ──
+  // ── Équipage engin 2 : le chef principal peut l'ajouter directement ──
   function buildEquipage2(enginVal){
-    if(!agr2)return '';
-    const ca2Html='<div style="margin-bottom:8px;background:#EEF2FF;border-radius:8px;padding:8px 10px;">'
+    if(!enginVal)return '<div style="font-size:11px;color:var(--t2);">Laissez vide si un seul véhicule part.</div>';
+    const ca2Html=agr2?'<div style="margin-bottom:8px;background:#EEF2FF;border-radius:8px;padding:8px 10px;">'
       +'<div style="font-size:11px;font-weight:600;color:#3730A3;margin-bottom:2px;">Chef d\u2019agr\u00e8s</div>'
       +'<div style="font-size:12px;font-weight:700;">'+(u2?fullName(u2):agr2)+'</div>'
-      +'</div>';
+      +'</div>':agentSelectHtml('Chef d\u2019agr\u00e8s','eq2-ca','',false,true,[CU.l]);
     return ca2Html+buildDepartureCrewFields(enginVal,'eq2',{
       conducteur:cond2Sugg,chefdequipe:chefEq2Sugg,equipier:eq2Sugg
     },[CU.l,agr2]);
@@ -2833,13 +2833,13 @@ function showPersonnelModal(id){
   const eq1Html=buildEquipage1(engin1Sugg);
   const eq2Html=buildEquipage2(engin2Sugg);
 
-  const engin2Block=agr2?
+  const engin2Block=
     '<div style="margin-top:14px;border-top:2px solid var(--brd);padding-top:12px;">'
-    +'<div style="font-size:12px;font-weight:700;color:var(--t);margin-bottom:8px;">&#x1F692; Engin 2 \u2014 '+(u2?fullName(u2):agr2)+'</div>'
+    +'<div style="font-size:12px;font-weight:700;color:var(--t);margin-bottom:8px;">&#x1F692; Deuxième véhicule <span style="font-size:10px;color:var(--t2);font-weight:500;">(optionnel)</span></div>'
     +'<div class="fg" style="margin-bottom:8px;"><div class="fgl">Engin engag\u00e9</div>'
     +'<select class="fi" id="pers-engin2" onchange="document.getElementById(\'eq2-body\').innerHTML=buildEquipage2Dyn(this.value);refreshEquipageSelects()">'+enginOpts(engin2Sugg)+'</select></div>'
     +'<div id="eq2-body">'+eq2Html+'</div></div>'
-    :'';
+    ;
 
   document.getElementById('mt').textContent='D\u00e9part en intervention';
   document.getElementById('mi').textContent=iv.n+' \u2014 '+iv.com;
@@ -2877,10 +2877,10 @@ function buildEquipage1Dyn(enginVal){
 
 function buildEquipage2Dyn(enginVal){
   const d=window._piqData||{};
-  if(!d.agr2)return '';
-  const ca2Html='<div style="margin-bottom:8px;background:#EEF2FF;border-radius:8px;padding:8px 10px;">'
+  if(!enginVal)return '<div style="font-size:11px;color:var(--t2);">Laissez vide si un seul véhicule part.</div>';
+  const ca2Html=d.agr2?'<div style="margin-bottom:8px;background:#EEF2FF;border-radius:8px;padding:8px 10px;">'
     +'<div style="font-size:11px;font-weight:600;color:#3730A3;margin-bottom:2px;">Chef d\u2019agr\u00e8s</div>'
-    +'<div style="font-size:12px;font-weight:700;">'+(d.u2?fullName(d.u2):d.agr2)+'</div></div>';
+    +'<div style="font-size:12px;font-weight:700;">'+(d.u2?fullName(d.u2):d.agr2)+'</div></div>':agentSelectHtml('Chef d\u2019agr\u00e8s','eq2-ca','',false,true,[d.CUl]);
   return ca2Html+buildDepartureCrewFields(enginVal,'eq2',{
     conducteur:d.cond2Sugg,chefdequipe:d.chefEq2Sugg,equipier:d.eq2Sugg
   },[d.CUl,d.agr2]);
@@ -2895,7 +2895,12 @@ function confirmerDepart(id){
   const heure=interruptedHandoff?interruptedHandoff.handoff.heure:(_pendingNextInterventionStarts[id]||getHHMM(N()));
   const engin1=document.getElementById('pers-engin')?.value||'';
   const engin2=document.getElementById('pers-engin2')?.value||'';
-  const agr2=iv._agr2||'';
+  const agr2=iv._agr2||(document.getElementById('eq2-ca')?.value||'');
+  if(engin2&&!agr2){showToast('Renseignez le chef d’agrès du deuxième véhicule.','warn');return;}
+  if(agr2){
+    const chef2=USERS.find(function(user){return user&&user.l===agr2;});
+    if(chef2&&typeof isChefAgresByGrade==='function'&&!isChefAgresByGrade(chef2)){showToast('Le chef du deuxième véhicule doit avoir la qualification chef d’agrès.','warn');return;}
+  }
   // Tous les membres des deux equipages sont controles juste avant le depart.
   const eq1=readDepartureCrewFields(engin1,'eq1',CU.l);
   const eq2=agr2?readDepartureCrewFields(engin2,'eq2',agr2):[];
@@ -2944,6 +2949,7 @@ function confirmerDepart(id){
   iv._equipage2=eq2.length?eq2:null;
   iv._engin2=engin2||null;
   iv._engin2RoleConfig=engin2?JSON.parse(JSON.stringify(getEnginRoles(engin2))):null;
+  iv._agr2=engin2?agr2:null;
   if(engin1)iv.eng=engin1;
   const agr2Label=agr2?(function(){const u=USERS.find(function(u){return u.l===agr2;});return u?' + '+fullName(u)+' (2\u00e8me)':' + '+agr2;})():'';
   const persLabel=' ['+eq1.concat(eq2).map(function(e){const u=USERS.find(function(x){return x.l===e.login;});return e.role+': '+(u?fullName(u):e.login);}).join(', ')+']';
@@ -3170,7 +3176,7 @@ function showReleveModal(id){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
   const heure=getHHMM(N());
   // Équipage actuel (dernier équipage actif)
-  const releves=iv._releves||[];
+  const releves=(iv._releves||[]).filter(function(releve){return releve&&!releve.isRenfort&&!releve.isRenfortInterne;});
   const equipActuel=releves.length?releves[releves.length-1].nouvelEquipage:(iv._equipage1||[]);
 
   document.getElementById('mt').textContent='Relève de personnel';
@@ -3215,7 +3221,7 @@ function showReleveModal(id){
 function validerReleve(id){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
   const heure=getHHMM(N());
-  const releves=iv._releves||[];
+  const releves=(iv._releves||[]).filter(function(releve){return releve&&!releve.isRenfort&&!releve.isRenfortInterne;});
   const equipActuel=releves.length?releves[releves.length-1].nouvelEquipage:(iv._equipage1||[]);
 
   const ancienEquipage=[];
@@ -3283,88 +3289,81 @@ function confirmerRetour(ivId,releveIdx,login){
 function showRenfortInterneModal(ivId){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
   const heure=getHHMM(N());
-
-  // Agents déjà engagés sur cette intervention (équipage actuel + relèves actives)
-  const dejaPris=new Set();
-  if(iv._equipage1)iv._equipage1.forEach(function(e){dejaPris.add(e.login);});
-  if(iv._equipage2)iv._equipage2.forEach(function(e){dejaPris.add(e.login);});
-  if(iv._releves){
-    const derniereReleve=iv._releves[iv._releves.length-1];
-    if(derniereReleve)derniereReleve.nouvelEquipage.forEach(function(e){dejaPris.add(e.login);});
-  }
-  if(iv.agr)dejaPris.add(iv.agr);
-
-  // Agents disponibles (non engagés)
-  const disponibles=sortByGradeThenName(USERS.filter(function(u){
-    return !dejaPris.has(u.l)&&!findActivePersonnelConflict(u.l,ivId);
-  }));
-
-  if(!disponibles.length){showToast('Aucun agent disponible dans la caserne.','warn');return;}
-
-  const agentsHtml=disponibles.map(function(u){
-    const eq=getEquipeOfUser(u.l);
-    return '<label style="display:flex;align-items:center;gap:8px;padding:6px;border:1px solid var(--brd);border-radius:8px;cursor:pointer;margin-bottom:4px;">'
-      +'<input type="checkbox" class="renfort-int-chk" value="'+u.l+'" style="accent-color:#0369A1;width:16px;height:16px;"/>'
-      +'<span style="flex:1;font-size:12px;font-weight:500;">'+fullName(u)+'</span>'
-      +'<span style="font-size:10px;color:var(--t2);">'+gradeAbbr(u.grade)+(eq?' · '+eq.nom:'')+'</span>'
-      +'</label>';
+  const dejaPris=interventionActivePersonnelLogins(iv);
+  const enginsPris=interventionVehicleNames(iv);
+  const engins=(ASTR_CONFIG&&Array.isArray(ASTR_CONFIG.engins)?ASTR_CONFIG.engins:[]).filter(Boolean);
+  const disponible=engins.find(function(engin){return !enginsPris.some(function(current){return nm(current)===nm(engin);})&&!findActiveVehicleConflict(engin,ivId);})||'';
+  const enginOptions='<option value="">— Sélectionner un véhicule —</option>'+engins.map(function(engin){
+    const usedHere=enginsPris.some(function(current){return nm(current)===nm(engin);});
+    const conflict=findActiveVehicleConflict(engin,ivId);
+    return '<option value="'+escHtml(engin)+'"'+(engin===disponible?' selected':'')+((usedHere||conflict)?' disabled':'')+'>'+escHtml(engin)+(usedHere?' — déjà sur cette intervention':conflict?' — déjà engagé':'')+'</option>';
   }).join('');
 
-  document.getElementById('mt').textContent='Renfort interne — Caserne';
+  document.getElementById('mt').textContent='Renfort interne — véhicule et équipage';
   document.getElementById('mi').textContent=iv.n+' \u2014 '+iv.com;
   document.getElementById('mb').innerHTML=
     '<div>'
-    +'<div style="background:#EFF6FF;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#1D4ED8;">'
-    +'&#x23F1;\uFE0F Heure de renfort : <strong>'+heure+'</strong></div>'
-    +'<div style="display:flex;gap:8px;margin-bottom:10px;">'
-    +'<button class="btn sm" style="font-size:11px;" onclick="document.querySelectorAll(\'.renfort-int-chk\').forEach(c=>c.checked=true)">Tout sélectionner</button>'
-    +'<button class="btn sm" style="font-size:11px;" onclick="document.querySelectorAll(\'.renfort-int-chk\').forEach(c=>c.checked=false)">Tout décocher</button>'
-    +'</div>'
-    +'<div style="max-height:280px;overflow-y:auto;">'+agentsHtml+'</div>'
+    +'<div style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#047857;">Le renfort interne reste dans la même intervention. Il ajoute un véhicule et son équipage à <strong>'+heure+'</strong> ; il ne remplace personne.</div>'
+    +'<div class="fg"><div class="fgl">Véhicule du renfort *</div><select class="fi" id="renfort-int-engin" onchange="renderRenfortInterneCrewFields(this.value)">'+enginOptions+'</select></div>'
+    +'<div id="renfort-int-crew-fields">'+(disponible?buildRenfortInterneCrewFields(disponible,dejaPris):'<div style="font-size:12px;color:#64748B;padding:8px 0;">Aucun véhicule disponible.</div>')+'</div>'
     +'<div class="brow" style="margin-top:10px;">'
-    +'<button class="btn sm" style="background:#0369A1;color:#fff;" onclick="confirmerRenfortInterne(\''+ivId+'\')">&#x1F465; Ajouter au renfort</button>'
+    +'<button class="btn sm" style="background:#0369A1;color:#fff;" onclick="confirmerRenfortInterne(\''+ivId+'\')">🚒 Ajouter le véhicule et l’équipage</button>'
     +'<button class="btn sm" onclick="oM(\''+ivId+'\')" >Retour</button>'
     +'</div></div>';
   document.getElementById('mo').style.display='flex';
+  window._renfortIntContext={ivId:ivId,excludeLogins:dejaPris.slice()};
+  window._piqData={ivId:ivId};
+  setTimeout(function(){refreshEquipageSelects();},0);
+}
+
+function renfortInterneSlotId(slot){return 'renfort-int-'+slot.key+'-'+slot.ordinal;}
+function buildRenfortInterneCrewFields(engin,excludeLogins){
+  if(!engin)return '';
+  const excluded=Array.isArray(excludeLogins)?excludeLogins:(window._renfortIntContext&&window._renfortIntContext.excludeLogins)||[];
+  return allConfiguredCrewSlotsForVehicle(engin).map(function(slot){
+    const label=slot.role+(slot.total>1?' '+slot.ordinal:'');
+    return agentSelectHtml(label,renfortInterneSlotId(slot),'',false,slot.key==='chefdagres'||slot.key==='conducteur',excluded);
+  }).join('');
+}
+function renderRenfortInterneCrewFields(engin){
+  const container=document.getElementById('renfort-int-crew-fields');if(!container)return;
+  container.innerHTML=engin?buildRenfortInterneCrewFields(engin):'<div style="font-size:12px;color:#64748B;padding:8px 0;">Sélectionnez un véhicule.</div>';
+  refreshEquipageSelects();
+}
+function readRenfortInterneCrewFields(engin){
+  return allConfiguredCrewSlotsForVehicle(engin).map(function(slot){
+    const field=document.getElementById(renfortInterneSlotId(slot));
+    return {role:slot.role,login:field&&field.value||''};
+  }).filter(function(member){return member.login;});
 }
 
 function confirmerRenfortInterne(ivId){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
   const heure=getHHMM(N());
-  const checked=Array.from(document.querySelectorAll('.renfort-int-chk:checked')).map(function(c){return c.value;});
-  if(!checked.length){showToast('Aucun agent sélectionné.','warn');return;}
-  for(const login of checked){
+  const engin=(document.getElementById('renfort-int-engin')||{}).value||'';
+  if(!engin){showToast('Sélectionnez le véhicule du renfort interne.','warn');return;}
+  if(interventionVehicleNames(iv).some(function(current){return nm(current)===nm(engin);})){showToast('Ce véhicule est déjà engagé sur cette intervention.','warn');return;}
+  const vehicleConflict=findActiveVehicleConflict(engin,ivId);if(vehicleConflict){showOperationalConflict('vehicle',engin,vehicleConflict);return;}
+  const crew=readRenfortInterneCrewFields(engin);
+  if(!crew.length){showToast('Renseignez l’équipage du véhicule de renfort.','warn');return;}
+  if(!crew.some(function(member){return interventionRoleKey(member.role)==='chefdagres';})){showToast('Renseignez le chef d’agrès du véhicule de renfort.','warn');return;}
+  const logins=crew.map(function(member){return member.login;});
+  if(new Set(logins).size!==logins.length){showToast('Un agent ne peut pas occuper plusieurs places dans le même véhicule.','warn');return;}
+  const already=new Set(interventionActivePersonnelLogins(iv));
+  const duplicate=logins.find(function(login){return already.has(login);});
+  if(duplicate){showToast(interventionTeammateName(duplicate)+' est déjà affecté à cette intervention.','warn');return;}
+  for(const login of logins){
     const conflict=findActivePersonnelConflict(login,ivId);
     if(conflict){showOperationalConflict('personnel',login,conflict);return;}
   }
-
-  // Ajouter comme relève interne
-  if(!iv._releves)iv._releves=[];
-  const releves=iv._releves;
-  const equipActuel=releves.length?releves[releves.length-1].nouvelEquipage:(iv._equipage1||[]);
-
-  // Déterminer les rôles pour les renforts (à partir du rôle libre suivant)
-  const rolesVtu=['Chef d\u2019agr\u00e8s','Conducteur','\u00c9quipier'];
-  const rolesDejaOccupes=equipActuel.map(function(e){return e.role;});
-  const nouveaux=checked.map(function(login,i){
-    const roleLibre=rolesVtu.find(function(r){return !rolesDejaOccupes.includes(r);})||'\u00c9quipier '+(i+2);
-    rolesDejaOccupes.push(roleLibre);
-    return {role:roleLibre,login:login,hDebut:heure,renfortInterne:true};
-  });
-
-  iv._releves.push({
-    hReleve:heure,
-    isRenfortInterne:true,
-    ancienEquipage:[],
-    nouvelEquipage:[...equipActuel,...nouveaux]
-  });
-
-  iv.tl.push({s:'releve',h:getH(N()),who:CU.l,
-    note:'Renfort interne : '+checked.map(function(l){const u=USERS.find(x=>x.l===l);return u?fullName(u):l;}).join(', ')});
-
-  saveData();cM();
+  if(!Array.isArray(iv._renfortsInternes))iv._renfortsInternes=[];
+  iv._renfortsInternes.push({id:'ri-'+Date.now(),hDebut:heure,engin:engin,equipage:crew.map(function(member){return Object.assign({},member,{hDebut:heure,renfortInterne:true});}),roleConfig:JSON.parse(JSON.stringify(getEnginRoles(engin)))});
+  if(!iv.tl)iv.tl=[];
+  iv.tl.push({s:'renfort-interne',h:getH(N()),who:CU.l,note:'Renfort interne : '+engin+' · '+crew.map(function(member){return member.role+' '+interventionTeammateName(member.login);}).join(', ')});
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);cM();
   setTimeout(function(){oM(ivId);},80);
-  showToast('Renfort interne ajout\u00e9 \u00e0 '+heure,'success');
+  showToast('Véhicule et équipage de renfort ajoutés à '+heure,'success');
 }
 
 function showRenfortModal(ivId,forcePersonnel){

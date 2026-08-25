@@ -296,19 +296,24 @@ function getActiveOperationalInterventions(excludeId){
 }
 function interventionVehicleNames(iv){
   const names=[iv&&iv.eng,iv&&iv._engin1,iv&&iv._engin2].filter(Boolean);
+  interventionInternalReinforcements(iv).forEach(function(renfort){if(renfort&&renfort.engin)names.push(renfort.engin);});
+  (Array.isArray(iv&&iv._releves)?iv._releves:[]).filter(function(releve){return releve&&releve.isRenfort&&!releve.isRenfortInterne;}).forEach(function(releve){if(releve.enginRenfort)names.push(releve.enginRenfort);});
   return [...new Set(names.map(function(name){return String(name).trim();}).filter(Boolean))];
 }
 function interventionActivePersonnelLogins(iv){
   if(!iv)return [];
-  // La derniere releve contient la photographie complete de l'equipage
-  // principal actif, y compris apres l'ajout d'un renfort interne.
+  // Seule une vraie relève remplace l'équipage principal. Les renforts
+  // internes et UT restent des équipages supplémentaires de l'intervention.
   const releves=(iv._releves||[]).filter(function(r){
-    return r&&Array.isArray(r.nouvelEquipage)&&r.nouvelEquipage.length;
+    return r&&!r.isRenfort&&!r.isRenfortInterne&&Array.isArray(r.nouvelEquipage)&&r.nouvelEquipage.length;
   });
   const principal=releves.length?releves[releves.length-1].nouvelEquipage:(iv._equipage1||[]);
   const secondaire=iv._equipage2||[];
   const logins=[];
-  principal.concat(secondaire).forEach(function(member){
+  const supplements=[];
+  interventionInternalReinforcements(iv).forEach(function(renfort){supplements.push.apply(supplements,renfort.equipage||[]);});
+  (iv._releves||[]).filter(function(releve){return releve&&releve.isRenfort&&!releve.isRenfortInterne;}).forEach(function(releve){supplements.push.apply(supplements,releve.nouvelEquipage||[]);});
+  principal.concat(secondaire,supplements).forEach(function(member){
     if(member&&member.login)logins.push(member.login);
   });
   // Compatibilite avec les anciennes interventions sans equipage structure.
@@ -319,9 +324,11 @@ function interventionActivePersonnelLogins(iv){
 function interventionChiefLogins(iv){
   return interventionActivePersonnelLogins(iv).filter(function(login){
     if(login===iv.agr||login===iv._agr2)return true;
-    const releves=iv._releves||[];
+    const releves=(iv._releves||[]).filter(function(releve){return releve&&!releve.isRenfort&&!releve.isRenfortInterne;});
     const principal=releves.length?(releves[releves.length-1].nouvelEquipage||[]):(iv._equipage1||[]);
-    return principal.concat(iv._equipage2||[]).some(function(member){
+    const supplements=[];
+    interventionInternalReinforcements(iv).forEach(function(renfort){supplements.push.apply(supplements,renfort.equipage||[]);});
+    return principal.concat(iv._equipage2||[],supplements).some(function(member){
       const role=nm(member&&member.role||'').replace(/[^a-z0-9]+/g,' ').trim();
       return member&&member.login===login&&(role==='ca'||role.includes('chef d agres'));
     });

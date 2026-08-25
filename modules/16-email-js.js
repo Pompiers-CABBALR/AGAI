@@ -601,7 +601,7 @@ function showCompteRenduModal(ivId) {
 
   document.getElementById('mt').textContent = 'Compte rendu d\u2019intervention';
   document.getElementById('mi').textContent = iv.n + ' \u2014 ' + iv.com;
-  const teammateFields=interventionTeammateEditorHTML(iv);
+  const teammateFields=interventionTeammateEditorHTML(iv)+interventionSupplementaryCrewsEditorHTML(iv);
   const startCorrectionFields=interventionStartCorrectionHTML(iv);
   const storedReportText=iv._crTexte||iv._compteRendu||'';
   const localDraft=readCompteRenduDraft(ivId);
@@ -831,7 +831,7 @@ function genRapportInterventionHTML(ivId) {
     dateLongue='Le '+JOURS_FR[new Date(y,mo,d).getDay()]+' '+d+' '+MOIS_FR[mo]+' '+y;
   }
   const numCas=iv._numCaserne?String(iv._numCaserne):'';
-  const engin=iv.eng||(iv._engin1||'')||'';
+  const engin=interventionVehicleNames(iv).join(' + ');
   const hDebut=iv._hDebut||'';
   const hFin=iv._hFin||'';
   const avisPassageHeure=getAvisPassageHour(iv);
@@ -848,6 +848,7 @@ function genRapportInterventionHTML(ivId) {
   if(iv._agr2)addA(iv._agr2,"Chef d'agr\u00e8s");
   if(iv._equipage2)iv._equipage2.forEach(function(e){addA(e.login,e.role);});
   if(iv._releves)iv._releves.forEach(function(r){if(r.nouvelEquipage)r.nouvelEquipage.forEach(function(e){addA(e.login,e.role);});});
+  interventionInternalReinforcements(iv).forEach(function(renfort){(renfort.equipage||[]).forEach(function(e){addA(e.login,e.role);});});
 
   // HTML pr\u00e9sents : "Pr\u00e9sents :" + 1er agent sur m\u00eame ligne, suivants indent\u00e9s
   const PW='90px', RW='130px';
