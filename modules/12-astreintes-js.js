@@ -3553,11 +3553,20 @@ function repondreRenfort(cid,renfortId,reponse){
 
 function showRenfortEquipageModal(cid,renfortId){
   const r=CASERNE_DATA[cid]?.renforts?.find(function(x){return x.id===renfortId;});if(!r)return;
+  if(r.statut==='en-cours'||r.statut==='termine'){
+    showToast('Ce renfort a déjà été composé et enregistré.','warn');return;
+  }
   const heure=getHHMM(N());
   r.hDebut=heure;
   // Construire sélecteurs selon le type
   const isComplet=r.type==='complet';
-  const enginOpts=[''].concat(ASTR_CONFIG.engins||[]).map(function(e){return '<option value="'+e+'">'+(e||'\u2014 Aucun \u2014')+'</option>';}).join('');
+  const ivSrc=renfortSourceIntervention(r);
+  const enginOpts=[''].concat(ASTR_CONFIG.engins||[]).map(function(e){
+    if(!e)return '<option value="">\u2014 Sélectionner un véhicule \u2014</option>';
+    const usedHere=renfortSourceHasVehicle(ivSrc,cid,e);
+    const conflict=findActiveVehicleConflict(e,null);
+    return '<option value="'+escHtml(e)+'"'+((usedHere||conflict)?' disabled':'')+'>'+escHtml(e)+(usedHere?' \u2014 déjà ajouté à ce renfort':conflict?' \u2014 déjà engagé':'')+'</option>';
+  }).join('');
   const enginBlock=isComplet?'<div class="fg"><div class="fgl">Engin engag\u00e9</div><select class="fi" id="renfort-engin">'+enginOpts+'</select></div>':'';
 
   document.getElementById('mt').textContent='Composition de l\u2019\u00e9quipage de renfort';
@@ -3569,29 +3578,67 @@ function showRenfortEquipageModal(cid,renfortId){
     +enginBlock
     +'<div style="font-size:12px;font-weight:600;margin-bottom:8px;">\u00c9quipage :</div>'
     +'<div id="renfort-equip-rows">'
-    +buildRenfortEquipRow(0,null,'Chef d\u2019agr\u00e8s')
-    +buildRenfortEquipRow(1,null,'Conducteur')
-    +(isComplet?buildRenfortEquipRow(2,null,'\u00c9quipier'):'')
+    +buildRenfortEquipRow(0,null,'Chef d\u2019agr\u00e8s',r)
+    +buildRenfortEquipRow(1,null,'Conducteur',r)
+    +(isComplet?buildRenfortEquipRow(2,null,'\u00c9quipier',r):'')
     +'</div>'
     +'<div class="brow" style="margin-top:10px;">'
     +'<button class="btn sm" style="background:#7C3AED;color:#fff;" onclick="confirmerRenfortEquipage(\''+cid+'\',\''+renfortId+'\')">&#x1F692; Confirmer le d\u00e9part</button>'
     +'<button class="btn sm" onclick="cM()">Retour</button>'
     +'</div></div>';
   document.getElementById('mo').style.display='flex';
+  setTimeout(refreshRenfortEquipageSelects,0);
 }
 
-function buildRenfortEquipRow(idx,login,role){
+function renfortSourceIntervention(r){
+  const dSrc=r&&CASERNE_DATA[r.caserneSource];
+  return dSrc?(dSrc.ivs||[]).find(function(iv){return iv.id===r.ivId;}):null;
+}
+function renfortSourceHasVehicle(ivSrc,cid,engin){
+  const key=nm(engin);if(!ivSrc||!key)return false;
+  return (ivSrc._releves||[]).some(function(releve){
+    return releve&&releve.isRenfort&&!releve.isRenfortInterne&&releve.caserneRenfort===cid&&nm(releve.enginRenfort)===key;
+  });
+}
+function renfortUnavailablePersonnel(r){
+  const unavailable=new Set();
+  const ivSrc=renfortSourceIntervention(r);
+  interventionActivePersonnelLogins(ivSrc).forEach(function(login){unavailable.add(login);});
+  getActiveOperationalInterventions(null).forEach(function(iv){
+    interventionActivePersonnelLogins(iv).forEach(function(login){unavailable.add(login);});
+  });
+  return unavailable;
+}
+function refreshRenfortEquipageSelects(){
+  const selects=Array.from(document.querySelectorAll('select[id^="renfort-eq-"]'));
+  const selected=selects.map(function(sel){return sel.value;}).filter(Boolean);
+  selects.forEach(function(sel){
+    Array.from(sel.options).forEach(function(option){
+      if(!option.value)return;
+      const baseDisabled=option.dataset.unavailable==='1';
+      const selectedElsewhere=selected.includes(option.value)&&sel.value!==option.value;
+      option.disabled=baseDisabled||selectedElsewhere;
+    });
+  });
+}
+
+function buildRenfortEquipRow(idx,login,role,r){
+  const unavailable=renfortUnavailablePersonnel(r);
   const opts='<option value="">\u2014 Aucun \u2014</option>'
     +sortByGradeThenName(USERS).map(function(u){
-      return '<option value="'+u.l+'"'+(u.l===login?' selected':'')+'>'+fullName(u)+' ('+gradeAbbr(u.grade)+')</option>';
+      const blocked=unavailable.has(u.l)&&u.l!==login;
+      return '<option value="'+u.l+'"'+(u.l===login?' selected':'')+(blocked?' disabled data-unavailable="1"':'')+'>'+fullName(u)+' ('+gradeAbbr(u.grade)+')'+(blocked?' \u2014 déjà engagé':'')+'</option>';
     }).join('');
   return '<div style="margin-bottom:6px;display:grid;grid-template-columns:120px 1fr;gap:8px;align-items:center;">'
     +'<span style="font-size:11px;font-weight:600;color:var(--t2);">'+role+'</span>'
-    +'<select class="fi" id="renfort-eq-'+idx+'">'+opts+'</select></div>';
+    +'<select class="fi" id="renfort-eq-'+idx+'" onchange="refreshRenfortEquipageSelects()">'+opts+'</select></div>';
 }
 
 function confirmerRenfortEquipage(cid,renfortId){
   const r=CASERNE_DATA[cid]?.renforts?.find(function(x){return x.id===renfortId;});if(!r)return;
+  if(r.statut==='en-cours'||r.statut==='termine'){
+    showToast('Ce renfort a déjà été composé et enregistré.','warn');return;
+  }
   const engin=document.getElementById('renfort-engin')?.value||'';
   const equip=[];
   [0,1,2,3].forEach(function(i){
@@ -3602,6 +3649,26 @@ function confirmerRenfortEquipage(cid,renfortId){
       equip.push({role:roles[i],login:sel.value,hDebut:getHHMM(N()),nom:u.nom||'',prenom:u.prenom||'',grade:u.grade||''});
     }
   });
+  if(r.type==='complet'&&!engin){showToast('Sélectionnez le véhicule du renfort.','warn');return;}
+  if(!equip.length){showToast('Renseignez au moins un agent pour ce renfort.','warn');return;}
+  const logins=equip.map(function(member){return member.login;});
+  if(new Set(logins).size!==logins.length){showToast('Un même agent ne peut être sélectionné qu’une seule fois dans le renfort.','warn');return;}
+
+  const ivSrc=renfortSourceIntervention(r);
+  if(r.type==='complet'&&renfortSourceHasVehicle(ivSrc,cid,engin)){
+    showToast('Ce véhicule a déjà été ajouté à cette intervention par cette caserne.','warn');return;
+  }
+  if(r.type==='complet'){
+    const vehicleConflict=findActiveVehicleConflict(engin,null);
+    if(vehicleConflict){showOperationalConflict('vehicle',engin,vehicleConflict);return;}
+  }
+  const sourcePersonnel=new Set(interventionActivePersonnelLogins(ivSrc));
+  const duplicate=logins.find(function(login){return sourcePersonnel.has(login);});
+  if(duplicate){showToast(interventionTeammateName(duplicate)+' est déjà affecté à cette intervention.','warn');return;}
+  for(const login of logins){
+    const conflict=findActivePersonnelConflict(login,null);
+    if(conflict){showOperationalConflict('personnel',login,conflict);return;}
+  }
   r.equipageRenfort=equip;
   r.enginRenfort=engin;
   r.statut='en-cours';
@@ -3609,7 +3676,6 @@ function confirmerRenfortEquipage(cid,renfortId){
 
   // ── Créer l'IV locale dans la caserne renforcée ──
   const dSrc=CASERNE_DATA[r.caserneSource];
-  const ivSrc=dSrc?(dSrc.ivs||[]).find(function(iv){return iv.id===r.ivId;}):null;
   const casSrc=CASERNES.find(function(c){return c.id===r.caserneSource;});
   if(!CASERNE_DATA[cid].ivs)CASERNE_DATA[cid].ivs=[];
   // Éviter les doublons
