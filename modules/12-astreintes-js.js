@@ -3028,8 +3028,95 @@ function showInterventionsLiees(id){
 }
 
 // ────────────────── COMPLÉMENT D'INFORMATION ──────────────────
-// Permet d'ajouter un commentaire libre horodaté à une intervention active
-// (ex. le requérant rappelle avec des précisions). Réservé au droit Interventions.
+// Permet d'ajouter un commentaire, des telephones et les disponibilites du
+// requerant apres l'enregistrement initial de l'appel.
+function readComplementPhones(){
+  const seen=new Set();
+  return Array.from(document.querySelectorAll('#compl-phone-list [data-compl-phone]')).map(function(input){return String(input.value||'').trim();}).filter(function(phone){if(!phone||seen.has(phone))return false;seen.add(phone);return true;});
+}
+function renderComplementPhones(phones){
+  const box=document.getElementById('compl-phone-list');if(!box)return;
+  const values=Array.isArray(phones)&&phones.length?phones:[''];
+  box.innerHTML=values.map(function(phone,index){
+    const action=index===0
+      ?'<button type="button" class="appel-phone-add" onclick="addComplementPhone()" aria-label="Ajouter un numéro" title="Ajouter un numéro">+</button>'
+      :'<button type="button" class="appel-phone-remove" onclick="removeComplementPhone('+index+')" aria-label="Supprimer ce numéro" title="Supprimer ce numéro">−</button>';
+    return '<div class="appel-phone-row"><input class="fi" id="compl-phone-'+index+'" type="tel" data-compl-phone value="'+escHtml(phone)+'" placeholder="06 XX XX XX XX">'+action+'</div>';
+  }).join('');
+  registerMobileModalFields(box);
+}
+function addComplementPhone(){
+  const values=Array.from(document.querySelectorAll('#compl-phone-list [data-compl-phone]')).map(function(input){return input.value||'';});
+  values.push('');renderComplementPhones(values);
+  const field=document.getElementById('compl-phone-'+(values.length-1));if(field)field.focus();
+}
+function removeComplementPhone(index){
+  const values=Array.from(document.querySelectorAll('#compl-phone-list [data-compl-phone]')).map(function(input){return input.value||'';});
+  values.splice(index,1);renderComplementPhones(values);
+}
+function complementAvailabilityPeriods(iv){
+  const dispo=iv&&iv.reqDispo;
+  if(dispo&&Array.isArray(dispo.periods)&&dispo.periods.length)return dispo.periods.map(function(period){return Object.assign({},period);});
+  if(dispo&&Array.isArray(dispo.days)&&dispo.days.length)return dispo.days.map(function(day){return{state:dispo.state==='mixte'?'disponible':dispo.state,day:day,mode:dispo.mode||'journee',h1:dispo.h1||'',h2:dispo.h2||''};});
+  return[{state:'',day:'',mode:'journee',h1:'',h2:''}];
+}
+function complementAvailabilityPeriodHTML(period,index){
+  period=period||{};
+  const selected=function(value,current){return value===current?' selected':'';};
+  const action=index===0
+    ?'<button type="button" class="appel-phone-add" onclick="addComplementAvailabilityPeriod()" aria-label="Ajouter une disponibilité" title="Ajouter une disponibilité">+</button>'
+    :'<button type="button" class="appel-phone-remove" onclick="removeComplementAvailabilityPeriod('+index+')" aria-label="Supprimer cette disponibilité" title="Supprimer cette disponibilité">−</button>';
+  return '<div class="appel-dispo-period" data-compl-dispo-period>'
+    +'<div class="appel-dispo-period-grid"><div><div class="fgl">État</div><select class="fi" id="compl-dispo-state-'+index+'" data-compl-dispo-state onchange="toggleComplementAvailability(this)"><option value=""'+selected('',period.state||'')+'>Non précisé</option><option value="disponible"'+selected('disponible',period.state)+'>Disponible</option><option value="indisponible"'+selected('indisponible',period.state)+'>Indisponible</option></select></div>'
+    +'<div><div class="fgl">Jour concerné</div><div class="appel-day-row"><input class="fi" id="compl-dispo-day-'+index+'" type="date" data-compl-dispo-day value="'+escHtml(period.day||'')+'">'+action+'</div></div></div>'
+    +'<div class="appel-dispo-period-grid appel-dispo-time-grid"><div><div class="fgl">Précision horaire</div><select class="fi" id="compl-dispo-mode-'+index+'" data-compl-dispo-mode onchange="toggleComplementAvailability(this)"><option value="journee"'+selected('journee',period.mode||'journee')+'>Toute la journée</option><option value="avant"'+selected('avant',period.mode)+'>Avant une heure</option><option value="entre"'+selected('entre',period.mode)+'>Entre deux heures</option><option value="apres"'+selected('apres',period.mode)+'>Après une heure</option></select></div>'
+    +'<div data-compl-dispo-hours><div class="fgl" data-compl-dispo-h1-label>Horaire</div><div class="appel-dispo-hours-row"><input class="fi" id="compl-dispo-h1-'+index+'" type="time" data-compl-dispo-h1 value="'+escHtml(period.h1||'')+'"><div data-compl-dispo-h2-wrap><input class="fi" id="compl-dispo-h2-'+index+'" type="time" data-compl-dispo-h2 value="'+escHtml(period.h2||'')+'" aria-label="Heure de fin"></div></div></div></div></div>';
+}
+function renderComplementAvailabilityPeriods(periods){
+  const box=document.getElementById('compl-dispo-list');if(!box)return;
+  const values=Array.isArray(periods)&&periods.length?periods:[{state:'',day:'',mode:'journee',h1:'',h2:''}];
+  box.innerHTML=values.map(complementAvailabilityPeriodHTML).join('');
+  box.querySelectorAll('[data-compl-dispo-period]').forEach(toggleComplementAvailability);
+  registerMobileModalFields(box);
+}
+function readComplementAvailabilityPeriods(){
+  return Array.from(document.querySelectorAll('#compl-dispo-list [data-compl-dispo-period]')).map(function(row){return{
+    state:row.querySelector('[data-compl-dispo-state]')?.value||'',day:row.querySelector('[data-compl-dispo-day]')?.value||'',mode:row.querySelector('[data-compl-dispo-mode]')?.value||'journee',
+    h1:row.querySelector('[data-compl-dispo-h1]')?.value||'',h2:row.querySelector('[data-compl-dispo-h2]')?.value||''
+  };});
+}
+function addComplementAvailabilityPeriod(){
+  const periods=readComplementAvailabilityPeriods();periods.push({state:'',day:'',mode:'journee',h1:'',h2:''});renderComplementAvailabilityPeriods(periods);
+  const field=document.getElementById('compl-dispo-state-'+(periods.length-1));if(field)field.focus();
+}
+function removeComplementAvailabilityPeriod(index){const periods=readComplementAvailabilityPeriods();periods.splice(index,1);renderComplementAvailabilityPeriods(periods);}
+function toggleComplementAvailability(source){
+  const row=source&&source.closest?source.closest('[data-compl-dispo-period]'):source;if(!row)return;
+  const state=row.querySelector('[data-compl-dispo-state]')?.value||'',mode=row.querySelector('[data-compl-dispo-mode]')?.value||'journee';
+  const modeSelect=row.querySelector('[data-compl-dispo-mode]'),hours=row.querySelector('[data-compl-dispo-hours]'),second=row.querySelector('[data-compl-dispo-h2-wrap]'),label=row.querySelector('[data-compl-dispo-h1-label]'),hoursRow=row.querySelector('.appel-dispo-hours-row');
+  if(modeSelect)modeSelect.disabled=!state;
+  if(hours)hours.style.display=state&&['avant','entre','apres'].includes(mode)?'block':'none';
+  if(second)second.style.display=mode==='entre'?'':'none';
+  if(hoursRow)hoursRow.classList.toggle('single',mode!=='entre');
+  if(label)label.textContent=mode==='avant'?'Avant':mode==='apres'?'Après':'À partir de';
+}
+function validateComplementAvailability(periods){
+  const started=periods.filter(function(period){return period.state||period.day||period.h1||period.h2;});
+  for(let index=0;index<started.length;index++){
+    const period=started[index],prefix=started.length>1?'Disponibilité '+(index+1)+' : ':'';
+    if(!period.state)return prefix+'précisez si le requérant est disponible ou indisponible.';
+    if(!period.day)return prefix+'renseignez le jour concerné.';
+    if(['avant','entre','apres'].includes(period.mode)&&!period.h1)return prefix+"renseignez l'horaire.";
+    if(period.mode==='entre'&&!period.h2)return prefix+"renseignez l'heure de fin.";
+    if(period.mode==='entre'&&period.h2<=period.h1)return prefix+"l'heure de fin doit être après l'heure de début.";
+  }
+  return'';
+}
+function reqAvailabilityFromPeriods(periods){
+  const filled=periods.filter(function(period){return period.state&&period.day;});if(!filled.length)return null;
+  const states=Array.from(new Set(filled.map(function(period){return period.state;}))),first=filled[0];
+  return{state:states.length===1?states[0]:'mixte',days:filled.map(function(period){return period.day;}),mode:first.mode,h1:first.h1,h2:first.h2,periods:filled,label:filled.map(reqAvailabilityPeriodLabel).join(' ; ')};
+}
 function showComplementModal(id){
   const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
   if(!(hasRight('Interventions')||isAgres()||isChef()||isAdminModeActive())){showToast('Action réservée aux personnes ayant le droit Interventions.','warn');return;}
@@ -3037,22 +3124,41 @@ function showComplementModal(id){
   document.getElementById('mi').textContent=iv.n+' — '+(iv.com||'');
   document.getElementById('mb').innerHTML=
     '<div>'
-    +'<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Ajoutez une information transmise après l\u2019enregistrement (ex. le requérant rappelle). Elle sera horodatée et ajoutée à l\u2019historique.</div>'
-    +'<div class="fg"><div class="fgl">Information complémentaire</div>'
+    +'<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Mettez à jour les informations transmises après l\u2019enregistrement de l\u2019appel. Les changements seront horodatés.</div>'
+    +'<div class="fg"><div class="fgl">Téléphone(s)</div><div id="compl-phone-list"></div></div>'
+    +'<div class="fg"><div class="fgl">Disponibilité du requérant <span style="font-size:10px;color:var(--t2);">(optionnel)</span></div><div id="compl-dispo-list"></div></div>'
+    +'<div class="fg"><div class="fgl">Information complémentaire <span style="font-size:10px;color:var(--t2);">(optionnel)</span></div>'
     +'<textarea class="fi" id="compl-info-val" rows="4" placeholder="ex. Le requérant signale que le nid est en hauteur, prévoir une échelle."></textarea></div>'
     +'<div id="compl-info-err" style="font-size:12px;color:#E24B4A;display:none;margin-bottom:8px;"></div>'
     +'<div class="brow">'
-    +'<button class="btn pr sm" onclick="saveComplementInfo(\''+id+'\')">&#x1F4BE; Ajouter</button>'
+    +'<button class="btn pr sm" onclick="saveComplementInfo(\''+id+'\')">&#x1F4BE; Enregistrer les informations</button>'
     +'<button class="btn sm" onclick="deactivateMobileModalField();oM(\''+id+'\')">Retour</button></div></div>';
+  renderComplementPhones(getInterventionPhones(iv));
+  renderComplementAvailabilityPeriods(complementAvailabilityPeriods(iv));
   openModalAtTop('compl-info-val');
   activateMobileModalField('compl-info-val');
+  registerMobileModalFields(document.getElementById('mb'));
 }
 function saveComplementInfo(id){
   const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
   const txt=(document.getElementById('compl-info-val').value||'').trim();
   const err=document.getElementById('compl-info-err');
-  if(!txt){err.style.display='block';err.textContent='Veuillez saisir une information.';return;}
-  iv.tl.push({s:'info-compl',h:getH(N()),who:CU.l,note:txt});
+  const phones=readComplementPhones();
+  if(!phones.length){err.style.display='block';err.textContent='Conservez au moins un numéro de téléphone.';return;}
+  const periods=readComplementAvailabilityPeriods(),availabilityError=validateComplementAvailability(periods);
+  if(availabilityError){err.style.display='block';err.textContent=availabilityError;return;}
+  const reqDispo=reqAvailabilityFromPeriods(periods),oldPhones=getInterventionPhones(iv),oldLabel=iv.reqDispo&&iv.reqDispo.label||'',newLabel=reqDispo&&reqDispo.label||'';
+  const phonesChanged=JSON.stringify(oldPhones)!==JSON.stringify(phones),availabilityChanged=oldLabel!==newLabel;
+  if(!txt&&!phonesChanged&&!availabilityChanged){err.style.display='block';err.textContent='Aucune nouvelle information à enregistrer.';return;}
+  const notes=[];
+  if(txt)notes.push(txt);
+  if(phonesChanged)notes.push('Téléphone(s) mis à jour : '+phones.join(' · '));
+  if(availabilityChanged)notes.push(reqDispo?'Disponibilité du requérant : '+reqDispo.label:'Disponibilité du requérant supprimée');
+  iv.tel=phones[0]||'';iv.tels=phones;iv.reqDispo=reqDispo;
+  if(!iv._appelDetails||typeof iv._appelDetails!=='object')iv._appelDetails={};
+  if(reqDispo)iv._appelDetails['Disponibilité du requérant']=reqDispo.label;else delete iv._appelDetails['Disponibilité du requérant'];
+  if(!Array.isArray(iv.tl))iv.tl=[];
+  iv.tl.push({s:'info-compl',h:getH(N()),who:CU.l,note:notes.join(' ; ')});
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);
   cM();rI();

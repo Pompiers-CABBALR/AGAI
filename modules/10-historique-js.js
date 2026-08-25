@@ -81,12 +81,59 @@ function tgLegacy(id,aid){const el=document.getElementById(id);if(!el)return;con
 
 // ────────────────── PROFIL ──────────────────
 let HIST_SEARCH='';
+let HIST_DATE='';
+let HIST_CREW='';
 const HIST_GROUP_STATE={};
 function historyGroupOpen(id,defaultOpen){
   return Object.prototype.hasOwnProperty.call(HIST_GROUP_STATE,id)?HIST_GROUP_STATE[id]:!!defaultOpen;
 }
 function historyNormalizeSearch(value){
   return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
+}
+function historyDateKey(value){
+  const digits=String(value||'').replace(/\D/g,'');
+  return digits.length>=8?digits.slice(0,8):'';
+}
+function historyInterventionDayKey(iv){
+  const timeline=Array.isArray(iv&&iv.tl)?iv.tl:[];
+  const starts=timeline.filter(function(entry){return entry&&entry.s==='en-cours'&&historyDateKey(entry.h);});
+  if(starts.length)return historyDateKey(starts[starts.length-1].h);
+  const ends=timeline.filter(function(entry){return entry&&entry.s==='terminee'&&historyDateKey(entry.h);});
+  if(ends.length)return historyDateKey(ends[ends.length-1].h);
+  return historyDateKey(iv&&iv.h)||'00000000';
+}
+function historyCrewMembers(iv){
+  const members=[],seen=new Set();
+  const add=function(login,role){
+    login=String(login||'').trim();if(!login||seen.has(login))return;
+    seen.add(login);
+    members.push({login:login,role:role||'',name:interventionTeammateName(login)||login});
+  };
+  add(iv&&iv.agr,'CA');add(iv&&iv._agr2,'CA');
+  [iv&&iv._equipage1,iv&&iv._equipage2].forEach(function(list){
+    (Array.isArray(list)?list:[]).forEach(function(member){if(member)add(member.login,member.role||'');});
+  });
+  (Array.isArray(iv&&iv._releves)?iv._releves:[]).forEach(function(releve){
+    ['ancienEquipage','nouvelEquipage'].forEach(function(key){
+      (Array.isArray(releve&&releve[key])?releve[key]:[]).forEach(function(member){if(member)add(member.login,member.role||'');});
+    });
+  });
+  return members;
+}
+function historyCrewRoleLabel(role){
+  const value=historyNormalizeSearch(role);
+  if(value==='ca'||value.includes('chef d agres'))return'CA';
+  if(value.includes('conduct'))return'Cond.';
+  if(value.includes('chef d equipe'))return'CE';
+  if(value.includes('equip'))return'Éq.';
+  return role||'';
+}
+function historyCrewHTML(iv){
+  const members=historyCrewMembers(iv);if(!members.length)return'';
+  return '<span class="hist-crew" title="Équipage de l’intervention">🚒 '+members.map(function(member){
+    const role=historyCrewRoleLabel(member.role);
+    return '<span class="hist-crew-member">'+(role?escHtml(role)+' ':'')+escHtml(member.name)+'</span>';
+  }).join('')+'</span>';
 }
 function historyIsoWeekInfo(dateKey){
   const y=Number(String(dateKey).slice(0,4)),m=Number(String(dateKey).slice(4,6)),d=Number(String(dateKey).slice(6,8));
@@ -102,11 +149,7 @@ function historyIsoWeekInfo(dateKey){
   return {key:String(weekYear)+'W'+String(week).padStart(2,'0'),week:week,label:'Semaine '+week+' \u2014 du '+short(monday)+' au '+short(sunday)};
 }
 function historySearchBlob(iv){
-  const crew=[];
-  [iv._equipage1,iv._equipage2].forEach(function(list){
-    (Array.isArray(list)?list:[]).forEach(function(member){if(member&&member.login)crew.push(interventionTeammateName(member.login));});
-  });
-  [iv.agr,iv._agr2].forEach(function(login){if(login)crew.push(interventionTeammateName(login));});
+  const crew=historyCrewMembers(iv).map(function(member){return member.name+' '+member.login;});
   return historyNormalizeSearch([
     iv.id,iv.n,iv.addr,iv.com,iv.req,iv.tel,iv.s,iv._numCaserne,iv._numGlobal,iv._numMois,iv._numRenfort,iv._numSDIS,
     iv._hDebut,iv._hFin,iv._crTexte,iv._compteRendu,crew.join(' ')
@@ -122,7 +165,8 @@ function historyReportOrder(iv){
 }
 function historyRowHTML(iv){
   const click=iv._isPilp?"oPilp('"+escHtml(iv.id)+"')":"oM('"+escHtml(iv.id)+"')";
-  return `<div class="hm hist-entry${iv._crValide&&iv._impressions&&iv._impressions.length?' report-complete':''}" data-hsearch="${escHtml(historySearchBlob(iv))}" onclick="${click}">
+  const crewLogins=historyCrewMembers(iv).map(function(member){return member.login;}).join('|');
+  return `<div class="hm hist-entry${iv._crValide&&iv._impressions&&iv._impressions.length?' report-complete':''}" data-hsearch="${escHtml(historySearchBlob(iv))}" data-hdate="${historyInterventionDayKey(iv)}" data-hcrew="${escHtml(crewLogins)}" onclick="${click}">
   <span style="font-family:monospace;font-size:10px;color:var(--t3);">${escHtml(iv._numCaserne||interventionDisplayCallNumber(iv))}</span>
   <span style="flex:1;font-size:12px;color:var(--t);${iv.s==='annulee'?'text-decoration:line-through;color:#999;':''}">
     ${escHtml(iv.n||'Intervention')}
@@ -132,6 +176,7 @@ function historyRowHTML(iv){
       ${!iv._isRenfort&&iv._numMois?`<span class="hist-num-m" style="color:#C0392B;">M:${escHtml(iv._numMois)}</span>`:''}
       ${iv._numSDIS?`<span style="color:#003399;"> S:${escHtml(iv._numSDIS)}</span>`:''}
     </span>`:''}
+    ${historyCrewHTML(iv)}
   </span>
   <span style="font-size:11px;color:var(--t2);text-align:right;">${iv.addr?escHtml(iv.addr)+', ':''}${escHtml(iv.com||'')}${(iv._hDebut||iv._hFin)?`<br><span style="font-size:10px;color:var(--t3);">${iv._hDebut?'\ud83d\udd50 '+escHtml(iv._hDebut):''}${iv._hDebut&&iv._hFin?' \u2192 ':''}${iv._hFin?escHtml(iv._hFin):''}</span>`:''}</span>
   <span class="bdg ${iv.s==='terminee'?'bg2':iv.s==='avis-passage'?'bp':iv.s==='annulee'?'bgr':'ba'}" style="font-size:10px;">${iv.s==='terminee'?'\u2713':iv.s==='avis-passage'?'\ud83d\udfe3':iv.s==='annulee'?'\u2715':'\u21bb'}</span>
@@ -144,16 +189,20 @@ function historyRowHTML(iv){
 </div>`;
 }
 function filterHistoryRows(value){
-  HIST_SEARCH=historyNormalizeSearch(value);
+  if(value!==undefined)HIST_SEARCH=historyNormalizeSearch(value);
   const root=document.getElementById('hc');if(!root)return;
   root.querySelectorAll('.hist-entry').forEach(function(row){
-    row.style.display=!HIST_SEARCH||String(row.dataset.hsearch||'').includes(HIST_SEARCH)?'':'none';
+    const searchOk=!HIST_SEARCH||String(row.dataset.hsearch||'').includes(HIST_SEARCH);
+    const dateOk=!HIST_DATE||String(row.dataset.hdate||'')===HIST_DATE;
+    const crew=String(row.dataset.hcrew||'').split('|').filter(Boolean);
+    const crewOk=!HIST_CREW||crew.includes(HIST_CREW);
+    row.style.display=searchOk&&dateOk&&crewOk?'':'none';
   });
   ['hist-day-block','hist-week-block','hist-month-block','hist-year-block'].forEach(function(cls){
     root.querySelectorAll('.'+cls).forEach(function(block){
       const visible=Array.from(block.querySelectorAll('.hist-entry')).some(function(row){return row.style.display!=='none';});
       block.style.display=visible?'':'none';
-      if(visible&&HIST_SEARCH){
+      if(visible&&(HIST_SEARCH||HIST_DATE||HIST_CREW)){
         block.querySelectorAll(':scope > .hist-group-content').forEach(function(content){content.style.display='';});
       }
     });
@@ -161,7 +210,9 @@ function filterHistoryRows(value){
   const any=Array.from(root.querySelectorAll('.hist-entry')).some(function(row){return row.style.display!=='none';});
   const empty=document.getElementById('hist-no-results');if(empty)empty.style.display=any?'none':'block';
 }
-function clearHistorySearch(){HIST_SEARCH='';rHist();const input=document.getElementById('hist-search');if(input)input.focus();}
+function setHistoryDateFilter(value){HIST_DATE=String(value||'').replace(/\D/g,'').slice(0,8);filterHistoryRows();}
+function setHistoryCrewFilter(value){HIST_CREW=String(value||'');filterHistoryRows();}
+function clearHistorySearch(){HIST_SEARCH='';HIST_DATE='';HIST_CREW='';rHist();const input=document.getElementById('hist-search');if(input)input.focus();}
 function rHist(){
   const startOrderRepair=agaiRepairNumberingByStartOrder();
   if(startOrderRepair.applied){
@@ -182,15 +233,7 @@ function rHist(){
   const pilpIvsH=canSeePILP()?(cA?PILP_IVS:PILP_IVS.filter(function(iv){return isTdy(iv);})) : [];
   const pilpMapped=pilpIvsH.map(function(p){return Object.assign({},p,{n:'[PILP] '+p.n,tl:p.tl,_isPilp:true});});
   const countedTotal=function(list){return list.filter(isInterventionComptabilisee).length;};
-  const dateKey=function(value){const digits=String(value||'').replace(/\D/g,'');return digits.length>=8?digits.slice(0,8):'';};
-  const dayKey=function(iv){
-    const timeline=Array.isArray(iv.tl)?iv.tl:[];
-    const starts=timeline.filter(function(entry){return entry&&entry.s==='en-cours'&&dateKey(entry.h);});
-    if(starts.length)return dateKey(starts[starts.length-1].h);
-    const ends=timeline.filter(function(entry){return entry&&entry.s==='terminee'&&dateKey(entry.h);});
-    if(ends.length)return dateKey(ends[ends.length-1].h);
-    return dateKey(iv.h)||'00000000';
-  };
+  const dayKey=historyInterventionDayKey;
   const startTime=function(iv){const hd=String(iv._hDebut||'').replace(/[^0-9]/g,'');return hd?hd.padStart(4,'0').slice(0,4):'0000';};
   const ivs=normalIvs.concat(pilpMapped).sort(function(a,b){
     const daySort=dayKey(b).localeCompare(dayKey(a));
@@ -211,7 +254,15 @@ function rHist(){
   const months=['','Janvier','F\u00e9vrier','Mars','Avril','Mai','Juin','Juillet','Ao\u00fbt','Septembre','Octobre','Novembre','D\u00e9cembre'];
   const years=Object.keys(groups).sort(function(a,b){return b-a;});
   const c=document.getElementById('hc');
-  const tools='<div class="hist-tools"><div><strong>\ud83d\udd0e Rechercher dans l\u2019historique</strong><div>Nature, adresse, commune, num\u00e9ro, agent, statut ou compte rendu</div></div><div class="hist-search-wrap"><input id="hist-search" type="search" value="'+escHtml(HIST_SEARCH)+'" placeholder="Rechercher une intervention\u2026" oninput="filterHistoryRows(this.value)"><button type="button" onclick="clearHistorySearch()">\u2715 Effacer</button></div></div>';
+  const crewMap=new Map();
+  ivs.forEach(function(iv){historyCrewMembers(iv).forEach(function(member){if(!crewMap.has(member.login))crewMap.set(member.login,member.name);});});
+  const crewOptions=Array.from(crewMap.entries()).sort(function(a,b){return a[1].localeCompare(b[1],'fr',{sensitivity:'base'});}).map(function(entry){return '<option value="'+escHtml(entry[0])+'"'+(HIST_CREW===entry[0]?' selected':'')+'>'+escHtml(entry[1])+'</option>';}).join('');
+  const dateValue=HIST_DATE&&HIST_DATE.length===8?HIST_DATE.slice(0,4)+'-'+HIST_DATE.slice(4,6)+'-'+HIST_DATE.slice(6,8):'';
+  const tools='<div class="hist-tools"><div><strong>\ud83d\udd0e Rechercher dans l\u2019historique</strong><div>Recherche libre, date ou membre de l\u2019équipage</div></div><div class="hist-search-wrap">'
+    +'<input id="hist-search" type="search" value="'+escHtml(HIST_SEARCH)+'" placeholder="Nature, adresse, numéro…" oninput="filterHistoryRows(this.value)">'
+    +'<input id="hist-date-filter" type="date" value="'+dateValue+'" aria-label="Filtrer par date" onchange="setHistoryDateFilter(this.value)">'
+    +'<select id="hist-crew-filter" aria-label="Filtrer par équipage" onchange="setHistoryCrewFilter(this.value)"><option value="">Tous les équipages</option>'+crewOptions+'</select>'
+    +'<button type="button" onclick="clearHistorySearch()">\u2715 Effacer</button></div></div>';
   if(!years.length){c.innerHTML=tools+'<div style="padding:20px;text-align:center;font-size:13px;color:var(--t2);">Aucun historique.</div>';return;}
   const yearHtml=years.map(function(year,yearIndex){
     const monthKeys=Object.keys(groups[year]).sort(function(a,b){return b-a;});
@@ -237,7 +288,7 @@ function rHist(){
       }).join('')+'</div></div>';
   }).join('');
   c.innerHTML=tools+'<div id="hist-no-results" style="display:none;padding:18px;text-align:center;color:var(--t2);">Aucune intervention ne correspond \u00e0 cette recherche.</div>'+yearHtml;
-  if(HIST_SEARCH)filterHistoryRows(HIST_SEARCH);
+  if(HIST_SEARCH||HIST_DATE||HIST_CREW)filterHistoryRows();
 }
 
 function tg(id,aid){

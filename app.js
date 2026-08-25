@@ -5515,7 +5515,7 @@ function oM(id){
   const sdots={'en-attente':'#E24B4A','selectionne':'var(--sel)','en-cours':'var(--amb)','terminee':'var(--grn)','avis-passage':'var(--pur)','avis-classe':'#6B21A8','avis-restaure':'#2563EB','modif':'#888','modif-adresse':'#888','modif-heure':'#C2410C','modif-equipier':'#2563EB','modif-engin':'#0F766E','reclasse':'#888','releve':'#0369A1','info-compl':'#0369A1'};
   const tlHtml=(iv.tl||[]).map(t=>`<div class="tl-item"><div class="tl-dot" style="background:${sdots[t.s]||'#aaa'};"></div><div class="tl-info"><span class="tl-status">${bm[t.s]?bm[t.s][1]:t.s}${t.note?` — ${t.note}`:''}</span> <span class="tl-horo">&#x1F4C5; ${t.h}</span><div class="tl-who">${t.who}</div></div></div>`).join('');
   const appelDetailEntries=iv._appelDetails&&typeof iv._appelDetails==='object'
-    ?Object.entries(iv._appelDetails).filter(([key])=>key!=='Nids à traiter'||!Array.isArray(iv._nidsAppel)||iv._nidsAppel.length!==1)
+    ?Object.entries(iv._appelDetails).filter(([key])=>(key!=='Nids à traiter'||!Array.isArray(iv._nidsAppel)||iv._nidsAppel.length!==1)&&key!=='Disponibilité du requérant')
     :[];
   const reclassHtml=(ag&&iv.s==='en-cours')?`<div class="reclass-box">
     <div class="reclass-title">Reclasser la nature</div>
@@ -5656,6 +5656,7 @@ function oM(id){
       ${(iv._reqInit||iv._telInit)?`<span style="font-size:10px;color:var(--t2);font-style:italic;">(initial : ${escHtml(iv._reqInit||'')}${iv._telInit?' · '+escHtml(iv._telInit):''})</span>`:''}
       ${(isAgres()&&iv.agr===CU.l||hasRight('Administration'))&&iv.s!=='terminee'?`<button class="btn sm" style="font-size:10px;padding:2px 7px;" onclick="editRequerant('${iv.id}')">✏️ Corriger</button>`:''}
     </div></div>
+    ${iv.reqDispo&&iv.reqDispo.label?`<div class="mr"><div class="ml">Disponibilité du requérant</div><div class="mv2">${reqAvailabilityBadgeHTML(iv)}</div></div>`:''}
     <div class="mr" style="padding:4px 0;">
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12px;">
         ${iv.op?`<span style="color:var(--t2);">&#x260E;&#xFE0F; Op.&nbsp;<span style="font-family:monospace;font-weight:600;color:var(--tx);">${iv.op}</span></span>`:''}
@@ -5754,7 +5755,7 @@ function oM(id){
       <div style="font-size:11px;font-weight:700;color:#6B21A8;margin-bottom:8px;">&#x1F4EC; Avis de passage${getAvisPassageHour(iv)?' — déposé à '+escHtml(getAvisPassageHour(iv)):''}${iv._avisPassageClasse?' — classé':''}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn sm" style="background:#7E22CE;color:#fff;border-color:#7E22CE;" onclick="viewAvisPassageDocument('${iv.id}')">&#x1F4CB; Voir l'avis de passage</button>${isAdminModeActive()&&iv._avisEnAttente?`<button class="btn sm" style="background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="classerAvisPassage('${iv.id}','standard')">&#x1F5C3;&#xFE0F; Classer</button>`:''}${isAdminModeActive()&&iv._avisPassageClasse===true&&!iv._avisEnAttente?`<button class="btn sm" style="background:#fff;color:#6B21A8;border-color:#A855F7;" onclick="restaurerAvisPassage('${iv.id}','standard')">↩ Remettre en attente</button>`:''}</div>
     </div>`:''}
-    ${(['en-attente','selectionne','en-cours'].includes(iv.s)&&(hasRight('Interventions')||isAgres()||isChef()||isAdminModeActive()))?`<button class="btn sm" style="width:100%;margin-bottom:8px;background:#0369A1;color:#fff;border-color:#0369A1;" onclick="showComplementModal('${iv.id}')">&#x2139;&#xFE0F; Ajouter un complément d'information</button>`:''}
+    ${(['en-attente','selectionne','en-cours'].includes(iv.s)&&(hasRight('Interventions')||isAgres()||isChef()||isAdminModeActive()))?`<button class="btn sm" style="width:100%;margin-bottom:8px;background:#0369A1;color:#fff;border-color:#0369A1;" onclick="showComplementModal('${iv.id}')">&#x2139;&#xFE0F; Compléter : information, téléphone ou disponibilité</button>`:''}
     <details style="background:var(--bg);border-radius:10px;margin-bottom:8px;" id="tl-details-${iv.id}">
       <summary style="font-size:11px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;padding:10px 12px;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;">
         Historique des statuts <span style="font-size:10px;background:var(--brd);border-radius:10px;padding:1px 7px;color:var(--t2);font-weight:400;">${(iv.tl||[]).length}</span>
@@ -6780,12 +6781,59 @@ function tgLegacy(id,aid){const el=document.getElementById(id);if(!el)return;con
 
 // ────────────────── PROFIL ──────────────────
 let HIST_SEARCH='';
+let HIST_DATE='';
+let HIST_CREW='';
 const HIST_GROUP_STATE={};
 function historyGroupOpen(id,defaultOpen){
   return Object.prototype.hasOwnProperty.call(HIST_GROUP_STATE,id)?HIST_GROUP_STATE[id]:!!defaultOpen;
 }
 function historyNormalizeSearch(value){
   return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
+}
+function historyDateKey(value){
+  const digits=String(value||'').replace(/\D/g,'');
+  return digits.length>=8?digits.slice(0,8):'';
+}
+function historyInterventionDayKey(iv){
+  const timeline=Array.isArray(iv&&iv.tl)?iv.tl:[];
+  const starts=timeline.filter(function(entry){return entry&&entry.s==='en-cours'&&historyDateKey(entry.h);});
+  if(starts.length)return historyDateKey(starts[starts.length-1].h);
+  const ends=timeline.filter(function(entry){return entry&&entry.s==='terminee'&&historyDateKey(entry.h);});
+  if(ends.length)return historyDateKey(ends[ends.length-1].h);
+  return historyDateKey(iv&&iv.h)||'00000000';
+}
+function historyCrewMembers(iv){
+  const members=[],seen=new Set();
+  const add=function(login,role){
+    login=String(login||'').trim();if(!login||seen.has(login))return;
+    seen.add(login);
+    members.push({login:login,role:role||'',name:interventionTeammateName(login)||login});
+  };
+  add(iv&&iv.agr,'CA');add(iv&&iv._agr2,'CA');
+  [iv&&iv._equipage1,iv&&iv._equipage2].forEach(function(list){
+    (Array.isArray(list)?list:[]).forEach(function(member){if(member)add(member.login,member.role||'');});
+  });
+  (Array.isArray(iv&&iv._releves)?iv._releves:[]).forEach(function(releve){
+    ['ancienEquipage','nouvelEquipage'].forEach(function(key){
+      (Array.isArray(releve&&releve[key])?releve[key]:[]).forEach(function(member){if(member)add(member.login,member.role||'');});
+    });
+  });
+  return members;
+}
+function historyCrewRoleLabel(role){
+  const value=historyNormalizeSearch(role);
+  if(value==='ca'||value.includes('chef d agres'))return'CA';
+  if(value.includes('conduct'))return'Cond.';
+  if(value.includes('chef d equipe'))return'CE';
+  if(value.includes('equip'))return'Éq.';
+  return role||'';
+}
+function historyCrewHTML(iv){
+  const members=historyCrewMembers(iv);if(!members.length)return'';
+  return '<span class="hist-crew" title="Équipage de l’intervention">🚒 '+members.map(function(member){
+    const role=historyCrewRoleLabel(member.role);
+    return '<span class="hist-crew-member">'+(role?escHtml(role)+' ':'')+escHtml(member.name)+'</span>';
+  }).join('')+'</span>';
 }
 function historyIsoWeekInfo(dateKey){
   const y=Number(String(dateKey).slice(0,4)),m=Number(String(dateKey).slice(4,6)),d=Number(String(dateKey).slice(6,8));
@@ -6801,11 +6849,7 @@ function historyIsoWeekInfo(dateKey){
   return {key:String(weekYear)+'W'+String(week).padStart(2,'0'),week:week,label:'Semaine '+week+' \u2014 du '+short(monday)+' au '+short(sunday)};
 }
 function historySearchBlob(iv){
-  const crew=[];
-  [iv._equipage1,iv._equipage2].forEach(function(list){
-    (Array.isArray(list)?list:[]).forEach(function(member){if(member&&member.login)crew.push(interventionTeammateName(member.login));});
-  });
-  [iv.agr,iv._agr2].forEach(function(login){if(login)crew.push(interventionTeammateName(login));});
+  const crew=historyCrewMembers(iv).map(function(member){return member.name+' '+member.login;});
   return historyNormalizeSearch([
     iv.id,iv.n,iv.addr,iv.com,iv.req,iv.tel,iv.s,iv._numCaserne,iv._numGlobal,iv._numMois,iv._numRenfort,iv._numSDIS,
     iv._hDebut,iv._hFin,iv._crTexte,iv._compteRendu,crew.join(' ')
@@ -6821,7 +6865,8 @@ function historyReportOrder(iv){
 }
 function historyRowHTML(iv){
   const click=iv._isPilp?"oPilp('"+escHtml(iv.id)+"')":"oM('"+escHtml(iv.id)+"')";
-  return `<div class="hm hist-entry${iv._crValide&&iv._impressions&&iv._impressions.length?' report-complete':''}" data-hsearch="${escHtml(historySearchBlob(iv))}" onclick="${click}">
+  const crewLogins=historyCrewMembers(iv).map(function(member){return member.login;}).join('|');
+  return `<div class="hm hist-entry${iv._crValide&&iv._impressions&&iv._impressions.length?' report-complete':''}" data-hsearch="${escHtml(historySearchBlob(iv))}" data-hdate="${historyInterventionDayKey(iv)}" data-hcrew="${escHtml(crewLogins)}" onclick="${click}">
   <span style="font-family:monospace;font-size:10px;color:var(--t3);">${escHtml(iv._numCaserne||interventionDisplayCallNumber(iv))}</span>
   <span style="flex:1;font-size:12px;color:var(--t);${iv.s==='annulee'?'text-decoration:line-through;color:#999;':''}">
     ${escHtml(iv.n||'Intervention')}
@@ -6831,6 +6876,7 @@ function historyRowHTML(iv){
       ${!iv._isRenfort&&iv._numMois?`<span class="hist-num-m" style="color:#C0392B;">M:${escHtml(iv._numMois)}</span>`:''}
       ${iv._numSDIS?`<span style="color:#003399;"> S:${escHtml(iv._numSDIS)}</span>`:''}
     </span>`:''}
+    ${historyCrewHTML(iv)}
   </span>
   <span style="font-size:11px;color:var(--t2);text-align:right;">${iv.addr?escHtml(iv.addr)+', ':''}${escHtml(iv.com||'')}${(iv._hDebut||iv._hFin)?`<br><span style="font-size:10px;color:var(--t3);">${iv._hDebut?'\ud83d\udd50 '+escHtml(iv._hDebut):''}${iv._hDebut&&iv._hFin?' \u2192 ':''}${iv._hFin?escHtml(iv._hFin):''}</span>`:''}</span>
   <span class="bdg ${iv.s==='terminee'?'bg2':iv.s==='avis-passage'?'bp':iv.s==='annulee'?'bgr':'ba'}" style="font-size:10px;">${iv.s==='terminee'?'\u2713':iv.s==='avis-passage'?'\ud83d\udfe3':iv.s==='annulee'?'\u2715':'\u21bb'}</span>
@@ -6843,16 +6889,20 @@ function historyRowHTML(iv){
 </div>`;
 }
 function filterHistoryRows(value){
-  HIST_SEARCH=historyNormalizeSearch(value);
+  if(value!==undefined)HIST_SEARCH=historyNormalizeSearch(value);
   const root=document.getElementById('hc');if(!root)return;
   root.querySelectorAll('.hist-entry').forEach(function(row){
-    row.style.display=!HIST_SEARCH||String(row.dataset.hsearch||'').includes(HIST_SEARCH)?'':'none';
+    const searchOk=!HIST_SEARCH||String(row.dataset.hsearch||'').includes(HIST_SEARCH);
+    const dateOk=!HIST_DATE||String(row.dataset.hdate||'')===HIST_DATE;
+    const crew=String(row.dataset.hcrew||'').split('|').filter(Boolean);
+    const crewOk=!HIST_CREW||crew.includes(HIST_CREW);
+    row.style.display=searchOk&&dateOk&&crewOk?'':'none';
   });
   ['hist-day-block','hist-week-block','hist-month-block','hist-year-block'].forEach(function(cls){
     root.querySelectorAll('.'+cls).forEach(function(block){
       const visible=Array.from(block.querySelectorAll('.hist-entry')).some(function(row){return row.style.display!=='none';});
       block.style.display=visible?'':'none';
-      if(visible&&HIST_SEARCH){
+      if(visible&&(HIST_SEARCH||HIST_DATE||HIST_CREW)){
         block.querySelectorAll(':scope > .hist-group-content').forEach(function(content){content.style.display='';});
       }
     });
@@ -6860,7 +6910,9 @@ function filterHistoryRows(value){
   const any=Array.from(root.querySelectorAll('.hist-entry')).some(function(row){return row.style.display!=='none';});
   const empty=document.getElementById('hist-no-results');if(empty)empty.style.display=any?'none':'block';
 }
-function clearHistorySearch(){HIST_SEARCH='';rHist();const input=document.getElementById('hist-search');if(input)input.focus();}
+function setHistoryDateFilter(value){HIST_DATE=String(value||'').replace(/\D/g,'').slice(0,8);filterHistoryRows();}
+function setHistoryCrewFilter(value){HIST_CREW=String(value||'');filterHistoryRows();}
+function clearHistorySearch(){HIST_SEARCH='';HIST_DATE='';HIST_CREW='';rHist();const input=document.getElementById('hist-search');if(input)input.focus();}
 function rHist(){
   const startOrderRepair=agaiRepairNumberingByStartOrder();
   if(startOrderRepair.applied){
@@ -6881,15 +6933,7 @@ function rHist(){
   const pilpIvsH=canSeePILP()?(cA?PILP_IVS:PILP_IVS.filter(function(iv){return isTdy(iv);})) : [];
   const pilpMapped=pilpIvsH.map(function(p){return Object.assign({},p,{n:'[PILP] '+p.n,tl:p.tl,_isPilp:true});});
   const countedTotal=function(list){return list.filter(isInterventionComptabilisee).length;};
-  const dateKey=function(value){const digits=String(value||'').replace(/\D/g,'');return digits.length>=8?digits.slice(0,8):'';};
-  const dayKey=function(iv){
-    const timeline=Array.isArray(iv.tl)?iv.tl:[];
-    const starts=timeline.filter(function(entry){return entry&&entry.s==='en-cours'&&dateKey(entry.h);});
-    if(starts.length)return dateKey(starts[starts.length-1].h);
-    const ends=timeline.filter(function(entry){return entry&&entry.s==='terminee'&&dateKey(entry.h);});
-    if(ends.length)return dateKey(ends[ends.length-1].h);
-    return dateKey(iv.h)||'00000000';
-  };
+  const dayKey=historyInterventionDayKey;
   const startTime=function(iv){const hd=String(iv._hDebut||'').replace(/[^0-9]/g,'');return hd?hd.padStart(4,'0').slice(0,4):'0000';};
   const ivs=normalIvs.concat(pilpMapped).sort(function(a,b){
     const daySort=dayKey(b).localeCompare(dayKey(a));
@@ -6910,7 +6954,15 @@ function rHist(){
   const months=['','Janvier','F\u00e9vrier','Mars','Avril','Mai','Juin','Juillet','Ao\u00fbt','Septembre','Octobre','Novembre','D\u00e9cembre'];
   const years=Object.keys(groups).sort(function(a,b){return b-a;});
   const c=document.getElementById('hc');
-  const tools='<div class="hist-tools"><div><strong>\ud83d\udd0e Rechercher dans l\u2019historique</strong><div>Nature, adresse, commune, num\u00e9ro, agent, statut ou compte rendu</div></div><div class="hist-search-wrap"><input id="hist-search" type="search" value="'+escHtml(HIST_SEARCH)+'" placeholder="Rechercher une intervention\u2026" oninput="filterHistoryRows(this.value)"><button type="button" onclick="clearHistorySearch()">\u2715 Effacer</button></div></div>';
+  const crewMap=new Map();
+  ivs.forEach(function(iv){historyCrewMembers(iv).forEach(function(member){if(!crewMap.has(member.login))crewMap.set(member.login,member.name);});});
+  const crewOptions=Array.from(crewMap.entries()).sort(function(a,b){return a[1].localeCompare(b[1],'fr',{sensitivity:'base'});}).map(function(entry){return '<option value="'+escHtml(entry[0])+'"'+(HIST_CREW===entry[0]?' selected':'')+'>'+escHtml(entry[1])+'</option>';}).join('');
+  const dateValue=HIST_DATE&&HIST_DATE.length===8?HIST_DATE.slice(0,4)+'-'+HIST_DATE.slice(4,6)+'-'+HIST_DATE.slice(6,8):'';
+  const tools='<div class="hist-tools"><div><strong>\ud83d\udd0e Rechercher dans l\u2019historique</strong><div>Recherche libre, date ou membre de l\u2019équipage</div></div><div class="hist-search-wrap">'
+    +'<input id="hist-search" type="search" value="'+escHtml(HIST_SEARCH)+'" placeholder="Nature, adresse, numéro…" oninput="filterHistoryRows(this.value)">'
+    +'<input id="hist-date-filter" type="date" value="'+dateValue+'" aria-label="Filtrer par date" onchange="setHistoryDateFilter(this.value)">'
+    +'<select id="hist-crew-filter" aria-label="Filtrer par équipage" onchange="setHistoryCrewFilter(this.value)"><option value="">Tous les équipages</option>'+crewOptions+'</select>'
+    +'<button type="button" onclick="clearHistorySearch()">\u2715 Effacer</button></div></div>';
   if(!years.length){c.innerHTML=tools+'<div style="padding:20px;text-align:center;font-size:13px;color:var(--t2);">Aucun historique.</div>';return;}
   const yearHtml=years.map(function(year,yearIndex){
     const monthKeys=Object.keys(groups[year]).sort(function(a,b){return b-a;});
@@ -6936,7 +6988,7 @@ function rHist(){
       }).join('')+'</div></div>';
   }).join('');
   c.innerHTML=tools+'<div id="hist-no-results" style="display:none;padding:18px;text-align:center;color:var(--t2);">Aucune intervention ne correspond \u00e0 cette recherche.</div>'+yearHtml;
-  if(HIST_SEARCH)filterHistoryRows(HIST_SEARCH);
+  if(HIST_SEARCH||HIST_DATE||HIST_CREW)filterHistoryRows();
 }
 
 function tg(id,aid){
@@ -10303,8 +10355,95 @@ function showInterventionsLiees(id){
 }
 
 // ────────────────── COMPLÉMENT D'INFORMATION ──────────────────
-// Permet d'ajouter un commentaire libre horodaté à une intervention active
-// (ex. le requérant rappelle avec des précisions). Réservé au droit Interventions.
+// Permet d'ajouter un commentaire, des telephones et les disponibilites du
+// requerant apres l'enregistrement initial de l'appel.
+function readComplementPhones(){
+  const seen=new Set();
+  return Array.from(document.querySelectorAll('#compl-phone-list [data-compl-phone]')).map(function(input){return String(input.value||'').trim();}).filter(function(phone){if(!phone||seen.has(phone))return false;seen.add(phone);return true;});
+}
+function renderComplementPhones(phones){
+  const box=document.getElementById('compl-phone-list');if(!box)return;
+  const values=Array.isArray(phones)&&phones.length?phones:[''];
+  box.innerHTML=values.map(function(phone,index){
+    const action=index===0
+      ?'<button type="button" class="appel-phone-add" onclick="addComplementPhone()" aria-label="Ajouter un numéro" title="Ajouter un numéro">+</button>'
+      :'<button type="button" class="appel-phone-remove" onclick="removeComplementPhone('+index+')" aria-label="Supprimer ce numéro" title="Supprimer ce numéro">−</button>';
+    return '<div class="appel-phone-row"><input class="fi" id="compl-phone-'+index+'" type="tel" data-compl-phone value="'+escHtml(phone)+'" placeholder="06 XX XX XX XX">'+action+'</div>';
+  }).join('');
+  registerMobileModalFields(box);
+}
+function addComplementPhone(){
+  const values=Array.from(document.querySelectorAll('#compl-phone-list [data-compl-phone]')).map(function(input){return input.value||'';});
+  values.push('');renderComplementPhones(values);
+  const field=document.getElementById('compl-phone-'+(values.length-1));if(field)field.focus();
+}
+function removeComplementPhone(index){
+  const values=Array.from(document.querySelectorAll('#compl-phone-list [data-compl-phone]')).map(function(input){return input.value||'';});
+  values.splice(index,1);renderComplementPhones(values);
+}
+function complementAvailabilityPeriods(iv){
+  const dispo=iv&&iv.reqDispo;
+  if(dispo&&Array.isArray(dispo.periods)&&dispo.periods.length)return dispo.periods.map(function(period){return Object.assign({},period);});
+  if(dispo&&Array.isArray(dispo.days)&&dispo.days.length)return dispo.days.map(function(day){return{state:dispo.state==='mixte'?'disponible':dispo.state,day:day,mode:dispo.mode||'journee',h1:dispo.h1||'',h2:dispo.h2||''};});
+  return[{state:'',day:'',mode:'journee',h1:'',h2:''}];
+}
+function complementAvailabilityPeriodHTML(period,index){
+  period=period||{};
+  const selected=function(value,current){return value===current?' selected':'';};
+  const action=index===0
+    ?'<button type="button" class="appel-phone-add" onclick="addComplementAvailabilityPeriod()" aria-label="Ajouter une disponibilité" title="Ajouter une disponibilité">+</button>'
+    :'<button type="button" class="appel-phone-remove" onclick="removeComplementAvailabilityPeriod('+index+')" aria-label="Supprimer cette disponibilité" title="Supprimer cette disponibilité">−</button>';
+  return '<div class="appel-dispo-period" data-compl-dispo-period>'
+    +'<div class="appel-dispo-period-grid"><div><div class="fgl">État</div><select class="fi" id="compl-dispo-state-'+index+'" data-compl-dispo-state onchange="toggleComplementAvailability(this)"><option value=""'+selected('',period.state||'')+'>Non précisé</option><option value="disponible"'+selected('disponible',period.state)+'>Disponible</option><option value="indisponible"'+selected('indisponible',period.state)+'>Indisponible</option></select></div>'
+    +'<div><div class="fgl">Jour concerné</div><div class="appel-day-row"><input class="fi" id="compl-dispo-day-'+index+'" type="date" data-compl-dispo-day value="'+escHtml(period.day||'')+'">'+action+'</div></div></div>'
+    +'<div class="appel-dispo-period-grid appel-dispo-time-grid"><div><div class="fgl">Précision horaire</div><select class="fi" id="compl-dispo-mode-'+index+'" data-compl-dispo-mode onchange="toggleComplementAvailability(this)"><option value="journee"'+selected('journee',period.mode||'journee')+'>Toute la journée</option><option value="avant"'+selected('avant',period.mode)+'>Avant une heure</option><option value="entre"'+selected('entre',period.mode)+'>Entre deux heures</option><option value="apres"'+selected('apres',period.mode)+'>Après une heure</option></select></div>'
+    +'<div data-compl-dispo-hours><div class="fgl" data-compl-dispo-h1-label>Horaire</div><div class="appel-dispo-hours-row"><input class="fi" id="compl-dispo-h1-'+index+'" type="time" data-compl-dispo-h1 value="'+escHtml(period.h1||'')+'"><div data-compl-dispo-h2-wrap><input class="fi" id="compl-dispo-h2-'+index+'" type="time" data-compl-dispo-h2 value="'+escHtml(period.h2||'')+'" aria-label="Heure de fin"></div></div></div></div></div>';
+}
+function renderComplementAvailabilityPeriods(periods){
+  const box=document.getElementById('compl-dispo-list');if(!box)return;
+  const values=Array.isArray(periods)&&periods.length?periods:[{state:'',day:'',mode:'journee',h1:'',h2:''}];
+  box.innerHTML=values.map(complementAvailabilityPeriodHTML).join('');
+  box.querySelectorAll('[data-compl-dispo-period]').forEach(toggleComplementAvailability);
+  registerMobileModalFields(box);
+}
+function readComplementAvailabilityPeriods(){
+  return Array.from(document.querySelectorAll('#compl-dispo-list [data-compl-dispo-period]')).map(function(row){return{
+    state:row.querySelector('[data-compl-dispo-state]')?.value||'',day:row.querySelector('[data-compl-dispo-day]')?.value||'',mode:row.querySelector('[data-compl-dispo-mode]')?.value||'journee',
+    h1:row.querySelector('[data-compl-dispo-h1]')?.value||'',h2:row.querySelector('[data-compl-dispo-h2]')?.value||''
+  };});
+}
+function addComplementAvailabilityPeriod(){
+  const periods=readComplementAvailabilityPeriods();periods.push({state:'',day:'',mode:'journee',h1:'',h2:''});renderComplementAvailabilityPeriods(periods);
+  const field=document.getElementById('compl-dispo-state-'+(periods.length-1));if(field)field.focus();
+}
+function removeComplementAvailabilityPeriod(index){const periods=readComplementAvailabilityPeriods();periods.splice(index,1);renderComplementAvailabilityPeriods(periods);}
+function toggleComplementAvailability(source){
+  const row=source&&source.closest?source.closest('[data-compl-dispo-period]'):source;if(!row)return;
+  const state=row.querySelector('[data-compl-dispo-state]')?.value||'',mode=row.querySelector('[data-compl-dispo-mode]')?.value||'journee';
+  const modeSelect=row.querySelector('[data-compl-dispo-mode]'),hours=row.querySelector('[data-compl-dispo-hours]'),second=row.querySelector('[data-compl-dispo-h2-wrap]'),label=row.querySelector('[data-compl-dispo-h1-label]'),hoursRow=row.querySelector('.appel-dispo-hours-row');
+  if(modeSelect)modeSelect.disabled=!state;
+  if(hours)hours.style.display=state&&['avant','entre','apres'].includes(mode)?'block':'none';
+  if(second)second.style.display=mode==='entre'?'':'none';
+  if(hoursRow)hoursRow.classList.toggle('single',mode!=='entre');
+  if(label)label.textContent=mode==='avant'?'Avant':mode==='apres'?'Après':'À partir de';
+}
+function validateComplementAvailability(periods){
+  const started=periods.filter(function(period){return period.state||period.day||period.h1||period.h2;});
+  for(let index=0;index<started.length;index++){
+    const period=started[index],prefix=started.length>1?'Disponibilité '+(index+1)+' : ':'';
+    if(!period.state)return prefix+'précisez si le requérant est disponible ou indisponible.';
+    if(!period.day)return prefix+'renseignez le jour concerné.';
+    if(['avant','entre','apres'].includes(period.mode)&&!period.h1)return prefix+"renseignez l'horaire.";
+    if(period.mode==='entre'&&!period.h2)return prefix+"renseignez l'heure de fin.";
+    if(period.mode==='entre'&&period.h2<=period.h1)return prefix+"l'heure de fin doit être après l'heure de début.";
+  }
+  return'';
+}
+function reqAvailabilityFromPeriods(periods){
+  const filled=periods.filter(function(period){return period.state&&period.day;});if(!filled.length)return null;
+  const states=Array.from(new Set(filled.map(function(period){return period.state;}))),first=filled[0];
+  return{state:states.length===1?states[0]:'mixte',days:filled.map(function(period){return period.day;}),mode:first.mode,h1:first.h1,h2:first.h2,periods:filled,label:filled.map(reqAvailabilityPeriodLabel).join(' ; ')};
+}
 function showComplementModal(id){
   const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
   if(!(hasRight('Interventions')||isAgres()||isChef()||isAdminModeActive())){showToast('Action réservée aux personnes ayant le droit Interventions.','warn');return;}
@@ -10312,22 +10451,41 @@ function showComplementModal(id){
   document.getElementById('mi').textContent=iv.n+' — '+(iv.com||'');
   document.getElementById('mb').innerHTML=
     '<div>'
-    +'<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Ajoutez une information transmise après l\u2019enregistrement (ex. le requérant rappelle). Elle sera horodatée et ajoutée à l\u2019historique.</div>'
-    +'<div class="fg"><div class="fgl">Information complémentaire</div>'
+    +'<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Mettez à jour les informations transmises après l\u2019enregistrement de l\u2019appel. Les changements seront horodatés.</div>'
+    +'<div class="fg"><div class="fgl">Téléphone(s)</div><div id="compl-phone-list"></div></div>'
+    +'<div class="fg"><div class="fgl">Disponibilité du requérant <span style="font-size:10px;color:var(--t2);">(optionnel)</span></div><div id="compl-dispo-list"></div></div>'
+    +'<div class="fg"><div class="fgl">Information complémentaire <span style="font-size:10px;color:var(--t2);">(optionnel)</span></div>'
     +'<textarea class="fi" id="compl-info-val" rows="4" placeholder="ex. Le requérant signale que le nid est en hauteur, prévoir une échelle."></textarea></div>'
     +'<div id="compl-info-err" style="font-size:12px;color:#E24B4A;display:none;margin-bottom:8px;"></div>'
     +'<div class="brow">'
-    +'<button class="btn pr sm" onclick="saveComplementInfo(\''+id+'\')">&#x1F4BE; Ajouter</button>'
+    +'<button class="btn pr sm" onclick="saveComplementInfo(\''+id+'\')">&#x1F4BE; Enregistrer les informations</button>'
     +'<button class="btn sm" onclick="deactivateMobileModalField();oM(\''+id+'\')">Retour</button></div></div>';
+  renderComplementPhones(getInterventionPhones(iv));
+  renderComplementAvailabilityPeriods(complementAvailabilityPeriods(iv));
   openModalAtTop('compl-info-val');
   activateMobileModalField('compl-info-val');
+  registerMobileModalFields(document.getElementById('mb'));
 }
 function saveComplementInfo(id){
   const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
   const txt=(document.getElementById('compl-info-val').value||'').trim();
   const err=document.getElementById('compl-info-err');
-  if(!txt){err.style.display='block';err.textContent='Veuillez saisir une information.';return;}
-  iv.tl.push({s:'info-compl',h:getH(N()),who:CU.l,note:txt});
+  const phones=readComplementPhones();
+  if(!phones.length){err.style.display='block';err.textContent='Conservez au moins un numéro de téléphone.';return;}
+  const periods=readComplementAvailabilityPeriods(),availabilityError=validateComplementAvailability(periods);
+  if(availabilityError){err.style.display='block';err.textContent=availabilityError;return;}
+  const reqDispo=reqAvailabilityFromPeriods(periods),oldPhones=getInterventionPhones(iv),oldLabel=iv.reqDispo&&iv.reqDispo.label||'',newLabel=reqDispo&&reqDispo.label||'';
+  const phonesChanged=JSON.stringify(oldPhones)!==JSON.stringify(phones),availabilityChanged=oldLabel!==newLabel;
+  if(!txt&&!phonesChanged&&!availabilityChanged){err.style.display='block';err.textContent='Aucune nouvelle information à enregistrer.';return;}
+  const notes=[];
+  if(txt)notes.push(txt);
+  if(phonesChanged)notes.push('Téléphone(s) mis à jour : '+phones.join(' · '));
+  if(availabilityChanged)notes.push(reqDispo?'Disponibilité du requérant : '+reqDispo.label:'Disponibilité du requérant supprimée');
+  iv.tel=phones[0]||'';iv.tels=phones;iv.reqDispo=reqDispo;
+  if(!iv._appelDetails||typeof iv._appelDetails!=='object')iv._appelDetails={};
+  if(reqDispo)iv._appelDetails['Disponibilité du requérant']=reqDispo.label;else delete iv._appelDetails['Disponibilité du requérant'];
+  if(!Array.isArray(iv.tl))iv.tl=[];
+  iv.tl.push({s:'info-compl',h:getH(N()),who:CU.l,note:notes.join(' ; ')});
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);
   cM();rI();
@@ -13347,7 +13505,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260822-historique-apl-echelle-sync-161';
+const APP_VERSION='20260825-historique-equipage-requerant-162';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
