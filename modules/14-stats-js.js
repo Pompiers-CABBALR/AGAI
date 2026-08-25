@@ -857,14 +857,7 @@ function statsHoursRealExportCell(realMinutes,exportMinutes,background,borderLef
 }
 
 function agentInIV(iv,login){
-  if(iv.agr===login)return true;
-  if(iv._equipage1&&iv._equipage1.some(function(e){return e.login===login;}))return true;
-  if(iv._equipage2&&iv._equipage2.some(function(e){return e.login===login;}))return true;
-  if(iv._releves&&iv._releves.some(function(r){
-    return r.nouvelEquipage.some(function(e){return e.login===login;});
-  }))return true;
-  if(interventionInternalReinforcements(iv).some(function(renfort){return (renfort.equipage||[]).some(function(member){return member&&member.login===login;});}))return true;
-  return false;
+  return interventionReportParticipants(iv).some(function(member){return member&&member.login===login;});
 }
 function rStatsPersonnel(vue){
   const annStr=String(stAnnee);
@@ -1420,18 +1413,7 @@ function adminExportInterventionRates(iv){
   };
 }
 function adminExportInterventionPresents(iv){
-  const seen={},out=[];
-  function add(login){
-    if(!login||seen[login]||out.length>=31)return;
-    seen[login]=true;
-    out.push(adminExportUser(login));
-  }
-  add(iv.agr,"Chef d'agrès");add(iv._agr2,"Chef d'agrès");
-  (iv._equipage1||[]).forEach(function(e){add(e.login,e.role);});
-  (iv._equipage2||[]).forEach(function(e){add(e.login,e.role);});
-  (iv._releves||[]).forEach(function(r){(r.nouvelEquipage||[]).forEach(function(e){add(e.login,e.role);});});
-  interventionInternalReinforcements(iv).forEach(function(renfort){(renfort.equipage||[]).forEach(function(e){add(e.login,e.role);});});
-  return out;
+  return interventionReportParticipants(iv).slice(0,31).map(function(member){return adminExportUser(member.login);});
 }
 function adminExportPeople(logins){
   return (logins||[]).slice(0,31).map(function(login){return adminExportUser(login);});

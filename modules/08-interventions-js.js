@@ -224,6 +224,32 @@ function interventionInternalReinforcements(iv){
   });
   return modern.concat(legacy);
 }
+function interventionReportParticipants(iv){
+  if(!iv)return [];
+  const participants=[],seen=new Set();
+  const add=function(member,fallbackRole){
+    if(!member)return;
+    const login=String(member.login||'').trim();
+    if(!login||seen.has(login))return;
+    seen.add(login);
+    participants.push(Object.assign({},member,{login:login,role:member.role||fallbackRole||'Agent'}));
+  };
+  interventionMainReportCrew(iv).forEach(function(member){add(member,member&&member.role);});
+  (Array.isArray(iv._equipage2)?iv._equipage2:[]).forEach(function(member){add(member,member&&member.role);});
+  if(iv._agr2)add({login:iv._agr2,role:"Chef d'agrès"});
+
+  // Les anciennes relèves internes migrées ne sont que des traces techniques.
+  // Leur équipage corrigé est désormais lu dans _renfortsInternes.
+  (Array.isArray(iv._releves)?iv._releves:[]).filter(function(releve){
+    return releve&&!releve.isRenfortInterne&&!releve._migratedInternal;
+  }).forEach(function(releve){
+    (Array.isArray(releve.nouvelEquipage)?releve.nouvelEquipage:[]).forEach(function(member){add(member,member&&member.role);});
+  });
+  interventionInternalReinforcements(iv).forEach(function(renfort){
+    (Array.isArray(renfort&&renfort.equipage)?renfort.equipage:[]).forEach(function(member){add(member,member&&member.role);});
+  });
+  return participants;
+}
 function interventionSupplementaryCrewRecords(iv){
   const records=[];
   if(iv&&(iv._engin2||(Array.isArray(iv._equipage2)&&iv._equipage2.length))){
@@ -1300,7 +1326,7 @@ function oM(id){
         +(rentres.length?'<div style="font-size:10px;color:#3B6D11;margin-top:2px;">Rentrés : '+rentres.map(e=>{const u=USERS.find(x=>x.l===e.login);return(u?fullName(u):e.login)+' ('+e.hRetour+')';}).join(', ')+'</div>':'')
         +'</div>';
     }).join('')}</div></div></div>`:''}
-    ${(iv._releves&&iv._releves.filter(r=>r.isRenfort).length)?`<div class="mr"><div class="ml" style="color:#7C3AED;">&#x1F692; Renforts UT présents</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:6px;">${iv._releves.filter(r=>r.isRenfort).map(r=>{
+    ${(iv._releves&&iv._releves.filter(r=>r.isRenfort&&!r.isRenfortInterne).length)?`<div class="mr"><div class="ml" style="color:#7C3AED;">&#x1F692; Renforts UT présents</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:6px;">${iv._releves.filter(r=>r.isRenfort&&!r.isRenfortInterne).map(r=>{
       const cas=CASERNES.find(x=>x.id===r.caserneRenfort);
       const casNom=cas?cas.nom:r.caserneRenfort;
       return'<div style="background:#F5F3FF;border-radius:8px;padding:8px 10px;border:1px solid #DDD6FE;">'

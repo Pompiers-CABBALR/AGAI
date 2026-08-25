@@ -103,25 +103,9 @@ function historyInterventionDayKey(iv){
   return historyDateKey(iv&&iv.h)||'00000000';
 }
 function historyCrewMembers(iv){
-  const members=[],seen=new Set();
-  const add=function(login,role){
-    login=String(login||'').trim();if(!login||seen.has(login))return;
-    seen.add(login);
-    members.push({login:login,role:role||'',name:interventionTeammateName(login)||login});
-  };
-  add(iv&&iv.agr,'CA');add(iv&&iv._agr2,'CA');
-  [iv&&iv._equipage1,iv&&iv._equipage2].forEach(function(list){
-    (Array.isArray(list)?list:[]).forEach(function(member){if(member)add(member.login,member.role||'');});
+  return interventionReportParticipants(iv).map(function(member){
+    return {login:member.login,role:member.role||'',name:interventionTeammateName(member.login)||member.login};
   });
-  (Array.isArray(iv&&iv._releves)?iv._releves:[]).forEach(function(releve){
-    ['ancienEquipage','nouvelEquipage'].forEach(function(key){
-      (Array.isArray(releve&&releve[key])?releve[key]:[]).forEach(function(member){if(member)add(member.login,member.role||'');});
-    });
-  });
-  interventionInternalReinforcements(iv).forEach(function(renfort){
-    (Array.isArray(renfort&&renfort.equipage)?renfort.equipage:[]).forEach(function(member){if(member)add(member.login,member.role||'');});
-  });
-  return members;
 }
 function historyCrewRoleLabel(role){
   const value=historyNormalizeSearch(role);

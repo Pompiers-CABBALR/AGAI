@@ -12,7 +12,7 @@
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260825-renfort-selection-unique-164';
+const APP_VERSION='20260825-equipage-rapport-canonique-165';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -344,18 +344,7 @@ function avisPassageIntervenantName(iv,login){
 }
 function getAvisPassageIntervenants(iv){
   if(!iv)return[];
-  const logins=[],seen=new Set();
-  const add=function(login){if(login&&!seen.has(login)){seen.add(login);logins.push(login);}};
-  if(typeof interventionMainReportCrew==='function')interventionMainReportCrew(iv).forEach(function(member){add(member&&member.login);});
-  else add(iv.agr);
-  (Array.isArray(iv._equipage1)?iv._equipage1:[]).forEach(function(member){add(member&&member.login);});
-  add(iv._agr2);
-  (Array.isArray(iv._equipage2)?iv._equipage2:[]).forEach(function(member){add(member&&member.login);});
-  (Array.isArray(iv._releves)?iv._releves:[]).forEach(function(releve){
-    (releve&&Array.isArray(releve.nouvelEquipage)?releve.nouvelEquipage:[]).forEach(function(member){add(member&&member.login);});
-  });
-  interventionInternalReinforcements(iv).forEach(function(renfort){(renfort.equipage||[]).forEach(function(member){add(member&&member.login);});});
-  return logins.map(function(login){return avisPassageIntervenantName(iv,login);}).filter(Boolean);
+  return interventionReportParticipants(iv).map(function(member){return avisPassageIntervenantName(iv,member.login);}).filter(Boolean);
 }
 
 function _buildAvisPassageBody(iv){

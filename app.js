@@ -4796,6 +4796,32 @@ function interventionInternalReinforcements(iv){
   });
   return modern.concat(legacy);
 }
+function interventionReportParticipants(iv){
+  if(!iv)return [];
+  const participants=[],seen=new Set();
+  const add=function(member,fallbackRole){
+    if(!member)return;
+    const login=String(member.login||'').trim();
+    if(!login||seen.has(login))return;
+    seen.add(login);
+    participants.push(Object.assign({},member,{login:login,role:member.role||fallbackRole||'Agent'}));
+  };
+  interventionMainReportCrew(iv).forEach(function(member){add(member,member&&member.role);});
+  (Array.isArray(iv._equipage2)?iv._equipage2:[]).forEach(function(member){add(member,member&&member.role);});
+  if(iv._agr2)add({login:iv._agr2,role:"Chef d'agrès"});
+
+  // Les anciennes relèves internes migrées ne sont que des traces techniques.
+  // Leur équipage corrigé est désormais lu dans _renfortsInternes.
+  (Array.isArray(iv._releves)?iv._releves:[]).filter(function(releve){
+    return releve&&!releve.isRenfortInterne&&!releve._migratedInternal;
+  }).forEach(function(releve){
+    (Array.isArray(releve.nouvelEquipage)?releve.nouvelEquipage:[]).forEach(function(member){add(member,member&&member.role);});
+  });
+  interventionInternalReinforcements(iv).forEach(function(renfort){
+    (Array.isArray(renfort&&renfort.equipage)?renfort.equipage:[]).forEach(function(member){add(member,member&&member.role);});
+  });
+  return participants;
+}
 function interventionSupplementaryCrewRecords(iv){
   const records=[];
   if(iv&&(iv._engin2||(Array.isArray(iv._equipage2)&&iv._equipage2.length))){
@@ -5872,7 +5898,7 @@ function oM(id){
         +(rentres.length?'<div style="font-size:10px;color:#3B6D11;margin-top:2px;">Rentrés : '+rentres.map(e=>{const u=USERS.find(x=>x.l===e.login);return(u?fullName(u):e.login)+' ('+e.hRetour+')';}).join(', ')+'</div>':'')
         +'</div>';
     }).join('')}</div></div></div>`:''}
-    ${(iv._releves&&iv._releves.filter(r=>r.isRenfort).length)?`<div class="mr"><div class="ml" style="color:#7C3AED;">&#x1F692; Renforts UT présents</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:6px;">${iv._releves.filter(r=>r.isRenfort).map(r=>{
+    ${(iv._releves&&iv._releves.filter(r=>r.isRenfort&&!r.isRenfortInterne).length)?`<div class="mr"><div class="ml" style="color:#7C3AED;">&#x1F692; Renforts UT présents</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:6px;">${iv._releves.filter(r=>r.isRenfort&&!r.isRenfortInterne).map(r=>{
       const cas=CASERNES.find(x=>x.id===r.caserneRenfort);
       const casNom=cas?cas.nom:r.caserneRenfort;
       return'<div style="background:#F5F3FF;border-radius:8px;padding:8px 10px;border:1px solid #DDD6FE;">'
@@ -6986,25 +7012,9 @@ function historyInterventionDayKey(iv){
   return historyDateKey(iv&&iv.h)||'00000000';
 }
 function historyCrewMembers(iv){
-  const members=[],seen=new Set();
-  const add=function(login,role){
-    login=String(login||'').trim();if(!login||seen.has(login))return;
-    seen.add(login);
-    members.push({login:login,role:role||'',name:interventionTeammateName(login)||login});
-  };
-  add(iv&&iv.agr,'CA');add(iv&&iv._agr2,'CA');
-  [iv&&iv._equipage1,iv&&iv._equipage2].forEach(function(list){
-    (Array.isArray(list)?list:[]).forEach(function(member){if(member)add(member.login,member.role||'');});
+  return interventionReportParticipants(iv).map(function(member){
+    return {login:member.login,role:member.role||'',name:interventionTeammateName(member.login)||member.login};
   });
-  (Array.isArray(iv&&iv._releves)?iv._releves:[]).forEach(function(releve){
-    ['ancienEquipage','nouvelEquipage'].forEach(function(key){
-      (Array.isArray(releve&&releve[key])?releve[key]:[]).forEach(function(member){if(member)add(member.login,member.role||'');});
-    });
-  });
-  interventionInternalReinforcements(iv).forEach(function(renfort){
-    (Array.isArray(renfort&&renfort.equipage)?renfort.equipage:[]).forEach(function(member){if(member)add(member.login,member.role||'');});
-  });
-  return members;
 }
 function historyCrewRoleLabel(role){
   const value=historyNormalizeSearch(role);
@@ -12937,14 +12947,7 @@ function statsHoursRealExportCell(realMinutes,exportMinutes,background,borderLef
 }
 
 function agentInIV(iv,login){
-  if(iv.agr===login)return true;
-  if(iv._equipage1&&iv._equipage1.some(function(e){return e.login===login;}))return true;
-  if(iv._equipage2&&iv._equipage2.some(function(e){return e.login===login;}))return true;
-  if(iv._releves&&iv._releves.some(function(r){
-    return r.nouvelEquipage.some(function(e){return e.login===login;});
-  }))return true;
-  if(interventionInternalReinforcements(iv).some(function(renfort){return (renfort.equipage||[]).some(function(member){return member&&member.login===login;});}))return true;
-  return false;
+  return interventionReportParticipants(iv).some(function(member){return member&&member.login===login;});
 }
 function rStatsPersonnel(vue){
   const annStr=String(stAnnee);
@@ -13500,18 +13503,7 @@ function adminExportInterventionRates(iv){
   };
 }
 function adminExportInterventionPresents(iv){
-  const seen={},out=[];
-  function add(login){
-    if(!login||seen[login]||out.length>=31)return;
-    seen[login]=true;
-    out.push(adminExportUser(login));
-  }
-  add(iv.agr,"Chef d'agrès");add(iv._agr2,"Chef d'agrès");
-  (iv._equipage1||[]).forEach(function(e){add(e.login,e.role);});
-  (iv._equipage2||[]).forEach(function(e){add(e.login,e.role);});
-  (iv._releves||[]).forEach(function(r){(r.nouvelEquipage||[]).forEach(function(e){add(e.login,e.role);});});
-  interventionInternalReinforcements(iv).forEach(function(renfort){(renfort.equipage||[]).forEach(function(e){add(e.login,e.role);});});
-  return out;
+  return interventionReportParticipants(iv).slice(0,31).map(function(member){return adminExportUser(member.login);});
 }
 function adminExportPeople(logins){
   return (logins||[]).slice(0,31).map(function(login){return adminExportUser(login);});
@@ -13752,7 +13744,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260825-renfort-selection-unique-164';
+const APP_VERSION='20260825-equipage-rapport-canonique-165';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -14084,18 +14076,7 @@ function avisPassageIntervenantName(iv,login){
 }
 function getAvisPassageIntervenants(iv){
   if(!iv)return[];
-  const logins=[],seen=new Set();
-  const add=function(login){if(login&&!seen.has(login)){seen.add(login);logins.push(login);}};
-  if(typeof interventionMainReportCrew==='function')interventionMainReportCrew(iv).forEach(function(member){add(member&&member.login);});
-  else add(iv.agr);
-  (Array.isArray(iv._equipage1)?iv._equipage1:[]).forEach(function(member){add(member&&member.login);});
-  add(iv._agr2);
-  (Array.isArray(iv._equipage2)?iv._equipage2:[]).forEach(function(member){add(member&&member.login);});
-  (Array.isArray(iv._releves)?iv._releves:[]).forEach(function(releve){
-    (releve&&Array.isArray(releve.nouvelEquipage)?releve.nouvelEquipage:[]).forEach(function(member){add(member&&member.login);});
-  });
-  interventionInternalReinforcements(iv).forEach(function(renfort){(renfort.equipage||[]).forEach(function(member){add(member&&member.login);});});
-  return logins.map(function(login){return avisPassageIntervenantName(iv,login);}).filter(Boolean);
+  return interventionReportParticipants(iv).map(function(member){return avisPassageIntervenantName(iv,member.login);}).filter(Boolean);
 }
 
 function _buildAvisPassageBody(iv){
@@ -14990,11 +14971,7 @@ function genRapportInterventionHTML(ivId) {
     const u=USERS.find(function(x){return x.l===login;});
     agents.push({role:role,grade:u?(u.grade||''):'',nom:u?(u.nom+' '+u.prenom):login});
   }
-  interventionMainReportCrew(iv).forEach(function(member){addA(member.login,member.role);});
-  if(iv._agr2)addA(iv._agr2,"Chef d'agr\u00e8s");
-  if(iv._equipage2)iv._equipage2.forEach(function(e){addA(e.login,e.role);});
-  if(iv._releves)iv._releves.forEach(function(r){if(r.nouvelEquipage)r.nouvelEquipage.forEach(function(e){addA(e.login,e.role);});});
-  interventionInternalReinforcements(iv).forEach(function(renfort){(renfort.equipage||[]).forEach(function(e){addA(e.login,e.role);});});
+  interventionReportParticipants(iv).forEach(function(member){addA(member.login,member.role);});
 
   // HTML pr\u00e9sents : "Pr\u00e9sents :" + 1er agent sur m\u00eame ligne, suivants indent\u00e9s
   const PW='90px', RW='130px';

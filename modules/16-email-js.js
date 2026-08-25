@@ -844,11 +844,7 @@ function genRapportInterventionHTML(ivId) {
     const u=USERS.find(function(x){return x.l===login;});
     agents.push({role:role,grade:u?(u.grade||''):'',nom:u?(u.nom+' '+u.prenom):login});
   }
-  interventionMainReportCrew(iv).forEach(function(member){addA(member.login,member.role);});
-  if(iv._agr2)addA(iv._agr2,"Chef d'agr\u00e8s");
-  if(iv._equipage2)iv._equipage2.forEach(function(e){addA(e.login,e.role);});
-  if(iv._releves)iv._releves.forEach(function(r){if(r.nouvelEquipage)r.nouvelEquipage.forEach(function(e){addA(e.login,e.role);});});
-  interventionInternalReinforcements(iv).forEach(function(renfort){(renfort.equipage||[]).forEach(function(e){addA(e.login,e.role);});});
+  interventionReportParticipants(iv).forEach(function(member){addA(member.login,member.role);});
 
   // HTML pr\u00e9sents : "Pr\u00e9sents :" + 1er agent sur m\u00eame ligne, suivants indent\u00e9s
   const PW='90px', RW='130px';
