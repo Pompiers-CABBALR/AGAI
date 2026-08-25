@@ -13744,7 +13744,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260825-equipage-rapport-canonique-165';
+const APP_VERSION='20260825-synchronisation-sobre-166';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -16833,6 +16833,8 @@ let _rcRealtimePullTimer = null;
 let _rcRealtimePullPending = false;
 let _rcRealtimeReconnectTimer = null;
 let _rcRealtimeJoinSequence = 0;
+let _rcNeedsRecoveryPull = false;
+const RC_FALLBACK_POLL_MS = 90000;
 const RC_PENDING_DIRTY_KEY = 'agai_rc_pending_dirty';
 function _rcLoadPendingDirty(){
   try{
@@ -16988,46 +16990,93 @@ function _rcRealtimeRecordFromMessage(message){
   const change=message&&message.payload&&message.payload.data;
   return change&&change.record?change.record:null;
 }
-function _rcApplyRealtimeInterventionRecord(record){
-  if(!record||!record.caserne||!record.type)return false;
-  if(record.caserne!==CURRENT_CASERNE_ID)return false;
-  const listKey=record.type==='iv'?'ivs':(record.type==='pilp'?'pilpIvs':'');
-  if(!listKey)return false;
-  if(_rcPendingDirty.has(record.id))return false;
-  let incoming=record.data;
+function _rcParseRealtimeData(record){
+  let incoming=record&&record.data;
   if(typeof incoming==='string'){
-    try{incoming=JSON.parse(incoming);}catch(e){return false;}
+    try{incoming=JSON.parse(incoming);}catch(e){return null;}
   }
-  if(!incoming||!incoming.id)return false;
-  if(window._activeReportDraftIvId===incoming.id)return false;
-  initCaserneData(record.caserne);
-  const list=CASERNE_DATA[record.caserne][listKey]||(CASERNE_DATA[record.caserne][listKey]=[]);
-  const index=list.findIndex(function(item){return item&&item.id===incoming.id;});
-  if(record.deleted===true){
-    if(index>=0)list.splice(index,1);
+  return incoming||null;
+}
+function _rcApplyRealtimeRecord(record){
+  if(!record||!record.caserne||!record.type)return false;
+  // Une modification locale pas encore envoyée reste prioritaire. L'événement
+  // distant est ignoré sans provoquer une relecture complète de la table.
+  if(_rcPendingDirty.has(record.id))return true;
+  const incoming=_rcParseRealtimeData(record);
+  if(!incoming)return false;
+
+  if(record.type==='login'){
+    if(record.deleted===true){
+      LOGIN_HISTORY_DELETED[incoming.id]=true;
+      LOGIN_HISTORY=(LOGIN_HISTORY||[]).filter(function(entry){return entry&&entry.id!==incoming.id;});
+    }else{
+      LOGIN_HISTORY=_mergeLoginHistory(LOGIN_HISTORY||[],[incoming],LOGIN_HISTORY_DELETED);
+    }
   }else{
-    const current=index>=0?list[index]:null;
-    const next=Object.assign({},incoming);
-    if(current&&current.frelonPhotos&&!next.frelonPhotos)next.frelonPhotos=current.frelonPhotos;
-    if(current&&current._pdfCache&&!next._pdfCache)next._pdfCache=current._pdfCache;
-    if(index>=0)list[index]=next;else list.push(next);
+    if(record.caserne==='_GLOBAL')return false;
+    initCaserneData(record.caserne);
+    const d=CASERNE_DATA[record.caserne];
+    const listMap={iv:'ivs',pilp:'pilpIvs',equipe:'equipes',fmpa:'fmpas',formStag:'formStag',formForm:'formForm',renfort:'renforts',activite:'activites'};
+    const listKey=listMap[record.type]||'';
+    if(listKey){
+      if(!incoming.id)return false;
+      if((record.type==='iv'||record.type==='pilp')&&window._activeReportDraftIvId===incoming.id)return true;
+      const list=d[listKey]||(d[listKey]=[]);
+      const index=list.findIndex(function(item){return item&&item.id===incoming.id;});
+      if(record.deleted===true){
+        if(index>=0)list.splice(index,1);
+      }else{
+        const current=index>=0?list[index]:null;
+        const next=Object.assign({},incoming);
+        if(current&&current.frelonPhotos&&!next.frelonPhotos)next.frelonPhotos=current.frelonPhotos;
+        if(current&&current._pdfCache&&!next._pdfCache)next._pdfCache=current._pdfCache;
+        if(index>=0)list[index]=next;else list.push(next);
+      }
+    }else if(record.type==='user'){
+      if(!incoming.l)return false;
+      const users=d.users||(d.users=[]);
+      const index=users.findIndex(function(user){return user&&user.l===incoming.l;});
+      if(record.deleted===true){if(index>=0)users.splice(index,1);}
+      else if(index>=0)users[index]=Object.assign({},incoming);
+      else users.push(Object.assign({},incoming));
+    }else if(record.type==='dispo'){
+      if(!incoming.wk||!incoming.login)return false;
+      d.dispos=d.dispos||{};
+      if(record.deleted===true){
+        if(d.dispos[incoming.wk])delete d.dispos[incoming.wk][incoming.login];
+      }else{
+        if(!d.dispos[incoming.wk])d.dispos[incoming.wk]={};
+        d.dispos[incoming.wk][incoming.login]=incoming.slots;
+      }
+    }else if(record.type==='config'){
+      const keys=['piquets','planningRotations','disposValidated','piquetsValidated','astrConfig','astrTelData','astrTelParams','statsTaux','adminLogins','adminLogin'];
+      keys.forEach(function(key){if(incoming[key]!==undefined)d[key]=incoming[key];});
+      if(incoming._statsPersonnelHoursReal!==undefined)d._statsPersonnelHoursReal=incoming._statsPersonnelHoursReal===true;
+      if(incoming._indemnitesAdmins!==undefined)d._indemnitesAdmins=incoming._indemnitesAdmins===true;
+    }else return false;
   }
-  syncCaserneContext();
+  if(record.caserne===CURRENT_CASERNE_ID)syncCaserneContext();
   try{localStorage.setItem(JB_CACHE_KEY,JSON.stringify(_buildDataObject()));}catch(e){}
   _rcRenderRealtimeViews();
+  if(record.caserne===CURRENT_CASERNE_ID){
+    if(record.type==='dispo'||record.type==='config'){try{rAstrDispo();}catch(e){}}
+    if(record.type==='equipe'||record.type==='user'||record.type==='config'){try{rAstrEquipes();}catch(e){}}
+  }
   _jbSetStatus('ok');
   return true;
 }
 window.addEventListener('online',function(){
   if(!USE_RECORDS)return;
   if(_rcPendingDirty.size)_rcScheduleRetry(0);
-  _rcRequestRealtimePull(0);
+  _rcNeedsRecoveryPull=true;
   if(!_rcRealtime||_rcRealtime.readyState!==WebSocket.OPEN)_rcStartRealtime();
 });
 document.addEventListener('visibilitychange',function(){
   if(!USE_RECORDS||document.visibilityState!=='visible')return;
-  _rcRequestRealtimePull(0);
-  if(!_rcRealtime||_rcRealtime.readyState!==WebSocket.OPEN)_rcStartRealtime();
+  if(!_rcRealtimeReady){
+    _rcNeedsRecoveryPull=true;
+    if(!_rcRealtime||_rcRealtime.readyState!==WebSocket.OPEN)_rcStartRealtime();
+  }
 });
 
 // Construit un id global unique
@@ -17476,7 +17525,13 @@ function _rcStartRealtime(){
           if(m.payload&&m.payload.status==='ok'&&Array.isArray(subscriptions)&&subscriptions.length){
             ws._agaiSubscriptionIds=subscriptions.map(function(subscription){return subscription.id;});
             _rcRealtimeReady=true;
-            _rcRequestRealtimePull(0);
+            // Le chargement initial vient déjà d'être effectué. Une relecture
+            // complète n'est utile qu'après une vraie coupure, afin de récupérer
+            // les événements éventuellement manqués pendant la déconnexion.
+            if(_rcNeedsRecoveryPull){
+              _rcNeedsRecoveryPull=false;
+              _rcRequestRealtimePull(0);
+            }
           }else{
             ws._agaiJoinRejected=true;
             try{ws.close();}catch(e){}
@@ -17490,7 +17545,7 @@ function _rcStartRealtime(){
             return;
           }
           if(Date.now()-_rcLastPush < 2000) return; // ignorer notre propre écho
-          const applied=_rcApplyRealtimeInterventionRecord(_rcRealtimeRecordFromMessage(m));
+          const applied=_rcApplyRealtimeRecord(_rcRealtimeRecordFromMessage(m));
           if(!applied)_rcRequestRealtimePull(0);
         }else if(m.event==='system'&&m.payload&&m.payload.status==='error'){
           try{ws.close();}catch(e){}
@@ -17503,7 +17558,7 @@ function _rcStartRealtime(){
       if(_rcRealtime===ws)_rcRealtime=null;
       _rcRealtimeReady=false;
       if(USE_RECORDS&&!ws._agaiManualClose){
-        _rcRequestRealtimePull(0);
+        _rcNeedsRecoveryPull=true;
         if(_rcRealtimeReconnectTimer)clearTimeout(_rcRealtimeReconnectTimer);
         _rcRealtimeReconnectTimer=window.setTimeout(_rcStartRealtime,ws._agaiJoinRejected?15000:3000);
       }
@@ -17517,11 +17572,14 @@ function _rcStartRealtime(){
 function _rcStartPolling(){
   if(_rcPollTimer) clearInterval(_rcPollTimer);
   _rcPollTimer = window.setInterval(function(){
+    // Le temps réel est le mécanisme normal. Le polling ne sert que de secours
+    // lorsque la connexion WebSocket n'est pas opérationnelle.
+    if(_rcRealtimeReady) return;
     if(_rcSaving) return;
     if(Date.now()-_rcLastPush < 10000) return;
     if(Date.now()-_jbEditLock < 12000) return;
     _rcPull(true);
-  }, 10000);
+  }, RC_FALLBACK_POLL_MS);
 }
 
 // ── Migration : copie les données actuelles (cache local) vers la table records ──
