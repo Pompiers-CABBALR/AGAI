@@ -1578,6 +1578,9 @@ function showBlockModal(enCours){
 const OPERATIONAL_START_RADIUS_METERS=2000;
 const OPERATIONAL_START_GRACE_MINUTES=15;
 const _operationalStartAuthorizations={};
+function operationalStartGeolocationEnabled(){
+  return !(CASERNE_DATA&&CASERNE_DATA._global&&CASERNE_DATA._global._operationalStartGeolocationEnabled===false);
+}
 function canUseOperationalStartDevice(){
   if(typeof navigator==='undefined')return false;
   if(navigator.userAgentData&&navigator.userAgentData.mobile===true)return true;
@@ -1614,6 +1617,10 @@ function operationalStartGeoExemption(iv){
 function requestOperationalStartAuthorization(iv,onApproved){
   if(!canUseOperationalStartDevice()){
     showToast('Le passage « En cours » est autorisé uniquement sur mobile ou tablette.','warn');return;
+  }
+  if(!operationalStartGeolocationEnabled()){
+    _operationalStartAuthorizations[iv.id]={at:Date.now(),exempt:true,reason:'contrôle de présence désactivé par le superadmin'};
+    onApproved();return;
   }
   const exemption=operationalStartGeoExemption(iv);
   if(exemption){

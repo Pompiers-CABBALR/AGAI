@@ -502,6 +502,14 @@ function renderSuperAdmin(){
     </section>
     <section class="sa-section" data-sa-section="parametres">
     <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;border:1px solid #eee;">
+      <div style="font-size:14px;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:8px;">📍 Contrôle de présence au premier départ</div>
+      <div style="font-size:12px;color:#666;margin-bottom:12px;">Lorsque ce contrôle est activé, la première intervention doit être passée « En cours » à moins de 2 km de la caserne. Les enchaînements et les départs dans les 15 minutes restent dispensés.</div>
+      <label style="display:flex;align-items:center;gap:9px;cursor:pointer;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:9px;padding:10px 12px;">
+        <input type="checkbox" id="sa-start-geolocation-toggle" ${operationalStartGeolocationEnabled()?'checked':''} onchange="saSetOperationalStartGeolocation(this.checked)" style="width:18px;height:18px;accent-color:#15803D;">
+        <span><strong>${operationalStartGeolocationEnabled()?'Contrôle activé':'Contrôle désactivé'}</strong><br><span style="font-size:10px;color:#64748B;">La règle « En cours uniquement sur mobile ou tablette » reste toujours active.</span></span>
+      </label>
+    </div>
+    <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;border:1px solid #eee;">
       <div style="font-size:14px;font-weight:700;margin-bottom:4px;">📞 Astreinte téléphonique</div>
       <div style="font-size:12px;color:#666;margin-bottom:12px;">Gérez les règles et paramètres de l'astreinte téléphonique.</div>
       <button class="btn" style="font-size:12px;" onclick="rememberSuperAdminSection('parametres');showAstrTelParams()">Ouvrir les paramètres</button>
@@ -628,6 +636,14 @@ function renderSuperAdmin(){
     const _bg=document.getElementById('sa-bglogout');
     if(_bg)_bg.value=(ASTR_CONFIG&&typeof ASTR_CONFIG.bgLogoutMin==='number')?ASTR_CONFIG.bgLogoutMin:15;
   }catch(e){}
+}
+function saSetOperationalStartGeolocation(enabled){
+  if(!isSuperAdmin()){showToast('Réglage réservé au superadmin.','warn');return;}
+  if(!CASERNE_DATA._global||typeof CASERNE_DATA._global!=='object')CASERNE_DATA._global={};
+  CASERNE_DATA._global._operationalStartGeolocationEnabled=enabled===true;
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);renderSuperAdmin();
+  showToast(enabled?'Contrôle de présence activé.':'Contrôle de présence désactivé.','success');
 }
 
 
