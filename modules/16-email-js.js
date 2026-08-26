@@ -426,6 +426,83 @@ function hhmmToMinutes(value){
   return hours*60+minutes;
 }
 
+function interventionClockMillis(iv,value,status,latest){
+  const time=String(value||'').match(/^(\d{2}):(\d{2})$/);
+  let stamp=interventionTimelineStamp(iv,status,latest);
+  let stampDigits=String(stamp||iv&&iv.h||'').replace(/\D/g,'');
+  if(status==='en-cours'){
+    const inherited=String(iv&&iv._departureInheritedDate||iv&&iv._dateDebut||'').replace(/\D/g,'').slice(0,8);
+    if(inherited.length===8)stampDigits=inherited+stampDigits.slice(8);
+  }
+  if(stampDigits.length<8)return NaN;
+  const hours=time?Number(time[1]):Number(stampDigits.slice(8,10));
+  const minutes=time?Number(time[2]):Number(stampDigits.slice(10,12));
+  if(!Number.isFinite(hours)||!Number.isFinite(minutes))return NaN;
+  return new Date(Number(stampDigits.slice(0,4)),Number(stampDigits.slice(4,6))-1,Number(stampDigits.slice(6,8)),hours,minutes).getTime();
+}
+
+function interventionOperationalBounds(iv){
+  if(!iv)return {start:NaN,end:NaN};
+  const start=interventionClockMillis(iv,iv._hDebut||iv._hDebutReelle||iv._hDebutInitiale||'','en-cours',false);
+  let end=interventionClockMillis(iv,iv._hFin||iv._hFinReelle||iv._hFinInitiale||'','terminee',true);
+  if(!Number.isFinite(end)&&Number.isFinite(start)&&(iv._hFin||iv._hFinReelle||iv._hFinInitiale)){
+    end=interventionClockMillis(iv,iv._hFin||iv._hFinReelle||iv._hFinInitiale||'','en-cours',false);
+    if(Number.isFinite(end)&&end<start)end+=24*60*60*1000;
+  }
+  return {start:start,end:end};
+}
+
+function interventionHistoricalPersonnelLogins(iv){
+  const logins=[];
+  interventionActivePersonnelLogins(iv).forEach(function(login){if(login)logins.push(login);});
+  interventionReportParticipants(iv).forEach(function(member){if(member&&member.login)logins.push(member.login);});
+  return [...new Set(logins)];
+}
+
+function proposedInterventionStartMillis(iv,next,real){
+  const actual=interventionClockMillis(iv,real,'en-cours',false);
+  if(!Number.isFinite(actual))return NaN;
+  const base=new Date(actual);
+  const nextMinutes=hhmmToMinutes(next),realMinutes=hhmmToMinutes(real);
+  if(nextMinutes===null||realMinutes===null)return NaN;
+  base.setHours(Math.floor(nextMinutes/60),nextMinutes%60,0,0);
+  // Une correction juste avant minuit depuis un départ réel juste après minuit
+  // appartient à la veille, et non au soir suivant.
+  const backward=(realMinutes-nextMinutes+1440)%1440;
+  if(nextMinutes>realMinutes&&backward<=12*60)base.setDate(base.getDate()-1);
+  return base.getTime();
+}
+
+function findStartCorrectionOperationalConflict(iv,next,real){
+  const proposedStart=proposedInterventionStartMillis(iv,next,real);
+  const actualStart=interventionClockMillis(iv,real,'en-cours',false);
+  if(!Number.isFinite(proposedStart)||!Number.isFinite(actualStart))return null;
+  const vehicles=interventionVehicleNames(iv).map(nm).filter(Boolean);
+  const personnel=interventionHistoricalPersonnelLogins(iv);
+  const candidates=[].concat(IVS||[],PILP_IVS||[]).filter(function(other){
+    return other&&other.id!==iv.id&&['en-cours','terminee'].includes(other.s);
+  });
+  for(const other of candidates){
+    const bounds=interventionOperationalBounds(other);
+    // Seule une intervention antérieure peut borner l'heure de départ corrigée.
+    if(!Number.isFinite(bounds.start)||!Number.isFinite(bounds.end)||bounds.start>actualStart||proposedStart>=bounds.end)continue;
+    const vehicle=interventionVehicleNames(other).find(function(name){return vehicles.includes(nm(name));});
+    if(vehicle)return {kind:'vehicle',value:vehicle,iv:other,end:bounds.end};
+    const otherPersonnel=interventionHistoricalPersonnelLogins(other);
+    const login=personnel.find(function(item){return otherPersonnel.includes(item);});
+    if(login)return {kind:'personnel',value:login,iv:other,end:bounds.end};
+  }
+  return null;
+}
+
+function showStartCorrectionOperationalConflict(conflict){
+  if(!conflict)return;
+  const user=conflict.kind==='personnel'&&USERS.find(function(agent){return agent.l===conflict.value;});
+  const resource=conflict.kind==='vehicle'?'Le véhicule '+conflict.value:'L’agent '+(user?fullName(user):conflict.value);
+  const end=new Date(conflict.end);
+  showToast(resource+' est engagé sur '+operationalConflictLabel(conflict.iv)+' jusqu’à '+pad(end.getHours())+':'+pad(end.getMinutes())+'. L’heure de départ ne peut pas être antérieure à cette fin.','warn');
+}
+
 function saveInterventionStartCorrection(ivId){
   const iv=IVS.find(function(v){return v.id===ivId;});if(!iv)return;
   if(!canEditInterventionStart(iv)){
@@ -449,6 +526,10 @@ function saveInterventionStartCorrection(ivId){
     if(backward>15){
       showToast('Le chef d’agrès peut avancer l’heure de départ de 15 minutes maximum.','warn');return;
     }
+  }
+  if(next!==old){
+    const conflict=findStartCorrectionOperationalConflict(iv,next,real);
+    if(conflict){showStartCorrectionOperationalConflict(conflict);return;}
   }
   if(next===old&&nextEnd===oldEnd){showToast('Les heures de l’intervention sont inchangées.','info');return;}
   const notes=[];

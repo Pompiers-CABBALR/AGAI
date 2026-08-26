@@ -2560,6 +2560,19 @@ function _getRenfortPersonnel(){
   return out;
 }
 
+// Une demande de renfort "personnel" adressée à une autre caserne autorise
+// exceptionnellement le passage en cours sans départ local complet.
+function hasActiveOutgoingPersonnelReinforcementRequest(iv){
+  if(!iv||!Array.isArray(iv._renforts))return false;
+  return iv._renforts.some(function(request){
+    if(!request||request.type!=='personnel')return false;
+    if(['refuse','annule','termine'].includes(request.statut))return false;
+    return Array.isArray(request.destinataires)&&request.destinataires.some(function(cid){
+      return cid&&cid!==CURRENT_CASERNE_ID;
+    });
+  });
+}
+
 function agentSelectHtml(role,idSel,suggestedLogin,piqLabel,required,excludeLogins){
   const reqBadge=required?'<span style="color:#E24B4A;">*</span>':'<span style="font-size:10px;color:var(--t2);font-weight:400;">(optionnel)</span>';
   const piqBadge=suggestedLogin?'<span style="font-size:9px;background:#EAF3DE;color:#3B6D11;border-radius:4px;padding:1px 5px;margin-left:4px;">piquet</span>':'';
@@ -2896,6 +2909,7 @@ function confirmerDepart(id){
   const engin1=document.getElementById('pers-engin')?.value||'';
   const engin2=document.getElementById('pers-engin2')?.value||'';
   const agr2=iv._agr2||(document.getElementById('eq2-ca')?.value||'');
+  const personnelReinforcementException=hasActiveOutgoingPersonnelReinforcementRequest(iv);
   if(engin2&&!agr2){showToast('Renseignez le chef d’agrès du deuxième véhicule.','warn');return;}
   if(agr2){
     const chef2=USERS.find(function(user){return user&&user.l===agr2;});
@@ -2904,6 +2918,16 @@ function confirmerDepart(id){
   // Tous les membres des deux equipages sont controles juste avant le depart.
   const eq1=readDepartureCrewFields(engin1,'eq1',CU.l);
   const eq2=agr2?readDepartureCrewFields(engin2,'eq2',agr2):[];
+  const driver1=eq1.find(function(member){return member&&interventionRoleKey(member.role)==='conducteur'&&member.login;});
+  const driver2=eq2.find(function(member){return member&&interventionRoleKey(member.role)==='conducteur'&&member.login;});
+  if(!personnelReinforcementException){
+    if(!engin1){showToast('Sélectionnez obligatoirement le véhicule avant de passer l’intervention en cours.','warn');return;}
+    if(!CU||!CU.l){showToast('Sélectionnez obligatoirement le chef d’agrès avant de passer l’intervention en cours.','warn');return;}
+    if(!driver1){showToast('Sélectionnez obligatoirement le conducteur avant de passer l’intervention en cours.','warn');return;}
+  }else if(engin1&&!driver1){
+    showToast('Un véhicule local a été sélectionné : renseignez aussi son conducteur.','warn');return;
+  }
+  if(engin2&&!driver2){showToast('Renseignez le conducteur du deuxième véhicule.','warn');return;}
   const personnelLogins=eq1.concat(eq2).map(function(member){return member&&member.login;}).filter(Boolean);
   const conflict=validateOperationalDeparture(iv,engin1,engin2,personnelLogins);
   if(conflict){
