@@ -1201,7 +1201,9 @@ function oM(id){
       ;
       actions=`<div class="brow">
         ${autreAgres?`<div style="padding:6px 8px;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;font-size:12px;color:#991B1B;">🔒 Sélectionnée par ${iv.agr}</div>`:
-        `<button class="btn am sm" onclick="cS('${iv.id}','en-cours')"${blocage?' style="opacity:.4;pointer-events:none;" title="Cl&#244;turez d&#39;abord '+enCours.id+'"':''}>▶ En cours</button>
+        `${canUseOperationalStartDevice()
+          ?`<button class="btn am sm" onclick="cS('${iv.id}','en-cours')"${blocage?' style="opacity:.4;pointer-events:none;" title="Cl&#244;turez d&#39;abord '+enCours.id+'"':''}>▶ En cours</button>`
+          :`<button class="btn sm" disabled title="Le départ est réservé aux mobiles et tablettes" style="opacity:.65;">📱 En cours : mobile/tablette</button>`}
         <button class="btn sm" onclick="cS('${iv.id}','en-attente')">↩ En attente</button>`}
       </div>
       ${agr2Html}
@@ -1214,7 +1216,7 @@ function oM(id){
       const pilpBtn=!iv._isRenfort&&iv.n==='Nid de frelons asiatiques'?`<button class="btn pilp-btn sm" onclick="showPilpForm('${iv.id}')">&#x1F3AF; PILP</button>`:'';
       const natsEchelle=['Nid de guêpes et frelons','Nid de frelons asiatiques',"Essaim d'abeilles"];
       const echelleBtn=!iv._isRenfort&&natsEchelle.includes(iv.n)&&!iv._echelleToiture?`<button class="btn sm" style="background:#D35400;color:#fff;border-color:#D35400;" onclick="demandeEchelleToiture('${iv.id}')">&#x1FA9C; Échelle</button>`:'';
-      const sdisBtn2=!iv._isRenfort&&chef&&!iv._sdis?`<button class="btn sm" style="background:#1D4ED8;color:#fff;border-color:#1D4ED8;" onclick="demandeSDIS('${iv.id}')">&#x1F691; SDIS</button>`:'';
+      const sdisBtn2=!iv._isRenfort&&chef&&!iv._sdis?(canUseOperationalStartDevice()?`<button class="btn sm" style="background:#1D4ED8;color:#fff;border-color:#1D4ED8;" onclick="demandeSDIS('${iv.id}')">&#x1F691; SDIS</button>`:`<button class="btn sm" disabled title="Conversion SDIS réservée au mobile ou à la tablette" style="opacity:.65;">📱 SDIS</button>`):'';
       const epaBtn=!iv._isRenfort&&chef&&!iv._epa?`<button class="btn sm" style="background:#8E44AD;color:#fff;border-color:#8E44AD;" onclick="demandeEPA('${iv.id}')">&#x1F9F0; EPA</button>`:'';
       // Bouton clôture renfort si c'est une IV de renfort UT
       const renfortCloBtn=iv._isRenfort&&!isInternalReinforcement?`<div style="background:#EDE9FE;border-radius:10px;padding:12px;margin-bottom:10px;border:2px solid #7C3AED;">
@@ -1272,7 +1274,9 @@ function oM(id){
     if(iv.agr===CU.l||isAgres()||chef){
       actions+=`<div class="clotbox" style="margin-top:10px;background:#EFF6FF;border:1px solid #BFDBFE;">
         <div style="font-size:12px;font-weight:600;color:#1D4ED8;margin-bottom:8px;">🔄 Reprendre cette intervention</div>
-        <button class="btn bl" style="width:100%;" onclick="cS('${iv.id}','en-cours')">▶ Remettre en cours</button>
+        ${canUseOperationalStartDevice()
+          ?`<button class="btn bl" style="width:100%;" onclick="cS('${iv.id}','en-cours')">▶ Remettre en cours</button>`
+          :`<button class="btn" disabled style="width:100%;opacity:.65;">📱 Reprise réservée au mobile ou à la tablette</button>`}
       </div>`;
     }
     if(isAdminModeActive()){
@@ -1571,6 +1575,86 @@ function showBlockModal(enCours){
     </div>`;
   document.getElementById('mo').style.display='flex';
 }
+const OPERATIONAL_START_RADIUS_METERS=2000;
+const OPERATIONAL_START_GRACE_MINUTES=15;
+const _operationalStartAuthorizations={};
+function canUseOperationalStartDevice(){
+  if(typeof navigator==='undefined')return false;
+  if(navigator.userAgentData&&navigator.userAgentData.mobile===true)return true;
+  const ua=String(navigator.userAgent||'');
+  if(/Android|iPhone|iPad|iPod|Mobile|Tablet|Silk|Kindle/i.test(ua))return true;
+  // Depuis iPadOS 13, Safari peut se présenter comme un Mac.
+  return /Macintosh/i.test(ua)&&Number(navigator.maxTouchPoints||0)>1;
+}
+function operationalDistanceMeters(lat1,lon1,lat2,lon2){
+  const rad=Math.PI/180,dLat=(lat2-lat1)*rad,dLon=(lon2-lon1)*rad;
+  const a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(lat1*rad)*Math.cos(lat2*rad)*Math.sin(dLon/2)*Math.sin(dLon/2);
+  return 6371000*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+function recentFinishedInterventionForChef(login,excludeId){
+  const now=N().getTime(),maxDelay=OPERATIONAL_START_GRACE_MINUTES*60*1000;
+  return [].concat(IVS||[],PILP_IVS||[]).map(function(item){
+    if(!item||item.id===excludeId||item.s!=='terminee')return null;
+    const involved=item.agr===login||item._agr2===login||(typeof isInterventionReportChef==='function'&&isInterventionReportChef(item,login));
+    if(!involved)return null;
+    const bounds=interventionOperationalBounds(item),delay=now-bounds.end;
+    return Number.isFinite(bounds.end)&&delay>=0&&delay<=maxDelay?{iv:item,end:bounds.end,delay:delay}:null;
+  }).filter(Boolean).sort(function(a,b){return b.end-a.end;})[0]||null;
+}
+function operationalStartGeoExemption(iv){
+  if(iv&&_pendingNextInterventionStarts&&_pendingNextInterventionStarts[iv.id])return {reason:'enchaînement de tournée'};
+  if(iv&&(IVS||[]).includes(iv)){
+    const interrupted=findInterruptedDepartureHandoff(CU.l,iv.id);
+    if(interrupted)return {reason:'reprise d’un départ interrompu',sourceId:interrupted.source.id};
+  }
+  const recent=recentFinishedInterventionForChef(CU&&CU.l,iv&&iv.id);
+  if(recent)return {reason:'intervention précédente terminée depuis moins de 15 minutes',sourceId:recent.iv.id};
+  return null;
+}
+function requestOperationalStartAuthorization(iv,onApproved){
+  if(!canUseOperationalStartDevice()){
+    showToast('Le passage « En cours » est autorisé uniquement sur mobile ou tablette.','warn');return;
+  }
+  const exemption=operationalStartGeoExemption(iv);
+  if(exemption){
+    _operationalStartAuthorizations[iv.id]={at:Date.now(),exempt:true,reason:exemption.reason,sourceId:exemption.sourceId||''};
+    onApproved();return;
+  }
+  const caserne=CC();
+  const stationLat=Number(caserne&&caserne.latitude),stationLon=Number(caserne&&caserne.longitude);
+  if(!caserne||!Number.isFinite(stationLat)||!Number.isFinite(stationLon)){
+    showToast('La position de la caserne n’est pas configurée. Le superadmin doit enregistrer son adresse avant le premier départ.','warn');return;
+  }
+  if(!navigator.geolocation){showToast('La géolocalisation n’est pas disponible sur cet appareil.','warn');return;}
+  showToast('Vérification de votre présence à la caserne…','info');
+  navigator.geolocation.getCurrentPosition(function(position){
+    const accuracy=Number(position.coords.accuracy)||0;
+    if(accuracy>1000){showToast('Position trop imprécise ('+Math.round(accuracy)+' m). Activez la localisation précise puis réessayez.','warn');return;}
+    const distance=operationalDistanceMeters(position.coords.latitude,position.coords.longitude,stationLat,stationLon);
+    if(distance>OPERATIONAL_START_RADIUS_METERS){
+      showToast('Départ refusé : vous êtes à '+(distance/1000).toFixed(1).replace('.',',')+' km de la caserne. La première mise en cours doit se faire dans un rayon de 2 km.','warn');return;
+    }
+    _operationalStartAuthorizations[iv.id]={at:Date.now(),exempt:false,distanceMeters:Math.round(distance),accuracyMeters:Math.round(accuracy),caserneId:caserne.id};
+    onApproved();
+  },function(error){
+    const denied=error&&error.code===1;
+    showToast(denied?'Autorisez la localisation pour démarrer la première intervention.':'Position introuvable. Activez le GPS puis réessayez.','warn');
+  },{enableHighAccuracy:true,timeout:15000,maximumAge:30000});
+}
+function takeOperationalStartAuthorization(iv){
+  const authorization=iv&&_operationalStartAuthorizations[iv.id];
+  if(!authorization)return null;
+  if(Date.now()-authorization.at>5*60*1000){delete _operationalStartAuthorizations[iv.id];return null;}
+  delete _operationalStartAuthorizations[iv.id];
+  return authorization;
+}
+function saveOperationalStartAuthorization(iv,authorization){
+  if(!iv||!authorization)return;
+  iv._departGeoControle={date:getH(N()),caserneId:authorization.caserneId||CURRENT_CASERNE_ID,exonere:authorization.exempt===true,
+    motif:authorization.reason||'',distanceMetres:authorization.distanceMeters==null?null:authorization.distanceMeters,precisionMetres:authorization.accuracyMeters==null?null:authorization.accuracyMeters};
+  if(!Array.isArray(iv.tl))iv.tl=[];
+  iv.tl.push({s:'controle-depart',h:getH(N()),who:CU.l,note:authorization.exempt?'Contrôle de position non requis — '+authorization.reason:'Présence à la caserne confirmée à '+authorization.distanceMeters+' m (précision '+authorization.accuracyMeters+' m)'});
+}
 function cS(id,s,confirmed){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
   const previousStatus=iv.s;
@@ -1580,6 +1664,9 @@ function cS(id,s,confirmed){
     return;
   }
   if(s==='en-cours'){
+    if(confirmed!=='start-authorized'){
+      requestOperationalStartAuthorization(iv,function(){cS(id,s,'start-authorized');});return;
+    }
     const ec=agresEnCours();
     if(ec&&ec.id!==id){showBlockModal(ec);return;}
     showPersonnelModal(id);
@@ -1645,7 +1732,7 @@ function chooseNextSelectedIntervention(nextId,previousId){
   _pendingNextInterventionStarts[nextId]=previous._hFin||getHHMM(N());
   next._chainPreviousInterventionId=previous.id;
   cM();
-  showPersonnelModal(nextId);
+  cS(nextId,'en-cours');
 }
 
 function showNextSelectedInterventionModal(closedIv){

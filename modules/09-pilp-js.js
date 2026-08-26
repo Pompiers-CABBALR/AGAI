@@ -169,10 +169,10 @@ function oPilp(id){
   let actions='';
   if((ag||tireur||chef)){
     if(iv.s==='en-attente'){
-      actions=`<div class="brow"><button class="btn sel-btn sm" onclick="cSPilp('${id}','selectionne')">☑ Sélectionner</button><button class="btn am sm" onclick="cSPilp('${id}','en-cours')">▶ En cours</button></div>`;
+      actions=`<div class="brow"><button class="btn sel-btn sm" onclick="cSPilp('${id}','selectionne')">☑ Sélectionner</button>${canUseOperationalStartDevice()?`<button class="btn am sm" onclick="cSPilp('${id}','en-cours')">▶ En cours</button>`:`<button class="btn sm" disabled style="opacity:.65;">📱 Mobile/tablette</button>`}</div>`;
     } else if(iv.s==='selectionne'){
       actions=`<div class="brow">
-        <button class="btn am sm" onclick="cSPilp('${id}','en-cours')">▶ En cours</button>
+        ${canUseOperationalStartDevice()?`<button class="btn am sm" onclick="cSPilp('${id}','en-cours')">▶ En cours</button>`:`<button class="btn sm" disabled style="opacity:.65;">📱 En cours : mobile/tablette</button>`}
         <button class="btn sm" onclick="cSPilp('${id}','en-attente')">↩ En attente</button>
       </div>`;
     } else if(iv.s==='en-cours'){
@@ -227,11 +227,17 @@ function oPilp(id){
     ${actions}`;
   document.getElementById('mo').style.display='flex';
 }
-function cSPilp(id,s){
+function cSPilp(id,s,confirmed){
   const iv=PILP_IVS.find(v=>v.id===id);if(!iv)return;
   if(s==='en-cours'){
+    if(confirmed!=='start-authorized'){
+      requestOperationalStartAuthorization(iv,function(){cSPilp(id,s,'start-authorized');});return;
+    }
     const ec=agresEnCours();
     if(ec&&ec.id!==id){showBlockModal(ec);return;}
+    const startAuthorization=takeOperationalStartAuthorization(iv);
+    if(!startAuthorization){showToast('Le contrôle de départ a expiré. Appuyez de nouveau sur « En cours ».','warn');return;}
+    saveOperationalStartAuthorization(iv,startAuthorization);
   }
   iv.s=s;
   if(s==='selectionne'||s==='en-cours')iv.agr=CU.l;

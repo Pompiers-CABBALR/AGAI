@@ -2320,6 +2320,7 @@ function demandeSDIS(ivId){
 }
 function confirmerSDIS(ivId){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  if(!canUseOperationalStartDevice()){showToast('La mise en cours d’une intervention SDIS est réservée au mobile ou à la tablette.','warn');return;}
   const h=getH(N());const annee=new Date().getFullYear();
   iv.s='terminee';
   supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
@@ -2940,10 +2941,17 @@ function confirmerDepart(id){
     }
     return;
   }
+  const startAuthorization=takeOperationalStartAuthorization(iv);
+  if(!startAuthorization){
+    cM();
+    showToast('Le contrôle de départ a expiré. Appuyez de nouveau sur « En cours ».','warn');
+    return;
+  }
   prepareInterventionRoute(iv);
   delete _pendingNextInterventionStarts[id];
   if(!iv.tl)iv.tl=[];
   iv.s='en-cours';iv.agr=CU.l;
+  saveOperationalStartAuthorization(iv,startAuthorization);
   iv._hDebut=heure;
   if(!iv._hDebutReelle)iv._hDebutReelle=heure;
   if(!iv._hDebutInitiale)iv._hDebutInitiale=heure;
@@ -3583,7 +3591,7 @@ function showRenfortEquipageModal(cid,renfortId){
     +(isComplet?buildRenfortEquipRow(2,null,'\u00c9quipier',r):'')
     +'</div>'
     +'<div class="brow" style="margin-top:10px;">'
-    +'<button class="btn sm" style="background:#7C3AED;color:#fff;" onclick="confirmerRenfortEquipage(\''+cid+'\',\''+renfortId+'\')">&#x1F692; Confirmer le d\u00e9part</button>'
+    +(canUseOperationalStartDevice()?'<button class="btn sm" style="background:#7C3AED;color:#fff;" onclick="confirmerRenfortEquipage(\''+cid+'\',\''+renfortId+'\')">&#x1F692; Confirmer le d\u00e9part</button>':'<button class="btn sm" disabled style="opacity:.65;">📱 Départ : mobile/tablette</button>')
     +'<button class="btn sm" onclick="cM()">Retour</button>'
     +'</div></div>';
   document.getElementById('mo').style.display='flex';
@@ -3634,10 +3642,14 @@ function buildRenfortEquipRow(idx,login,role,r){
     +'<select class="fi" id="renfort-eq-'+idx+'" onchange="refreshRenfortEquipageSelects()">'+opts+'</select></div>';
 }
 
-function confirmerRenfortEquipage(cid,renfortId){
+function confirmerRenfortEquipage(cid,renfortId,confirmed){
   const r=CASERNE_DATA[cid]?.renforts?.find(function(x){return x.id===renfortId;});if(!r)return;
   if(r.statut==='en-cours'||r.statut==='termine'){
     showToast('Ce renfort a déjà été composé et enregistré.','warn');return;
+  }
+  const startTarget=renfortSourceIntervention(r)||{id:'RENFORT-'+renfortId};
+  if(confirmed!=='start-authorized'){
+    requestOperationalStartAuthorization(startTarget,function(){confirmerRenfortEquipage(cid,renfortId,'start-authorized');});return;
   }
   const engin=document.getElementById('renfort-engin')?.value||'';
   const equip=[];
@@ -3669,6 +3681,8 @@ function confirmerRenfortEquipage(cid,renfortId){
     const conflict=findActivePersonnelConflict(login,null);
     if(conflict){showOperationalConflict('personnel',login,conflict);return;}
   }
+  const startAuthorization=takeOperationalStartAuthorization(startTarget);
+  if(!startAuthorization){cM();showToast('Le contrôle de départ a expiré. Recommencez la confirmation.','warn');return;}
   r.equipageRenfort=equip;
   r.enginRenfort=engin;
   r.statut='en-cours';
@@ -3705,6 +3719,7 @@ function confirmerRenfortEquipage(cid,renfortId){
       tel:ivSrc?ivSrc.tel:'',
       op:CU?CU.l:'',
     };
+    saveOperationalStartAuthorization(renfortIv,startAuthorization);
     CASERNE_DATA[cid].ivs.push(renfortIv);
     assignInterventionNumbersAtStart(renfortIv);
   }
