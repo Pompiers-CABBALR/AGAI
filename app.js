@@ -164,6 +164,13 @@ const GLOBAL_ACCOUNTS=[];
 function isSuperAdmin(){return GLOBAL_ROLE==='superadmin'&&!window._superAdminDisabled;}
 function isChefCorps(){return GLOBAL_ROLE==='chef_corps';}
 function isInterventionComptabilisee(iv){
+  // Une mission de renfort possède son propre rapport mais ne doit pas
+  // augmenter le nombre d'interventions opérationnelles.
+  return !!(iv&&iv.s==='terminee'&&!iv._refugeAnimalier&&!iv._isRenfort);
+}
+function isInterventionPersonnelComptabilisee(iv){
+  // Les renforts restent pris en compte pour les agents, leurs heures et
+  // leurs indemnités, même s'ils sont exclus des autres statistiques.
   return !!(iv&&iv.s==='terminee'&&!iv._refugeAnimalier);
 }
 function statsCommunesIntervenuesEnPremier(interventions){
@@ -4778,7 +4785,7 @@ function allConfiguredCrewSlotsForVehicle(vehicle,roleConfig){
 }
 function interventionInternalReinforcements(iv){
   if(!iv)return [];
-  const modern=(Array.isArray(iv._renfortsInternes)?iv._renfortsInternes:[]).filter(Boolean).map(function(item,index){
+  const modern=(Array.isArray(iv._renfortsInternes)?iv._renfortsInternes:[]).filter(function(item){return item&&!item.missionLiee;}).map(function(item,index){
     if(!item.id)item.id='ri-'+String(index+1)+'-'+String(item.hDebut||'').replace(/\D/g,'');
     return item;
   });
@@ -4795,6 +4802,19 @@ function interventionInternalReinforcements(iv){
     });
   });
   return modern.concat(legacy);
+}
+function linkedInternalReinforcementsHTML(iv){
+  const links=(Array.isArray(iv&&iv._renfortsInternes)?iv._renfortsInternes:[]).filter(function(item){return item&&item.missionLiee;});
+  if(!links.length)return '';
+  const labels={'en-attente':'En attente','selectionne':'Sélectionné','en-cours':'En cours','terminee':'Terminé'};
+  const rows=links.map(function(link,index){
+    const mission=IVS.find(function(item){return item&&item.id===(link.ivRenfortId||link.id);});
+    const status=mission&&mission.s||link.statut||'en-attente';
+    const chef=mission&&mission.agr||link.chefAgres||'';
+    const vehicle=mission&&(mission._engin1||mission.eng)||link.engin||'';
+    return '<button class="btn sm" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;background:#fff;border-color:#A7F3D0;color:#065F46;margin-top:5px;text-align:left;" onclick="oM(\''+escHtml(link.ivRenfortId||link.id)+'\')"><span><strong>Renfort '+(index+1)+'</strong>'+(chef?' · '+escHtml(interventionTeammateName(chef)):'')+(vehicle?' · '+escHtml(vehicle):'')+'</span><span class="bdg" style="background:#D1FAE5;color:#047857;">'+escHtml(labels[status]||status)+'</span></button>';
+  }).join('');
+  return '<div class="mr"><div class="ml" style="color:#047857;">🏠 Missions de renfort interne</div><div class="mv2" style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:8px;padding:8px 10px;">'+rows+'</div></div>';
 }
 function interventionReportParticipants(iv){
   if(!iv)return [];
@@ -5337,7 +5357,8 @@ function renderInterventionRow(iv, ag, tireur) {
   };
   const [bc, bt] = STATUS_BADGE[iv.s] || ['bgr', '—'];
   const isPilp = iv.id.startsWith('PILP');
-  const isRenfortUT = iv._isRenfort === true;
+  const isRenfortInternal = iv._isRenfortInterneMission === true;
+  const isRenfortUT = iv._isRenfort === true && !isRenfortInternal;
   const chkShow = (ag || tireur) && !isRenfortUT && (iv.s === 'en-attente' || (iv.s === 'selectionne' && iv.agr === CU.l));
   const checked = iv.s === 'selectionne' && iv.agr === CU.l;
   const onchg = isPilp ? `toggleChkPilp('${iv.id}',this)` : `toggleChk('${iv.id}',this)`;
@@ -5351,11 +5372,11 @@ function renderInterventionRow(iv, ag, tireur) {
           ? ` · <span style="font-size:10px;">${iv._numGlobal ? `<span style="color:#1A6B1A;font-weight:600;">C:${escHtml(String(iv._numGlobal))}</span> ` : ''}${iv._numCaserne ? `<span style="color:#6A0DAD;font-weight:600;">UT:${escHtml(String(iv._numCaserne))}</span> ` : ''}${iv._numMois ? `<span style="color:#C0392B;font-weight:600;">M:${escHtml(String(iv._numMois))}</span>` : ''}${iv._numSDIS ? ` <span style="color:#003399;font-weight:600;">S:${escHtml(String(iv._numSDIS))}</span>` : ''}</span>` : '')
   ) : '';
 
-  return `<div class="ivr ${iv.s}${isPilp ? ' pilp' : ''}${isRenfortUT ? ' renfort-ut' : ''}${iv._urgence ? ' urgence' : ''}">
+  return `<div class="ivr ${iv.s}${isPilp ? ' pilp' : ''}${iv._isRenfort ? ' renfort-ut' : ''}${iv._urgence ? ' urgence' : ''}">
     ${chkShow ? `<div class="ivr-chk"><input type="checkbox" ${checked ? 'checked' : ''} onchange="${onchg}"/></div>` : ''}
     <div class="ivrl" onclick="${onclick}">
-      <div class="ivrh">&#x1F4C5; ${(iv.h || '').slice(0, 8)}${isRenfortUT ? ' <span style="background:#7C3AED;color:#fff;border-radius:4px;padding:0 5px;font-size:9px;font-weight:700;margin-left:4px;">RENFORT UT</span>' : ''}</div>
-      <div class="ivrn">${isPilp ? '&#x1F3AF; ' : ''}${escHtml(iv.n)}${isRenfortUT ? ` <span style="font-size:10px;color:#7C3AED;font-weight:400;">— ${escHtml(iv._caserneSourceNom || '')}</span>` : ''}${iv._avisPassage ? ' <span style="background:#9B59B6;color:#fff;border-radius:4px;padding:0 5px;font-size:9px;font-weight:700;margin-left:4px;">🟣 Avis passage</span>' : ''}</div>
+      <div class="ivrh">&#x1F4C5; ${(iv.h || '').slice(0, 8)}${isRenfortUT ? ' <span style="background:#7C3AED;color:#fff;border-radius:4px;padding:0 5px;font-size:9px;font-weight:700;margin-left:4px;">RENFORT UT</span>' : isRenfortInternal ? ' <span style="background:#047857;color:#fff;border-radius:4px;padding:0 5px;font-size:9px;font-weight:700;margin-left:4px;">RENFORT INTERNE</span>' : ''}</div>
+      <div class="ivrn">${isPilp ? '&#x1F3AF; ' : ''}${escHtml(iv.n)}${isRenfortUT ? ` <span style="font-size:10px;color:#7C3AED;font-weight:400;">— ${escHtml(iv._caserneSourceNom || '')}</span>` : isRenfortInternal ? ` <span style="font-size:10px;color:#047857;font-weight:400;">— pour ${escHtml(iv._sourceInterventionNumber || iv._ivSourceId || '')}</span>` : ''}${iv._avisPassage ? ' <span style="background:#9B59B6;color:#fff;border-radius:4px;padding:0 5px;font-size:9px;font-weight:700;margin-left:4px;">🟣 Avis passage</span>' : ''}</div>
       <div class="ivrc">&#x1F4CD; ${escHtml(interventionAddressLabel(iv))}${iv.eng ? ' · ' + escHtml(iv.eng) : ''}${isRenfortUT && iv._hDebut ? ' · depuis ' + escHtml(iv._hDebut) : ''}${numBadges}</div>
       ${iv.s==='en-attente'?reqAvailabilityBadgeHTML(iv):''}
     </div>
@@ -5363,7 +5384,7 @@ function renderInterventionRow(iv, ag, tireur) {
       ${interventionRouteBadgeHTML(iv)}
       <span class="bdg ${bc}">${bt}</span>
       ${isPilp ? '<span class="bdg bpilp" style="font-size:10px;">PILP</span>' : ''}
-      ${isRenfortUT ? '<span class="bdg" style="background:#7C3AED;color:#fff;font-size:10px;">Renfort UT</span>' : ''}
+      ${isRenfortUT ? '<span class="bdg" style="background:#7C3AED;color:#fff;font-size:10px;">Renfort UT</span>' : isRenfortInternal ? '<span class="bdg" style="background:#047857;color:#fff;font-size:10px;">Renfort interne</span>' : ''}
       ${iv._urgence ? '<span class="bdg" style="background:#B91C1C;color:#fff;font-size:10px;font-weight:700;">🚨 URGENCE ERP</span>' : ''}
       ${iv._sdis ? '<span class="bdg" style="background:#1D4ED8;color:#fff;font-size:10px;font-weight:700;">SDIS</span>' : ''}
       ${(iv._heureDebutModifiee&&hasAdministrativeAccount()||iv._heureFinModifiee&&hasAdministrativeAccount())&&!iv._sdis ? '<span class="bdg" title="Horaire corrigé — consulter la traçabilité" style="background:#FFF7ED;color:#9A3412;border:1px solid #FDBA74;font-size:10px;font-weight:700;">&#x23F1; Horaire corrigé</span>' : ''}
@@ -5549,6 +5570,7 @@ function toggleChk(id,el){
     delete iv._routeBatchId;delete iv._routeOrder;
     pushTL(iv,'en-attente',CU.l);
   }
+  syncInternalReinforcementSource(iv);
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);rI(); // push immédiat : changement de statut partagé, sinon la sélection est écrasée au prochain pull
 }
@@ -5694,6 +5716,7 @@ function interventionAppelDetailValue(iv,key,value){
 }
 function oM(id){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
+  const isInternalReinforcement=iv._isRenfortInterneMission===true;
   // Pour un départ SDIS, la synthèse opérationnelle commence à l'acquis
   // présence et se termine à l'opération terminée. Les heures de départ et
   // de retour de l'engin restent conservées séparément pour le rapport.
@@ -5733,10 +5756,10 @@ function oM(id){
           ?`<button class="btn sel-btn sm" disabled style="opacity:0.5;cursor:not-allowed;">⏳ Sélectionné par ${nomAutre}</button>`
           :`<button class="btn sel-btn sm" onclick="cS('${iv.id}','selectionne')">☑ Sélectionner</button>`
         }
-        ${(ag||chef||hasRight('Interventions'))?`<button class="btn sm" style="background:#7C3AED;color:#fff;border-color:#7C3AED;" onclick="showRenfortModal('${iv.id}')">&#x1F4E2; Renfort UT</button>`:''}
-        ${chef?`<button class="btn sm" style="color:#E67E22;border-color:#E67E22;" onclick="transfererIV('${iv.id}')">&#x1F500; Transférer</button>`:''}
-        ${chef&&iv.n&&(iv.n.toLowerCase().includes('animal')||iv.n.toLowerCase().includes('animaux'))?`<button class="btn sm" style="color:#27AE60;border-color:#27AE60;" onclick="refugeAnimalier('${iv.id}')">&#x1F43E; Refuge animalier</button>`:''}
-        ${chef?`<button class="btn sm" style="color:#888;border-color:#ccc;" onclick="annulerIV('${iv.id}')">✕ Annuler</button>`:''}
+        ${!iv._isRenfort&&(ag||chef||hasRight('Interventions'))?`<button class="btn sm" style="background:#7C3AED;color:#fff;border-color:#7C3AED;" onclick="showRenfortModal('${iv.id}')">&#x1F4E2; Renfort UT</button>`:''}
+        ${!iv._isRenfort&&chef?`<button class="btn sm" style="color:#E67E22;border-color:#E67E22;" onclick="transfererIV('${iv.id}')">&#x1F500; Transférer</button>`:''}
+        ${!iv._isRenfort&&chef&&iv.n&&(iv.n.toLowerCase().includes('animal')||iv.n.toLowerCase().includes('animaux'))?`<button class="btn sm" style="color:#27AE60;border-color:#27AE60;" onclick="refugeAnimalier('${iv.id}')">&#x1F43E; Refuge animalier</button>`:''}
+        ${!iv._isRenfort&&chef?`<button class="btn sm" style="color:#888;border-color:#ccc;" onclick="annulerIV('${iv.id}')">✕ Annuler</button>`:''}
       </div>`;
     } else if(iv.s==='selectionne'){
       const enCours=agresEnCours();
@@ -5767,13 +5790,13 @@ function oM(id){
       </div>`:''}`;
     } else if(iv.s==='en-cours'&&(iv.agr===CU.l||iv._agr2===CU.l||chef)){
       const ds=getDS(N()),hh=pad(N().getHours()),mm2=pad(N().getMinutes());
-      const pilpBtn=iv.n==='Nid de frelons asiatiques'?`<button class="btn pilp-btn sm" onclick="showPilpForm('${iv.id}')">&#x1F3AF; PILP</button>`:'';
+      const pilpBtn=!iv._isRenfort&&iv.n==='Nid de frelons asiatiques'?`<button class="btn pilp-btn sm" onclick="showPilpForm('${iv.id}')">&#x1F3AF; PILP</button>`:'';
       const natsEchelle=['Nid de guêpes et frelons','Nid de frelons asiatiques',"Essaim d'abeilles"];
-      const echelleBtn=natsEchelle.includes(iv.n)&&!iv._echelleToiture?`<button class="btn sm" style="background:#D35400;color:#fff;border-color:#D35400;" onclick="demandeEchelleToiture('${iv.id}')">&#x1FA9C; Échelle</button>`:'';
-      const sdisBtn2=chef&&!iv._sdis?`<button class="btn sm" style="background:#1D4ED8;color:#fff;border-color:#1D4ED8;" onclick="demandeSDIS('${iv.id}')">&#x1F691; SDIS</button>`:'';
-      const epaBtn=chef&&!iv._epa?`<button class="btn sm" style="background:#8E44AD;color:#fff;border-color:#8E44AD;" onclick="demandeEPA('${iv.id}')">&#x1F9F0; EPA</button>`:'';
+      const echelleBtn=!iv._isRenfort&&natsEchelle.includes(iv.n)&&!iv._echelleToiture?`<button class="btn sm" style="background:#D35400;color:#fff;border-color:#D35400;" onclick="demandeEchelleToiture('${iv.id}')">&#x1FA9C; Échelle</button>`:'';
+      const sdisBtn2=!iv._isRenfort&&chef&&!iv._sdis?`<button class="btn sm" style="background:#1D4ED8;color:#fff;border-color:#1D4ED8;" onclick="demandeSDIS('${iv.id}')">&#x1F691; SDIS</button>`:'';
+      const epaBtn=!iv._isRenfort&&chef&&!iv._epa?`<button class="btn sm" style="background:#8E44AD;color:#fff;border-color:#8E44AD;" onclick="demandeEPA('${iv.id}')">&#x1F9F0; EPA</button>`:'';
       // Bouton clôture renfort si c'est une IV de renfort UT
-      const renfortCloBtn=iv._isRenfort?`<div style="background:#EDE9FE;border-radius:10px;padding:12px;margin-bottom:10px;border:2px solid #7C3AED;">
+      const renfortCloBtn=iv._isRenfort&&!isInternalReinforcement?`<div style="background:#EDE9FE;border-radius:10px;padding:12px;margin-bottom:10px;border:2px solid #7C3AED;">
         <div style="font-size:12px;font-weight:600;color:#7C3AED;margin-bottom:6px;">&#x1F692; Renfort UT — ${iv._caserneSourceNom||''}</div>
         <div style="font-size:11px;color:var(--t2);margin-bottom:8px;">Clôturez votre partie quand votre équipage rentre à la caserne. L'intervention principale reste ouverte chez la caserne demandeuse.</div>
         <button class="btn gn" style="width:100%;" onclick="cloturerRenfort('${CURRENT_CASERNE_ID}','${iv._renfortId}')">&#x2705; Clôturer ma partie renfort</button>
@@ -5796,20 +5819,20 @@ function oM(id){
         :'';
       actions=`<div class="clotbox">
         ${renfortCloBtn}
-        ${iv._isRenfort?'':`${animalBtn}${addNidBtn}${autorisationBtn}
-        <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Clôturer l'intervention</div>
-        <label class="avislbl"><input type="checkbox" id="chk-av" style="accent-color:var(--pur);" onchange="toggleAvisPassageHour(this,'avis-passage-hour','avis-passage-hour-wrap')"/>&#x1F7E3; Requérant absent — Avis de passage</label>
+        ${iv._isRenfort&&!isInternalReinforcement?'':`${animalBtn}${addNidBtn}${autorisationBtn}
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px;">${isInternalReinforcement?'Clôturer le renfort':'Clôturer l’intervention'}</div>
+        ${isInternalReinforcement?'':`<label class="avislbl"><input type="checkbox" id="chk-av" style="accent-color:var(--pur);" onchange="toggleAvisPassageHour(this,'avis-passage-hour','avis-passage-hour-wrap')"/>&#x1F7E3; Requérant absent — Avis de passage</label>
         <div id="avis-passage-hour-wrap" style="display:none;background:#FAF5FF;border:1px solid #D8B4FE;border-radius:9px;padding:9px 10px;margin:-2px 0 10px;">
           <label for="avis-passage-hour" style="display:block;font-size:11px;font-weight:700;color:#6B21A8;margin-bottom:5px;">Heure de dépôt dans la boîte aux lettres *</label>
           <input class="fi" type="time" id="avis-passage-hour" value="${getHHMM(N())}" style="width:100%;"/>
-        </div>
+        </div>`}
         ${(iv.agr===CU.l||iv._agr2===CU.l||chef||isAdminModeActive())?`<button class="btn gn" style="width:100%;margin-bottom:10px;" onclick="clot('${iv.id}')">✅ Confirmer la clôture</button>`:`<div style="font-size:12px;color:#991B1B;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:8px;margin-bottom:10px;">🔒 Clôture réservée au chef d'agrès assigné ou à un administrateur.</div>`}
         <div style="border-top:1px solid var(--brd);padding-top:10px;margin-bottom:6px;">
           <div style="font-size:10px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Gestion de l'équipage</div>
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:5px;">
             <button class="btn sm" style="background:#0369A1;color:#fff;border-color:#0369A1;" onclick="showReleveModal('${iv.id}')">&#x1F504; Relève</button>
-            <button class="btn sm" style="background:#0369A1;color:#fff;border-color:#0369A1;" onclick="showRenfortInterneModal('${iv.id}')">&#x1F3E0; Renfort interne</button>
-            <button class="btn sm" style="background:#7C3AED;color:#fff;border-color:#7C3AED;" onclick="showRenfortModal('${iv.id}')">&#x1F4E2; Renfort UT</button>
+            ${iv._isRenfort?'':`<button class="btn sm" style="background:#0369A1;color:#fff;border-color:#0369A1;" onclick="showRenfortInterneModal('${iv.id}')">&#x1F3E0; Renfort interne</button>
+            <button class="btn sm" style="background:#7C3AED;color:#fff;border-color:#7C3AED;" onclick="showRenfortModal('${iv.id}')">&#x1F4E2; Renfort UT</button>`}
           </div>
         </div>
         ${pilpBtn||echelleBtn||sdisBtn2||epaBtn?`<div style="border-top:1px solid var(--brd);padding-top:10px;margin-top:4px;">
@@ -5819,7 +5842,7 @@ function oM(id){
           </div>
         </div>`:''}`}
       </div>
-      <div class="brow" style="margin-top:8px;">${iv._isRenfort?'':`<button class="btn sm danger" onclick="cS('${iv.id}','en-attente')">↩ Remettre en attente</button>`}</div>`;
+      <div class="brow" style="margin-top:8px;">${iv._isRenfort&&!isInternalReinforcement?'':`<button class="btn sm danger" onclick="cS('${iv.id}','en-attente')">↩ Remettre en attente</button>`}</div>`;
     }
   }
   if((chef||isAgres())&&iv.s==='avis-passage'){
@@ -5884,6 +5907,7 @@ function oM(id){
     ${(iv.eng||detailStart||detailEnd)?'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:8px;margin:6px 0;">'+(iv.eng?'<div style="background:var(--bg);border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Engin</div><span class="bdg bb">'+iv.eng+'</span></div>':'')+(detailStart?'<div style="background:#FEF9EC;border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--amb);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">&#x23F1; Début</div><div style="font-weight:700;color:var(--amb);font-size:15px;">'+detailStart+'</div></div>':'')+(detailEnd?'<div style="background:#F0FAF0;border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--grn);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">&#x2705; Fin</div><div style="font-weight:700;color:var(--grn);font-size:15px;">'+detailEnd+'</div></div>':'')+(detailStart&&detailEnd?'<div style="background:#F0F4FF;border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--pur);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">&#x23F3; Durée</div><div style="font-weight:700;color:var(--pur);font-size:15px;">'+dureeHHMM(detailStart,detailEnd)+'</div></div>':'')+'</div>':''}
     ${iv._equipage1?`<div class="mr"><div class="ml">&#x1F692; ${iv._engin1||'Engin 1'}</div><div class="mv2"><div style="display:flex;flex-wrap:wrap;gap:4px;">${iv._equipage1.map(e=>{const u=USERS.find(x=>x.l===e.login);const nom=u?fullName(u):((e.prenom||e.nom)?((e.prenom||'')+' '+(e.nom||'')).trim():e.login);return'<span style="background:'+(e.renfort?'#F5F3FF':'#EEF2FF')+';color:'+(e.renfort?'#6D28D9':'#3730A3')+';border-radius:6px;padding:2px 8px;font-size:11px;">'+(e.renfort?'&#x1F692; ':'')+'<span style="font-size:9px;opacity:.7;">'+e.role+'</span> '+nom+(e.renfort&&e.caserneNom?' <span style="font-size:9px;opacity:.7;">('+e.caserneNom+')</span>':'')+'</span>';}).join('')}</div></div></div>`:''}
     ${iv._equipage2?`<div class="mr"><div class="ml">&#x1F692; ${iv._engin2||'Engin 2'}</div><div class="mv2"><div style="display:flex;flex-wrap:wrap;gap:4px;">${iv._equipage2.map(e=>{const u=USERS.find(x=>x.l===e.login);const nom=u?fullName(u):((e.prenom||e.nom)?((e.prenom||'')+' '+(e.nom||'')).trim():e.login);return'<span style="background:'+(e.renfort?'#F5F3FF':'#F0FDF4')+';color:'+(e.renfort?'#6D28D9':'#166534')+';border-radius:6px;padding:2px 8px;font-size:11px;">'+(e.renfort?'&#x1F692; ':'')+'<span style="font-size:9px;opacity:.7;">'+e.role+'</span> '+nom+(e.renfort&&e.caserneNom?' <span style="font-size:9px;opacity:.7;">('+e.caserneNom+')</span>':'')+'</span>';}).join('')}</div></div></div>`:''}
+    ${linkedInternalReinforcementsHTML(iv)}
     ${interventionInternalReinforcements(iv).length?`<div class="mr"><div class="ml" style="color:#047857;">🏠 Renforts internes</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:6px;">${interventionInternalReinforcements(iv).map((renfort,index)=>'<div style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:8px;padding:8px 10px;"><div style="font-size:11px;font-weight:700;color:#047857;margin-bottom:5px;">Renfort interne '+(index+1)+' · '+(renfort.engin||'Véhicule à corriger')+' · '+(renfort.hDebut||'')+'</div><div style="display:flex;flex-wrap:wrap;gap:4px;">'+(renfort.equipage||[]).map(e=>{const u=USERS.find(x=>x.l===e.login);return'<span style="background:#fff;color:#065F46;border:1px solid #A7F3D0;border-radius:6px;padding:2px 8px;font-size:10px;"><span style="opacity:.75;">'+(e.role||'Agent')+'</span> '+(u?fullName(u):e.login)+'</span>';}).join('')+'</div></div>').join('')}</div></div></div>`:''}
     ${(iv._releves&&iv._releves.filter(r=>!r.isRenfort&&!r.isRenfortInterne).length)?`<div class="mr"><div class="ml" style="color:#0369A1;">&#x1F504; Relèves</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:6px;">${iv._releves.filter(r=>!r.isRenfort&&!r.isRenfortInterne).map((r,ri)=>{
       const originalReleveIndex=iv._releves.indexOf(r);
@@ -5942,7 +5966,7 @@ function oM(id){
         +destDetails
         +'</div>';
     }).join('')}</div></div></div>`:''}
-    ${iv._isRenfort?`<div class="mr"><div class="ml" style="color:#7C3AED;">&#x1F692; Mode Renfort UT</div><div class="mv2" style="font-size:12px;background:#F5F3FF;border-radius:8px;padding:8px 12px;border:1px solid #DDD6FE;"><span style="font-weight:600;color:#7C3AED;">Renfort pour ${iv._caserneSourceNom||iv._caserneSource||''}</span><br><span style="font-size:11px;color:var(--t2);">Votre caserne est intervenue en renfort sur cette intervention.</span></div></div>`:''}
+    ${iv._isRenfort?`<div class="mr"><div class="ml" style="color:${isInternalReinforcement?'#047857':'#7C3AED'};">&#x1F692; ${isInternalReinforcement?'Renfort interne':'Mode Renfort UT'}</div><div class="mv2" style="font-size:12px;background:${isInternalReinforcement?'#ECFDF5':'#F5F3FF'};border-radius:8px;padding:8px 12px;border:1px solid ${isInternalReinforcement?'#A7F3D0':'#DDD6FE'};"><span style="font-weight:600;color:${isInternalReinforcement?'#047857':'#7C3AED'};">${isInternalReinforcement?'Renfort lié à '+(iv._sourceInterventionNumber||iv._ivSourceId||'l’intervention principale'):'Renfort pour '+(iv._caserneSourceNom||iv._caserneSource||'')}</span><br><span style="font-size:11px;color:var(--t2);">${isInternalReinforcement?'Cette mission dispose de son propre véhicule, de son équipage et de son rapport de renfort.':'Votre caserne est intervenue en renfort sur cette intervention.'}</span></div></div>`:''}
     ${iv.det?`<div class="mr"><div class="ml">Détails</div><div class="mv2">${escHtml(iv.det)}</div></div>`:''}
     ${iv.s==='terminee'&&(iv._crTexte||iv._compteRendu)&&(isInterventionReportChef(iv,CU.l)||agentInIV(iv,CU.l)||hasAdministrativeAccount())?`<div class="mr"><div class="ml" style="color:#0F766E;">&#x1F4CB; Compte rendu${iv._crValide?' &#x1F512;':''}</div><div class="mv2" style="white-space:pre-wrap;font-size:12px;background:#F0FDFA;border-radius:8px;padding:8px 10px;border:1px solid #99F6E4;">${iv._crTexte||iv._compteRendu}</div></div>`:''}
     ${iv.s==='terminee'&&(isInterventionReportChef(iv,CU.l)||hasAdministrativeAccount())?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 2px 0;">
@@ -6175,6 +6199,7 @@ function cS(id,s,confirmed){
     ?'Ordre de tournée : '+iv._routeOrder
     :(s==='en-attente'&&previousStatus==='en-cours'?'Retour en attente confirmé'+(iv._hDebutAvantRetourAttente?' — ancien départ : '+iv._hDebutAvantRetourAttente:''):'');
   pushTL(iv,s,CU.l+agr2Label,statusNote);
+  syncInternalReinforcementSource(iv);
   if(CD())CD().ivs=IVS;
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);
@@ -6249,6 +6274,7 @@ function clot(id){
   // qu'un pull déjà en cours ne puisse pas restaurer l'ancien statut.
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   iv.s='terminee';iv._hFin=getHHMM(N());iv.tl.push({s:'terminee',h,who:CU.l+agr2Lbl});
+  syncInternalReinforcementSource(iv);
   supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
   (iv.avisIds||[]).forEach(aid=>{const av=IVS.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';av.tl.push({s:'terminee',h,who:CU.l+' (fusion)'});}});
   const autorisationNids=Array.isArray(iv._autorisationNids)?iv._autorisationNids:(iv._autorisationData?[iv._autorisationData]:[]);
@@ -10498,6 +10524,7 @@ function confirmerDepart(id){
   iv._engin2RoleConfig=engin2?JSON.parse(JSON.stringify(getEnginRoles(engin2))):null;
   iv._agr2=engin2?agr2:null;
   if(engin1)iv.eng=engin1;
+  syncInternalReinforcementSource(iv);
   const agr2Label=agr2?(function(){const u=USERS.find(function(u){return u.l===agr2;});return u?' + '+fullName(u)+' (2\u00e8me)':' + '+agr2;})():'';
   const persLabel=' ['+eq1.concat(eq2).map(function(e){const u=USERS.find(function(x){return x.l===e.login;});return e.role+': '+(u?fullName(u):e.login);}).join(', ')+']';
   pushTL(iv,'en-cours',CU.l+agr2Label+persLabel,
@@ -10835,82 +10862,57 @@ function confirmerRetour(ivId,releveIdx,login){
 // ────────────────── DEMANDE DE RENFORT UT ──────────────────
 function showRenfortInterneModal(ivId){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
-  const heure=getHHMM(N());
-  const dejaPris=interventionActivePersonnelLogins(iv);
-  const enginsPris=interventionVehicleNames(iv);
-  const engins=(ASTR_CONFIG&&Array.isArray(ASTR_CONFIG.engins)?ASTR_CONFIG.engins:[]).filter(Boolean);
-  const disponible=engins.find(function(engin){return !enginsPris.some(function(current){return nm(current)===nm(engin);})&&!findActiveVehicleConflict(engin,ivId);})||'';
-  const enginOptions='<option value="">— Sélectionner un véhicule —</option>'+engins.map(function(engin){
-    const usedHere=enginsPris.some(function(current){return nm(current)===nm(engin);});
-    const conflict=findActiveVehicleConflict(engin,ivId);
-    return '<option value="'+escHtml(engin)+'"'+(engin===disponible?' selected':'')+((usedHere||conflict)?' disabled':'')+'>'+escHtml(engin)+(usedHere?' — déjà sur cette intervention':conflict?' — déjà engagé':'')+'</option>';
-  }).join('');
-
-  document.getElementById('mt').textContent='Renfort interne — véhicule et équipage';
+  document.getElementById('mt').textContent='Demande de renfort interne';
   document.getElementById('mi').textContent=iv.n+' \u2014 '+iv.com;
   document.getElementById('mb').innerHTML=
     '<div>'
-    +'<div style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#047857;">Le renfort interne reste dans la même intervention. Il ajoute un véhicule et son équipage à <strong>'+heure+'</strong> ; il ne remplace personne.</div>'
-    +'<div class="fg"><div class="fgl">Véhicule du renfort *</div><select class="fi" id="renfort-int-engin" onchange="renderRenfortInterneCrewFields(this.value)">'+enginOptions+'</select></div>'
-    +'<div id="renfort-int-crew-fields">'+(disponible?buildRenfortInterneCrewFields(disponible,dejaPris):'<div style="font-size:12px;color:#64748B;padding:8px 0;">Aucun véhicule disponible.</div>')+'</div>'
+    +'<div style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#047857;">Une seconde ligne <strong>Renfort interne</strong> va être créée dans la liste des interventions. Un autre chef d’agrès pourra la sélectionner, choisir son véhicule et son équipage, puis établir son propre rapport de renfort.</div>'
+    +'<div class="fg"><div class="fgl">Précision pour le renfort <span style="font-size:10px;color:var(--t2);font-weight:400;">(optionnel)</span></div><textarea class="fi" id="renfort-int-note" rows="3" placeholder="Ex. besoin d’un deuxième véhicule et de son équipage"></textarea></div>'
     +'<div class="brow" style="margin-top:10px;">'
-    +'<button class="btn sm" style="background:#0369A1;color:#fff;" onclick="confirmerRenfortInterne(\''+ivId+'\')">🚒 Ajouter le véhicule et l’équipage</button>'
+    +'<button class="btn sm" style="background:#047857;color:#fff;" onclick="confirmerRenfortInterne(\''+ivId+'\')">🚒 Créer la mission de renfort</button>'
     +'<button class="btn sm" onclick="oM(\''+ivId+'\')" >Retour</button>'
     +'</div></div>';
   document.getElementById('mo').style.display='flex';
-  window._renfortIntContext={ivId:ivId,excludeLogins:dejaPris.slice()};
-  window._piqData={ivId:ivId};
-  setTimeout(function(){refreshEquipageSelects();},0);
-}
-
-function renfortInterneSlotId(slot){return 'renfort-int-'+slot.key+'-'+slot.ordinal;}
-function buildRenfortInterneCrewFields(engin,excludeLogins){
-  if(!engin)return '';
-  const excluded=Array.isArray(excludeLogins)?excludeLogins:(window._renfortIntContext&&window._renfortIntContext.excludeLogins)||[];
-  return allConfiguredCrewSlotsForVehicle(engin).map(function(slot){
-    const label=slot.role+(slot.total>1?' '+slot.ordinal:'');
-    return agentSelectHtml(label,renfortInterneSlotId(slot),'',false,slot.key==='chefdagres'||slot.key==='conducteur',excluded);
-  }).join('');
-}
-function renderRenfortInterneCrewFields(engin){
-  const container=document.getElementById('renfort-int-crew-fields');if(!container)return;
-  container.innerHTML=engin?buildRenfortInterneCrewFields(engin):'<div style="font-size:12px;color:#64748B;padding:8px 0;">Sélectionnez un véhicule.</div>';
-  refreshEquipageSelects();
-}
-function readRenfortInterneCrewFields(engin){
-  return allConfiguredCrewSlotsForVehicle(engin).map(function(slot){
-    const field=document.getElementById(renfortInterneSlotId(slot));
-    return {role:slot.role,login:field&&field.value||''};
-  }).filter(function(member){return member.login;});
 }
 
 function confirmerRenfortInterne(ivId){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
-  const heure=getHHMM(N());
-  const engin=(document.getElementById('renfort-int-engin')||{}).value||'';
-  if(!engin){showToast('Sélectionnez le véhicule du renfort interne.','warn');return;}
-  if(interventionVehicleNames(iv).some(function(current){return nm(current)===nm(engin);})){showToast('Ce véhicule est déjà engagé sur cette intervention.','warn');return;}
-  const vehicleConflict=findActiveVehicleConflict(engin,ivId);if(vehicleConflict){showOperationalConflict('vehicle',engin,vehicleConflict);return;}
-  const crew=readRenfortInterneCrewFields(engin);
-  if(!crew.length){showToast('Renseignez l’équipage du véhicule de renfort.','warn');return;}
-  if(!crew.some(function(member){return interventionRoleKey(member.role)==='chefdagres';})){showToast('Renseignez le chef d’agrès du véhicule de renfort.','warn');return;}
-  const logins=crew.map(function(member){return member.login;});
-  if(new Set(logins).size!==logins.length){showToast('Un agent ne peut pas occuper plusieurs places dans le même véhicule.','warn');return;}
-  const already=new Set(interventionActivePersonnelLogins(iv));
-  const duplicate=logins.find(function(login){return already.has(login);});
-  if(duplicate){showToast(interventionTeammateName(duplicate)+' est déjà affecté à cette intervention.','warn');return;}
-  for(const login of logins){
-    const conflict=findActivePersonnelConflict(login,ivId);
-    if(conflict){showOperationalConflict('personnel',login,conflict);return;}
-  }
+  const h=getH(N()),heure=getHHMM(N());
+  const note=((document.getElementById('renfort-int-note')||{}).value||'').trim();
+  const childId=iv.id+'-RI-'+Date.now();
+  const sourceNumber=interventionDisplayCallNumber(iv);
+  const renfort={
+    id:childId,_numApl:iv._numApl||sourceNumber,_appelCopie:true,
+    n:iv.n,addr:iv.addr||'',adr:iv.adr||'',addrComp:iv.addrComp||'',com:iv.com||'',
+    h:h,op:CU.l,s:'en-attente',det:note||iv.det||'',req:iv.req||'',tel:iv.tel||'',tels:Array.isArray(iv.tels)?iv.tels.slice():[],
+    agr:null,eng:null,rappels:0,avisIds:[],
+    _isRenfort:true,_isRenfortInterneMission:true,_ivSourceId:iv.id,
+    _sourceInterventionNumber:sourceNumber,_caserneSource:CURRENT_CASERNE_ID,
+    _caserneSourceNom:(CC()&&CC().nom)||'',_renfortInterneId:childId,
+    tl:[{s:'en-attente',h:h,who:CU.l,note:'Demande de renfort interne pour '+sourceNumber+(note?' — '+note:'')}]
+  };
+  IVS.unshift(renfort);
   if(!Array.isArray(iv._renfortsInternes))iv._renfortsInternes=[];
-  iv._renfortsInternes.push({id:'ri-'+Date.now(),hDebut:heure,engin:engin,equipage:crew.map(function(member){return Object.assign({},member,{hDebut:heure,renfortInterne:true});}),roleConfig:JSON.parse(JSON.stringify(getEnginRoles(engin)))});
+  iv._renfortsInternes.push({id:childId,missionLiee:true,ivRenfortId:childId,hDemande:heure,statut:'en-attente',note:note});
   if(!iv.tl)iv.tl=[];
-  iv.tl.push({s:'renfort-interne',h:getH(N()),who:CU.l,note:'Renfort interne : '+engin+' · '+crew.map(function(member){return member.role+' '+interventionTeammateName(member.login);}).join(', ')});
+  iv.tl.push({s:'renfort-interne',h:h,who:CU.l,note:'Mission de renfort interne créée : '+childId+(note?' — '+note:'')});
+  if(CD())CD().ivs=IVS;
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);cM();
-  setTimeout(function(){oM(ivId);},80);
-  showToast('Véhicule et équipage de renfort ajoutés à '+heure,'success');
+  rI();
+  showToast('Mission de renfort interne créée dans la liste des interventions.','success');
+}
+
+function syncInternalReinforcementSource(child){
+  if(!child||child._isRenfortInterneMission!==true||!child._ivSourceId)return;
+  const source=IVS.find(function(item){return item&&item.id===child._ivSourceId;});
+  if(!source)return;
+  if(!Array.isArray(source._renfortsInternes))source._renfortsInternes=[];
+  let link=source._renfortsInternes.find(function(item){return item&&(item.ivRenfortId===child.id||item.id===child._renfortInterneId);});
+  if(!link){link={id:child._renfortInterneId||child.id,missionLiee:true,ivRenfortId:child.id};source._renfortsInternes.push(link);}
+  link.statut=child.s;link.chefAgres=child.agr||'';link.engin=child._engin1||child.eng||'';
+  link.equipage=Array.isArray(child._equipage1)?child._equipage1.map(function(member){return Object.assign({},member);}):[];
+  link.hDebut=child._hDebut||'';link.hFin=child._hFin||'';
 }
 
 function showRenfortModal(ivId,forcePersonnel){
@@ -12139,7 +12141,7 @@ function statsAppelDateKey(iv){
 function statsAppelsEnregistres(interventions){
   const seen=new Set();
   return (interventions||[]).filter(function(iv){
-    if(!iv||iv._transfertDe||!statsAppelDateKey(iv))return false;
+    if(!iv||iv._transfertDe||iv._appelCopie||!statsAppelDateKey(iv))return false;
     const apl=String(iv._numApl||(/^APL_/.test(String(iv.id||''))?iv.id:'')||iv.id||'');
     if(!apl||seen.has(apl))return false;
     seen.add(apl);
@@ -12310,7 +12312,7 @@ function rStatsIndemnites(){
     row.values[key].amount+=amount;dailyValue.amount+=amount;
   }
   function interventionIsoDate(iv){const key=statsInterventionDateKey(iv);return key&&key.length>=8?key.slice(0,4)+'-'+key.slice(4,6)+'-'+key.slice(6,8):'';}
-  (IVS||[]).filter(function(iv){return iv&&!iv._isPilip&&isInterventionComptabilisee(iv);}).forEach(function(iv){
+  (IVS||[]).filter(function(iv){return iv&&!iv._isPilip&&isInterventionPersonnelComptabilisee(iv);}).forEach(function(iv){
     const dateIso=interventionIsoDate(iv);if(!dateInPeriod(dateIso)||!indemnityScaleForDate(dateIso))return;
     const report=String(adminExportReportType(iv)||'INTER').toUpperCase();
     agents.forEach(function(user){
@@ -12976,7 +12978,7 @@ function agentInIV(iv,login){
 function rStatsPersonnel(vue){
   const annStr=String(stAnnee);
   const prefix=stMois>0?annStr+String(stMois).padStart(2,'0'):annStr;
-  const ivsFiltres=IVS.filter(function(iv){return !iv._isPilip&&isInterventionComptabilisee(iv)&&statsInterventionInPeriod(iv,prefix);});
+  const ivsFiltres=IVS.filter(function(iv){return !iv._isPilip&&isInterventionPersonnelComptabilisee(iv)&&statsInterventionInPeriod(iv,prefix);});
 
   // Tous les agents connus
   const agents=USERS.slice().sort(function(a,b){
@@ -13768,7 +13770,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260826-controles-depart-chevauchement-167';
+const APP_VERSION='20260826-renfort-interne-mission-168';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -14831,7 +14833,7 @@ function showCompteRenduModal(ivId) {
     }
   }
 
-  document.getElementById('mt').textContent = 'Compte rendu d\u2019intervention';
+  document.getElementById('mt').textContent = iv._isRenfort?'Compte rendu de renfort':'Compte rendu d\u2019intervention';
   document.getElementById('mi').textContent = iv.n + ' \u2014 ' + iv.com;
   const teammateFields=interventionTeammateEditorHTML(iv)+interventionSupplementaryCrewsEditorHTML(iv);
   const startCorrectionFields=interventionStartCorrectionHTML(iv);
@@ -15093,9 +15095,11 @@ function genRapportInterventionHTML(ivId) {
   const rows_data=[];
   rows_data.push(['',dateLongue]);
   if(iv._isRenfort){
-    // Modèle dédié "Rapport d'intervention - Renfort"
+    // Modèle dédié au rapport de renfort.
     const casSrc=iv._caserneSourceNom||iv._caserneSource||'';
-    rows_data.push(['\u00a0','Demande de renfort de l\u2019unit\u00e9 territoriale de '+casSrc+' pour '+(iv.n||'')+' \u00e0 l\u2019adresse suivante\u00a0: '+(iv.addr||'')+' dans la commune de '+(iv.com||'')]);
+    rows_data.push(['\u00a0',iv._isRenfortInterneMission
+      ?'Renfort interne demandé pour l\u2019intervention '+(iv._sourceInterventionNumber||iv._ivSourceId||'')+' — '+(iv.n||'')+' \u00e0 l\u2019adresse suivante\u00a0: '+(iv.addr||'')+' dans la commune de '+(iv.com||'')
+      :'Demande de renfort de l\u2019unit\u00e9 territoriale de '+casSrc+' pour '+(iv.n||'')+' \u00e0 l\u2019adresse suivante\u00a0: '+(iv.addr||'')+' dans la commune de '+(iv.com||'')]);
     if(iv.req||iv.tel)rows_data.push(['',(iv.req?'Nom du requ\u00e9rant\u00a0: '+iv.req:'')+(iv.req&&iv.tel?' \u2014 ':'')+(iv.tel?'T\u00e9l\u00a0: '+iv.tel:'')]);
     if(hDebut)rows_data.push([hDebut,'D\u00e9but']);
     if(hFin)rows_data.push([hFin,'Fin']);
@@ -15247,7 +15251,7 @@ function genRapportInterventionHTML(ivId) {
     });
   }
 
-  return '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Rapport d\u2019intervention</title>'
+  return '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+(iv._isRenfort?'Rapport de renfort':'Rapport d\u2019intervention')+'</title>'
     +'<style>'
     +'@page{size:A4 portrait;margin:0;}'
     +'*{box-sizing:border-box;margin:0;padding:0;}'
@@ -15284,7 +15288,7 @@ function genRapportInterventionHTML(ivId) {
     // Page 1 : rapport + documents associés
     +'<div class="page">'
     +'<table style="border-top:'+B+';border-left:0;border-right:0;">'
-    +'<tr><td colspan="2" style="border-left:'+B+';border-right:'+B+';border-bottom:'+B+';text-align:center;font-size:13pt;font-weight:bold;padding:4px;">Rapport d\u2019intervention'+(iv._isRenfort?' \u2014 Renfort':'')+'</td></tr>'
+    +'<tr><td colspan="2" style="border-left:'+B+';border-right:'+B+';border-bottom:'+B+';text-align:center;font-size:13pt;font-weight:bold;padding:4px;">'+(iv._isRenfort?'Rapport de renfort':'Rapport d\u2019intervention')+'</td></tr>'
     +'<tr>'
     +'<td style="width:28mm;border-left:'+B+';border-right:'+B+';border-bottom:'+B+';text-align:center;font-weight:bold;padding:3px;font-size:9.5pt;">GH</td>'
     +'<td style="border-right:'+B+';border-bottom:'+B+';text-align:center;font-weight:bold;padding:3px;font-size:9.5pt;">Texte</td>'

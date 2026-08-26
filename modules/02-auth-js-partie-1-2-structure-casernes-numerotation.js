@@ -11,6 +11,13 @@ const GLOBAL_ACCOUNTS=[];
 function isSuperAdmin(){return GLOBAL_ROLE==='superadmin'&&!window._superAdminDisabled;}
 function isChefCorps(){return GLOBAL_ROLE==='chef_corps';}
 function isInterventionComptabilisee(iv){
+  // Une mission de renfort possède son propre rapport mais ne doit pas
+  // augmenter le nombre d'interventions opérationnelles.
+  return !!(iv&&iv.s==='terminee'&&!iv._refugeAnimalier&&!iv._isRenfort);
+}
+function isInterventionPersonnelComptabilisee(iv){
+  // Les renforts restent pris en compte pour les agents, leurs heures et
+  // leurs indemnités, même s'ils sont exclus des autres statistiques.
   return !!(iv&&iv.s==='terminee'&&!iv._refugeAnimalier);
 }
 function statsCommunesIntervenuesEnPremier(interventions){

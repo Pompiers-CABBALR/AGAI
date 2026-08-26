@@ -25,7 +25,7 @@ function statsAppelDateKey(iv){
 function statsAppelsEnregistres(interventions){
   const seen=new Set();
   return (interventions||[]).filter(function(iv){
-    if(!iv||iv._transfertDe||!statsAppelDateKey(iv))return false;
+    if(!iv||iv._transfertDe||iv._appelCopie||!statsAppelDateKey(iv))return false;
     const apl=String(iv._numApl||(/^APL_/.test(String(iv.id||''))?iv.id:'')||iv.id||'');
     if(!apl||seen.has(apl))return false;
     seen.add(apl);
@@ -196,7 +196,7 @@ function rStatsIndemnites(){
     row.values[key].amount+=amount;dailyValue.amount+=amount;
   }
   function interventionIsoDate(iv){const key=statsInterventionDateKey(iv);return key&&key.length>=8?key.slice(0,4)+'-'+key.slice(4,6)+'-'+key.slice(6,8):'';}
-  (IVS||[]).filter(function(iv){return iv&&!iv._isPilip&&isInterventionComptabilisee(iv);}).forEach(function(iv){
+  (IVS||[]).filter(function(iv){return iv&&!iv._isPilip&&isInterventionPersonnelComptabilisee(iv);}).forEach(function(iv){
     const dateIso=interventionIsoDate(iv);if(!dateInPeriod(dateIso)||!indemnityScaleForDate(dateIso))return;
     const report=String(adminExportReportType(iv)||'INTER').toUpperCase();
     agents.forEach(function(user){
@@ -862,7 +862,7 @@ function agentInIV(iv,login){
 function rStatsPersonnel(vue){
   const annStr=String(stAnnee);
   const prefix=stMois>0?annStr+String(stMois).padStart(2,'0'):annStr;
-  const ivsFiltres=IVS.filter(function(iv){return !iv._isPilip&&isInterventionComptabilisee(iv)&&statsInterventionInPeriod(iv,prefix);});
+  const ivsFiltres=IVS.filter(function(iv){return !iv._isPilip&&isInterventionPersonnelComptabilisee(iv)&&statsInterventionInPeriod(iv,prefix);});
 
   // Tous les agents connus
   const agents=USERS.slice().sort(function(a,b){

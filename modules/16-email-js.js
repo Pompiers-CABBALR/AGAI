@@ -680,7 +680,7 @@ function showCompteRenduModal(ivId) {
     }
   }
 
-  document.getElementById('mt').textContent = 'Compte rendu d\u2019intervention';
+  document.getElementById('mt').textContent = iv._isRenfort?'Compte rendu de renfort':'Compte rendu d\u2019intervention';
   document.getElementById('mi').textContent = iv.n + ' \u2014 ' + iv.com;
   const teammateFields=interventionTeammateEditorHTML(iv)+interventionSupplementaryCrewsEditorHTML(iv);
   const startCorrectionFields=interventionStartCorrectionHTML(iv);
@@ -942,9 +942,11 @@ function genRapportInterventionHTML(ivId) {
   const rows_data=[];
   rows_data.push(['',dateLongue]);
   if(iv._isRenfort){
-    // Modèle dédié "Rapport d'intervention - Renfort"
+    // Modèle dédié au rapport de renfort.
     const casSrc=iv._caserneSourceNom||iv._caserneSource||'';
-    rows_data.push(['\u00a0','Demande de renfort de l\u2019unit\u00e9 territoriale de '+casSrc+' pour '+(iv.n||'')+' \u00e0 l\u2019adresse suivante\u00a0: '+(iv.addr||'')+' dans la commune de '+(iv.com||'')]);
+    rows_data.push(['\u00a0',iv._isRenfortInterneMission
+      ?'Renfort interne demandé pour l\u2019intervention '+(iv._sourceInterventionNumber||iv._ivSourceId||'')+' — '+(iv.n||'')+' \u00e0 l\u2019adresse suivante\u00a0: '+(iv.addr||'')+' dans la commune de '+(iv.com||'')
+      :'Demande de renfort de l\u2019unit\u00e9 territoriale de '+casSrc+' pour '+(iv.n||'')+' \u00e0 l\u2019adresse suivante\u00a0: '+(iv.addr||'')+' dans la commune de '+(iv.com||'')]);
     if(iv.req||iv.tel)rows_data.push(['',(iv.req?'Nom du requ\u00e9rant\u00a0: '+iv.req:'')+(iv.req&&iv.tel?' \u2014 ':'')+(iv.tel?'T\u00e9l\u00a0: '+iv.tel:'')]);
     if(hDebut)rows_data.push([hDebut,'D\u00e9but']);
     if(hFin)rows_data.push([hFin,'Fin']);
@@ -1096,7 +1098,7 @@ function genRapportInterventionHTML(ivId) {
     });
   }
 
-  return '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Rapport d\u2019intervention</title>'
+  return '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+(iv._isRenfort?'Rapport de renfort':'Rapport d\u2019intervention')+'</title>'
     +'<style>'
     +'@page{size:A4 portrait;margin:0;}'
     +'*{box-sizing:border-box;margin:0;padding:0;}'
@@ -1133,7 +1135,7 @@ function genRapportInterventionHTML(ivId) {
     // Page 1 : rapport + documents associés
     +'<div class="page">'
     +'<table style="border-top:'+B+';border-left:0;border-right:0;">'
-    +'<tr><td colspan="2" style="border-left:'+B+';border-right:'+B+';border-bottom:'+B+';text-align:center;font-size:13pt;font-weight:bold;padding:4px;">Rapport d\u2019intervention'+(iv._isRenfort?' \u2014 Renfort':'')+'</td></tr>'
+    +'<tr><td colspan="2" style="border-left:'+B+';border-right:'+B+';border-bottom:'+B+';text-align:center;font-size:13pt;font-weight:bold;padding:4px;">'+(iv._isRenfort?'Rapport de renfort':'Rapport d\u2019intervention')+'</td></tr>'
     +'<tr>'
     +'<td style="width:28mm;border-left:'+B+';border-right:'+B+';border-bottom:'+B+';text-align:center;font-weight:bold;padding:3px;font-size:9.5pt;">GH</td>'
     +'<td style="border-right:'+B+';border-bottom:'+B+';text-align:center;font-weight:bold;padding:3px;font-size:9.5pt;">Texte</td>'
