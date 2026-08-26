@@ -1578,8 +1578,11 @@ function showBlockModal(enCours){
 const OPERATIONAL_START_RADIUS_METERS=2000;
 const OPERATIONAL_START_GRACE_MINUTES=15;
 const _operationalStartAuthorizations={};
-function operationalStartGeolocationEnabled(){
-  return !(CASERNE_DATA&&CASERNE_DATA._global&&CASERNE_DATA._global._operationalStartGeolocationEnabled===false);
+function operationalStartGeolocationEnabled(caserneId){
+  if((typeof isChefCorps==='function'&&isChefCorps())||(CU&&CU.appRole==='chef_corps'))return false;
+  const id=caserneId||CURRENT_CASERNE_ID;
+  const caserne=CASERNES.find(function(item){return item.id===id;});
+  return !(caserne&&caserne._operationalStartGeolocationEnabled===false);
 }
 function canUseOperationalStartDevice(){
   if(typeof navigator==='undefined')return false;
@@ -1619,7 +1622,8 @@ function requestOperationalStartAuthorization(iv,onApproved){
     showToast('Le passage « En cours » est autorisé uniquement sur mobile ou tablette.','warn');return;
   }
   if(!operationalStartGeolocationEnabled()){
-    _operationalStartAuthorizations[iv.id]={at:Date.now(),exempt:true,reason:'contrôle de présence désactivé par le superadmin'};
+    const exemptReason=(typeof isChefCorps==='function'&&isChefCorps())||(CU&&CU.appRole==='chef_corps')?'chef de corps exempté du contrôle de présence':'contrôle de présence désactivé pour cette caserne';
+    _operationalStartAuthorizations[iv.id]={at:Date.now(),exempt:true,reason:exemptReason};
     onApproved();return;
   }
   const exemption=operationalStartGeoExemption(iv);

@@ -368,6 +368,10 @@ function renderSuperAdmin(){
         <div style="font-size:11px;color:${c.latitude!=null&&c.longitude!=null?'#047857':'#B45309'};">${c.adresse?escHtml(c.adresse):'Adresse non renseignée'}${c.latitude!=null&&c.longitude!=null?' · position enregistrée':' · géolocalisation inactive'}</div>
         ${c.latitude!=null&&c.longitude!=null?`<div style="font-size:10px;color:#64748B;margin-top:3px;font-family:monospace;">${c.latitude}, ${c.longitude}</div>`:''}
         <div style="font-size:10px;color:#777;margin-top:4px;">Modifiez la caserne pour enregistrer son adresse. La première mise en cours doit se faire à moins de 2 km.</div>
+        <label style="display:flex;align-items:flex-start;gap:7px;font-size:11px;cursor:pointer;line-height:1.35;margin-top:8px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:8px;">
+          <input type="checkbox" style="margin-top:2px;accent-color:${c.couleur};" ${operationalStartGeolocationEnabled(c.id)?'checked':''} onchange="saSetOperationalStartGeolocation('${c.id}',this.checked)">
+          <span><strong>Contrôler la présence au premier départ</strong><br><span style="font-size:10px;color:#64748B;">Réglage propre à ${c.nom}. Le chef de corps est toujours exempté.</span></span>
+        </label>
       </div>
       <div style="margin-top:10px;border-top:1px solid #f0f0f0;padding-top:10px;">
         <div style="font-size:11px;font-weight:600;color:#666;margin-bottom:6px;">&#x23F1; STATISTIQUES PERSONNEL / HEURES</div>
@@ -503,14 +507,6 @@ function renderSuperAdmin(){
     </section>
     <section class="sa-section" data-sa-section="parametres">
     <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;border:1px solid #eee;">
-      <div style="font-size:14px;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:8px;">📍 Contrôle de présence au premier départ</div>
-      <div style="font-size:12px;color:#666;margin-bottom:12px;">Lorsque ce contrôle est activé, la première intervention doit être passée « En cours » à moins de 2 km de la caserne. Les enchaînements et les départs dans les 15 minutes restent dispensés.</div>
-      <label style="display:flex;align-items:center;gap:9px;cursor:pointer;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:9px;padding:10px 12px;">
-        <input type="checkbox" id="sa-start-geolocation-toggle" ${operationalStartGeolocationEnabled()?'checked':''} onchange="saSetOperationalStartGeolocation(this.checked)" style="width:18px;height:18px;accent-color:#15803D;">
-        <span><strong>${operationalStartGeolocationEnabled()?'Contrôle activé':'Contrôle désactivé'}</strong><br><span style="font-size:10px;color:#64748B;">La règle « En cours uniquement sur mobile ou tablette » reste toujours active.</span></span>
-      </label>
-    </div>
-    <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;border:1px solid #eee;">
       <div style="font-size:14px;font-weight:700;margin-bottom:4px;">📞 Astreinte téléphonique</div>
       <div style="font-size:12px;color:#666;margin-bottom:12px;">Gérez les règles et paramètres de l'astreinte téléphonique.</div>
       <button class="btn" style="font-size:12px;" onclick="rememberSuperAdminSection('parametres');showAstrTelParams()">Ouvrir les paramètres</button>
@@ -638,13 +634,14 @@ function renderSuperAdmin(){
     if(_bg)_bg.value=(ASTR_CONFIG&&typeof ASTR_CONFIG.bgLogoutMin==='number')?ASTR_CONFIG.bgLogoutMin:15;
   }catch(e){}
 }
-function saSetOperationalStartGeolocation(enabled){
+function saSetOperationalStartGeolocation(caserneId,enabled){
   if(!isSuperAdmin()){showToast('Réglage réservé au superadmin.','warn');return;}
-  if(!CASERNE_DATA._global||typeof CASERNE_DATA._global!=='object')CASERNE_DATA._global={};
-  CASERNE_DATA._global._operationalStartGeolocationEnabled=enabled===true;
+  const caserne=CASERNES.find(function(item){return item.id===caserneId&&item.id!=='EMAJ';});
+  if(!caserne){showToast('Caserne introuvable.','warn');return;}
+  caserne._operationalStartGeolocationEnabled=enabled===true;
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);renderSuperAdmin();
-  showToast(enabled?'Contrôle de présence activé.':'Contrôle de présence désactivé.','success');
+  showToast((enabled?'Contrôle activé pour ':'Contrôle désactivé pour ')+caserne.nom+'.','success');
 }
 
 
