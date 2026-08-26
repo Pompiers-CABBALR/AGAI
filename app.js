@@ -1602,6 +1602,7 @@ function renderSuperAdmin(){
       <div style="margin-top:10px;border-top:1px solid #f0f0f0;padding-top:10px;">
         <div style="font-size:11px;font-weight:600;color:#666;margin-bottom:6px;">📍 POSITION DE LA CASERNE</div>
         <div style="font-size:11px;color:${c.latitude!=null&&c.longitude!=null?'#047857':'#B45309'};">${c.adresse?escHtml(c.adresse):'Adresse non renseignée'}${c.latitude!=null&&c.longitude!=null?' · position enregistrée':' · géolocalisation inactive'}</div>
+        ${c.latitude!=null&&c.longitude!=null?`<div style="font-size:10px;color:#64748B;margin-top:3px;font-family:monospace;">${c.latitude}, ${c.longitude}</div>`:''}
         <div style="font-size:10px;color:#777;margin-top:4px;">Modifiez la caserne pour enregistrer son adresse. La première mise en cours doit se faire à moins de 2 km.</div>
       </div>
       <div style="margin-top:10px;border-top:1px solid #f0f0f0;padding-top:10px;">
@@ -3085,7 +3086,16 @@ function addCaserne(){
     <div class="fg"><div class="fgl">Nom</div><input class="fi" type="text" id="nc-nom" placeholder="ex. CIS Saint-Venant"/></div>
     <div class="fg"><div class="fgl">Code (3 lettres)</div><input class="fi" type="text" id="nc-code" placeholder="ex. STV" maxlength="5"/></div>
     <div class="fg"><div class="fgl">Portable d’astreinte</div><input class="fi" type="tel" inputmode="tel" id="nc-astreinte-phone" placeholder="06 00 00 00 00"/></div>
-    <div class="fg"><div class="fgl">Adresse complète de la caserne</div><input class="fi" type="text" id="nc-adresse" placeholder="Numéro, rue, code postal et commune"/></div>
+    <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:10px;margin-bottom:10px;">
+      <div style="font-size:11px;font-weight:700;color:#1D4ED8;margin-bottom:7px;">📍 POSITION GPS DE LA CASERNE</div>
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;">
+        <div class="fg" style="margin:0;"><div class="fgl">Latitude</div><input class="fi" type="text" inputmode="decimal" id="nc-latitude" placeholder="50.51653098506787"/></div>
+        <div class="fg" style="margin:0;"><div class="fgl">Longitude</div><input class="fi" type="text" inputmode="decimal" id="nc-longitude" placeholder="2.5428357204025933"/></div>
+      </div>
+      <button type="button" class="btn sm" style="width:100%;margin-top:8px;background:#1D4ED8;color:#fff;border-color:#1D4ED8;" onclick="findCaserneAddressFromCoordinates('nc')">🔎 Trouver l’adresse avec ces coordonnées</button>
+      <div id="nc-coordinate-status" style="font-size:10px;color:#64748B;margin-top:5px;">La latitude et la longitude sont prioritaires pour le contrôle des 2 km.</div>
+    </div>
+    <div class="fg"><div class="fgl">Adresse trouvée ou saisie manuellement</div><input class="fi" type="text" id="nc-adresse" placeholder="Numéro, rue, code postal et commune"/></div>
     <div class="fg"><div class="fgl">Couleur</div><div style="display:flex;gap:8px;flex-wrap:wrap;">${colors.map(col=>`<div onclick="this.parentElement.querySelectorAll('div').forEach(d=>d.style.outline='none');this.style.outline='3px solid #333';document.getElementById('nc-color').value='${col}';" style="width:28px;height:28px;border-radius:50%;background:${col};cursor:pointer;"></div>`).join('')}<input type="hidden" id="nc-color" value="${colors[0]}"/></div></div>
     <div class="fg"><div class="fgl">Mot de passe admin caserne</div><input class="fi" type="password" id="nc-pwd" placeholder="Mot de passe"/></div>
     <div id="nc-err" style="font-size:12px;color:#E24B4A;display:none;margin-bottom:8px;"></div>
@@ -3101,10 +3111,9 @@ async function confirmAddCaserne(){
   const adresse=((document.getElementById('nc-adresse')||{}).value||'').trim();
   const pwd=document.getElementById('nc-pwd').value.trim();
   const err=document.getElementById('nc-err');
-  if(!nom||!code||!pwd||!adresse){err.style.display='block';err.textContent='Tous les champs sont obligatoires.';return;}
+  if(!nom||!code||!pwd){err.style.display='block';err.textContent='Le nom, le code et le mot de passe sont obligatoires.';return;}
   let position;
-  try{position=await geocodeCaserneAddress(adresse);}catch(error){err.style.display='block';err.textContent='Impossible de localiser l’adresse de la caserne.';return;}
-  if(!position){err.style.display='block';err.textContent='Adresse introuvable. Ajoutez le numéro, le code postal et la commune.';return;}
+  try{position=await resolveCaserneLocation('nc',adresse);}catch(error){err.style.display='block';err.textContent=error.message||'Impossible de localiser la caserne.';return;}
   const id='CIS'+String(CASERNES.length+1).padStart(2,'0');
   CASERNES.push({id,nom,code,couleur,email:'',astreintePhone,adresse:position.label||adresse,latitude:position.latitude,longitude:position.longitude});
   initCaserneData(id);
@@ -3121,8 +3130,16 @@ function editCaserne(id){
     <div class="fg"><div class="fgl">Nom</div><input class="fi" type="text" id="ec-nom" value="${c.nom}"/></div>
     <div class="fg"><div class="fgl">Code</div><input class="fi" type="text" id="ec-code" value="${c.code}" maxlength="5"/></div>
     <div class="fg"><div class="fgl">Portable d’astreinte</div><input class="fi" type="tel" inputmode="tel" id="ec-astreinte-phone" value="${escHtml(c.astreintePhone||'')}" placeholder="06 00 00 00 00"/></div>
-    <div class="fg"><div class="fgl">Adresse complète de la caserne *</div><input class="fi" type="text" id="ec-adresse" value="${escHtml(c.adresse||'')}" placeholder="Numéro, rue, code postal et commune"/></div>
-    <div style="font-size:10px;color:#64748B;margin:-5px 0 10px;">L’adresse sera localisée lors de l’enregistrement. Elle sert uniquement au contrôle du rayon de départ de 2 km.</div>
+    <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:10px;margin-bottom:10px;">
+      <div style="font-size:11px;font-weight:700;color:#1D4ED8;margin-bottom:7px;">📍 POSITION GPS DE LA CASERNE</div>
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;">
+        <div class="fg" style="margin:0;"><div class="fgl">Latitude</div><input class="fi" type="text" inputmode="decimal" id="ec-latitude" value="${c.latitude==null?'':c.latitude}" placeholder="50.51653098506787"/></div>
+        <div class="fg" style="margin:0;"><div class="fgl">Longitude</div><input class="fi" type="text" inputmode="decimal" id="ec-longitude" value="${c.longitude==null?'':c.longitude}" placeholder="2.5428357204025933"/></div>
+      </div>
+      <button type="button" class="btn sm" style="width:100%;margin-top:8px;background:#1D4ED8;color:#fff;border-color:#1D4ED8;" onclick="findCaserneAddressFromCoordinates('ec')">🔎 Trouver l’adresse avec ces coordonnées</button>
+      <div id="ec-coordinate-status" style="font-size:10px;color:#64748B;margin-top:5px;">Les coordonnées sont utilisées directement pour le contrôle des 2 km.</div>
+    </div>
+    <div class="fg"><div class="fgl">Adresse trouvée ou saisie manuellement</div><input class="fi" type="text" id="ec-adresse" value="${escHtml(c.adresse||'')}" placeholder="Numéro, rue, code postal et commune"/></div>
     <div class="fg"><div class="fgl">Couleur</div><input class="fi" type="color" id="ec-col" value="${c.couleur}"/></div>
     <div class="brow"><button class="btn pr sm" onclick="confirmEditCaserne('${id}')">&#x1F4BE; Enregistrer</button><button class="btn sm" onclick="cM()">Annuler</button></div>
   </div>`;
@@ -3140,13 +3157,65 @@ async function geocodeCaserneAddress(address){
   if(!Number.isFinite(latitude)||!Number.isFinite(longitude))return null;
   return {latitude:latitude,longitude:longitude,label:feature.properties&&feature.properties.label||query};
 }
+function parseCaserneCoordinate(value){
+  const text=String(value==null?'':value).trim().replace(',','.');
+  return text===''?null:Number(text);
+}
+function validCaserneCoordinates(latitude,longitude){
+  return Number.isFinite(latitude)&&Number.isFinite(longitude)&&latitude>=-90&&latitude<=90&&longitude>=-180&&longitude<=180;
+}
+async function reverseGeocodeCaserneCoordinates(latitude,longitude){
+  if(!validCaserneCoordinates(latitude,longitude))return null;
+  const params=new URLSearchParams({lat:String(latitude),lon:String(longitude),type:'StreetAddress'});
+  let response=await fetch(ADDRESS_REVERSE_URL+'?'+params.toString(),{headers:{'Accept-Language':'fr'}});
+  if(!response.ok)throw new Error('géocodage inverse '+response.status);
+  let data=await response.json(),feature=data&&Array.isArray(data.features)?data.features[0]:null;
+  if(!feature){
+    const fallbackParams=new URLSearchParams({lat:String(latitude),lon:String(longitude)});
+    response=await fetch(ADDRESS_REVERSE_URL+'?'+fallbackParams.toString(),{headers:{'Accept-Language':'fr'}});
+    if(response.ok){data=await response.json();feature=data&&Array.isArray(data.features)?data.features[0]:null;}
+  }
+  if(!feature)return null;
+  const properties=feature.properties||{};
+  const label=properties.label||[properties.name,properties.postcode,properties.city].filter(Boolean).join(', ');
+  return {latitude:latitude,longitude:longitude,label:label||''};
+}
+async function findCaserneAddressFromCoordinates(prefix){
+  const latitude=parseCaserneCoordinate((document.getElementById(prefix+'-latitude')||{}).value);
+  const longitude=parseCaserneCoordinate((document.getElementById(prefix+'-longitude')||{}).value);
+  const status=document.getElementById(prefix+'-coordinate-status');
+  if(!validCaserneCoordinates(latitude,longitude)){
+    if(status){status.style.color='#B91C1C';status.textContent='Latitude ou longitude invalide.';}return;
+  }
+  if(status){status.style.color='#1D4ED8';status.textContent='Recherche de l’adresse…';}
+  try{
+    const position=await reverseGeocodeCaserneCoordinates(latitude,longitude);
+    if(!position||!position.label)throw new Error('Adresse non trouvée');
+    const addressField=document.getElementById(prefix+'-adresse');if(addressField)addressField.value=position.label;
+    if(status){status.style.color='#047857';status.textContent='Adresse trouvée : '+position.label;}
+  }catch(error){if(status){status.style.color='#B45309';status.textContent='Adresse non trouvée automatiquement. Les coordonnées peuvent quand même être enregistrées.';}}
+}
+async function resolveCaserneLocation(prefix,address){
+  const latitude=parseCaserneCoordinate((document.getElementById(prefix+'-latitude')||{}).value);
+  const longitude=parseCaserneCoordinate((document.getElementById(prefix+'-longitude')||{}).value);
+  const hasLatitude=latitude!==null,hasLongitude=longitude!==null;
+  if(hasLatitude||hasLongitude){
+    if(!validCaserneCoordinates(latitude,longitude))throw new Error('Renseignez une latitude et une longitude valides.');
+    let reverse=null;
+    try{reverse=await reverseGeocodeCaserneCoordinates(latitude,longitude);}catch(error){}
+    return {latitude:latitude,longitude:longitude,label:reverse&&reverse.label||String(address||'').trim()||('Position GPS '+latitude+', '+longitude)};
+  }
+  const manual=String(address||'').trim();
+  if(!manual)throw new Error('Renseignez les coordonnées GPS ou l’adresse de la caserne.');
+  const position=await geocodeCaserneAddress(manual);
+  if(!position)throw new Error('Adresse introuvable. Vous pouvez saisir directement la latitude et la longitude.');
+  return position;
+}
 async function confirmEditCaserne(id){
   const c=CASERNES.find(x=>x.id===id);if(!c)return;
   const address=((document.getElementById('ec-adresse')||{}).value||'').trim();
-  if(!address){showToast('Renseignez l’adresse complète de la caserne.','warn');return;}
   let position;
-  try{position=await geocodeCaserneAddress(address);}catch(error){showToast('Impossible de localiser cette adresse. Vérifiez la connexion puis réessayez.','warn');return;}
-  if(!position){showToast('Adresse de caserne introuvable. Ajoutez le numéro, le code postal et la commune.','warn');return;}
+  try{position=await resolveCaserneLocation('ec',address);}catch(error){showToast(error.message||'Impossible de localiser cette caserne.','warn');return;}
   c.nom=document.getElementById('ec-nom').value.trim()||c.nom;
   c.code=document.getElementById('ec-code').value.trim().toUpperCase()||c.code;
   c.astreintePhone=formatCaserneAstreintePhone((document.getElementById('ec-astreinte-phone')||{}).value||'');
@@ -3924,6 +3993,7 @@ let addrSelected=false,addrSelectedValue='';
 function extractNumero(q){const m=q.match(/^(\d+\s*(?:bis|ter|quater)?\s*)/i);return m?m[1]:'';}
 const ADDRESS_COMPLETION_URL='https://data.geopf.fr/geocodage/completion/';
 const ADDRESS_SEARCH_URL='https://data.geopf.fr/geocodage/search';
+const ADDRESS_REVERSE_URL='https://data.geopf.fr/geocodage/reverse';
 const addressSearchCache=new Map();
 function addrNorm(v){return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[-'’]/g,' ').replace(/\s+/g,' ').trim().toLowerCase();}
 function addrEsc(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
@@ -13934,7 +14004,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260826-geolocalisation-optionnelle-170';
+const APP_VERSION='20260826-coordonnees-casernes-171';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne

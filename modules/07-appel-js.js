@@ -204,6 +204,7 @@ let addrSelected=false,addrSelectedValue='';
 function extractNumero(q){const m=q.match(/^(\d+\s*(?:bis|ter|quater)?\s*)/i);return m?m[1]:'';}
 const ADDRESS_COMPLETION_URL='https://data.geopf.fr/geocodage/completion/';
 const ADDRESS_SEARCH_URL='https://data.geopf.fr/geocodage/search';
+const ADDRESS_REVERSE_URL='https://data.geopf.fr/geocodage/reverse';
 const addressSearchCache=new Map();
 function addrNorm(v){return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[-'’]/g,' ').replace(/\s+/g,' ').trim().toLowerCase();}
 function addrEsc(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
