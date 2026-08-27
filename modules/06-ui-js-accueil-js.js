@@ -347,6 +347,11 @@ function confirmModal(msg, onOk, onCancel){
 
 // ────────────────── TABS ──────────────────
 function showT(id,btn){
+  if(id==='formation'&&!hasFormationRight()){
+    showToast('Accès réservé aux formateurs et aux responsables autorisés.','warn');
+    applyNavRights();
+    return;
+  }
   document.querySelectorAll('.sec').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.nb').forEach(b=>b.classList.remove('active'));
   document.getElementById('tab-'+id).classList.add('active');

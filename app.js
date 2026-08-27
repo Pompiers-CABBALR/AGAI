@@ -3828,6 +3828,11 @@ function confirmModal(msg, onOk, onCancel){
 
 // ────────────────── TABS ──────────────────
 function showT(id,btn){
+  if(id==='formation'&&!hasFormationRight()){
+    showToast('Accès réservé aux formateurs et aux responsables autorisés.','warn');
+    applyNavRights();
+    return;
+  }
   document.querySelectorAll('.sec').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.nb').forEach(b=>b.classList.remove('active'));
   document.getElementById('tab-'+id).classList.add('active');
@@ -5597,7 +5602,7 @@ function renderInterventionRow(iv, ag, tireur) {
   const isPilp = iv.id.startsWith('PILP');
   const isRenfortInternal = iv._isRenfortInterneMission === true;
   const isRenfortUT = iv._isRenfort === true && !isRenfortInternal;
-  const chkShow = (ag || tireur) && !isRenfortUT && (iv.s === 'en-attente' || (iv.s === 'selectionne' && iv.agr === CU.l));
+  const chkShow = (ag || tireur || canCurrentUserStartIntervention(iv)) && !isRenfortUT && (iv.s === 'en-attente' || (iv.s === 'selectionne' && iv.agr === CU.l));
   const checked = iv.s === 'selectionne' && iv.agr === CU.l;
   const onchg = isPilp ? `toggleChkPilp('${iv.id}',this)` : `toggleChk('${iv.id}',this)`;
   const onclick = isPilp ? `oPilp('${iv.id}')` : `oM('${iv.id}')`;
@@ -5981,7 +5986,7 @@ function oM(id){
   const detailStart=iv._sdis?(iv._hAcquis||iv._hDebut||''):(iv._hDebut||'');
   const detailEnd=iv._sdis?(iv._hOpTerminee||iv._hFin||''):(iv._hFin||'');
   const ag=isAgres(),chef=isChef()||hasRight('Administration');
-  const operationalActor=ag||chef||(pilpScope&&isTireurPILP());
+  const operationalActor=canCurrentUserStartIntervention(iv);
   // _showAutoBtn défini globalement pour toute la fonction oM
   const _isOwnAgres_=(iv.agr===CU.l||iv._agr2===CU.l);
   // Autorisation disponible pour toutes les interventions (sauf renforts)
@@ -6549,6 +6554,10 @@ function cS(id,s,confirmed){
     return;
   }
   if(s==='en-cours'){
+    if(!canCurrentUserStartIntervention(iv)){
+      showToast('Le passage « En cours » est réservé aux chefs d’agrès. Un équipier ne peut le faire que lorsqu’un renfort de personnel a été demandé à une autre caserne.','warn');
+      return;
+    }
     if(confirmed!=='start-authorized'){
       prepareRouteChainedOperationalStart(iv);
       requestOperationalStartAuthorization(iv,function(){cS(id,s,'start-authorized');});return;
@@ -10620,6 +10629,16 @@ function hasActiveOutgoingPersonnelReinforcementRequest(iv){
   });
 }
 
+function canCurrentUserStartIntervention(iv){
+  if(!iv||!CU)return false;
+  if(isAdminModeActive())return true;
+  if(isPilpIntervention(iv))return isTireurPILP()||isAgres();
+  if(isAgres())return true;
+  // Exception opérationnelle : un équipier peut assurer le départ seulement
+  // si cette intervention attend réellement du personnel provenant d’une autre caserne.
+  return hasActiveOutgoingPersonnelReinforcementRequest(iv);
+}
+
 function agentSelectHtml(role,idSel,suggestedLogin,piqLabel,required,excludeLogins){
   const reqBadge=required?'<span style="color:#E24B4A;">*</span>':'<span style="font-size:10px;color:var(--t2);font-weight:400;">(optionnel)</span>';
   const piqBadge=suggestedLogin?'<span style="font-size:9px;background:#EAF3DE;color:#3B6D11;border-radius:4px;padding:1px 5px;margin-left:4px;">piquet</span>':'';
@@ -10836,6 +10855,10 @@ function updateEquipageExclusions(){refreshEquipageSelects();}
 
 function showPersonnelModal(id){
   const iv=interventionById(id);if(!iv)return;
+  if(!canCurrentUserStartIntervention(iv)){
+    showToast('Vous n’êtes pas autorisé à passer cette intervention en cours.','warn');
+    return;
+  }
   const interruptedHandoff=findInterruptedDepartureHandoff(CU.l,id);
   const heure=interruptedHandoff?interruptedHandoff.handoff.heure:(_pendingNextInterventionStarts[id]||getHHMM(N()));
   const chained=!interruptedHandoff&&!!_pendingNextInterventionStarts[id];
@@ -10948,6 +10971,11 @@ function buildEquipage2Dyn(enginVal){
 
 function confirmerDepart(id){
   const iv=interventionById(id);if(!iv)return;
+  if(!canCurrentUserStartIntervention(iv)){
+    cM();
+    showToast('Départ refusé : cette action est réservée aux chefs d’agrès, sauf demande active de renfort de personnel vers une autre caserne.','warn');
+    return;
+  }
   const interruptedHandoff=findInterruptedDepartureHandoff(CU.l,id);
   const chained=!interruptedHandoff&&!!_pendingNextInterventionStarts[id];
   const restartedAfterPending=iv._retourAttenteDepuis==='en-cours';
@@ -14282,7 +14310,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260827-chainage-mixte-pilp-178';
+const APP_VERSION='20260827-droits-depart-formation-179';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne

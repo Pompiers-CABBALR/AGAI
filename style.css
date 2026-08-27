@@ -1059,6 +1059,8 @@ html.appel-nature-locked .cnt{overflow:hidden!important;}
   }
   #nav-global{font-size:18px!important;}
 }
+/* Le rendu paysage ne doit jamais réafficher un menu retiré par les droits. */
+.nav .nb.hidden{display:none!important;}
 
 /* Ordinateurs : libellés du menu principal et des sous-menus plus lisibles.
    Cette règle est placée après le mode paysage afin qu'un ordinateur portable

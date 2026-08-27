@@ -803,7 +803,7 @@ function renderInterventionRow(iv, ag, tireur) {
   const isPilp = iv.id.startsWith('PILP');
   const isRenfortInternal = iv._isRenfortInterneMission === true;
   const isRenfortUT = iv._isRenfort === true && !isRenfortInternal;
-  const chkShow = (ag || tireur) && !isRenfortUT && (iv.s === 'en-attente' || (iv.s === 'selectionne' && iv.agr === CU.l));
+  const chkShow = (ag || tireur || canCurrentUserStartIntervention(iv)) && !isRenfortUT && (iv.s === 'en-attente' || (iv.s === 'selectionne' && iv.agr === CU.l));
   const checked = iv.s === 'selectionne' && iv.agr === CU.l;
   const onchg = isPilp ? `toggleChkPilp('${iv.id}',this)` : `toggleChk('${iv.id}',this)`;
   const onclick = isPilp ? `oPilp('${iv.id}')` : `oM('${iv.id}')`;
@@ -1187,7 +1187,7 @@ function oM(id){
   const detailStart=iv._sdis?(iv._hAcquis||iv._hDebut||''):(iv._hDebut||'');
   const detailEnd=iv._sdis?(iv._hOpTerminee||iv._hFin||''):(iv._hFin||'');
   const ag=isAgres(),chef=isChef()||hasRight('Administration');
-  const operationalActor=ag||chef||(pilpScope&&isTireurPILP());
+  const operationalActor=canCurrentUserStartIntervention(iv);
   // _showAutoBtn défini globalement pour toute la fonction oM
   const _isOwnAgres_=(iv.agr===CU.l||iv._agr2===CU.l);
   // Autorisation disponible pour toutes les interventions (sauf renforts)
@@ -1755,6 +1755,10 @@ function cS(id,s,confirmed){
     return;
   }
   if(s==='en-cours'){
+    if(!canCurrentUserStartIntervention(iv)){
+      showToast('Le passage « En cours » est réservé aux chefs d’agrès. Un équipier ne peut le faire que lorsqu’un renfort de personnel a été demandé à une autre caserne.','warn');
+      return;
+    }
     if(confirmed!=='start-authorized'){
       prepareRouteChainedOperationalStart(iv);
       requestOperationalStartAuthorization(iv,function(){cS(id,s,'start-authorized');});return;

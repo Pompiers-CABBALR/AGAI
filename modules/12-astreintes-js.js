@@ -2574,6 +2574,16 @@ function hasActiveOutgoingPersonnelReinforcementRequest(iv){
   });
 }
 
+function canCurrentUserStartIntervention(iv){
+  if(!iv||!CU)return false;
+  if(isAdminModeActive())return true;
+  if(isPilpIntervention(iv))return isTireurPILP()||isAgres();
+  if(isAgres())return true;
+  // Exception opérationnelle : un équipier peut assurer le départ seulement
+  // si cette intervention attend réellement du personnel provenant d’une autre caserne.
+  return hasActiveOutgoingPersonnelReinforcementRequest(iv);
+}
+
 function agentSelectHtml(role,idSel,suggestedLogin,piqLabel,required,excludeLogins){
   const reqBadge=required?'<span style="color:#E24B4A;">*</span>':'<span style="font-size:10px;color:var(--t2);font-weight:400;">(optionnel)</span>';
   const piqBadge=suggestedLogin?'<span style="font-size:9px;background:#EAF3DE;color:#3B6D11;border-radius:4px;padding:1px 5px;margin-left:4px;">piquet</span>':'';
@@ -2790,6 +2800,10 @@ function updateEquipageExclusions(){refreshEquipageSelects();}
 
 function showPersonnelModal(id){
   const iv=interventionById(id);if(!iv)return;
+  if(!canCurrentUserStartIntervention(iv)){
+    showToast('Vous n’êtes pas autorisé à passer cette intervention en cours.','warn');
+    return;
+  }
   const interruptedHandoff=findInterruptedDepartureHandoff(CU.l,id);
   const heure=interruptedHandoff?interruptedHandoff.handoff.heure:(_pendingNextInterventionStarts[id]||getHHMM(N()));
   const chained=!interruptedHandoff&&!!_pendingNextInterventionStarts[id];
@@ -2902,6 +2916,11 @@ function buildEquipage2Dyn(enginVal){
 
 function confirmerDepart(id){
   const iv=interventionById(id);if(!iv)return;
+  if(!canCurrentUserStartIntervention(iv)){
+    cM();
+    showToast('Départ refusé : cette action est réservée aux chefs d’agrès, sauf demande active de renfort de personnel vers une autre caserne.','warn');
+    return;
+  }
   const interruptedHandoff=findInterruptedDepartureHandoff(CU.l,id);
   const chained=!interruptedHandoff&&!!_pendingNextInterventionStarts[id];
   const restartedAfterPending=iv._retourAttenteDepuis==='en-cours';
