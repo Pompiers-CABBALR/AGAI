@@ -723,6 +723,35 @@ function agaiRepairIntervention188ChainedStart(){
   return {applied:true,changed:changed};
 }
 
+function agaiRepairPilpUt185Chronology(){
+  const data=CURRENT_CASERNE_ID&&CASERNE_DATA[CURRENT_CASERNE_ID];
+  const version='20260827-apl-000232-ut185-between-184-186-v1';
+  if(!data||data._pilpUt185ChronologyRepairVersion===version)return {applied:false,changed:false};
+  const all=[].concat(data.ivs||[],data.pilpIvs||[]);
+  const target=all.find(function(iv){return iv&&iv._numApl==='APL_2026_000232'&&Number(iv._numCaserne)===185;});
+  const previous=all.find(function(iv){return iv&&Number(iv._numCaserne)===184;});
+  const next=all.find(function(iv){return iv&&Number(iv._numCaserne)===186;});
+  if(!target||!previous||!next||!previous._hFin||!next._hDebut)return {applied:false,changed:false};
+  let changed=false;
+  if(String(target._hDebut||'')!==String(previous._hFin)){
+    target._hDebut=previous._hFin;target._hDebutReelle=previous._hFin;target._hDebutInitiale=previous._hFin;
+    target._dateDebut=previous._dateFin||previous._dateDebut||target._dateDebut;
+    changed=true;
+  }
+  if(String(target._hFin||'')!==String(next._hDebut)){
+    target._hFin=next._hDebut;
+    target._dateFin=next._dateDebut||target._dateFin||target._dateDebut;
+    changed=true;
+  }
+  if(changed){
+    target._startLockedByChain=true;target._chainedFromInterventionId=previous.id;target._chainPreviousInterventionId=previous.id;
+    if(!Array.isArray(target.tl))target.tl=[];
+    target.tl.push({s:'modif-heure',h:getH(N()),who:'Correction automatique AGAI',note:'Horaires replacés entre les interventions UT 184 et UT 186'});
+  }
+  data._pilpUt185ChronologyRepairVersion=version;
+  return {applied:true,changed:changed,start:target._hDebut,end:target._hFin};
+}
+
 function agaiRepairNumberingByStartOrder(){
   const cid=CURRENT_CASERNE_ID;
   const data=cid&&CASERNE_DATA[cid];
@@ -5664,6 +5693,13 @@ function rI(){
     saveData(true);
     if(ut188Repair.changed)showToast('Intervention UT 188 : heure de départ corrigée à 16:11.','success');
   }
+  const ut185Repair=agaiRepairPilpUt185Chronology();
+  if(ut185Repair.applied){
+    if(typeof syncCaserneContext==='function')syncCaserneContext();
+    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+    saveData(true);
+    if(ut185Repair.changed)showToast('Intervention UT 185 : horaires replacés entre les UT 184 et 186.','success');
+  }
   updateRenfortBadge();
   // Afficher les renforts reçus en attente
   const renforts=getRenfortsEnAttente();
@@ -6444,7 +6480,11 @@ function operationalStartGeoExemption(iv){
     if(interrupted)return {reason:'reprise d’un départ interrompu',sourceId:interrupted.source.id};
   }
   const recent=recentFinishedInterventionForChef(CU&&CU.l,iv&&iv.id);
-  if(recent)return {reason:'intervention précédente terminée depuis moins de 15 minutes',sourceId:recent.iv.id};
+  if(recent){
+    _pendingNextInterventionStarts[iv.id]=recent.iv._hFin||getHHMM(new Date(recent.end));
+    iv._chainPreviousInterventionId=recent.iv.id;
+    return {reason:'intervention précédente terminée depuis moins de 15 minutes',sourceId:recent.iv.id};
+  }
   return null;
 }
 function requestOperationalStartAuthorization(iv,onApproved){
@@ -6567,11 +6607,16 @@ function cS(id,s,confirmed){
 
 function getNextSelectedInterventions(closedIv){
   if(!closedIv)return[];
-  return sortRouteSelection(interventionCollection(closedIv).filter(function(candidate){
-    if(candidate.id===closedIv.id||candidate.s!=='selectionne'||candidate.agr!==closedIv.agr)return false;
-    if(closedIv._routeBatchId)return candidate._routeBatchId===closedIv._routeBatchId;
-    return true;
-  }));
+  return [].concat(IVS||[],PILP_IVS||[]).filter(function(candidate){
+    return candidate&&candidate.id!==closedIv.id&&candidate.s==='selectionne'&&candidate.agr===closedIv.agr;
+  }).sort(function(a,b){
+    const aSameBatch=closedIv._routeBatchId&&a._routeBatchId===closedIv._routeBatchId?0:1;
+    const bSameBatch=closedIv._routeBatchId&&b._routeBatchId===closedIv._routeBatchId?0:1;
+    if(aSameBatch!==bSameBatch)return aSameBatch-bSameBatch;
+    const routeOrder=(Number(a._routeOrder)||9999)-(Number(b._routeOrder)||9999);
+    if(routeOrder)return routeOrder;
+    return String(a.h||'').localeCompare(String(b.h||''));
+  });
 }
 
 function chooseNextSelectedIntervention(nextId,previousId){
@@ -14237,7 +14282,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260827-pilp-complet-ut188-177';
+const APP_VERSION='20260827-chainage-mixte-pilp-178';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne

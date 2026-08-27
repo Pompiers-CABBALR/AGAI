@@ -570,6 +570,35 @@ function agaiRepairIntervention188ChainedStart(){
   return {applied:true,changed:changed};
 }
 
+function agaiRepairPilpUt185Chronology(){
+  const data=CURRENT_CASERNE_ID&&CASERNE_DATA[CURRENT_CASERNE_ID];
+  const version='20260827-apl-000232-ut185-between-184-186-v1';
+  if(!data||data._pilpUt185ChronologyRepairVersion===version)return {applied:false,changed:false};
+  const all=[].concat(data.ivs||[],data.pilpIvs||[]);
+  const target=all.find(function(iv){return iv&&iv._numApl==='APL_2026_000232'&&Number(iv._numCaserne)===185;});
+  const previous=all.find(function(iv){return iv&&Number(iv._numCaserne)===184;});
+  const next=all.find(function(iv){return iv&&Number(iv._numCaserne)===186;});
+  if(!target||!previous||!next||!previous._hFin||!next._hDebut)return {applied:false,changed:false};
+  let changed=false;
+  if(String(target._hDebut||'')!==String(previous._hFin)){
+    target._hDebut=previous._hFin;target._hDebutReelle=previous._hFin;target._hDebutInitiale=previous._hFin;
+    target._dateDebut=previous._dateFin||previous._dateDebut||target._dateDebut;
+    changed=true;
+  }
+  if(String(target._hFin||'')!==String(next._hDebut)){
+    target._hFin=next._hDebut;
+    target._dateFin=next._dateDebut||target._dateFin||target._dateDebut;
+    changed=true;
+  }
+  if(changed){
+    target._startLockedByChain=true;target._chainedFromInterventionId=previous.id;target._chainPreviousInterventionId=previous.id;
+    if(!Array.isArray(target.tl))target.tl=[];
+    target.tl.push({s:'modif-heure',h:getH(N()),who:'Correction automatique AGAI',note:'Horaires replacés entre les interventions UT 184 et UT 186'});
+  }
+  data._pilpUt185ChronologyRepairVersion=version;
+  return {applied:true,changed:changed,start:target._hDebut,end:target._hFin};
+}
+
 function agaiRepairNumberingByStartOrder(){
   const cid=CURRENT_CASERNE_ID;
   const data=cid&&CASERNE_DATA[cid];
