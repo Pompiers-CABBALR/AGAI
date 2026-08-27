@@ -319,6 +319,8 @@ function renderSuperAdmin(){
     </div>`;
   const casHtml=OP_CASERNES().map(c=>{
     const d=CASERNE_DATA[c.id]||{users:[],ivs:[],pilpIvs:[]};
+    const stationLocation=getCaserneStationLocation(c.id);
+    const stationConfigured=validCaserneCoordinates(stationLocation.latitude,stationLocation.longitude);
     const nbUsers=d.users?.length||0;
     const nbIv=(d.ivs||[]).filter(isInterventionComptabilisee).length;
     return `<div style="background:#fff;border-radius:14px;padding:16px;border-left:4px solid ${c.couleur};">
@@ -365,8 +367,8 @@ function renderSuperAdmin(){
       </div>
       <div style="margin-top:10px;border-top:1px solid #f0f0f0;padding-top:10px;">
         <div style="font-size:11px;font-weight:600;color:#666;margin-bottom:6px;">📍 POSITION DE LA CASERNE</div>
-        <div style="font-size:11px;color:${c.latitude!=null&&c.longitude!=null?'#047857':'#B45309'};">${c.adresse?escHtml(c.adresse):'Adresse non renseignée'}${c.latitude!=null&&c.longitude!=null?' · position enregistrée':' · géolocalisation inactive'}</div>
-        ${c.latitude!=null&&c.longitude!=null?`<div style="font-size:10px;color:#64748B;margin-top:3px;font-family:monospace;">${c.latitude}, ${c.longitude}</div>`:''}
+        <div style="font-size:11px;color:${stationConfigured?'#047857':'#B45309'};">${stationLocation.address?escHtml(stationLocation.address):'Adresse non renseignée'}${stationConfigured?' · position enregistrée':' · géolocalisation inactive'}</div>
+        ${stationConfigured?`<div style="font-size:10px;color:#64748B;margin-top:3px;font-family:monospace;">${stationLocation.latitude}, ${stationLocation.longitude}</div>`:''}
         <div style="font-size:10px;color:#777;margin-top:4px;">Modifiez la caserne pour enregistrer son adresse. La première mise en cours doit se faire à moins de 2 km.</div>
         <label style="display:flex;align-items:flex-start;gap:7px;font-size:11px;cursor:pointer;line-height:1.35;margin-top:8px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:8px;">
           <input type="checkbox" style="margin-top:2px;accent-color:${c.couleur};" ${operationalStartGeolocationEnabled(c.id)?'checked':''} onchange="saSetOperationalStartGeolocation('${c.id}',this.checked)">
@@ -639,6 +641,8 @@ function saSetOperationalStartGeolocation(caserneId,enabled){
   const caserne=CASERNES.find(function(item){return item.id===caserneId&&item.id!=='EMAJ';});
   if(!caserne){showToast('Caserne introuvable.','warn');return;}
   caserne._operationalStartGeolocationEnabled=enabled===true;
+  initCaserneData(caserneId);
+  CASERNE_DATA[caserneId]._operationalStartGeolocationEnabled=enabled===true;
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);renderSuperAdmin();
   showToast((enabled?'Contrôle activé pour ':'Contrôle désactivé pour ')+caserne.nom+'.','success');
@@ -1878,6 +1882,7 @@ async function confirmAddCaserne(){
   const id='CIS'+String(CASERNES.length+1).padStart(2,'0');
   CASERNES.push({id,nom,code,couleur,email:'',astreintePhone,adresse:position.label||adresse,latitude:position.latitude,longitude:position.longitude});
   initCaserneData(id);
+  setCaserneStationLocation(id,position);
   // Certaines installations ne créent plus de compte administrateur implicite.
   // Le mot de passe est appliqué uniquement si ce compte historique existe.
   if(CASERNE_DATA[id].users[0])CASERNE_DATA[id].users[0].p=pwd;
@@ -1885,6 +1890,7 @@ async function confirmAddCaserne(){
 }
 function editCaserne(id){
   const c=CASERNES.find(x=>x.id===id);if(!c)return;
+  const stationLocation=getCaserneStationLocation(id);
   document.getElementById('mt').textContent='Modifier '+c.nom;
   document.getElementById('mi').textContent=id;
   document.getElementById('mb').innerHTML=`<div>
@@ -1894,13 +1900,13 @@ function editCaserne(id){
     <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:10px;margin-bottom:10px;">
       <div style="font-size:11px;font-weight:700;color:#1D4ED8;margin-bottom:7px;">📍 POSITION GPS DE LA CASERNE</div>
       <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;">
-        <div class="fg" style="margin:0;"><div class="fgl">Latitude</div><input class="fi" type="text" inputmode="decimal" id="ec-latitude" value="${c.latitude==null?'':c.latitude}" placeholder="50.51653098506787"/></div>
-        <div class="fg" style="margin:0;"><div class="fgl">Longitude</div><input class="fi" type="text" inputmode="decimal" id="ec-longitude" value="${c.longitude==null?'':c.longitude}" placeholder="2.5428357204025933"/></div>
+        <div class="fg" style="margin:0;"><div class="fgl">Latitude</div><input class="fi" type="text" inputmode="decimal" id="ec-latitude" value="${stationLocation.latitude==null?'':stationLocation.latitude}" placeholder="50.51653098506787"/></div>
+        <div class="fg" style="margin:0;"><div class="fgl">Longitude</div><input class="fi" type="text" inputmode="decimal" id="ec-longitude" value="${stationLocation.longitude==null?'':stationLocation.longitude}" placeholder="2.5428357204025933"/></div>
       </div>
       <button type="button" class="btn sm" style="width:100%;margin-top:8px;background:#1D4ED8;color:#fff;border-color:#1D4ED8;" onclick="findCaserneAddressFromCoordinates('ec')">🔎 Trouver l’adresse avec ces coordonnées</button>
       <div id="ec-coordinate-status" style="font-size:10px;color:#64748B;margin-top:5px;">Les coordonnées sont utilisées directement pour le contrôle des 2 km.</div>
     </div>
-    <div class="fg"><div class="fgl">Adresse trouvée ou saisie manuellement</div><input class="fi" type="text" id="ec-adresse" value="${escHtml(c.adresse||'')}" placeholder="Numéro, rue, code postal et commune"/></div>
+    <div class="fg"><div class="fgl">Adresse trouvée ou saisie manuellement</div><input class="fi" type="text" id="ec-adresse" value="${escHtml(stationLocation.address||'')}" placeholder="Numéro, rue, code postal et commune"/></div>
     <div class="fg"><div class="fgl">Couleur</div><input class="fi" type="color" id="ec-col" value="${c.couleur}"/></div>
     <div class="brow"><button class="btn pr sm" onclick="confirmEditCaserne('${id}')">&#x1F4BE; Enregistrer</button><button class="btn sm" onclick="cM()">Annuler</button></div>
   </div>`;
@@ -1980,7 +1986,7 @@ async function confirmEditCaserne(id){
   c.nom=document.getElementById('ec-nom').value.trim()||c.nom;
   c.code=document.getElementById('ec-code').value.trim().toUpperCase()||c.code;
   c.astreintePhone=formatCaserneAstreintePhone((document.getElementById('ec-astreinte-phone')||{}).value||'');
-  c.adresse=position.label||address;c.latitude=position.latitude;c.longitude=position.longitude;
+  setCaserneStationLocation(id,position);
   c.couleur=document.getElementById('ec-col').value;
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);cM();renderSuperAdmin();showToast('Caserne localisée et enregistrée.','success');

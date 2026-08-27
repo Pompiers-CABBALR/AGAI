@@ -322,6 +322,7 @@ function initCaserneData(cid){
     users:defaultUsers,adminLogins:[],adminLogin:'',
     ivs:[],pilpIvs:[],equipes:[],dispos:{},piquets:{},planningRotations:{},disposValidated:{},piquetsValidated:{},renforts:[],
     astrConfig:{granularity:60,engins:['VTU-01','VTU-02','VTU-03','VPI'],deadline:{dayOfWeek:5,hour:23,minute:59},deadlinePiquet:{dayOfWeek:0,hour:18,minute:0},weekStartDay:1,weekStartHour:0},
+    _stationLocation:null,_operationalStartGeolocationEnabled:undefined,
   };
 }
 CASERNES.forEach(c=>initCaserneData(c.id));
@@ -348,6 +349,22 @@ const SB_REST = SB_URL + '/rest/v1';
 const SB_GLOBAL_ROW = '_GLOBAL';
 function CC(){return CASERNES.find(c=>c.id===CURRENT_CASERNE_ID)||null;}
 function CD(){if(!CURRENT_CASERNE_ID)return null;initCaserneData(CURRENT_CASERNE_ID);return CASERNE_DATA[CURRENT_CASERNE_ID];}
+function getCaserneStationLocation(caserneId){
+  const id=caserneId||CURRENT_CASERNE_ID;
+  const caserne=CASERNES.find(function(item){return item.id===id;})||{};
+  const data=CASERNE_DATA[id]||{};
+  const stored=data._stationLocation&&typeof data._stationLocation==='object'?data._stationLocation:{};
+  const latitude=parseCaserneCoordinate(stored.latitude!=null?stored.latitude:caserne.latitude);
+  const longitude=parseCaserneCoordinate(stored.longitude!=null?stored.longitude:caserne.longitude);
+  return {latitude:latitude,longitude:longitude,address:String(stored.address||caserne.adresse||'')};
+}
+function setCaserneStationLocation(caserneId,position){
+  const caserne=CASERNES.find(function(item){return item.id===caserneId;});if(!caserne||!position)return;
+  initCaserneData(caserneId);
+  const location={latitude:Number(position.latitude),longitude:Number(position.longitude),address:String(position.label||position.address||'')};
+  caserne.latitude=location.latitude;caserne.longitude=location.longitude;caserne.adresse=location.address;
+  CASERNE_DATA[caserneId]._stationLocation=location;
+}
 // Proxies
 let USERS=[];let IVS=[];let PILP_IVS=[];let EQUIPES=[];let DISPOS={};let PIQUETS={};let DISPOS_VALIDATED={};let PIQUETS_VALIDATED={};let PLANNING_ROTATIONS={};let DISPOS_UNLOCKED={};let DISPO_REQUESTS={};let ASTR_CONFIG={granularity:60,engins:[],deadline:{dayOfWeek:5,hour:23,minute:59},deadlinePiquet:{dayOfWeek:0,hour:18,minute:0},weekStartDay:1,weekStartHour:0};
 let LOGIN_HISTORY=[];
@@ -1555,6 +1572,8 @@ function renderSuperAdmin(){
     </div>`;
   const casHtml=OP_CASERNES().map(c=>{
     const d=CASERNE_DATA[c.id]||{users:[],ivs:[],pilpIvs:[]};
+    const stationLocation=getCaserneStationLocation(c.id);
+    const stationConfigured=validCaserneCoordinates(stationLocation.latitude,stationLocation.longitude);
     const nbUsers=d.users?.length||0;
     const nbIv=(d.ivs||[]).filter(isInterventionComptabilisee).length;
     return `<div style="background:#fff;border-radius:14px;padding:16px;border-left:4px solid ${c.couleur};">
@@ -1601,8 +1620,8 @@ function renderSuperAdmin(){
       </div>
       <div style="margin-top:10px;border-top:1px solid #f0f0f0;padding-top:10px;">
         <div style="font-size:11px;font-weight:600;color:#666;margin-bottom:6px;">📍 POSITION DE LA CASERNE</div>
-        <div style="font-size:11px;color:${c.latitude!=null&&c.longitude!=null?'#047857':'#B45309'};">${c.adresse?escHtml(c.adresse):'Adresse non renseignée'}${c.latitude!=null&&c.longitude!=null?' · position enregistrée':' · géolocalisation inactive'}</div>
-        ${c.latitude!=null&&c.longitude!=null?`<div style="font-size:10px;color:#64748B;margin-top:3px;font-family:monospace;">${c.latitude}, ${c.longitude}</div>`:''}
+        <div style="font-size:11px;color:${stationConfigured?'#047857':'#B45309'};">${stationLocation.address?escHtml(stationLocation.address):'Adresse non renseignée'}${stationConfigured?' · position enregistrée':' · géolocalisation inactive'}</div>
+        ${stationConfigured?`<div style="font-size:10px;color:#64748B;margin-top:3px;font-family:monospace;">${stationLocation.latitude}, ${stationLocation.longitude}</div>`:''}
         <div style="font-size:10px;color:#777;margin-top:4px;">Modifiez la caserne pour enregistrer son adresse. La première mise en cours doit se faire à moins de 2 km.</div>
         <label style="display:flex;align-items:flex-start;gap:7px;font-size:11px;cursor:pointer;line-height:1.35;margin-top:8px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:8px;">
           <input type="checkbox" style="margin-top:2px;accent-color:${c.couleur};" ${operationalStartGeolocationEnabled(c.id)?'checked':''} onchange="saSetOperationalStartGeolocation('${c.id}',this.checked)">
@@ -1875,6 +1894,8 @@ function saSetOperationalStartGeolocation(caserneId,enabled){
   const caserne=CASERNES.find(function(item){return item.id===caserneId&&item.id!=='EMAJ';});
   if(!caserne){showToast('Caserne introuvable.','warn');return;}
   caserne._operationalStartGeolocationEnabled=enabled===true;
+  initCaserneData(caserneId);
+  CASERNE_DATA[caserneId]._operationalStartGeolocationEnabled=enabled===true;
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);renderSuperAdmin();
   showToast((enabled?'Contrôle activé pour ':'Contrôle désactivé pour ')+caserne.nom+'.','success');
@@ -3114,6 +3135,7 @@ async function confirmAddCaserne(){
   const id='CIS'+String(CASERNES.length+1).padStart(2,'0');
   CASERNES.push({id,nom,code,couleur,email:'',astreintePhone,adresse:position.label||adresse,latitude:position.latitude,longitude:position.longitude});
   initCaserneData(id);
+  setCaserneStationLocation(id,position);
   // Certaines installations ne créent plus de compte administrateur implicite.
   // Le mot de passe est appliqué uniquement si ce compte historique existe.
   if(CASERNE_DATA[id].users[0])CASERNE_DATA[id].users[0].p=pwd;
@@ -3121,6 +3143,7 @@ async function confirmAddCaserne(){
 }
 function editCaserne(id){
   const c=CASERNES.find(x=>x.id===id);if(!c)return;
+  const stationLocation=getCaserneStationLocation(id);
   document.getElementById('mt').textContent='Modifier '+c.nom;
   document.getElementById('mi').textContent=id;
   document.getElementById('mb').innerHTML=`<div>
@@ -3130,13 +3153,13 @@ function editCaserne(id){
     <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:10px;margin-bottom:10px;">
       <div style="font-size:11px;font-weight:700;color:#1D4ED8;margin-bottom:7px;">📍 POSITION GPS DE LA CASERNE</div>
       <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;">
-        <div class="fg" style="margin:0;"><div class="fgl">Latitude</div><input class="fi" type="text" inputmode="decimal" id="ec-latitude" value="${c.latitude==null?'':c.latitude}" placeholder="50.51653098506787"/></div>
-        <div class="fg" style="margin:0;"><div class="fgl">Longitude</div><input class="fi" type="text" inputmode="decimal" id="ec-longitude" value="${c.longitude==null?'':c.longitude}" placeholder="2.5428357204025933"/></div>
+        <div class="fg" style="margin:0;"><div class="fgl">Latitude</div><input class="fi" type="text" inputmode="decimal" id="ec-latitude" value="${stationLocation.latitude==null?'':stationLocation.latitude}" placeholder="50.51653098506787"/></div>
+        <div class="fg" style="margin:0;"><div class="fgl">Longitude</div><input class="fi" type="text" inputmode="decimal" id="ec-longitude" value="${stationLocation.longitude==null?'':stationLocation.longitude}" placeholder="2.5428357204025933"/></div>
       </div>
       <button type="button" class="btn sm" style="width:100%;margin-top:8px;background:#1D4ED8;color:#fff;border-color:#1D4ED8;" onclick="findCaserneAddressFromCoordinates('ec')">🔎 Trouver l’adresse avec ces coordonnées</button>
       <div id="ec-coordinate-status" style="font-size:10px;color:#64748B;margin-top:5px;">Les coordonnées sont utilisées directement pour le contrôle des 2 km.</div>
     </div>
-    <div class="fg"><div class="fgl">Adresse trouvée ou saisie manuellement</div><input class="fi" type="text" id="ec-adresse" value="${escHtml(c.adresse||'')}" placeholder="Numéro, rue, code postal et commune"/></div>
+    <div class="fg"><div class="fgl">Adresse trouvée ou saisie manuellement</div><input class="fi" type="text" id="ec-adresse" value="${escHtml(stationLocation.address||'')}" placeholder="Numéro, rue, code postal et commune"/></div>
     <div class="fg"><div class="fgl">Couleur</div><input class="fi" type="color" id="ec-col" value="${c.couleur}"/></div>
     <div class="brow"><button class="btn pr sm" onclick="confirmEditCaserne('${id}')">&#x1F4BE; Enregistrer</button><button class="btn sm" onclick="cM()">Annuler</button></div>
   </div>`;
@@ -3216,7 +3239,7 @@ async function confirmEditCaserne(id){
   c.nom=document.getElementById('ec-nom').value.trim()||c.nom;
   c.code=document.getElementById('ec-code').value.trim().toUpperCase()||c.code;
   c.astreintePhone=formatCaserneAstreintePhone((document.getElementById('ec-astreinte-phone')||{}).value||'');
-  c.adresse=position.label||address;c.latitude=position.latitude;c.longitude=position.longitude;
+  setCaserneStationLocation(id,position);
   c.couleur=document.getElementById('ec-col').value;
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);cM();renderSuperAdmin();showToast('Caserne localisée et enregistrée.','success');
@@ -6277,6 +6300,8 @@ function operationalStartGeolocationEnabled(caserneId){
   if((typeof isChefCorps==='function'&&isChefCorps())||(CU&&CU.appRole==='chef_corps'))return false;
   const id=caserneId||CURRENT_CASERNE_ID;
   const caserne=CASERNES.find(function(item){return item.id===id;});
+  const data=CASERNE_DATA[id]||{};
+  if(data._operationalStartGeolocationEnabled!==undefined)return data._operationalStartGeolocationEnabled!==false;
   return !(caserne&&caserne._operationalStartGeolocationEnabled===false);
 }
 function canUseOperationalStartDevice(){
@@ -6326,9 +6351,9 @@ function requestOperationalStartAuthorization(iv,onApproved){
     _operationalStartAuthorizations[iv.id]={at:Date.now(),exempt:true,reason:exemption.reason,sourceId:exemption.sourceId||''};
     onApproved();return;
   }
-  const caserne=CC();
-  const stationLat=Number(caserne&&caserne.latitude),stationLon=Number(caserne&&caserne.longitude);
-  if(!caserne||!Number.isFinite(stationLat)||!Number.isFinite(stationLon)){
+  const caserne=CC(),stationLocation=getCaserneStationLocation(CURRENT_CASERNE_ID);
+  const stationLat=stationLocation.latitude,stationLon=stationLocation.longitude;
+  if(!caserne||!validCaserneCoordinates(stationLat,stationLon)){
     showToast('La position de la caserne n’est pas configurée. Le superadmin doit enregistrer son adresse avant le premier départ.','warn');return;
   }
   if(!navigator.geolocation){showToast('La géolocalisation n’est pas disponible sur cet appareil.','warn');return;}
@@ -14005,7 +14030,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260826-geolocalisation-par-caserne-172';
+const APP_VERSION='20260827-position-caserne-synchronisee-173';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -16367,6 +16392,8 @@ function _buildDataObject(){
       astrTelData:JSON.parse(JSON.stringify(d.astrTelData||{})),
       astrTelParams:{...(d.astrTelParams||{})},
       statsTaux:{...(d.statsTaux||{})},
+      _stationLocation:d._stationLocation?JSON.parse(JSON.stringify(d._stationLocation)):null,
+      _operationalStartGeolocationEnabled:typeof d._operationalStartGeolocationEnabled==='boolean'?d._operationalStartGeolocationEnabled:undefined,
       _statsPersonnelHoursReal:d._statsPersonnelHoursReal===true,
       _indemnitesAdmins:d._indemnitesAdmins===true,
       adminLogins:Array.isArray(d.adminLogins)?[...d.adminLogins]:(d.adminLogin?[d.adminLogin]:[]),
@@ -16440,12 +16467,26 @@ function _applyDataObject(data){
         if(src.astrTelData&&!dispoLocked)dst.astrTelData=src.astrTelData;
         if(src.astrTelParams)dst.astrTelParams=src.astrTelParams;
         if(src.statsTaux)dst.statsTaux=src.statsTaux;
+        if(src._stationLocation!==undefined)dst._stationLocation=src._stationLocation;
+        if(src._operationalStartGeolocationEnabled!==undefined)dst._operationalStartGeolocationEnabled=src._operationalStartGeolocationEnabled!==false;
         if(src._statsPersonnelHoursReal!==undefined)dst._statsPersonnelHoursReal=src._statsPersonnelHoursReal===true;
         if(src._indemnitesAdmins!==undefined)dst._indemnitesAdmins=src._indemnitesAdmins===true;
         if(src.adminLogins!==undefined)dst.adminLogins=Array.isArray(src.adminLogins)?[...src.adminLogins]:[];
         else if(src.adminLogin!==undefined)dst.adminLogins=src.adminLogin?[src.adminLogin]:[];
         if(src.adminLogin!==undefined)dst.adminLogin=src.adminLogin;
         if(src._initCompteurs!==undefined)dst._initCompteurs=src._initCompteurs;
+      }
+      const stationData=CASERNE_DATA[cid];
+      const legacyStation=CASERNES.find(function(item){return item.id===cid;});
+      const legacyLat=parseCaserneCoordinate(legacyStation&&legacyStation.latitude),legacyLon=parseCaserneCoordinate(legacyStation&&legacyStation.longitude);
+      const localLat=parseCaserneCoordinate(stationData&&stationData._stationLocation&&stationData._stationLocation.latitude),localLon=parseCaserneCoordinate(stationData&&stationData._stationLocation&&stationData._stationLocation.longitude);
+      if(stationData&&!validCaserneCoordinates(localLat,localLon)&&validCaserneCoordinates(legacyLat,legacyLon)){
+        stationData._stationLocation={latitude:legacyLat,longitude:legacyLon,address:String(legacyStation.adresse||'')};
+      }
+      if(stationData&&stationData._operationalStartGeolocationEnabled===undefined&&legacyStation&&typeof legacyStation._operationalStartGeolocationEnabled==='boolean')stationData._operationalStartGeolocationEnabled=legacyStation._operationalStartGeolocationEnabled;
+      if(stationData&&stationData._stationLocation&&validCaserneCoordinates(parseCaserneCoordinate(stationData._stationLocation.latitude),parseCaserneCoordinate(stationData._stationLocation.longitude))){
+        const station=CASERNES.find(function(item){return item.id===cid;});
+        if(station){station.latitude=parseCaserneCoordinate(stationData._stationLocation.latitude);station.longitude=parseCaserneCoordinate(stationData._stationLocation.longitude);station.adresse=stationData._stationLocation.address||station.adresse||'';station._operationalStartGeolocationEnabled=stationData._operationalStartGeolocationEnabled!==false;}
       }
     });
   }
@@ -17393,10 +17434,16 @@ function _rcApplyRealtimeRecord(record){
         d.dispos[incoming.wk][incoming.login]=incoming.slots;
       }
     }else if(record.type==='config'){
-      const keys=['piquets','planningRotations','disposValidated','piquetsValidated','astrConfig','astrTelData','astrTelParams','statsTaux','adminLogins','adminLogin'];
+      const keys=['piquets','planningRotations','disposValidated','piquetsValidated','astrConfig','astrTelData','astrTelParams','statsTaux','adminLogins','adminLogin','_stationLocation'];
       keys.forEach(function(key){if(incoming[key]!==undefined)d[key]=incoming[key];});
+      if(incoming._operationalStartGeolocationEnabled!==undefined)d._operationalStartGeolocationEnabled=incoming._operationalStartGeolocationEnabled!==false;
       if(incoming._statsPersonnelHoursReal!==undefined)d._statsPersonnelHoursReal=incoming._statsPersonnelHoursReal===true;
       if(incoming._indemnitesAdmins!==undefined)d._indemnitesAdmins=incoming._indemnitesAdmins===true;
+      if(d._stationLocation){
+        const station=CASERNES.find(function(item){return item.id===record.caserne;});
+        const stationLat=parseCaserneCoordinate(d._stationLocation.latitude),stationLon=parseCaserneCoordinate(d._stationLocation.longitude);
+        if(station&&validCaserneCoordinates(stationLat,stationLon)){station.latitude=stationLat;station.longitude=stationLon;station.adresse=d._stationLocation.address||station.adresse||'';station._operationalStartGeolocationEnabled=d._operationalStartGeolocationEnabled!==false;}
+      }
     }else return false;
   }
   if(record.caserne===CURRENT_CASERNE_ID)syncCaserneContext();
@@ -17462,6 +17509,8 @@ function _rcSplitCaserne(cid, d){
     astrTelData: JSON.parse(JSON.stringify(d.astrTelData||{})),
     astrTelParams: Object.assign({},d.astrTelParams||{}),
     statsTaux: Object.assign({},d.statsTaux||{}),
+    _stationLocation:d._stationLocation?JSON.parse(JSON.stringify(d._stationLocation)):null,
+    _operationalStartGeolocationEnabled:typeof d._operationalStartGeolocationEnabled==='boolean'?d._operationalStartGeolocationEnabled:undefined,
     _statsPersonnelHoursReal:d._statsPersonnelHoursReal===true,
     _indemnitesAdmins:d._indemnitesAdmins===true,
     adminLogins: Array.isArray(d.adminLogins)?[...d.adminLogins]:(d.adminLogin?[d.adminLogin]:[]),
@@ -17475,7 +17524,7 @@ function _rcSplitCaserne(cid, d){
 function _rcAssembleCaserne(rows){
   const out = { users:[], ivs:[], pilpIvs:[], equipes:[], fmpas:[], formStag:[], formForm:[], renforts:[], activites:[],
                 dispos:{}, piquets:{}, planningRotations:{}, disposValidated:{}, piquetsValidated:{}, astrConfig:{},
-                astrTelData:{}, astrTelParams:{}, statsTaux:{}, _statsPersonnelHoursReal:false, _indemnitesAdmins:false, adminLogins:[], adminLogin:'' };
+                astrTelData:{}, astrTelParams:{}, statsTaux:{}, _stationLocation:null, _operationalStartGeolocationEnabled:undefined, _statsPersonnelHoursReal:false, _indemnitesAdmins:false, adminLogins:[], adminLogin:'' };
   const listMap = {iv:'ivs', pilp:'pilpIvs', equipe:'equipes', fmpa:'fmpas', formStag:'formStag', formForm:'formForm', renfort:'renforts', activite:'activites'};
   rows.forEach(function(r){
     if(r.deleted) return; // on ignore les enregistrements supprimés à la reconstruction
@@ -17494,6 +17543,8 @@ function _rcAssembleCaserne(rows){
       out.astrTelData=c.astrTelData||{};
       out.astrTelParams=c.astrTelParams||{};
       out.statsTaux=c.statsTaux||{};
+      out._stationLocation=c._stationLocation||null;
+      out._operationalStartGeolocationEnabled=typeof c._operationalStartGeolocationEnabled==='boolean'?c._operationalStartGeolocationEnabled:undefined;
       out._statsPersonnelHoursReal=c._statsPersonnelHoursReal===true;
       out._indemnitesAdmins=c._indemnitesAdmins===true;
       out.adminLogins=Array.isArray(c.adminLogins)?[...c.adminLogins]:(c.adminLogin?[c.adminLogin]:[]);

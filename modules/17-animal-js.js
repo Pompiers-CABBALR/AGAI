@@ -770,6 +770,8 @@ function _buildDataObject(){
       astrTelData:JSON.parse(JSON.stringify(d.astrTelData||{})),
       astrTelParams:{...(d.astrTelParams||{})},
       statsTaux:{...(d.statsTaux||{})},
+      _stationLocation:d._stationLocation?JSON.parse(JSON.stringify(d._stationLocation)):null,
+      _operationalStartGeolocationEnabled:typeof d._operationalStartGeolocationEnabled==='boolean'?d._operationalStartGeolocationEnabled:undefined,
       _statsPersonnelHoursReal:d._statsPersonnelHoursReal===true,
       _indemnitesAdmins:d._indemnitesAdmins===true,
       adminLogins:Array.isArray(d.adminLogins)?[...d.adminLogins]:(d.adminLogin?[d.adminLogin]:[]),
@@ -843,12 +845,26 @@ function _applyDataObject(data){
         if(src.astrTelData&&!dispoLocked)dst.astrTelData=src.astrTelData;
         if(src.astrTelParams)dst.astrTelParams=src.astrTelParams;
         if(src.statsTaux)dst.statsTaux=src.statsTaux;
+        if(src._stationLocation!==undefined)dst._stationLocation=src._stationLocation;
+        if(src._operationalStartGeolocationEnabled!==undefined)dst._operationalStartGeolocationEnabled=src._operationalStartGeolocationEnabled!==false;
         if(src._statsPersonnelHoursReal!==undefined)dst._statsPersonnelHoursReal=src._statsPersonnelHoursReal===true;
         if(src._indemnitesAdmins!==undefined)dst._indemnitesAdmins=src._indemnitesAdmins===true;
         if(src.adminLogins!==undefined)dst.adminLogins=Array.isArray(src.adminLogins)?[...src.adminLogins]:[];
         else if(src.adminLogin!==undefined)dst.adminLogins=src.adminLogin?[src.adminLogin]:[];
         if(src.adminLogin!==undefined)dst.adminLogin=src.adminLogin;
         if(src._initCompteurs!==undefined)dst._initCompteurs=src._initCompteurs;
+      }
+      const stationData=CASERNE_DATA[cid];
+      const legacyStation=CASERNES.find(function(item){return item.id===cid;});
+      const legacyLat=parseCaserneCoordinate(legacyStation&&legacyStation.latitude),legacyLon=parseCaserneCoordinate(legacyStation&&legacyStation.longitude);
+      const localLat=parseCaserneCoordinate(stationData&&stationData._stationLocation&&stationData._stationLocation.latitude),localLon=parseCaserneCoordinate(stationData&&stationData._stationLocation&&stationData._stationLocation.longitude);
+      if(stationData&&!validCaserneCoordinates(localLat,localLon)&&validCaserneCoordinates(legacyLat,legacyLon)){
+        stationData._stationLocation={latitude:legacyLat,longitude:legacyLon,address:String(legacyStation.adresse||'')};
+      }
+      if(stationData&&stationData._operationalStartGeolocationEnabled===undefined&&legacyStation&&typeof legacyStation._operationalStartGeolocationEnabled==='boolean')stationData._operationalStartGeolocationEnabled=legacyStation._operationalStartGeolocationEnabled;
+      if(stationData&&stationData._stationLocation&&validCaserneCoordinates(parseCaserneCoordinate(stationData._stationLocation.latitude),parseCaserneCoordinate(stationData._stationLocation.longitude))){
+        const station=CASERNES.find(function(item){return item.id===cid;});
+        if(station){station.latitude=parseCaserneCoordinate(stationData._stationLocation.latitude);station.longitude=parseCaserneCoordinate(stationData._stationLocation.longitude);station.adresse=stationData._stationLocation.address||station.adresse||'';station._operationalStartGeolocationEnabled=stationData._operationalStartGeolocationEnabled!==false;}
       }
     });
   }
@@ -1796,10 +1812,16 @@ function _rcApplyRealtimeRecord(record){
         d.dispos[incoming.wk][incoming.login]=incoming.slots;
       }
     }else if(record.type==='config'){
-      const keys=['piquets','planningRotations','disposValidated','piquetsValidated','astrConfig','astrTelData','astrTelParams','statsTaux','adminLogins','adminLogin'];
+      const keys=['piquets','planningRotations','disposValidated','piquetsValidated','astrConfig','astrTelData','astrTelParams','statsTaux','adminLogins','adminLogin','_stationLocation'];
       keys.forEach(function(key){if(incoming[key]!==undefined)d[key]=incoming[key];});
+      if(incoming._operationalStartGeolocationEnabled!==undefined)d._operationalStartGeolocationEnabled=incoming._operationalStartGeolocationEnabled!==false;
       if(incoming._statsPersonnelHoursReal!==undefined)d._statsPersonnelHoursReal=incoming._statsPersonnelHoursReal===true;
       if(incoming._indemnitesAdmins!==undefined)d._indemnitesAdmins=incoming._indemnitesAdmins===true;
+      if(d._stationLocation){
+        const station=CASERNES.find(function(item){return item.id===record.caserne;});
+        const stationLat=parseCaserneCoordinate(d._stationLocation.latitude),stationLon=parseCaserneCoordinate(d._stationLocation.longitude);
+        if(station&&validCaserneCoordinates(stationLat,stationLon)){station.latitude=stationLat;station.longitude=stationLon;station.adresse=d._stationLocation.address||station.adresse||'';station._operationalStartGeolocationEnabled=d._operationalStartGeolocationEnabled!==false;}
+      }
     }else return false;
   }
   if(record.caserne===CURRENT_CASERNE_ID)syncCaserneContext();
@@ -1865,6 +1887,8 @@ function _rcSplitCaserne(cid, d){
     astrTelData: JSON.parse(JSON.stringify(d.astrTelData||{})),
     astrTelParams: Object.assign({},d.astrTelParams||{}),
     statsTaux: Object.assign({},d.statsTaux||{}),
+    _stationLocation:d._stationLocation?JSON.parse(JSON.stringify(d._stationLocation)):null,
+    _operationalStartGeolocationEnabled:typeof d._operationalStartGeolocationEnabled==='boolean'?d._operationalStartGeolocationEnabled:undefined,
     _statsPersonnelHoursReal:d._statsPersonnelHoursReal===true,
     _indemnitesAdmins:d._indemnitesAdmins===true,
     adminLogins: Array.isArray(d.adminLogins)?[...d.adminLogins]:(d.adminLogin?[d.adminLogin]:[]),
@@ -1878,7 +1902,7 @@ function _rcSplitCaserne(cid, d){
 function _rcAssembleCaserne(rows){
   const out = { users:[], ivs:[], pilpIvs:[], equipes:[], fmpas:[], formStag:[], formForm:[], renforts:[], activites:[],
                 dispos:{}, piquets:{}, planningRotations:{}, disposValidated:{}, piquetsValidated:{}, astrConfig:{},
-                astrTelData:{}, astrTelParams:{}, statsTaux:{}, _statsPersonnelHoursReal:false, _indemnitesAdmins:false, adminLogins:[], adminLogin:'' };
+                astrTelData:{}, astrTelParams:{}, statsTaux:{}, _stationLocation:null, _operationalStartGeolocationEnabled:undefined, _statsPersonnelHoursReal:false, _indemnitesAdmins:false, adminLogins:[], adminLogin:'' };
   const listMap = {iv:'ivs', pilp:'pilpIvs', equipe:'equipes', fmpa:'fmpas', formStag:'formStag', formForm:'formForm', renfort:'renforts', activite:'activites'};
   rows.forEach(function(r){
     if(r.deleted) return; // on ignore les enregistrements supprimés à la reconstruction
@@ -1897,6 +1921,8 @@ function _rcAssembleCaserne(rows){
       out.astrTelData=c.astrTelData||{};
       out.astrTelParams=c.astrTelParams||{};
       out.statsTaux=c.statsTaux||{};
+      out._stationLocation=c._stationLocation||null;
+      out._operationalStartGeolocationEnabled=typeof c._operationalStartGeolocationEnabled==='boolean'?c._operationalStartGeolocationEnabled:undefined;
       out._statsPersonnelHoursReal=c._statsPersonnelHoursReal===true;
       out._indemnitesAdmins=c._indemnitesAdmins===true;
       out.adminLogins=Array.isArray(c.adminLogins)?[...c.adminLogins]:(c.adminLogin?[c.adminLogin]:[]);

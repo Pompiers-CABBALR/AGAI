@@ -1582,6 +1582,8 @@ function operationalStartGeolocationEnabled(caserneId){
   if((typeof isChefCorps==='function'&&isChefCorps())||(CU&&CU.appRole==='chef_corps'))return false;
   const id=caserneId||CURRENT_CASERNE_ID;
   const caserne=CASERNES.find(function(item){return item.id===id;});
+  const data=CASERNE_DATA[id]||{};
+  if(data._operationalStartGeolocationEnabled!==undefined)return data._operationalStartGeolocationEnabled!==false;
   return !(caserne&&caserne._operationalStartGeolocationEnabled===false);
 }
 function canUseOperationalStartDevice(){
@@ -1631,9 +1633,9 @@ function requestOperationalStartAuthorization(iv,onApproved){
     _operationalStartAuthorizations[iv.id]={at:Date.now(),exempt:true,reason:exemption.reason,sourceId:exemption.sourceId||''};
     onApproved();return;
   }
-  const caserne=CC();
-  const stationLat=Number(caserne&&caserne.latitude),stationLon=Number(caserne&&caserne.longitude);
-  if(!caserne||!Number.isFinite(stationLat)||!Number.isFinite(stationLon)){
+  const caserne=CC(),stationLocation=getCaserneStationLocation(CURRENT_CASERNE_ID);
+  const stationLat=stationLocation.latitude,stationLon=stationLocation.longitude;
+  if(!caserne||!validCaserneCoordinates(stationLat,stationLon)){
     showToast('La position de la caserne n’est pas configurée. Le superadmin doit enregistrer son adresse avant le premier départ.','warn');return;
   }
   if(!navigator.geolocation){showToast('La géolocalisation n’est pas disponible sur cet appareil.','warn');return;}

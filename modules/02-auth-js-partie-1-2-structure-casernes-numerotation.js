@@ -169,6 +169,7 @@ function initCaserneData(cid){
     users:defaultUsers,adminLogins:[],adminLogin:'',
     ivs:[],pilpIvs:[],equipes:[],dispos:{},piquets:{},planningRotations:{},disposValidated:{},piquetsValidated:{},renforts:[],
     astrConfig:{granularity:60,engins:['VTU-01','VTU-02','VTU-03','VPI'],deadline:{dayOfWeek:5,hour:23,minute:59},deadlinePiquet:{dayOfWeek:0,hour:18,minute:0},weekStartDay:1,weekStartHour:0},
+    _stationLocation:null,_operationalStartGeolocationEnabled:undefined,
   };
 }
 CASERNES.forEach(c=>initCaserneData(c.id));
@@ -195,6 +196,22 @@ const SB_REST = SB_URL + '/rest/v1';
 const SB_GLOBAL_ROW = '_GLOBAL';
 function CC(){return CASERNES.find(c=>c.id===CURRENT_CASERNE_ID)||null;}
 function CD(){if(!CURRENT_CASERNE_ID)return null;initCaserneData(CURRENT_CASERNE_ID);return CASERNE_DATA[CURRENT_CASERNE_ID];}
+function getCaserneStationLocation(caserneId){
+  const id=caserneId||CURRENT_CASERNE_ID;
+  const caserne=CASERNES.find(function(item){return item.id===id;})||{};
+  const data=CASERNE_DATA[id]||{};
+  const stored=data._stationLocation&&typeof data._stationLocation==='object'?data._stationLocation:{};
+  const latitude=parseCaserneCoordinate(stored.latitude!=null?stored.latitude:caserne.latitude);
+  const longitude=parseCaserneCoordinate(stored.longitude!=null?stored.longitude:caserne.longitude);
+  return {latitude:latitude,longitude:longitude,address:String(stored.address||caserne.adresse||'')};
+}
+function setCaserneStationLocation(caserneId,position){
+  const caserne=CASERNES.find(function(item){return item.id===caserneId;});if(!caserne||!position)return;
+  initCaserneData(caserneId);
+  const location={latitude:Number(position.latitude),longitude:Number(position.longitude),address:String(position.label||position.address||'')};
+  caserne.latitude=location.latitude;caserne.longitude=location.longitude;caserne.adresse=location.address;
+  CASERNE_DATA[caserneId]._stationLocation=location;
+}
 // Proxies
 let USERS=[];let IVS=[];let PILP_IVS=[];let EQUIPES=[];let DISPOS={};let PIQUETS={};let DISPOS_VALIDATED={};let PIQUETS_VALIDATED={};let PLANNING_ROTATIONS={};let DISPOS_UNLOCKED={};let DISPO_REQUESTS={};let ASTR_CONFIG={granularity:60,engins:[],deadline:{dayOfWeek:5,hour:23,minute:59},deadlinePiquet:{dayOfWeek:0,hour:18,minute:0},weekStartDay:1,weekStartHour:0};
 let LOGIN_HISTORY=[];
