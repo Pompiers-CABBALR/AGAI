@@ -2320,7 +2320,7 @@ function demandeSDIS(ivId){
 }
 function confirmerSDIS(ivId){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
-  if(!canUseOperationalStartDevice()){showToast('La mise en cours d’une intervention SDIS est réservée au mobile ou à la tablette.','warn');return;}
+  if(!canUseOperationalStartInterface()){showToast('La mise en cours d’une intervention SDIS est réservée au mobile ou à la tablette.','warn');return;}
   const h=getH(N());const annee=new Date().getFullYear();
   iv.s='terminee';
   supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
@@ -3591,7 +3591,7 @@ function showRenfortEquipageModal(cid,renfortId){
     +(isComplet?buildRenfortEquipRow(2,null,'\u00c9quipier',r):'')
     +'</div>'
     +'<div class="brow" style="margin-top:10px;">'
-    +(canUseOperationalStartDevice()?'<button class="btn sm" style="background:#7C3AED;color:#fff;" onclick="confirmerRenfortEquipage(\''+cid+'\',\''+renfortId+'\')">&#x1F692; Confirmer le d\u00e9part</button>':'<button class="btn sm" disabled style="opacity:.65;">📱 Départ : mobile/tablette</button>')
+    +(canUseOperationalStartInterface()?'<button class="btn sm" style="background:#7C3AED;color:#fff;" onclick="confirmerRenfortEquipage(\''+cid+'\',\''+renfortId+'\')">&#x1F692; Confirmer le d\u00e9part</button>':'<button class="btn sm" disabled style="opacity:.65;">📱 Départ : mobile/tablette</button>')
     +'<button class="btn sm" onclick="cM()">Retour</button>'
     +'</div></div>';
   document.getElementById('mo').style.display='flex';

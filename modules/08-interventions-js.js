@@ -1201,7 +1201,7 @@ function oM(id){
       ;
       actions=`<div class="brow">
         ${autreAgres?`<div style="padding:6px 8px;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;font-size:12px;color:#991B1B;">🔒 Sélectionnée par ${iv.agr}</div>`:
-        `${canUseOperationalStartDevice()
+        `${canUseOperationalStartInterface()
           ?`<button class="btn am sm" onclick="cS('${iv.id}','en-cours')"${blocage?' style="opacity:.4;pointer-events:none;" title="Cl&#244;turez d&#39;abord '+enCours.id+'"':''}>▶ En cours</button>`
           :`<button class="btn sm" disabled title="Le départ est réservé aux mobiles et tablettes" style="opacity:.65;">📱 En cours : mobile/tablette</button>`}
         <button class="btn sm" onclick="cS('${iv.id}','en-attente')">↩ En attente</button>`}
@@ -1216,7 +1216,7 @@ function oM(id){
       const pilpBtn=!iv._isRenfort&&iv.n==='Nid de frelons asiatiques'?`<button class="btn pilp-btn sm" onclick="showPilpForm('${iv.id}')">&#x1F3AF; PILP</button>`:'';
       const natsEchelle=['Nid de guêpes et frelons','Nid de frelons asiatiques',"Essaim d'abeilles"];
       const echelleBtn=!iv._isRenfort&&natsEchelle.includes(iv.n)&&!iv._echelleToiture?`<button class="btn sm" style="background:#D35400;color:#fff;border-color:#D35400;" onclick="demandeEchelleToiture('${iv.id}')">&#x1FA9C; Échelle</button>`:'';
-      const sdisBtn2=!iv._isRenfort&&chef&&!iv._sdis?(canUseOperationalStartDevice()?`<button class="btn sm" style="background:#1D4ED8;color:#fff;border-color:#1D4ED8;" onclick="demandeSDIS('${iv.id}')">&#x1F691; SDIS</button>`:`<button class="btn sm" disabled title="Conversion SDIS réservée au mobile ou à la tablette" style="opacity:.65;">📱 SDIS</button>`):'';
+      const sdisBtn2=!iv._isRenfort&&chef&&!iv._sdis?(canUseOperationalStartInterface()?`<button class="btn sm" style="background:#1D4ED8;color:#fff;border-color:#1D4ED8;" onclick="demandeSDIS('${iv.id}')">&#x1F691; SDIS</button>`:`<button class="btn sm" disabled title="Conversion SDIS réservée au mobile ou à la tablette" style="opacity:.65;">📱 SDIS</button>`):'';
       const epaBtn=!iv._isRenfort&&chef&&!iv._epa?`<button class="btn sm" style="background:#8E44AD;color:#fff;border-color:#8E44AD;" onclick="demandeEPA('${iv.id}')">&#x1F9F0; EPA</button>`:'';
       // Bouton clôture renfort si c'est une IV de renfort UT
       const renfortCloBtn=iv._isRenfort&&!isInternalReinforcement?`<div style="background:#EDE9FE;border-radius:10px;padding:12px;margin-bottom:10px;border:2px solid #7C3AED;">
@@ -1274,7 +1274,7 @@ function oM(id){
     if(iv.agr===CU.l||isAgres()||chef){
       actions+=`<div class="clotbox" style="margin-top:10px;background:#EFF6FF;border:1px solid #BFDBFE;">
         <div style="font-size:12px;font-weight:600;color:#1D4ED8;margin-bottom:8px;">🔄 Reprendre cette intervention</div>
-        ${canUseOperationalStartDevice()
+        ${canUseOperationalStartInterface()
           ?`<button class="btn bl" style="width:100%;" onclick="cS('${iv.id}','en-cours')">▶ Remettre en cours</button>`
           :`<button class="btn" disabled style="width:100%;opacity:.65;">📱 Reprise réservée au mobile ou à la tablette</button>`}
       </div>`;
@@ -1594,6 +1594,12 @@ function canUseOperationalStartDevice(){
   // Depuis iPadOS 13, Safari peut se présenter comme un Mac.
   return /Macintosh/i.test(ua)&&Number(navigator.maxTouchPoints||0)>1;
 }
+function hasSuperAdminOperationalStartOverride(){
+  return GLOBAL_ROLE==='superadmin'&&typeof isSuperAdmin==='function'&&isSuperAdmin();
+}
+function canUseOperationalStartInterface(){
+  return canUseOperationalStartDevice()||hasSuperAdminOperationalStartOverride();
+}
 function operationalDistanceMeters(lat1,lon1,lat2,lon2){
   const rad=Math.PI/180,dLat=(lat2-lat1)*rad,dLon=(lon2-lon1)*rad;
   const a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(lat1*rad)*Math.cos(lat2*rad)*Math.sin(dLon/2)*Math.sin(dLon/2);
@@ -1620,6 +1626,10 @@ function operationalStartGeoExemption(iv){
   return null;
 }
 function requestOperationalStartAuthorization(iv,onApproved){
+  if(hasSuperAdminOperationalStartOverride()){
+    _operationalStartAuthorizations[iv.id]={at:Date.now(),exempt:true,reason:'départ autorisé sur ordinateur par le superadmin avec pouvoirs activés'};
+    onApproved();return;
+  }
   if(!canUseOperationalStartDevice()){
     showToast('Le passage « En cours » est autorisé uniquement sur mobile ou tablette.','warn');return;
   }
