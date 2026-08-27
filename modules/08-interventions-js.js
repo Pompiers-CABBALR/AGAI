@@ -875,6 +875,13 @@ function updateRenfortBadge(){
   if(badge){badge.textContent=nb;badge.style.display=nb>0?'inline-flex':'none';}
 }
 function rI(){
+  const pendingAssignmentRepairs=agaiRepairPendingOperationalAssignments();
+  if(pendingAssignmentRepairs.length){
+    if(typeof syncCaserneContext==='function')syncCaserneContext();
+    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+    saveData(true);
+    if(pendingAssignmentRepairs.some(function(id){const iv=interventionById(id);return iv&&iv._numApl==='APL_2026_000259';}))showToast('APL_2026_000259 : véhicule et équipage retirés de la file d’attente.','success');
+  }
   const ut188Repair=agaiRepairIntervention188ChainedStart();
   if(ut188Repair.applied){
     if(typeof syncCaserneContext==='function')syncCaserneContext();
@@ -1761,6 +1768,7 @@ function cS(id,s,confirmed){
       iv._retourAttentePar=CU.l;
       clearInterventionDepartureForPending(iv,CU.l);
     }
+    else clearInterventionOperationalAssignmentForPending(iv,CU.l);
     clearInterventionNumbersForPending(iv);
     parcConfirmed.delete(iv.id);
     iv.agr=null;

@@ -495,8 +495,24 @@ function clearInterventionNumbersForPending(iv){
   if(iv._isRenfort)iv._numRenfort=null;
   delete iv._numberedAtStart;
 }
-function clearInterventionDepartureForPending(iv,who){
+function clearInterventionOperationalAssignmentForPending(iv,who){
+  if(!iv)return false;
+  const hasAssignment=!!(iv.eng||iv._engin1||iv._engin2||(Array.isArray(iv._equipage1)&&iv._equipage1.length)||(Array.isArray(iv._equipage2)&&iv._equipage2.length)||(Array.isArray(iv._releves)&&iv._releves.length)||iv._agr2);
+  if(!hasAssignment)return false;
+  if(!Array.isArray(iv._engagementsInterrupted))iv._engagementsInterrupted=[];
+  iv._engagementsInterrupted.push({
+    date:getH(N()),auteur:who||CU&&CU.l||'',engin1:iv._engin1||iv.eng||'',engin2:iv._engin2||'',
+    equipage1:Array.isArray(iv._equipage1)?JSON.parse(JSON.stringify(iv._equipage1)):[],
+    equipage2:Array.isArray(iv._equipage2)?JSON.parse(JSON.stringify(iv._equipage2)):[],
+    releves:Array.isArray(iv._releves)?JSON.parse(JSON.stringify(iv._releves)):[]
+  });
+  delete iv.eng;delete iv._engin1;delete iv._engin2;delete iv._equipage1;delete iv._equipage2;
+  delete iv._engin1RoleConfig;delete iv._engin2RoleConfig;delete iv._agr2;delete iv._releves;
+  return true;
+}
+function clearInterventionDepartureForPending(iv,who,options){
   if(!iv)return;
+  const opts=options||{};
   const oldStart=iv._hDebut||iv._hDebutReelle||iv._hDebutInitiale||'';
   const oldDate=iv._dateDebut||statsInterventionDateKey(iv)||'';
   if(oldStart){
@@ -504,11 +520,23 @@ function clearInterventionDepartureForPending(iv,who){
     iv._departuresInterrupted.push({heure:oldStart,date:oldDate,retourAttente:getH(N()),auteur:who||CU&&CU.l||''});
     // L’équipage est déjà parti : si une autre intervention prioritaire est
     // engagée juste après, elle doit reprendre ce départ réel.
-    iv._departureHandoff={heure:oldStart,date:String(oldDate||'').replace(/\D/g,'').slice(0,8),chef:iv.agr||who||CU&&CU.l||'',sourceId:iv.id,createdAt:getH(N()),available:true};
+    if(opts.createHandoff!==false)iv._departureHandoff={heure:oldStart,date:String(oldDate||'').replace(/\D/g,'').slice(0,8),chef:iv.agr||who||CU&&CU.l||'',sourceId:iv.id,createdAt:getH(N()),available:true};
   }
+  clearInterventionOperationalAssignmentForPending(iv,who);
   delete iv._hDebut;delete iv._hDebutReelle;delete iv._hDebutInitiale;delete iv._dateDebut;
   delete iv._hFin;delete iv._duree;delete iv._startLockedByChain;delete iv._chainedFromInterventionId;
   delete iv._chainPreviousInterventionId;delete _pendingNextInterventionStarts[iv.id];
+}
+function agaiRepairPendingOperationalAssignments(){
+  const repaired=[];
+  [].concat(IVS||[],PILP_IVS||[]).forEach(function(iv){
+    if(!iv||iv.s!=='en-attente')return;
+    if(!clearInterventionOperationalAssignmentForPending(iv,'Correction automatique AGAI'))return;
+    if(!Array.isArray(iv.tl))iv.tl=[];
+    iv.tl.push({s:'modif-equipier',h:getH(N()),who:'Correction automatique AGAI',note:'Véhicule et équipage retirés après le retour en attente'});
+    repaired.push(iv.id);
+  });
+  return repaired;
 }
 function interventionStampMillis(stamp){
   const d=String(stamp||'').replace(/\D/g,'');if(d.length<12)return 0;
