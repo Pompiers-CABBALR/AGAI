@@ -9,7 +9,7 @@
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
 <title>AGAI</title>
-<link rel="stylesheet" href="style.css?v=20260827-depart-pc-superadmin-174"/>
+<link rel="stylesheet" href="style.css?v=20260827-pilp-interventions-chainage-175"/>
 </head>
 <body>
 
@@ -255,13 +255,13 @@
 
       <!-- SOUS-ONGLET : PILP -->
       <div id="subtab-pilp" style="display:none;">
-        <div class="srow">
+        <div class="srow" style="grid-template-columns:repeat(5,1fr);">
           <div class="sc"><div class="sv" style="color:#E24B4A;" id="pilp-nb1">0</div><div class="sl2">Attente</div></div>
           <div class="sc"><div class="sv" style="color:var(--sel);" id="pilp-nb2s">0</div><div class="sl2">Sélect.</div></div>
           <div class="sc"><div class="sv" style="color:var(--pur);" id="pilp-nb2">0</div><div class="sl2">Avis</div></div>
           <div class="sc"><div class="sv" style="color:var(--amb);" id="pilp-nb3">0</div><div class="sl2">En cours</div></div>
           <div class="sc"><div class="sv" style="color:var(--grn);" id="pilp-nb4">0</div><div class="sl2">Terminées</div></div>
-          <div class="sc"><div class="sv" style="color:var(--t2);" id="pilp-nbtot">0</div><div class="sl2">Total</div></div>
+          <div class="sc" style="display:none;"><div class="sv" style="color:var(--t2);" id="pilp-nbtot">0</div><div class="sl2">Total</div></div>
         </div>
         <div id="pilp-avsec" style="display:none;background:var(--pl);border:1px solid #9B59B6;border-radius:12px;padding:12px;margin-bottom:12px;">
           <div style="font-size:13px;font-weight:600;color:var(--pur);margin-bottom:8px;">🟣 Avis de passage PILP (<span id="pilp-avc">0</span>)</div>
@@ -270,6 +270,11 @@
         <div id="pilp-avcsec" style="display:none;background:#F8F5FA;border:1px solid #D8B4E2;border-radius:12px;padding:12px;margin-bottom:12px;">
           <div style="font-size:13px;font-weight:600;color:#6B7280;margin-bottom:8px;">🗃️ Avis PILP classés (<span id="pilp-avcc">0</span>)</div>
           <div id="pilp-avcl"></div>
+        </div>
+        <div id="pilp-pap" class="pp" style="display:none;">
+          <div class="ptit">🗺️ Tournée PILP — <span id="pilp-pagl" style="font-family:monospace;font-size:12px;"></span> — <span id="pilp-pac">0</span></div>
+          <div id="pilp-pl2"></div>
+          <div class="brow"><button class="btn sel-btn" onclick="confirmerSelPilp()">✅ Confirmer</button><button class="btn" onclick="optPilp()">✨ Optimiser</button><button class="btn" onclick="vpPilp()">Vider</button></div>
         </div>
         <div class="frow intervention-filter-row" id="pilp-filter-row">
           <button class="fb pilp-fb active" onclick="sfPilp('all',this)">Tout</button>
@@ -801,28 +806,28 @@
   <div class="mod"><div class="mhan"></div><div class="mtit" id="mt">—</div><div class="mid2" id="mi">—</div><div id="mb"></div><button class="mclose" onclick="cM()">Fermer</button></div>
 </div>
 
-<script src="runtime-config.js?v=20260827-depart-pc-superadmin-174"></script>
-<script src="modules/00-preambule.js?v=20260827-depart-pc-superadmin-174" defer></script>
-<script src="modules/01-config-js.js?v=20260827-depart-pc-superadmin-174" defer></script>
-<script src="modules/02-auth-js-partie-1-2-structure-casernes-numerotation.js?v=20260827-depart-pc-superadmin-174" defer></script>
-<script src="modules/03-security-js.js?v=20260827-depart-pc-superadmin-174" defer></script>
-<script src="modules/04-auth-js-partie-2-2-login-session-droits.js?v=20260827-depart-pc-superadmin-174" defer></script>
-<script src="modules/05-admin-js-partie-1-2-vues-globales-superadmin.js?v=20260827-depart-pc-superadmin-174" defer></script>
-<script src="modules/06-ui-js-accueil-js.js?v=20260827-depart-pc-superadmin-174" defer></script>
-<script src="modules/07-appel-js.js?v=20260827-depart-pc-superadmin-174" defer></script>
-<script src="modules/08-interventions-js.js?v=20260827-depart-pc-superadmin-174" defer></script>
-<script src="modules/09-pilp-js.js?v=20260827-depart-pc-superadmin-174" defer></script>
-<script src="modules/10-historique-js.js?v=20260827-depart-pc-superadmin-174" defer></script>
-<script src="modules/11-admin-js-partie-2-2-gestion-utilisateurs.js?v=20260827-depart-pc-superadmin-174" defer></script>
-<script src="modules/12-astreintes-js.js?v=20260827-depart-pc-superadmin-174" defer></script>
-<script src="modules/13-autorisation-js.js?v=20260827-depart-pc-superadmin-174" defer></script>
-<script src="modules/14-stats-js.js?v=20260827-depart-pc-superadmin-174" defer></script>
-<script src="modules/15-storage-js.js?v=20260827-depart-pc-superadmin-174" defer></script>
-<script src="modules/16-email-js.js?v=20260827-depart-pc-superadmin-174" defer></script>
-<script src="modules/17-animal-js.js?v=20260827-depart-pc-superadmin-174" defer></script>
-<script src="modules/18-planning-annuel-js.js?v=20260827-depart-pc-superadmin-174" defer></script>
-<script src="modules/19-onedrive-sync-js.js?v=20260827-depart-pc-superadmin-174" defer></script>
-<script src="modules/20-formations-js.js?v=20260827-depart-pc-superadmin-174" defer></script>
-<script src="modules/21-astreinte-tel-js.js?v=20260827-depart-pc-superadmin-174" defer></script>
+<script src="runtime-config.js?v=20260827-pilp-interventions-chainage-175"></script>
+<script src="modules/00-preambule.js?v=20260827-pilp-interventions-chainage-175" defer></script>
+<script src="modules/01-config-js.js?v=20260827-pilp-interventions-chainage-175" defer></script>
+<script src="modules/02-auth-js-partie-1-2-structure-casernes-numerotation.js?v=20260827-pilp-interventions-chainage-175" defer></script>
+<script src="modules/03-security-js.js?v=20260827-pilp-interventions-chainage-175" defer></script>
+<script src="modules/04-auth-js-partie-2-2-login-session-droits.js?v=20260827-pilp-interventions-chainage-175" defer></script>
+<script src="modules/05-admin-js-partie-1-2-vues-globales-superadmin.js?v=20260827-pilp-interventions-chainage-175" defer></script>
+<script src="modules/06-ui-js-accueil-js.js?v=20260827-pilp-interventions-chainage-175" defer></script>
+<script src="modules/07-appel-js.js?v=20260827-pilp-interventions-chainage-175" defer></script>
+<script src="modules/08-interventions-js.js?v=20260827-pilp-interventions-chainage-175" defer></script>
+<script src="modules/09-pilp-js.js?v=20260827-pilp-interventions-chainage-175" defer></script>
+<script src="modules/10-historique-js.js?v=20260827-pilp-interventions-chainage-175" defer></script>
+<script src="modules/11-admin-js-partie-2-2-gestion-utilisateurs.js?v=20260827-pilp-interventions-chainage-175" defer></script>
+<script src="modules/12-astreintes-js.js?v=20260827-pilp-interventions-chainage-175" defer></script>
+<script src="modules/13-autorisation-js.js?v=20260827-pilp-interventions-chainage-175" defer></script>
+<script src="modules/14-stats-js.js?v=20260827-pilp-interventions-chainage-175" defer></script>
+<script src="modules/15-storage-js.js?v=20260827-pilp-interventions-chainage-175" defer></script>
+<script src="modules/16-email-js.js?v=20260827-pilp-interventions-chainage-175" defer></script>
+<script src="modules/17-animal-js.js?v=20260827-pilp-interventions-chainage-175" defer></script>
+<script src="modules/18-planning-annuel-js.js?v=20260827-pilp-interventions-chainage-175" defer></script>
+<script src="modules/19-onedrive-sync-js.js?v=20260827-pilp-interventions-chainage-175" defer></script>
+<script src="modules/20-formations-js.js?v=20260827-pilp-interventions-chainage-175" defer></script>
+<script src="modules/21-astreinte-tel-js.js?v=20260827-pilp-interventions-chainage-175" defer></script>
 </body>
 </html>

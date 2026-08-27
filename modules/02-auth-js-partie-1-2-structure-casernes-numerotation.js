@@ -523,6 +523,28 @@ function findInterruptedDepartureHandoff(chefLogin,targetId){
   }).sort(function(a,b){return String(b.handoff.createdAt||'').localeCompare(String(a.handoff.createdAt||''));})[0]||null;
 }
 
+function agaiRepairIntervention188ChainedStart(){
+  const data=CURRENT_CASERNE_ID&&CASERNE_DATA[CURRENT_CASERNE_ID];
+  const version='20260827-ut188-chain-start-v1';
+  if(!data||data._ut188ChainStartRepairVersion===version)return {applied:false,changed:false};
+  const all=[].concat(data.ivs||[],data.pilpIvs||[]);
+  const target=all.find(function(iv){return iv&&Number(iv._numCaserne)===188;});
+  const previous=all.find(function(iv){return iv&&Number(iv._numCaserne)===187;});
+  if(!target||!previous||!previous._hFin)return {applied:false,changed:false};
+  const sameDay=String(target.h||'').slice(0,8)===String(previous.h||'').slice(0,8);
+  if(!sameDay)return {applied:false,changed:false};
+  let changed=false;
+  if(previous._hFin==='16:11'&&['16:38',''].includes(String(target._hDebut||''))){
+    target._hDebut='16:11';target._hDebutReelle='16:11';target._hDebutInitiale='16:11';
+    target._startLockedByChain=true;target._chainedFromInterventionId=previous.id;
+    if(!Array.isArray(target.tl))target.tl=[];
+    target.tl.push({s:'modif-heure',h:getH(N()),who:'Correction automatique AGAI',note:'Départ corrigé à 16:11 — enchaînement après l’intervention UT 187'});
+    changed=true;
+  }
+  data._ut188ChainStartRepairVersion=version;
+  return {applied:true,changed:changed};
+}
+
 function agaiRepairNumberingByStartOrder(){
   const cid=CURRENT_CASERNE_ID;
   const data=cid&&CASERNE_DATA[cid];

@@ -2239,7 +2239,7 @@ function confirmerAnnulation(id){
 }
 // ── Échelle de toit ──
 function demandeEchelleToiture(ivId){
-  const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   document.getElementById('mt').textContent='\U0001FA9C \u00c9chelle de toit requise';
   document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
   document.getElementById('mb').innerHTML=`<div>
@@ -2255,7 +2255,7 @@ function demandeEchelleToiture(ivId){
   document.getElementById('mo').style.display='flex';
 }
 function confirmerEchelleToiture(ivId){
-  const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   const obs=document.getElementById('et-obs').value.trim();
   const h=getH(N());const annee=new Date().getFullYear();
   const numApl=nextAplNum(annee);
@@ -2271,7 +2271,7 @@ function confirmerEchelleToiture(ivId){
 }
 // ── Inter. SDIS ──
 function demandeEPA(ivId){
-  const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   document.getElementById('mt').textContent='&#x1F9F0; EPA requis';
   document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
   document.getElementById('mb').innerHTML='<div>'
@@ -2285,7 +2285,7 @@ function demandeEPA(ivId){
   document.getElementById('mo').style.display='flex';
 }
 function confirmerEPA(ivId){
-  const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   const obs=document.getElementById('epa-obs').value.trim();
   const h=getH(N());const annee=new Date().getFullYear();
   const numApl=nextAplNum(annee);
@@ -2300,7 +2300,7 @@ function confirmerEPA(ivId){
   cM();rI();rAccueil();
 }
 function demandeSDIS(ivId){
-  const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   document.getElementById('mt').textContent='&#x1F691; Inter. SDIS';
   document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
   document.getElementById('mb').innerHTML=`<div>
@@ -2319,7 +2319,7 @@ function demandeSDIS(ivId){
   document.getElementById('mo').style.display='flex';
 }
 function confirmerSDIS(ivId){
-  const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   if(!canUseOperationalStartInterface()){showToast('La mise en cours d’une intervention SDIS est réservée au mobile ou à la tablette.','warn');return;}
   const h=getH(N());const annee=new Date().getFullYear();
   iv.s='terminee';
@@ -2789,7 +2789,7 @@ function renderJoursFeries(annee){
 function updateEquipageExclusions(){refreshEquipageSelects();}
 
 function showPersonnelModal(id){
-  const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
+  const iv=interventionById(id);if(!iv)return;
   const interruptedHandoff=findInterruptedDepartureHandoff(CU.l,id);
   const heure=interruptedHandoff?interruptedHandoff.handoff.heure:(_pendingNextInterventionStarts[id]||getHHMM(N()));
   const chained=!interruptedHandoff&&!!_pendingNextInterventionStarts[id];
@@ -2901,7 +2901,7 @@ function buildEquipage2Dyn(enginVal){
 }
 
 function confirmerDepart(id){
-  const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
+  const iv=interventionById(id);if(!iv)return;
   const interruptedHandoff=findInterruptedDepartureHandoff(CU.l,id);
   const chained=!interruptedHandoff&&!!_pendingNextInterventionStarts[id];
   const restartedAfterPending=iv._retourAttenteDepuis==='en-cours';
@@ -2965,7 +2965,7 @@ function confirmerDepart(id){
   const _renfortList=_getRenfortPersonnel();
   const _enrich=function(arr){arr.forEach(function(e){if(e&&e.login&&!USERS.find(function(u){return u.l===e.login;})){const rf=_renfortList.find(function(r){return r.login===e.login;});if(rf){e.renfort=true;e.nom=rf.nom;e.prenom=rf.prenom;e.grade=rf.grade;e.caserneNom=rf.caserneNom;}}});};
   _enrich(eq1);_enrich(eq2);
-  const previous=chainedPreviousId?IVS.find(function(candidate){return candidate.id===chainedPreviousId;}):null;
+  const previous=chainedPreviousId?interventionById(chainedPreviousId):null;
   const sameCrew=!!(chained&&previous&&interventionCrewSignature(previous)&&interventionCrewSignature(previous)===interventionCrewSignature(iv,eq1,eq2));
   if(sameCrew){
     iv._startLockedByChain=true;
@@ -2991,13 +2991,13 @@ function confirmerDepart(id){
   delete iv._retourAttenteDepuis;
   assignInterventionNumbersAtStart(iv);
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-  saveData(true);cM();rI();rStatsHeader(); // push immédiat : changement de statut partagé
+  saveData(true);cM();refreshOperationalInterventionViews();rStatsHeader(); // push immédiat : changement de statut partagé
   setTimeout(function(){oM(id);},80);
 }
 
 // ── Correction requérant ──
 function editRequerant(id){
-  const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
+  const iv=interventionById(id);if(!iv)return;
   document.getElementById('mt').textContent='Corriger le requ\u00e9rant';
   document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
   const initBanner=iv._reqInit
@@ -3016,7 +3016,7 @@ function editRequerant(id){
   document.getElementById('mo').style.display='flex';
 }
 function saveRequerant(id){
-  const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
+  const iv=interventionById(id);if(!iv)return;
   const newReq=document.getElementById('edit-req').value.trim();
   const newTel=document.getElementById('edit-tel').value.trim();
   if(!newReq){showToast('Le nom du requérant est obligatoire.','warn');return;}
@@ -3157,7 +3157,7 @@ function reqAvailabilityFromPeriods(periods){
   return{state:states.length===1?states[0]:'mixte',days:filled.map(function(period){return period.day;}),mode:first.mode,h1:first.h1,h2:first.h2,periods:filled,label:filled.map(reqAvailabilityPeriodLabel).join(' ; ')};
 }
 function showComplementModal(id){
-  const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
+  const iv=interventionById(id);if(!iv)return;
   if(!(hasRight('Interventions')||isAgres()||isChef()||isAdminModeActive())){showToast('Action réservée aux personnes ayant le droit Interventions.','warn');return;}
   document.getElementById('mt').textContent='Complément d\u2019information';
   document.getElementById('mi').textContent=iv.n+' — '+(iv.com||'');
@@ -3179,7 +3179,7 @@ function showComplementModal(id){
   registerMobileModalFields(document.getElementById('mb'));
 }
 function saveComplementInfo(id){
-  const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
+  const iv=interventionById(id);if(!iv)return;
   const txt=(document.getElementById('compl-info-val').value||'').trim();
   const err=document.getElementById('compl-info-err');
   const phones=readComplementPhones();
@@ -3200,13 +3200,13 @@ function saveComplementInfo(id){
   iv.tl.push({s:'info-compl',h:getH(N()),who:CU.l,note:notes.join(' ; ')});
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);
-  cM();rI();
+  cM();refreshOperationalInterventionViews();
   setTimeout(function(){oM(id);},80);
 }
 
 // ────────────────── RELÈVE DE PERSONNEL ──────────────────
 function showReleveModal(id){
-  const iv=IVS.find(v=>v.id===id);if(!iv)return;
+  const iv=interventionById(id);if(!iv)return;
   const heure=getHHMM(N());
   // Équipage actuel (dernier équipage actif)
   const releves=(iv._releves||[]).filter(function(releve){return releve&&!releve.isRenfort&&!releve.isRenfortInterne;});
@@ -3252,7 +3252,7 @@ function showReleveModal(id){
 }
 
 function validerReleve(id){
-  const iv=IVS.find(v=>v.id===id);if(!iv)return;
+  const iv=interventionById(id);if(!iv)return;
   const heure=getHHMM(N());
   const releves=(iv._releves||[]).filter(function(releve){return releve&&!releve.isRenfort&&!releve.isRenfortInterne;});
   const equipActuel=releves.length?releves[releves.length-1].nouvelEquipage:(iv._equipage1||[]);
@@ -3304,7 +3304,7 @@ function validerReleve(id){
 }
 
 function confirmerRetour(ivId,releveIdx,login){
-  const iv=IVS.find(v=>v.id===ivId);if(!iv||!iv._releves)return;
+  const iv=interventionById(ivId);if(!iv||!iv._releves)return;
   const releve=iv._releves[releveIdx];if(!releve)return;
   const heure=getHHMM(N());
   // Enregistrer le retour pour TOUS les membres sans hRetour de cette relève
@@ -3320,7 +3320,7 @@ function confirmerRetour(ivId,releveIdx,login){
 
 // ────────────────── DEMANDE DE RENFORT UT ──────────────────
 function showRenfortInterneModal(ivId){
-  const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   document.getElementById('mt').textContent='Demande de renfort interne';
   document.getElementById('mi').textContent=iv.n+' \u2014 '+iv.com;
   document.getElementById('mb').innerHTML=
@@ -3335,7 +3335,7 @@ function showRenfortInterneModal(ivId){
 }
 
 function confirmerRenfortInterne(ivId){
-  const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   const h=getH(N()),heure=getHHMM(N());
   const note=((document.getElementById('renfort-int-note')||{}).value||'').trim();
   const childId=iv.id+'-RI-'+Date.now();
@@ -3375,7 +3375,7 @@ function syncInternalReinforcementSource(child){
 }
 
 function showRenfortModal(ivId,forcePersonnel){
-  const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   // Si l'utilisateur n'est pas chef d'agrès, il ne peut demander qu'un renfort personnel
   if(forcePersonnel===undefined)forcePersonnel=!(isAgres()||isChef()||hasRight('Administration'));
   const autresCasernes=CASERNES.filter(function(c){return c.id!==CURRENT_CASERNE_ID;});
@@ -3428,7 +3428,7 @@ function updateRenfortType(){
 }
 
 function envoyerRenfort(ivId){
-  const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   const checkedType=document.querySelector('input[name="renfort-type"]:checked')?.value;
   const hiddenType=document.querySelector('input[type="hidden"][name="renfort-type"]')?.value;
   const type=checkedType||hiddenType||'complet';

@@ -120,7 +120,7 @@ function _genPdfHaute(html, callback) {
 
 function envoyerAttestationMail(ivId) {
   saveAutorisationData(ivId);
-  const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  const iv = interventionById(ivId);if(!iv)return;
   const cas = CC();
   const emailCaserne = cas && cas.email ? cas.email : '';
   const saved = _autorisationData[ivId] || iv._autorisationData || {};
@@ -177,7 +177,7 @@ function _sendMailSecure(payload) {
 }
 
 function confirmerEnvoiMail(ivId) {
-  const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  const iv = interventionById(ivId);if(!iv)return;
   const cas = CC();
   const saved = _autorisationData[ivId] || iv._autorisationData || {};
   const nomComplet = ((saved.prenom||'')+' '+(saved.nom||'')).trim();
@@ -504,7 +504,7 @@ function showStartCorrectionOperationalConflict(conflict){
 }
 
 function saveInterventionStartCorrection(ivId){
-  const iv=IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   if(!canEditInterventionStart(iv)){
     showToast('Cette heure ne peut pas être modifiée par ce compte.','warn');return;
   }
@@ -643,7 +643,7 @@ function onCompteRenduDraftInput(field){
 }
 
 function showCompteRenduModal(ivId) {
-  const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  const iv = interventionById(ivId);if(!iv)return;
   const isOwn       = isInterventionReportChef(iv,CU.l);
   const isSuperAdmin= isAdminModeActive();
   const isValidated = !!iv._crValide;
@@ -847,7 +847,7 @@ function _sdisSaveFields(iv){
   }
 }
 function validerCompteRendu(ivId) {
-  const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  const iv = interventionById(ivId);if(!iv)return;
   if(!isInterventionReportChef(iv,CU.l)&&!hasAdministrativeAccount()){
     showToast('Validation réservée au chef d’agrès de l’intervention ou à un administrateur.','warn');return;
   }
@@ -867,14 +867,14 @@ function validerCompteRendu(ivId) {
     if(iv._sdis) _sdisSaveFields(iv);
     if(_isFrelonIv(iv)) _frelonSaveFields(iv);
     if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-    saveData(true);rI();rHist();
+    saveData(true);refreshOperationalInterventionViews();rHist();
     cM();
     setTimeout(function(){oM(ivId);},80);
   });
 }
 
 function saveCompteRendu(ivId, andClot) {
-  const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  const iv = interventionById(ivId);if(!iv)return;
   const isOwn       = isInterventionReportChef(iv,CU.l);
   const isSuperAdmin= isAdminModeActive();
   if(iv._crValide && !isSuperAdmin){showToast('Compte rendu verrouill\u00e9','warn');return;}
@@ -891,7 +891,7 @@ function saveCompteRendu(ivId, andClot) {
   if(iv._sdis) _sdisSaveFields(iv);
   if(_isFrelonIv(iv)) _frelonSaveFields(iv);
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-  saveData(true);rI();rHist();
+  saveData(true);refreshOperationalInterventionViews();rHist();
   if(andClot){cM();clot(ivId);}
   else{
     const status=document.getElementById('cr-save-status');
@@ -903,7 +903,7 @@ function saveCompteRendu(ivId, andClot) {
 
 
 function genRapportInterventionHTML(ivId) {
-  const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return null;
+  const iv = interventionById(ivId);if(!iv)return null;
   const JOURS_FR=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
   const MOIS_FR=['janvier','f\u00e9vrier','mars','avril','mai','juin','juillet','ao\u00fbt','septembre','octobre','novembre','d\u00e9cembre'];
   let dateLongue='';

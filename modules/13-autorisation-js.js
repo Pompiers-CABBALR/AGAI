@@ -18,7 +18,7 @@ function autorisationDataForNid(iv,nidIndex){
   return{};
 }
 function showAddRecognizedNidModal(ivId){
-  const iv=IVS.find(function(item){return item.id===ivId;});if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   document.getElementById('mt').textContent='Ajouter un nid après reconnaissance';
   document.getElementById('mi').textContent=iv.n+' — '+iv.com;
   document.getElementById('mb').innerHTML='<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Ajoutez chaque nid découvert sur place. Une autorisation et une attestation distinctes seront créées.</div>'
@@ -53,7 +53,7 @@ function renderRecognizedNidLocations(nature){
   const size=document.getElementById('reco-nid-size-wrap');if(size)size.style.display=nature==='Frelons asiatiques'?'':'none';
 }
 function saveRecognizedNid(ivId){
-  const iv=IVS.find(function(item){return item.id===ivId;});if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   const nature=(document.getElementById('reco-nid-nature')||{}).value||'';
   let localisation=(document.getElementById('reco-nid-location')||{}).value||'';
   if(localisation==='Autre')localisation=((document.getElementById('reco-nid-other')||{}).value||'').trim();
@@ -71,16 +71,16 @@ function saveRecognizedNid(ivId){
   // Marquage explicite : cet ajout doit rester prioritaire même si une autre
   // synchronisation était déjà en cours sur le poste.
   if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcPendingDirty!=='undefined'&&typeof _rcId==='function'&&CURRENT_CASERNE_ID){
-    _rcPendingDirty.add(_rcId(CURRENT_CASERNE_ID,'iv',iv.id));
+    _rcPendingDirty.add(_rcId(CURRENT_CASERNE_ID,isPilpIntervention(iv)?'pilp':'iv',iv.id));
     if(typeof _rcDirtyGeneration!=='undefined')_rcDirtyGeneration++;
     if(typeof _rcPersistPendingDirty==='function')_rcPersistPendingDirty();
   }
   saveData(true);
-  try{rI();rAccueil();rHist();}catch(e){}
+  try{refreshOperationalInterventionViews();rAccueil();rHist();}catch(e){}
   showToast('Nid ajouté et enregistré — complétez son autorisation','success');showAutorisationNidPicker(ivId);
 }
 function deleteAdditionalInterventionNid(ivId,nidIndex){
-  const iv=IVS.find(function(item){return item.id===ivId;});if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   const index=Number(nidIndex);
   if(!Number.isInteger(index)||index<=0){showToast('Le nid d’origine de l’appel ne peut pas être supprimé','warn');return;}
   if(!isInterventionReportChef(iv,CU&&CU.l)||!CU){
@@ -107,7 +107,7 @@ function deleteAdditionalInterventionNid(ivId,nidIndex){
     iv.tl.push({s:'information',h:getH(N()),who:CU&&CU.l||'',note:'Nid supplémentaire supprimé : '+label});
     if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
     if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcPendingDirty!=='undefined'&&typeof _rcId==='function'&&CURRENT_CASERNE_ID){
-      _rcPendingDirty.add(_rcId(CURRENT_CASERNE_ID,'iv',iv.id));
+      _rcPendingDirty.add(_rcId(CURRENT_CASERNE_ID,isPilpIntervention(iv)?'pilp':'iv',iv.id));
       if(typeof _rcDirtyGeneration!=='undefined')_rcDirtyGeneration++;
       if(typeof _rcPersistPendingDirty==='function')_rcPersistPendingDirty();
     }
@@ -118,7 +118,7 @@ function deleteAdditionalInterventionNid(ivId,nidIndex){
   });
 }
 function showAutorisationNidPicker(ivId){
-  const iv=IVS.find(function(item){return item.id===ivId;});if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   const nids=interventionNids(iv);
   document.getElementById('mt').textContent='Autorisation & Attestation';
   document.getElementById('mi').textContent='Choisir le nid concerné';
@@ -131,7 +131,7 @@ function showAutorisationNidPicker(ivId){
 }
 
 function showAutorisationModal(ivId, nidIndex) {
-  const iv = IVS.find(function(v) { return v.id === ivId; });
+  const iv = interventionById(ivId);
   if (!iv) return;
   const nids=interventionNids(iv);
   if(nids.length>1&&!Number.isInteger(nidIndex)){showAutorisationNidPicker(ivId);return;}
@@ -235,7 +235,7 @@ function saveAutorisationData(ivId) {
     signature: sig
   };
   _autorisationData[ivId] = d;
-  const iv = IVS.find(function(v) { return v.id === ivId; });
+  const iv = interventionById(ivId);
   const nidIndex=Number.isInteger(_autorisationActiveNid[ivId])?_autorisationActiveNid[ivId]:0;
   if(iv){
     if(!Array.isArray(iv._autorisationNids))iv._autorisationNids=[];
@@ -276,7 +276,7 @@ function clearSignature(){
 
 function previewAutorisationPDF(ivId, docType) {
   saveAutorisationData(ivId);
-  const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  const iv = interventionById(ivId);if(!iv)return;
   // Toujours reprendre la caserne de l'intervention : un superadmin peut
   // consulter ou rééditer un document depuis une autre caserne active.
   const cas = getAvisPassageCaserne(iv);
@@ -417,7 +417,7 @@ function previewAutorisationPDF(ivId, docType) {
 
 function genAutorisationDocx(ivId) {
   saveAutorisationData(ivId);
-  const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  const iv = interventionById(ivId);if(!iv)return;
   const cas = CC();
   let utNom = cas ? cas.nom : ''; utNom = utNom.replace(/^UT\s+/i,'').trim();
   const caserneNom = cas ? cas.nom : '';
@@ -729,7 +729,7 @@ function editSelectAddress(address,event){
   setTimeout(()=>{if(input){input.focus();input.setSelectionRange(input.value.length,input.value.length);}},50);
 }
 function editAdresse(ivId){
-  const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   const overlay=document.getElementById('mo');
   deactivateMobileModalField();
   if(overlay)overlay.classList.add('address-edit-modal','keyboard-aware-modal');
@@ -764,7 +764,7 @@ function editAdresse(ivId){
   registerMobileModalFields(document.getElementById('mb'));
 }
 function saveAdresse(ivId){
-  const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   const commune=String(editCommuneSelected||'').trim();
   const addr=document.getElementById('edit-addr-val').value.trim();
   const comp=document.getElementById('edit-addr-comp').value.trim();
@@ -781,6 +781,6 @@ function saveAdresse(ivId){
   if(notes.length)iv.tl[iv.tl.length-1].note=notes.join(' ; ');
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true); // push immédiat : sinon la correction est écrasée au prochain pull
-  cM();rI();oM(ivId);
+  cM();refreshOperationalInterventionViews();oM(ivId);
 }
 

@@ -676,6 +676,28 @@ function findInterruptedDepartureHandoff(chefLogin,targetId){
   }).sort(function(a,b){return String(b.handoff.createdAt||'').localeCompare(String(a.handoff.createdAt||''));})[0]||null;
 }
 
+function agaiRepairIntervention188ChainedStart(){
+  const data=CURRENT_CASERNE_ID&&CASERNE_DATA[CURRENT_CASERNE_ID];
+  const version='20260827-ut188-chain-start-v1';
+  if(!data||data._ut188ChainStartRepairVersion===version)return {applied:false,changed:false};
+  const all=[].concat(data.ivs||[],data.pilpIvs||[]);
+  const target=all.find(function(iv){return iv&&Number(iv._numCaserne)===188;});
+  const previous=all.find(function(iv){return iv&&Number(iv._numCaserne)===187;});
+  if(!target||!previous||!previous._hFin)return {applied:false,changed:false};
+  const sameDay=String(target.h||'').slice(0,8)===String(previous.h||'').slice(0,8);
+  if(!sameDay)return {applied:false,changed:false};
+  let changed=false;
+  if(previous._hFin==='16:11'&&['16:38',''].includes(String(target._hDebut||''))){
+    target._hDebut='16:11';target._hDebutReelle='16:11';target._hDebutInitiale='16:11';
+    target._startLockedByChain=true;target._chainedFromInterventionId=previous.id;
+    if(!Array.isArray(target.tl))target.tl=[];
+    target.tl.push({s:'modif-heure',h:getH(N()),who:'Correction automatique AGAI',note:'Départ corrigé à 16:11 — enchaînement après l’intervention UT 187'});
+    changed=true;
+  }
+  data._ut188ChainStartRepairVersion=version;
+  return {applied:true,changed:changed};
+}
+
 function agaiRepairNumberingByStartOrder(){
   const cid=CURRENT_CASERNE_ID;
   const data=cid&&CASERNE_DATA[cid];
@@ -5465,6 +5487,19 @@ function saveInterventionConfiguredCrew(iv,fields,selectedVehicle){
 
 const _pendingNextInterventionStarts={};
 
+function interventionById(id){
+  return (IVS||[]).find(function(iv){return iv&&iv.id===id;})||(PILP_IVS||[]).find(function(iv){return iv&&iv.id===id;})||null;
+}
+function interventionCollection(iv){
+  return iv&&(PILP_IVS||[]).includes(iv)?PILP_IVS:IVS;
+}
+function isPilpIntervention(iv){
+  return !!(iv&&(PILP_IVS||[]).includes(iv));
+}
+function refreshOperationalInterventionViews(){
+  rI();rPilp();
+}
+
 function reqAvailabilityBadgeHTML(iv){
   const dispo=iv&&iv.reqDispo;
   if(!dispo||!dispo.label)return'';
@@ -5580,6 +5615,13 @@ function updateRenfortBadge(){
   if(badge){badge.textContent=nb;badge.style.display=nb>0?'inline-flex':'none';}
 }
 function rI(){
+  const ut188Repair=agaiRepairIntervention188ChainedStart();
+  if(ut188Repair.applied){
+    if(typeof syncCaserneContext==='function')syncCaserneContext();
+    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+    saveData(true);
+    if(ut188Repair.changed)showToast('Intervention UT 188 : heure de départ corrigée à 16:11.','success');
+  }
   updateRenfortBadge();
   // Afficher les renforts reçus en attente
   const renforts=getRenfortsEnAttente();
@@ -5655,12 +5697,9 @@ function rI(){
       </div>`;
   }else if(acs){acs.style.display='none';if(acl)acl.innerHTML='';}
   // Panneau tournée
-  const tireurP=isTireurPILP();
   const selNonConf=IVS.filter(iv=>isTdy(iv)&&iv.s==='selectionne'&&iv.agr===CU.l&&!parcConfirmed.has(iv.id)&&!iv._isPilip);
-  const selPilpNonConf=tireurP?PILP_IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l&&!parcConfirmed.has(iv.id)):[];
-  const selMixte=[...selNonConf,...selPilpNonConf];
   const pp=document.getElementById('pap');
-  if((ag||tireurP)&&selMixte.length>0){pp.style.display='block';document.getElementById('pagl').textContent=interventionRouteChefName({agr:CU.l});document.getElementById('pac').textContent=selMixte.length;rPL(selMixte);}
+  if(ag&&selNonConf.length>0){pp.style.display='block';document.getElementById('pagl').textContent=interventionRouteChefName({agr:CU.l});document.getElementById('pac').textContent=selNonConf.length;rPL(selNonConf);}
   else{pp.style.display='none';rEgrid();}
   // Liste
   const tireur=isTireurPILP();
@@ -5854,7 +5893,9 @@ function interventionAppelDetailValue(iv,key,value){
   return isSingleAnimal?text.replace(/^\s*1\.\s*/,''):text;
 }
 function oM(id){
-  const iv=IVS.find(v=>v.id===id);if(!iv)return;
+  const iv=interventionById(id);if(!iv)return;
+  const pilpScope=isPilpIntervention(iv);
+  if(pilpScope&&!isTireurPILP()){showToast('Accès réservé aux tireurs PILP.','warn');return;}
   const isInternalReinforcement=iv._isRenfortInterneMission===true;
   // Pour un départ SDIS, la synthèse opérationnelle commence à l'acquis
   // présence et se termine à l'opération terminée. Les heures de départ et
@@ -5862,6 +5903,7 @@ function oM(id){
   const detailStart=iv._sdis?(iv._hAcquis||iv._hDebut||''):(iv._hDebut||'');
   const detailEnd=iv._sdis?(iv._hOpTerminee||iv._hFin||''):(iv._hFin||'');
   const ag=isAgres(),chef=isChef()||hasRight('Administration');
+  const operationalActor=ag||chef||(pilpScope&&isTireurPILP());
   // _showAutoBtn défini globalement pour toute la fonction oM
   const _isOwnAgres_=(iv.agr===CU.l||iv._agr2===CU.l);
   // Autorisation disponible pour toutes les interventions (sauf renforts)
@@ -5879,13 +5921,13 @@ function oM(id){
   const appelDetailEntries=iv._appelDetails&&typeof iv._appelDetails==='object'
     ?Object.entries(iv._appelDetails).filter(([key])=>(key!=='Nids à traiter'||!Array.isArray(iv._nidsAppel)||iv._nidsAppel.length!==1)&&key!=='Disponibilité du requérant')
     :[];
-  const reclassHtml=(ag&&iv.s==='en-cours')?`<div class="reclass-box">
+  const reclassHtml=(operationalActor&&iv.s==='en-cours')?`<div class="reclass-box">
     <div class="reclass-title">Reclasser la nature</div>
     <select class="fi" id="reclass-sel" style="margin-bottom:8px;">${NAT.map(n=>`<option value="${n.l}"${n.l===iv.n?' selected':''}>${n.l}</option>`).join('')}</select>
     <button class="btn sm" onclick="reclasser('${iv.id}')">✏️ Appliquer</button>
   </div>`:'';
   let actions='';
-  if(ag||chef){
+  if(operationalActor){
     if(iv.s==='en-attente'){
       const dejaPris=iv.agr&&iv.agr!==CU.l;
       const autreAgr=dejaPris?USERS.find(u=>u.l===iv.agr):null;
@@ -5986,7 +6028,7 @@ function oM(id){
       <div class="brow" style="margin-top:8px;">${iv._isRenfort&&!isInternalReinforcement?'':`<button class="btn sm danger" onclick="cS('${iv.id}','en-attente')">↩ Remettre en attente</button>`}</div>`;
     }
   }
-  if((chef||isAgres())&&iv.s==='avis-passage'){
+  if((chef||operationalActor)&&iv.s==='avis-passage'){
     const ds=getDS(N()),hh=pad(N().getHours()),mm2=pad(N().getMinutes());
     // Bouton reprendre — visible pour le chef d'agrès qui avait l'intervention
     if(iv.agr===CU.l||isAgres()||chef){
@@ -6009,7 +6051,7 @@ function oM(id){
     }
   }
   document.getElementById('mb').innerHTML=`
-    <div style="margin-bottom:8px;"><span class="bdg ${bc}">${bt}</span>${iv.rappels?` <span class="bdg bp" style="${isAdminModeActive()?'cursor:pointer;':''}"${isAdminModeActive()?` title="Déjà intervenu ici ?" onclick="showInterventionsLiees('${iv.id}')"`:''}>${iv.rappels} rappel(s)</span>`:''}</div>
+    <div style="margin-bottom:8px;"><span class="bdg ${bc}">${bt}</span>${pilpScope?' <span class="bdg bpilp">PILP</span>':''}${iv.rappels?` <span class="bdg bp" style="${isAdminModeActive()?'cursor:pointer;':''}"${isAdminModeActive()?` title="Déjà intervenu ici ?" onclick="showInterventionsLiees('${iv.id}')"`:''}>${iv.rappels} rappel(s)</span>`:''}</div>
     ${iv._urgence?'<div style="background:#FEE2E2;border:2px solid #B91C1C;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:800;color:#991B1B;margin-bottom:10px;text-align:center;">🚨 URGENCE — ÉTABLISSEMENT RECEVANT DU PUBLIC (ERP)</div>':''}
     ${iv._sdis?'<div style="background:#DBEAFE;border:1px solid #93C5FD;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;color:#1D4ED8;margin-bottom:10px;text-align:center;">&#x1F691; INTERVENTION SDIS</div>':''}
     ${iv._avisPassage?'<div style="background:#F3EAF8;border:2px solid #9B59B6;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;color:#6C3483;margin-bottom:10px;text-align:center;">🟣 Un avis de passage a été laissé'+(getAvisPassageHour(iv)?' à '+escHtml(getAvisPassageHour(iv)):'')+(iv._avisPassageClasse?' — classé':'')+' pour cette intervention</div>':''}
@@ -6122,7 +6164,7 @@ function oM(id){
     </div>`:''}
     ${iv._avisPassage&&(iv.agr===CU.l||iv._agr2===CU.l||hasAdministrativeAccount())?`<div style="background:#FAF5FF;border:1px solid #D8B4FE;border-radius:10px;padding:10px 12px;margin-bottom:10px;">
       <div style="font-size:11px;font-weight:700;color:#6B21A8;margin-bottom:8px;">&#x1F4EC; Avis de passage${getAvisPassageHour(iv)?' — déposé à '+escHtml(getAvisPassageHour(iv)):''}${iv._avisPassageClasse?' — classé':''}</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn sm" style="background:#7E22CE;color:#fff;border-color:#7E22CE;" onclick="viewAvisPassageDocument('${iv.id}')">&#x1F4CB; Voir l'avis de passage</button>${isAdminModeActive()&&iv._avisEnAttente?`<button class="btn sm" style="background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="classerAvisPassage('${iv.id}','standard')">&#x1F5C3;&#xFE0F; Classer</button>`:''}${isAdminModeActive()&&iv._avisPassageClasse===true&&!iv._avisEnAttente?`<button class="btn sm" style="background:#fff;color:#6B21A8;border-color:#A855F7;" onclick="restaurerAvisPassage('${iv.id}','standard')">↩ Remettre en attente</button>`:''}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn sm" style="background:#7E22CE;color:#fff;border-color:#7E22CE;" onclick="viewAvisPassageDocument('${iv.id}')">&#x1F4CB; Voir l'avis de passage</button>${isAdminModeActive()&&iv._avisEnAttente?`<button class="btn sm" style="background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="classerAvisPassage('${iv.id}','${pilpScope?'pilp':'standard'}')">&#x1F5C3;&#xFE0F; Classer</button>`:''}${isAdminModeActive()&&iv._avisPassageClasse===true&&!iv._avisEnAttente?`<button class="btn sm" style="background:#fff;color:#6B21A8;border-color:#A855F7;" onclick="restaurerAvisPassage('${iv.id}','${pilpScope?'pilp':'standard'}')">↩ Remettre en attente</button>`:''}</div>
     </div>`:''}
     ${(['en-attente','selectionne','en-cours'].includes(iv.s)&&(hasRight('Interventions')||isAgres()||isChef()||isAdminModeActive()))?`<button class="btn sm" style="width:100%;margin-bottom:8px;background:#0369A1;color:#fff;border-color:#0369A1;" onclick="showComplementModal('${iv.id}')">&#x2139;&#xFE0F; Compléter : information, téléphone ou disponibilité</button>`:''}
     <details style="background:var(--bg);border-radius:10px;margin-bottom:8px;" id="tl-details-${iv.id}">
@@ -6135,7 +6177,7 @@ function oM(id){
   document.getElementById('mo').style.display='flex';
 }
 function setAgr2(ivId,login){
-  const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   if(login){
     const conflict=findActivePersonnelConflict(login,ivId);
     if(conflict){
@@ -6154,7 +6196,7 @@ function setAgr2(ivId,login){
   }
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);
-  rI();oM(ivId);
+  refreshOperationalInterventionViews();oM(ivId);
 }
 let _modalLocked = false;
 function cM(){
@@ -6333,7 +6375,26 @@ function recentFinishedInterventionForChef(login,excludeId){
     return Number.isFinite(bounds.end)&&delay>=0&&delay<=maxDelay?{iv:item,end:bounds.end,delay:delay}:null;
   }).filter(Boolean).sort(function(a,b){return b.end-a.end;})[0]||null;
 }
+function previousRouteInterventionForStart(iv,login){
+  if(!iv||!iv._routeBatchId)return null;
+  const order=Number(iv._routeOrder)||0;
+  return [].concat(IVS||[],PILP_IVS||[]).filter(function(candidate){
+    if(!candidate||candidate.id===iv.id||candidate.s!=='terminee'||candidate._routeBatchId!==iv._routeBatchId)return false;
+    if(candidate.agr!==login&&candidate._agr2!==login)return false;
+    const candidateOrder=Number(candidate._routeOrder)||0;
+    return candidateOrder>0&&(!order||candidateOrder<order)&&!!candidate._hFin;
+  }).sort(function(a,b){return (Number(b._routeOrder)||0)-(Number(a._routeOrder)||0);})[0]||null;
+}
+function prepareRouteChainedOperationalStart(iv){
+  const previous=previousRouteInterventionForStart(iv,CU&&CU.l);
+  if(!previous)return null;
+  _pendingNextInterventionStarts[iv.id]=previous._hFin;
+  iv._chainPreviousInterventionId=previous.id;
+  return previous;
+}
 function operationalStartGeoExemption(iv){
+  const routePrevious=prepareRouteChainedOperationalStart(iv);
+  if(routePrevious)return {reason:'enchaînement de tournée après '+routePrevious.id,sourceId:routePrevious.id};
   if(iv&&_pendingNextInterventionStarts&&_pendingNextInterventionStarts[iv.id])return {reason:'enchaînement de tournée'};
   if(iv&&(IVS||[]).includes(iv)){
     const interrupted=findInterruptedDepartureHandoff(CU.l,iv.id);
@@ -6397,7 +6458,7 @@ function saveOperationalStartAuthorization(iv,authorization){
   iv.tl.push({s:'controle-depart',h:getH(N()),who:CU.l,note:authorization.exempt?'Contrôle de position non requis — '+authorization.reason:'Présence à la caserne confirmée à '+authorization.distanceMeters+' m (précision '+authorization.accuracyMeters+' m)'});
 }
 function cS(id,s,confirmed){
-  const iv=IVS.find(v=>v.id===id);if(!iv)return;
+  const iv=interventionById(id);if(!iv)return;
   const previousStatus=iv.s;
   if(s==='en-attente'&&previousStatus==='en-cours'&&confirmed!==true){
     const oldStart=iv._hDebut||iv._hDebutReelle||'';
@@ -6406,6 +6467,7 @@ function cS(id,s,confirmed){
   }
   if(s==='en-cours'){
     if(confirmed!=='start-authorized'){
+      prepareRouteChainedOperationalStart(iv);
       requestOperationalStartAuthorization(iv,function(){cS(id,s,'start-authorized');});return;
     }
     const ec=agresEnCours();
@@ -6424,7 +6486,8 @@ function cS(id,s,confirmed){
   }
   if(!iv.tl)iv.tl=[];
   iv.s=s;
-  if(s==='selectionne'||s==='en-cours'){ if(isAgres()||isChef()||isAdminModeActive()) iv.agr=CU.l; }
+  if(s==='selectionne'||s==='en-cours'){ if(isAgres()||isChef()||isAdminModeActive()||(isPilpIntervention(iv)&&isTireurPILP())) iv.agr=CU.l; }
+  if(isPilpIntervention(iv)&&(s==='selectionne'||s==='en-cours'))iv.tireur=CU.l;
   if(s==='selectionne'){
     parcConfirmed.delete(iv.id);
     assignInterventionRoute(iv,iv.agr||CU.l);
@@ -6441,6 +6504,7 @@ function cS(id,s,confirmed){
     clearInterventionNumbersForPending(iv);
     parcConfirmed.delete(iv.id);
     iv.agr=null;
+    if(isPilpIntervention(iv))iv.tireur=null;
     delete iv._routeBatchId;delete iv._routeOrder;
   }
   const agr2Label=iv._agr2?(()=>{const u=USERS.find(u=>u.l===iv._agr2);return u?' + '+fullName(u)+' (2\u00e8me)':' + '+iv._agr2;})():'';
@@ -6449,17 +6513,17 @@ function cS(id,s,confirmed){
     :(s==='en-attente'&&previousStatus==='en-cours'?'Retour en attente confirmé'+(iv._hDebutAvantRetourAttente?' — ancien départ : '+iv._hDebutAvantRetourAttente:''):'');
   pushTL(iv,s,CU.l+agr2Label,statusNote);
   syncInternalReinforcementSource(iv);
-  if(CD())CD().ivs=IVS;
+  if(CD()){CD().ivs=IVS;CD().pilpIvs=PILP_IVS;}
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);
-  cM();rI();
+  cM();refreshOperationalInterventionViews();
   if(s==='terminee')rAccueil();
   rStatsHeader();
 }
 
 function getNextSelectedInterventions(closedIv){
   if(!closedIv)return[];
-  return sortRouteSelection(IVS.filter(function(candidate){
+  return sortRouteSelection(interventionCollection(closedIv).filter(function(candidate){
     if(candidate.id===closedIv.id||candidate.s!=='selectionne'||candidate.agr!==closedIv.agr)return false;
     if(closedIv._routeBatchId)return candidate._routeBatchId===closedIv._routeBatchId;
     return true;
@@ -6467,8 +6531,8 @@ function getNextSelectedInterventions(closedIv){
 }
 
 function chooseNextSelectedIntervention(nextId,previousId){
-  const next=IVS.find(function(x){return x.id===nextId;});
-  const previous=IVS.find(function(x){return x.id===previousId;});
+  const next=interventionById(nextId);
+  const previous=interventionById(previousId);
   if(!next||!previous)return;
   _pendingNextInterventionStarts[nextId]=previous._hFin||getHHMM(N());
   next._chainPreviousInterventionId=previous.id;
@@ -6495,7 +6559,8 @@ function showNextSelectedInterventionModal(closedIv){
 }
 
 function clot(id){
-  const iv=IVS.find(v=>v.id===id);if(!iv)return;
+  const iv=interventionById(id);if(!iv)return;
+  const collection=interventionCollection(iv);
   // Ne pas re-clôturer une intervention déjà liée à une PILP
   if(iv._lienPilp&&iv.s==='terminee'){showToast('Cette intervention est déjà clôturée (liée à une PILP).','warn');cM();return;}
   const avis=document.getElementById('chk-av')&&document.getElementById('chk-av').checked;
@@ -6525,7 +6590,7 @@ function clot(id){
   iv.s='terminee';iv._hFin=getHHMM(N());iv.tl.push({s:'terminee',h,who:CU.l+agr2Lbl});
   syncInternalReinforcementSource(iv);
   supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
-  (iv.avisIds||[]).forEach(aid=>{const av=IVS.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';av.tl.push({s:'terminee',h,who:CU.l+' (fusion)'});}});
+  (iv.avisIds||[]).forEach(aid=>{const av=collection.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';av.tl.push({s:'terminee',h,who:CU.l+' (fusion)'});}});
   const autorisationNids=Array.isArray(iv._autorisationNids)?iv._autorisationNids:(iv._autorisationData?[iv._autorisationData]:[]);
   if(autorisationNids.some(function(data){return data&&data.nom;})){
     iv._pdfAutorisations=[];iv._pdfAttestations=[];
@@ -6539,7 +6604,7 @@ function clot(id){
   }
   if(!iv.eng&&selEng)iv.eng=selEng;
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-  saveData(true);cM();rI();rAccueil();rStatsHeader(); // push immédiat : clôture d'intervention
+  saveData(true);cM();refreshOperationalInterventionViews();rAccueil();rStatsHeader(); // push immédiat : clôture d'intervention
   setTimeout(function(){showNextSelectedInterventionModal(iv);},80);
 }
 function clotAvis(id){
@@ -6553,13 +6618,13 @@ function clotAvis(id){
   saveData(true);cM();rI();
 }
 function reclasser(id){
-  const iv=IVS.find(v=>v.id===id);if(!iv)return;
+  const iv=interventionById(id);if(!iv)return;
   const sel=document.getElementById('reclass-sel');if(!sel)return;
   const oldN=iv.n;iv.n=sel.value;
   iv.tl.push({s:'reclasse',h:getH(N()),who:CU.l,note:`${oldN} → ${iv.n}`});
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true); // push immédiat : sinon le changement de nature est écrasé au prochain pull
-  cM();rI();
+  cM();refreshOperationalInterventionViews();
   // Reopen modal with fresh data
   setTimeout(()=>oM(id),50);
 }
@@ -6676,6 +6741,14 @@ function rPilp(){
           <div class="ivrr"><span class="bdg bgr">Classé</span><button class="btn sm" style="font-size:10px;padding:3px 8px;background:#fff;color:#6B21A8;border-color:#A855F7;" onclick="event.stopPropagation();restaurerAvisPassage('${iv.id}','pilp')">↩ Remettre en attente</button></div></div>`).join('')}
       </div>`;
   }else if(pacs){pacs.style.display='none';if(pacl)pacl.innerHTML='';}
+  const pilpSelection=getSelPilp();
+  const pilpPanel=document.getElementById('pilp-pap');
+  if(pilpPanel&&pilpSelection.length){
+    pilpPanel.style.display='block';
+    document.getElementById('pilp-pagl').textContent=interventionRouteChefName({agr:CU.l});
+    document.getElementById('pilp-pac').textContent=pilpSelection.length;
+    rPLPilp(pilpSelection);
+  }else if(pilpPanel){pilpPanel.style.display='none';}
   let list;
   if(fltPilp==='all') list=PILP_IVS.filter(iv=>iv.s!=='avis-passage');
   else if(fltPilp==='mes-sel') list=PILP_IVS.filter(iv=>(iv.s==='selectionne'||iv.s==='en-cours')&&iv.agr===CU.l);
@@ -6683,46 +6756,18 @@ function rPilp(){
   else list=PILP_IVS.filter(iv=>iv.s===fltPilp);
   const cont=document.getElementById('pilp-list');
   if(!list.length){cont.innerHTML='<div style="padding:20px;text-align:center;font-size:13px;color:var(--t2);">Aucune intervention PILP.</div>';return;}
-  const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélect.'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis passage'],'annulee':['bgr','Annulée']};
   const ag=isAgres(),chef=isChef()||hasRight('Administration');
-  cont.innerHTML=list.map(iv=>{
-    const[bc,bt]=bm[iv.s]||['bgr','—'];
-    const chkShow=(ag||isTireurPILP()||chef)&&(iv.s==='en-attente'||(iv.s==='selectionne'&&iv.agr===CU.l));
-    const checked=iv.s==='selectionne'&&iv.agr===CU.l;
-    return `<div class="ivr pilp ${iv.s}">
-      ${chkShow?`<div class="ivr-chk"><input type="checkbox" ${checked?'checked':''} onchange="toggleChkPilp('${iv.id}',this)"/></div>`:''}
-      <div class="ivrl" style="cursor:pointer;" onclick="oPilp('${iv.id}')">
-        <div class="ivrh">&#x1F4C5; ${iv.h.slice(0,8)} — Réf: ${iv.ivRef}</div>
-        <div class="ivrn">&#x1F3AF; ${escHtml(iv.n)}</div>
-        <div class="ivrc">&#x1F4CD; ${escHtml(iv.addr)} — ${escHtml(iv.com)}</div>
-        <div style="font-size:11px;color:var(--t2);margin-top:2px;">${iv.localisation||'—'}${iv.hauteur?' · '+iv.hauteur+'m':''} ${iv.reconnaissanceFaite?'· ✅ Reco':'· ❌ Reco'} ${iv.axeTir?'· &#x1F3AF; Axe OK':'· ⚠️ Axe ?'}</div>
-      </div>
-      <div class="ivrr" style="cursor:pointer;" onclick="oPilp('${iv.id}')">
-        ${interventionRouteBadgeHTML(iv)}
-        <span class="bdg ${bc}">${bt}</span>
-        ${iv.rappels?`<span class="bdg bp" style="font-size:10px;">${iv.rappels}×</span>`:''}
-      </div>
-    </div>`;
-  }).join('');
+  cont.innerHTML=sortedIVS(list.slice()).map(function(iv){return renderInterventionRow(iv,ag||chef,true);}).join('');
 }
 function toggleChkPilp(id,el){
-  const iv=PILP_IVS.find(v=>v.id===id);if(!iv)return;
-  if(el.checked){
-    iv.s='selectionne';iv.agr=CU.l;parcConfirmed.delete(iv.id);
-    assignInterventionRoute(iv,CU.l);
-    pushTL(iv,'selectionne',CU.l,'Ordre de tourn\u00e9e : '+iv._routeOrder);
-  }
-  else{
-    iv.s='en-attente';iv.agr=null;parcConfirmed.delete(iv.id);
-    delete iv._routeBatchId;delete iv._routeOrder;
-    pushTL(iv,'en-attente',CU.l);
-  }
-  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-  saveData(true);rPilp(); // push immédiat : changement de statut partagé
+  cS(id,el.checked?'selectionne':'en-attente');
 }
 
 function oPilp(id){
   if(!isTireurPILP()){showToast('Accès réservé aux tireurs PILP.','warn');return;}
+  // La fiche PILP utilise exactement la même interface et les mêmes actions
+  // opérationnelles que la fiche Interventions. Seule la collection est filtrée.
+  return oM(id);
   const iv=PILP_IVS.find(v=>v.id===id);if(!iv)return;
   const ag=isAgres(),tireur=isTireurPILP(),chef=isChef()||hasRight('Administration');
   document.getElementById('mt').textContent=iv.n;
@@ -6794,6 +6839,7 @@ function oPilp(id){
   document.getElementById('mo').style.display='flex';
 }
 function cSPilp(id,s,confirmed){
+  return cS(id,s,confirmed);
   const iv=PILP_IVS.find(v=>v.id===id);if(!iv)return;
   if(s==='en-cours'){
     if(confirmed!=='start-authorized'){
@@ -7055,6 +7101,56 @@ function persistRouteOrder(ordered,position){
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);
   rPL(ordered,position||captureRouteViewPosition());
+}
+
+function getSelPilp(){
+  return sortRouteSelection(PILP_IVS.filter(function(iv){return iv.s==='selectionne'&&iv.agr===CU.l&&!parcConfirmed.has(iv.id);}));
+}
+function rPLPilp(sel){
+  const ordered=sortRouteSelection(sel),list=document.getElementById('pilp-pl2');if(!list)return;
+  list.innerHTML=ordered.map(function(iv,index){
+    return '<div class="pi" data-route-id="'+escHtml(iv.id)+'" draggable="true" ondragstart="pilpRouteDragStart(event,\''+iv.id+'\')" ondragover="event.preventDefault()" ondrop="pilpRouteDrop(event,\''+iv.id+'\')">'
+      +'<button type="button" class="pdrag" title="Glisser pour modifier l\'ordre">⠿</button>'
+      +'<div class="pnum">'+(index+1)+'</div><div class="pinfo"><div class="pn2">🎯 '+escHtml(iv.n)+'</div><div class="pa2">'+escHtml(iv.addr||iv.com)+' — '+escHtml(iv.com)+'</div></div>'
+      +'<div class="pmv"><button type="button" onclick="mvPilp('+index+','+(index-1)+')" '+(index===0?'disabled':'')+' title="Monter">▲</button><button type="button" onclick="mvPilp('+index+','+(index+1)+')" '+(index===ordered.length-1?'disabled':'')+' title="Descendre">▼</button></div></div>';
+  }).join('');
+}
+function persistPilpRouteOrder(ordered){
+  if(!ordered.length)return;
+  const batch=ordered.map(function(iv){return iv._routeBatchId;}).find(Boolean)||('PILP_ROUTE_'+Date.now()+'_'+(CU&&CU.l||''));
+  const stamp=getH(N());
+  ordered.forEach(function(iv,index){iv._routeBatchId=batch;iv._routeOrder=index+1;iv._routeOrderUpdatedAt=stamp;});
+  if(CD())CD().pilpIvs=PILP_IVS;
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);rPLPilp(ordered);rPilp();
+}
+function mvPilp(sourceIndex,destinationIndex){
+  const selected=getSelPilp();
+  if(destinationIndex<0||destinationIndex>=selected.length||sourceIndex===destinationIndex)return;
+  const moved=selected.splice(sourceIndex,1)[0];selected.splice(destinationIndex,0,moved);persistPilpRouteOrder(selected);
+}
+let _pilpDraggedRouteId='';
+function pilpRouteDragStart(event,id){_pilpDraggedRouteId=id;if(event.dataTransfer)event.dataTransfer.effectAllowed='move';}
+function pilpRouteDrop(event,targetId){
+  event.preventDefault();
+  const selected=getSelPilp(),from=selected.findIndex(function(iv){return iv.id===_pilpDraggedRouteId;}),to=selected.findIndex(function(iv){return iv.id===targetId;});
+  _pilpDraggedRouteId='';if(from<0||to<0||from===to)return;
+  const moved=selected.splice(from,1)[0];selected.splice(to,0,moved);persistPilpRouteOrder(selected);
+}
+function confirmerSelPilp(){
+  const selected=getSelPilp();if(!selected.length)return;
+  persistPilpRouteOrder(selected);selected.forEach(function(iv){parcConfirmed.add(iv.id);});rPilp();
+  showToast('Tournée PILP confirmée : l’ordre reste visible sur chaque intervention.','success');
+}
+function optPilp(){
+  const selected=getSelPilp();if(selected.length<=2)return;
+  const base=[50.508,2.548];let remaining=selected.slice(),result=[],current=base;
+  while(remaining.length){let best=null,distance=Infinity;remaining.forEach(function(iv){const coords=gc(iv.com),value=dst(current,coords);if(value<distance){distance=value;best=iv;}});result.push(best);remaining=remaining.filter(function(iv){return iv.id!==best.id;});current=gc(best.com);}
+  persistPilpRouteOrder(result);
+}
+function vpPilp(){
+  PILP_IVS.filter(function(iv){return iv.s==='selectionne'&&iv.agr===CU.l;}).forEach(function(iv){iv.s='en-attente';iv.agr=null;delete iv._routeBatchId;delete iv._routeOrder;pushTL(iv,'en-attente',CU.l);});
+  parcConfirmed.clear();saveData(true);rPilp();
 }
 
 function mvU(i){
@@ -10043,7 +10139,7 @@ function confirmerAnnulation(id){
 }
 // ── Échelle de toit ──
 function demandeEchelleToiture(ivId){
-  const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   document.getElementById('mt').textContent='\U0001FA9C \u00c9chelle de toit requise';
   document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
   document.getElementById('mb').innerHTML=`<div>
@@ -10059,7 +10155,7 @@ function demandeEchelleToiture(ivId){
   document.getElementById('mo').style.display='flex';
 }
 function confirmerEchelleToiture(ivId){
-  const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   const obs=document.getElementById('et-obs').value.trim();
   const h=getH(N());const annee=new Date().getFullYear();
   const numApl=nextAplNum(annee);
@@ -10075,7 +10171,7 @@ function confirmerEchelleToiture(ivId){
 }
 // ── Inter. SDIS ──
 function demandeEPA(ivId){
-  const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   document.getElementById('mt').textContent='&#x1F9F0; EPA requis';
   document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
   document.getElementById('mb').innerHTML='<div>'
@@ -10089,7 +10185,7 @@ function demandeEPA(ivId){
   document.getElementById('mo').style.display='flex';
 }
 function confirmerEPA(ivId){
-  const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   const obs=document.getElementById('epa-obs').value.trim();
   const h=getH(N());const annee=new Date().getFullYear();
   const numApl=nextAplNum(annee);
@@ -10104,7 +10200,7 @@ function confirmerEPA(ivId){
   cM();rI();rAccueil();
 }
 function demandeSDIS(ivId){
-  const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   document.getElementById('mt').textContent='&#x1F691; Inter. SDIS';
   document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
   document.getElementById('mb').innerHTML=`<div>
@@ -10123,7 +10219,7 @@ function demandeSDIS(ivId){
   document.getElementById('mo').style.display='flex';
 }
 function confirmerSDIS(ivId){
-  const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   if(!canUseOperationalStartInterface()){showToast('La mise en cours d’une intervention SDIS est réservée au mobile ou à la tablette.','warn');return;}
   const h=getH(N());const annee=new Date().getFullYear();
   iv.s='terminee';
@@ -10593,7 +10689,7 @@ function renderJoursFeries(annee){
 function updateEquipageExclusions(){refreshEquipageSelects();}
 
 function showPersonnelModal(id){
-  const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
+  const iv=interventionById(id);if(!iv)return;
   const interruptedHandoff=findInterruptedDepartureHandoff(CU.l,id);
   const heure=interruptedHandoff?interruptedHandoff.handoff.heure:(_pendingNextInterventionStarts[id]||getHHMM(N()));
   const chained=!interruptedHandoff&&!!_pendingNextInterventionStarts[id];
@@ -10705,7 +10801,7 @@ function buildEquipage2Dyn(enginVal){
 }
 
 function confirmerDepart(id){
-  const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
+  const iv=interventionById(id);if(!iv)return;
   const interruptedHandoff=findInterruptedDepartureHandoff(CU.l,id);
   const chained=!interruptedHandoff&&!!_pendingNextInterventionStarts[id];
   const restartedAfterPending=iv._retourAttenteDepuis==='en-cours';
@@ -10769,7 +10865,7 @@ function confirmerDepart(id){
   const _renfortList=_getRenfortPersonnel();
   const _enrich=function(arr){arr.forEach(function(e){if(e&&e.login&&!USERS.find(function(u){return u.l===e.login;})){const rf=_renfortList.find(function(r){return r.login===e.login;});if(rf){e.renfort=true;e.nom=rf.nom;e.prenom=rf.prenom;e.grade=rf.grade;e.caserneNom=rf.caserneNom;}}});};
   _enrich(eq1);_enrich(eq2);
-  const previous=chainedPreviousId?IVS.find(function(candidate){return candidate.id===chainedPreviousId;}):null;
+  const previous=chainedPreviousId?interventionById(chainedPreviousId):null;
   const sameCrew=!!(chained&&previous&&interventionCrewSignature(previous)&&interventionCrewSignature(previous)===interventionCrewSignature(iv,eq1,eq2));
   if(sameCrew){
     iv._startLockedByChain=true;
@@ -10795,13 +10891,13 @@ function confirmerDepart(id){
   delete iv._retourAttenteDepuis;
   assignInterventionNumbersAtStart(iv);
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-  saveData(true);cM();rI();rStatsHeader(); // push immédiat : changement de statut partagé
+  saveData(true);cM();refreshOperationalInterventionViews();rStatsHeader(); // push immédiat : changement de statut partagé
   setTimeout(function(){oM(id);},80);
 }
 
 // ── Correction requérant ──
 function editRequerant(id){
-  const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
+  const iv=interventionById(id);if(!iv)return;
   document.getElementById('mt').textContent='Corriger le requ\u00e9rant';
   document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
   const initBanner=iv._reqInit
@@ -10820,7 +10916,7 @@ function editRequerant(id){
   document.getElementById('mo').style.display='flex';
 }
 function saveRequerant(id){
-  const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
+  const iv=interventionById(id);if(!iv)return;
   const newReq=document.getElementById('edit-req').value.trim();
   const newTel=document.getElementById('edit-tel').value.trim();
   if(!newReq){showToast('Le nom du requérant est obligatoire.','warn');return;}
@@ -10961,7 +11057,7 @@ function reqAvailabilityFromPeriods(periods){
   return{state:states.length===1?states[0]:'mixte',days:filled.map(function(period){return period.day;}),mode:first.mode,h1:first.h1,h2:first.h2,periods:filled,label:filled.map(reqAvailabilityPeriodLabel).join(' ; ')};
 }
 function showComplementModal(id){
-  const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
+  const iv=interventionById(id);if(!iv)return;
   if(!(hasRight('Interventions')||isAgres()||isChef()||isAdminModeActive())){showToast('Action réservée aux personnes ayant le droit Interventions.','warn');return;}
   document.getElementById('mt').textContent='Complément d\u2019information';
   document.getElementById('mi').textContent=iv.n+' — '+(iv.com||'');
@@ -10983,7 +11079,7 @@ function showComplementModal(id){
   registerMobileModalFields(document.getElementById('mb'));
 }
 function saveComplementInfo(id){
-  const iv=IVS.find(function(v){return v.id===id;});if(!iv)return;
+  const iv=interventionById(id);if(!iv)return;
   const txt=(document.getElementById('compl-info-val').value||'').trim();
   const err=document.getElementById('compl-info-err');
   const phones=readComplementPhones();
@@ -11004,13 +11100,13 @@ function saveComplementInfo(id){
   iv.tl.push({s:'info-compl',h:getH(N()),who:CU.l,note:notes.join(' ; ')});
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);
-  cM();rI();
+  cM();refreshOperationalInterventionViews();
   setTimeout(function(){oM(id);},80);
 }
 
 // ────────────────── RELÈVE DE PERSONNEL ──────────────────
 function showReleveModal(id){
-  const iv=IVS.find(v=>v.id===id);if(!iv)return;
+  const iv=interventionById(id);if(!iv)return;
   const heure=getHHMM(N());
   // Équipage actuel (dernier équipage actif)
   const releves=(iv._releves||[]).filter(function(releve){return releve&&!releve.isRenfort&&!releve.isRenfortInterne;});
@@ -11056,7 +11152,7 @@ function showReleveModal(id){
 }
 
 function validerReleve(id){
-  const iv=IVS.find(v=>v.id===id);if(!iv)return;
+  const iv=interventionById(id);if(!iv)return;
   const heure=getHHMM(N());
   const releves=(iv._releves||[]).filter(function(releve){return releve&&!releve.isRenfort&&!releve.isRenfortInterne;});
   const equipActuel=releves.length?releves[releves.length-1].nouvelEquipage:(iv._equipage1||[]);
@@ -11108,7 +11204,7 @@ function validerReleve(id){
 }
 
 function confirmerRetour(ivId,releveIdx,login){
-  const iv=IVS.find(v=>v.id===ivId);if(!iv||!iv._releves)return;
+  const iv=interventionById(ivId);if(!iv||!iv._releves)return;
   const releve=iv._releves[releveIdx];if(!releve)return;
   const heure=getHHMM(N());
   // Enregistrer le retour pour TOUS les membres sans hRetour de cette relève
@@ -11124,7 +11220,7 @@ function confirmerRetour(ivId,releveIdx,login){
 
 // ────────────────── DEMANDE DE RENFORT UT ──────────────────
 function showRenfortInterneModal(ivId){
-  const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   document.getElementById('mt').textContent='Demande de renfort interne';
   document.getElementById('mi').textContent=iv.n+' \u2014 '+iv.com;
   document.getElementById('mb').innerHTML=
@@ -11139,7 +11235,7 @@ function showRenfortInterneModal(ivId){
 }
 
 function confirmerRenfortInterne(ivId){
-  const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   const h=getH(N()),heure=getHHMM(N());
   const note=((document.getElementById('renfort-int-note')||{}).value||'').trim();
   const childId=iv.id+'-RI-'+Date.now();
@@ -11179,7 +11275,7 @@ function syncInternalReinforcementSource(child){
 }
 
 function showRenfortModal(ivId,forcePersonnel){
-  const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   // Si l'utilisateur n'est pas chef d'agrès, il ne peut demander qu'un renfort personnel
   if(forcePersonnel===undefined)forcePersonnel=!(isAgres()||isChef()||hasRight('Administration'));
   const autresCasernes=CASERNES.filter(function(c){return c.id!==CURRENT_CASERNE_ID;});
@@ -11232,7 +11328,7 @@ function updateRenfortType(){
 }
 
 function envoyerRenfort(ivId){
-  const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   const checkedType=document.querySelector('input[name="renfort-type"]:checked')?.value;
   const hiddenType=document.querySelector('input[type="hidden"][name="renfort-type"]')?.value;
   const type=checkedType||hiddenType||'complet';
@@ -11618,7 +11714,7 @@ function autorisationDataForNid(iv,nidIndex){
   return{};
 }
 function showAddRecognizedNidModal(ivId){
-  const iv=IVS.find(function(item){return item.id===ivId;});if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   document.getElementById('mt').textContent='Ajouter un nid après reconnaissance';
   document.getElementById('mi').textContent=iv.n+' — '+iv.com;
   document.getElementById('mb').innerHTML='<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Ajoutez chaque nid découvert sur place. Une autorisation et une attestation distinctes seront créées.</div>'
@@ -11653,7 +11749,7 @@ function renderRecognizedNidLocations(nature){
   const size=document.getElementById('reco-nid-size-wrap');if(size)size.style.display=nature==='Frelons asiatiques'?'':'none';
 }
 function saveRecognizedNid(ivId){
-  const iv=IVS.find(function(item){return item.id===ivId;});if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   const nature=(document.getElementById('reco-nid-nature')||{}).value||'';
   let localisation=(document.getElementById('reco-nid-location')||{}).value||'';
   if(localisation==='Autre')localisation=((document.getElementById('reco-nid-other')||{}).value||'').trim();
@@ -11671,16 +11767,16 @@ function saveRecognizedNid(ivId){
   // Marquage explicite : cet ajout doit rester prioritaire même si une autre
   // synchronisation était déjà en cours sur le poste.
   if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcPendingDirty!=='undefined'&&typeof _rcId==='function'&&CURRENT_CASERNE_ID){
-    _rcPendingDirty.add(_rcId(CURRENT_CASERNE_ID,'iv',iv.id));
+    _rcPendingDirty.add(_rcId(CURRENT_CASERNE_ID,isPilpIntervention(iv)?'pilp':'iv',iv.id));
     if(typeof _rcDirtyGeneration!=='undefined')_rcDirtyGeneration++;
     if(typeof _rcPersistPendingDirty==='function')_rcPersistPendingDirty();
   }
   saveData(true);
-  try{rI();rAccueil();rHist();}catch(e){}
+  try{refreshOperationalInterventionViews();rAccueil();rHist();}catch(e){}
   showToast('Nid ajouté et enregistré — complétez son autorisation','success');showAutorisationNidPicker(ivId);
 }
 function deleteAdditionalInterventionNid(ivId,nidIndex){
-  const iv=IVS.find(function(item){return item.id===ivId;});if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   const index=Number(nidIndex);
   if(!Number.isInteger(index)||index<=0){showToast('Le nid d’origine de l’appel ne peut pas être supprimé','warn');return;}
   if(!isInterventionReportChef(iv,CU&&CU.l)||!CU){
@@ -11707,7 +11803,7 @@ function deleteAdditionalInterventionNid(ivId,nidIndex){
     iv.tl.push({s:'information',h:getH(N()),who:CU&&CU.l||'',note:'Nid supplémentaire supprimé : '+label});
     if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
     if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcPendingDirty!=='undefined'&&typeof _rcId==='function'&&CURRENT_CASERNE_ID){
-      _rcPendingDirty.add(_rcId(CURRENT_CASERNE_ID,'iv',iv.id));
+      _rcPendingDirty.add(_rcId(CURRENT_CASERNE_ID,isPilpIntervention(iv)?'pilp':'iv',iv.id));
       if(typeof _rcDirtyGeneration!=='undefined')_rcDirtyGeneration++;
       if(typeof _rcPersistPendingDirty==='function')_rcPersistPendingDirty();
     }
@@ -11718,7 +11814,7 @@ function deleteAdditionalInterventionNid(ivId,nidIndex){
   });
 }
 function showAutorisationNidPicker(ivId){
-  const iv=IVS.find(function(item){return item.id===ivId;});if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   const nids=interventionNids(iv);
   document.getElementById('mt').textContent='Autorisation & Attestation';
   document.getElementById('mi').textContent='Choisir le nid concerné';
@@ -11731,7 +11827,7 @@ function showAutorisationNidPicker(ivId){
 }
 
 function showAutorisationModal(ivId, nidIndex) {
-  const iv = IVS.find(function(v) { return v.id === ivId; });
+  const iv = interventionById(ivId);
   if (!iv) return;
   const nids=interventionNids(iv);
   if(nids.length>1&&!Number.isInteger(nidIndex)){showAutorisationNidPicker(ivId);return;}
@@ -11835,7 +11931,7 @@ function saveAutorisationData(ivId) {
     signature: sig
   };
   _autorisationData[ivId] = d;
-  const iv = IVS.find(function(v) { return v.id === ivId; });
+  const iv = interventionById(ivId);
   const nidIndex=Number.isInteger(_autorisationActiveNid[ivId])?_autorisationActiveNid[ivId]:0;
   if(iv){
     if(!Array.isArray(iv._autorisationNids))iv._autorisationNids=[];
@@ -11876,7 +11972,7 @@ function clearSignature(){
 
 function previewAutorisationPDF(ivId, docType) {
   saveAutorisationData(ivId);
-  const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  const iv = interventionById(ivId);if(!iv)return;
   // Toujours reprendre la caserne de l'intervention : un superadmin peut
   // consulter ou rééditer un document depuis une autre caserne active.
   const cas = getAvisPassageCaserne(iv);
@@ -12017,7 +12113,7 @@ function previewAutorisationPDF(ivId, docType) {
 
 function genAutorisationDocx(ivId) {
   saveAutorisationData(ivId);
-  const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  const iv = interventionById(ivId);if(!iv)return;
   const cas = CC();
   let utNom = cas ? cas.nom : ''; utNom = utNom.replace(/^UT\s+/i,'').trim();
   const caserneNom = cas ? cas.nom : '';
@@ -12329,7 +12425,7 @@ function editSelectAddress(address,event){
   setTimeout(()=>{if(input){input.focus();input.setSelectionRange(input.value.length,input.value.length);}},50);
 }
 function editAdresse(ivId){
-  const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   const overlay=document.getElementById('mo');
   deactivateMobileModalField();
   if(overlay)overlay.classList.add('address-edit-modal','keyboard-aware-modal');
@@ -12364,7 +12460,7 @@ function editAdresse(ivId){
   registerMobileModalFields(document.getElementById('mb'));
 }
 function saveAdresse(ivId){
-  const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   const commune=String(editCommuneSelected||'').trim();
   const addr=document.getElementById('edit-addr-val').value.trim();
   const comp=document.getElementById('edit-addr-comp').value.trim();
@@ -12381,7 +12477,7 @@ function saveAdresse(ivId){
   if(notes.length)iv.tl[iv.tl.length-1].note=notes.join(' ; ');
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true); // push immédiat : sinon la correction est écrasée au prochain pull
-  cM();rI();oM(ivId);
+  cM();refreshOperationalInterventionViews();oM(ivId);
 }
 
 // === MODULE: stats.js ===
@@ -14040,7 +14136,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260827-depart-pc-superadmin-174';
+const APP_VERSION='20260827-pilp-interventions-chainage-175';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -14172,7 +14268,7 @@ const STORAGE_KEY='agai_data' // clé partagée entre toutes les versions;
 function savePdfDocuments(ivId) {
   // Sauvegarde les documents HTML dans l'IV pour consultation ultérieure
   saveAutorisationData(ivId);
-  const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  const iv = interventionById(ivId);if(!iv)return;
   const dataList=Array.isArray(iv._autorisationNids)?iv._autorisationNids.filter(Boolean):(iv._autorisationData?[iv._autorisationData]:[]);
   if(!dataList.length)return;
   iv._pdfAutorisations=[];iv._pdfAttestations=[];
@@ -14187,7 +14283,7 @@ function savePdfDocuments(ivId) {
 }
 
 function _buildAutorisationHTML(ivId, docType, nidIndex) {
-  const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return '';
+  const iv = interventionById(ivId);if(!iv)return '';
   const activeIndex=Number.isInteger(nidIndex)?nidIndex:(Number.isInteger(_autorisationActiveNid[ivId])?_autorisationActiveNid[ivId]:0);
   const saved = autorisationDataForNid(iv,activeIndex);
   if(!saved||(!saved.nom&&!saved.prenom&&!saved.adresse))return '';
@@ -14305,7 +14401,7 @@ function _buildAutorisationHTML(ivId, docType, nidIndex) {
 }
 
 function viewPdfDocument(ivId, docType, nidIndex) {
-  const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  const iv = interventionById(ivId);if(!iv)return;
   const index=Number.isInteger(nidIndex)?nidIndex:0;
   let html=docType==='autorisation'
     ?(Array.isArray(iv._pdfAutorisations)?iv._pdfAutorisations[index]:index===0?iv._pdfAutorisation:'')
@@ -14543,7 +14639,7 @@ function _genPdfHaute(html, callback) {
 
 function envoyerAttestationMail(ivId) {
   saveAutorisationData(ivId);
-  const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  const iv = interventionById(ivId);if(!iv)return;
   const cas = CC();
   const emailCaserne = cas && cas.email ? cas.email : '';
   const saved = _autorisationData[ivId] || iv._autorisationData || {};
@@ -14600,7 +14696,7 @@ function _sendMailSecure(payload) {
 }
 
 function confirmerEnvoiMail(ivId) {
-  const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  const iv = interventionById(ivId);if(!iv)return;
   const cas = CC();
   const saved = _autorisationData[ivId] || iv._autorisationData || {};
   const nomComplet = ((saved.prenom||'')+' '+(saved.nom||'')).trim();
@@ -14927,7 +15023,7 @@ function showStartCorrectionOperationalConflict(conflict){
 }
 
 function saveInterventionStartCorrection(ivId){
-  const iv=IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   if(!canEditInterventionStart(iv)){
     showToast('Cette heure ne peut pas être modifiée par ce compte.','warn');return;
   }
@@ -15066,7 +15162,7 @@ function onCompteRenduDraftInput(field){
 }
 
 function showCompteRenduModal(ivId) {
-  const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  const iv = interventionById(ivId);if(!iv)return;
   const isOwn       = isInterventionReportChef(iv,CU.l);
   const isSuperAdmin= isAdminModeActive();
   const isValidated = !!iv._crValide;
@@ -15270,7 +15366,7 @@ function _sdisSaveFields(iv){
   }
 }
 function validerCompteRendu(ivId) {
-  const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  const iv = interventionById(ivId);if(!iv)return;
   if(!isInterventionReportChef(iv,CU.l)&&!hasAdministrativeAccount()){
     showToast('Validation réservée au chef d’agrès de l’intervention ou à un administrateur.','warn');return;
   }
@@ -15290,14 +15386,14 @@ function validerCompteRendu(ivId) {
     if(iv._sdis) _sdisSaveFields(iv);
     if(_isFrelonIv(iv)) _frelonSaveFields(iv);
     if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-    saveData(true);rI();rHist();
+    saveData(true);refreshOperationalInterventionViews();rHist();
     cM();
     setTimeout(function(){oM(ivId);},80);
   });
 }
 
 function saveCompteRendu(ivId, andClot) {
-  const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  const iv = interventionById(ivId);if(!iv)return;
   const isOwn       = isInterventionReportChef(iv,CU.l);
   const isSuperAdmin= isAdminModeActive();
   if(iv._crValide && !isSuperAdmin){showToast('Compte rendu verrouill\u00e9','warn');return;}
@@ -15314,7 +15410,7 @@ function saveCompteRendu(ivId, andClot) {
   if(iv._sdis) _sdisSaveFields(iv);
   if(_isFrelonIv(iv)) _frelonSaveFields(iv);
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-  saveData(true);rI();rHist();
+  saveData(true);refreshOperationalInterventionViews();rHist();
   if(andClot){cM();clot(ivId);}
   else{
     const status=document.getElementById('cr-save-status');
@@ -15326,7 +15422,7 @@ function saveCompteRendu(ivId, andClot) {
 
 
 function genRapportInterventionHTML(ivId) {
-  const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return null;
+  const iv = interventionById(ivId);if(!iv)return null;
   const JOURS_FR=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
   const MOIS_FR=['janvier','f\u00e9vrier','mars','avril','mai','juin','juillet','ao\u00fbt','septembre','octobre','novembre','d\u00e9cembre'];
   let dateLongue='';

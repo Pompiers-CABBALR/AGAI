@@ -747,6 +747,19 @@ function saveInterventionConfiguredCrew(iv,fields,selectedVehicle){
 
 const _pendingNextInterventionStarts={};
 
+function interventionById(id){
+  return (IVS||[]).find(function(iv){return iv&&iv.id===id;})||(PILP_IVS||[]).find(function(iv){return iv&&iv.id===id;})||null;
+}
+function interventionCollection(iv){
+  return iv&&(PILP_IVS||[]).includes(iv)?PILP_IVS:IVS;
+}
+function isPilpIntervention(iv){
+  return !!(iv&&(PILP_IVS||[]).includes(iv));
+}
+function refreshOperationalInterventionViews(){
+  rI();rPilp();
+}
+
 function reqAvailabilityBadgeHTML(iv){
   const dispo=iv&&iv.reqDispo;
   if(!dispo||!dispo.label)return'';
@@ -862,6 +875,13 @@ function updateRenfortBadge(){
   if(badge){badge.textContent=nb;badge.style.display=nb>0?'inline-flex':'none';}
 }
 function rI(){
+  const ut188Repair=agaiRepairIntervention188ChainedStart();
+  if(ut188Repair.applied){
+    if(typeof syncCaserneContext==='function')syncCaserneContext();
+    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+    saveData(true);
+    if(ut188Repair.changed)showToast('Intervention UT 188 : heure de départ corrigée à 16:11.','success');
+  }
   updateRenfortBadge();
   // Afficher les renforts reçus en attente
   const renforts=getRenfortsEnAttente();
@@ -937,12 +957,9 @@ function rI(){
       </div>`;
   }else if(acs){acs.style.display='none';if(acl)acl.innerHTML='';}
   // Panneau tournée
-  const tireurP=isTireurPILP();
   const selNonConf=IVS.filter(iv=>isTdy(iv)&&iv.s==='selectionne'&&iv.agr===CU.l&&!parcConfirmed.has(iv.id)&&!iv._isPilip);
-  const selPilpNonConf=tireurP?PILP_IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l&&!parcConfirmed.has(iv.id)):[];
-  const selMixte=[...selNonConf,...selPilpNonConf];
   const pp=document.getElementById('pap');
-  if((ag||tireurP)&&selMixte.length>0){pp.style.display='block';document.getElementById('pagl').textContent=interventionRouteChefName({agr:CU.l});document.getElementById('pac').textContent=selMixte.length;rPL(selMixte);}
+  if(ag&&selNonConf.length>0){pp.style.display='block';document.getElementById('pagl').textContent=interventionRouteChefName({agr:CU.l});document.getElementById('pac').textContent=selNonConf.length;rPL(selNonConf);}
   else{pp.style.display='none';rEgrid();}
   // Liste
   const tireur=isTireurPILP();
@@ -1136,7 +1153,9 @@ function interventionAppelDetailValue(iv,key,value){
   return isSingleAnimal?text.replace(/^\s*1\.\s*/,''):text;
 }
 function oM(id){
-  const iv=IVS.find(v=>v.id===id);if(!iv)return;
+  const iv=interventionById(id);if(!iv)return;
+  const pilpScope=isPilpIntervention(iv);
+  if(pilpScope&&!isTireurPILP()){showToast('Accès réservé aux tireurs PILP.','warn');return;}
   const isInternalReinforcement=iv._isRenfortInterneMission===true;
   // Pour un départ SDIS, la synthèse opérationnelle commence à l'acquis
   // présence et se termine à l'opération terminée. Les heures de départ et
@@ -1144,6 +1163,7 @@ function oM(id){
   const detailStart=iv._sdis?(iv._hAcquis||iv._hDebut||''):(iv._hDebut||'');
   const detailEnd=iv._sdis?(iv._hOpTerminee||iv._hFin||''):(iv._hFin||'');
   const ag=isAgres(),chef=isChef()||hasRight('Administration');
+  const operationalActor=ag||chef||(pilpScope&&isTireurPILP());
   // _showAutoBtn défini globalement pour toute la fonction oM
   const _isOwnAgres_=(iv.agr===CU.l||iv._agr2===CU.l);
   // Autorisation disponible pour toutes les interventions (sauf renforts)
@@ -1161,13 +1181,13 @@ function oM(id){
   const appelDetailEntries=iv._appelDetails&&typeof iv._appelDetails==='object'
     ?Object.entries(iv._appelDetails).filter(([key])=>(key!=='Nids à traiter'||!Array.isArray(iv._nidsAppel)||iv._nidsAppel.length!==1)&&key!=='Disponibilité du requérant')
     :[];
-  const reclassHtml=(ag&&iv.s==='en-cours')?`<div class="reclass-box">
+  const reclassHtml=(operationalActor&&iv.s==='en-cours')?`<div class="reclass-box">
     <div class="reclass-title">Reclasser la nature</div>
     <select class="fi" id="reclass-sel" style="margin-bottom:8px;">${NAT.map(n=>`<option value="${n.l}"${n.l===iv.n?' selected':''}>${n.l}</option>`).join('')}</select>
     <button class="btn sm" onclick="reclasser('${iv.id}')">✏️ Appliquer</button>
   </div>`:'';
   let actions='';
-  if(ag||chef){
+  if(operationalActor){
     if(iv.s==='en-attente'){
       const dejaPris=iv.agr&&iv.agr!==CU.l;
       const autreAgr=dejaPris?USERS.find(u=>u.l===iv.agr):null;
@@ -1268,7 +1288,7 @@ function oM(id){
       <div class="brow" style="margin-top:8px;">${iv._isRenfort&&!isInternalReinforcement?'':`<button class="btn sm danger" onclick="cS('${iv.id}','en-attente')">↩ Remettre en attente</button>`}</div>`;
     }
   }
-  if((chef||isAgres())&&iv.s==='avis-passage'){
+  if((chef||operationalActor)&&iv.s==='avis-passage'){
     const ds=getDS(N()),hh=pad(N().getHours()),mm2=pad(N().getMinutes());
     // Bouton reprendre — visible pour le chef d'agrès qui avait l'intervention
     if(iv.agr===CU.l||isAgres()||chef){
@@ -1291,7 +1311,7 @@ function oM(id){
     }
   }
   document.getElementById('mb').innerHTML=`
-    <div style="margin-bottom:8px;"><span class="bdg ${bc}">${bt}</span>${iv.rappels?` <span class="bdg bp" style="${isAdminModeActive()?'cursor:pointer;':''}"${isAdminModeActive()?` title="Déjà intervenu ici ?" onclick="showInterventionsLiees('${iv.id}')"`:''}>${iv.rappels} rappel(s)</span>`:''}</div>
+    <div style="margin-bottom:8px;"><span class="bdg ${bc}">${bt}</span>${pilpScope?' <span class="bdg bpilp">PILP</span>':''}${iv.rappels?` <span class="bdg bp" style="${isAdminModeActive()?'cursor:pointer;':''}"${isAdminModeActive()?` title="Déjà intervenu ici ?" onclick="showInterventionsLiees('${iv.id}')"`:''}>${iv.rappels} rappel(s)</span>`:''}</div>
     ${iv._urgence?'<div style="background:#FEE2E2;border:2px solid #B91C1C;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:800;color:#991B1B;margin-bottom:10px;text-align:center;">🚨 URGENCE — ÉTABLISSEMENT RECEVANT DU PUBLIC (ERP)</div>':''}
     ${iv._sdis?'<div style="background:#DBEAFE;border:1px solid #93C5FD;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;color:#1D4ED8;margin-bottom:10px;text-align:center;">&#x1F691; INTERVENTION SDIS</div>':''}
     ${iv._avisPassage?'<div style="background:#F3EAF8;border:2px solid #9B59B6;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;color:#6C3483;margin-bottom:10px;text-align:center;">🟣 Un avis de passage a été laissé'+(getAvisPassageHour(iv)?' à '+escHtml(getAvisPassageHour(iv)):'')+(iv._avisPassageClasse?' — classé':'')+' pour cette intervention</div>':''}
@@ -1404,7 +1424,7 @@ function oM(id){
     </div>`:''}
     ${iv._avisPassage&&(iv.agr===CU.l||iv._agr2===CU.l||hasAdministrativeAccount())?`<div style="background:#FAF5FF;border:1px solid #D8B4FE;border-radius:10px;padding:10px 12px;margin-bottom:10px;">
       <div style="font-size:11px;font-weight:700;color:#6B21A8;margin-bottom:8px;">&#x1F4EC; Avis de passage${getAvisPassageHour(iv)?' — déposé à '+escHtml(getAvisPassageHour(iv)):''}${iv._avisPassageClasse?' — classé':''}</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn sm" style="background:#7E22CE;color:#fff;border-color:#7E22CE;" onclick="viewAvisPassageDocument('${iv.id}')">&#x1F4CB; Voir l'avis de passage</button>${isAdminModeActive()&&iv._avisEnAttente?`<button class="btn sm" style="background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="classerAvisPassage('${iv.id}','standard')">&#x1F5C3;&#xFE0F; Classer</button>`:''}${isAdminModeActive()&&iv._avisPassageClasse===true&&!iv._avisEnAttente?`<button class="btn sm" style="background:#fff;color:#6B21A8;border-color:#A855F7;" onclick="restaurerAvisPassage('${iv.id}','standard')">↩ Remettre en attente</button>`:''}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn sm" style="background:#7E22CE;color:#fff;border-color:#7E22CE;" onclick="viewAvisPassageDocument('${iv.id}')">&#x1F4CB; Voir l'avis de passage</button>${isAdminModeActive()&&iv._avisEnAttente?`<button class="btn sm" style="background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="classerAvisPassage('${iv.id}','${pilpScope?'pilp':'standard'}')">&#x1F5C3;&#xFE0F; Classer</button>`:''}${isAdminModeActive()&&iv._avisPassageClasse===true&&!iv._avisEnAttente?`<button class="btn sm" style="background:#fff;color:#6B21A8;border-color:#A855F7;" onclick="restaurerAvisPassage('${iv.id}','${pilpScope?'pilp':'standard'}')">↩ Remettre en attente</button>`:''}</div>
     </div>`:''}
     ${(['en-attente','selectionne','en-cours'].includes(iv.s)&&(hasRight('Interventions')||isAgres()||isChef()||isAdminModeActive()))?`<button class="btn sm" style="width:100%;margin-bottom:8px;background:#0369A1;color:#fff;border-color:#0369A1;" onclick="showComplementModal('${iv.id}')">&#x2139;&#xFE0F; Compléter : information, téléphone ou disponibilité</button>`:''}
     <details style="background:var(--bg);border-radius:10px;margin-bottom:8px;" id="tl-details-${iv.id}">
@@ -1417,7 +1437,7 @@ function oM(id){
   document.getElementById('mo').style.display='flex';
 }
 function setAgr2(ivId,login){
-  const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  const iv=interventionById(ivId);if(!iv)return;
   if(login){
     const conflict=findActivePersonnelConflict(login,ivId);
     if(conflict){
@@ -1436,7 +1456,7 @@ function setAgr2(ivId,login){
   }
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);
-  rI();oM(ivId);
+  refreshOperationalInterventionViews();oM(ivId);
 }
 let _modalLocked = false;
 function cM(){
@@ -1615,7 +1635,26 @@ function recentFinishedInterventionForChef(login,excludeId){
     return Number.isFinite(bounds.end)&&delay>=0&&delay<=maxDelay?{iv:item,end:bounds.end,delay:delay}:null;
   }).filter(Boolean).sort(function(a,b){return b.end-a.end;})[0]||null;
 }
+function previousRouteInterventionForStart(iv,login){
+  if(!iv||!iv._routeBatchId)return null;
+  const order=Number(iv._routeOrder)||0;
+  return [].concat(IVS||[],PILP_IVS||[]).filter(function(candidate){
+    if(!candidate||candidate.id===iv.id||candidate.s!=='terminee'||candidate._routeBatchId!==iv._routeBatchId)return false;
+    if(candidate.agr!==login&&candidate._agr2!==login)return false;
+    const candidateOrder=Number(candidate._routeOrder)||0;
+    return candidateOrder>0&&(!order||candidateOrder<order)&&!!candidate._hFin;
+  }).sort(function(a,b){return (Number(b._routeOrder)||0)-(Number(a._routeOrder)||0);})[0]||null;
+}
+function prepareRouteChainedOperationalStart(iv){
+  const previous=previousRouteInterventionForStart(iv,CU&&CU.l);
+  if(!previous)return null;
+  _pendingNextInterventionStarts[iv.id]=previous._hFin;
+  iv._chainPreviousInterventionId=previous.id;
+  return previous;
+}
 function operationalStartGeoExemption(iv){
+  const routePrevious=prepareRouteChainedOperationalStart(iv);
+  if(routePrevious)return {reason:'enchaînement de tournée après '+routePrevious.id,sourceId:routePrevious.id};
   if(iv&&_pendingNextInterventionStarts&&_pendingNextInterventionStarts[iv.id])return {reason:'enchaînement de tournée'};
   if(iv&&(IVS||[]).includes(iv)){
     const interrupted=findInterruptedDepartureHandoff(CU.l,iv.id);
@@ -1679,7 +1718,7 @@ function saveOperationalStartAuthorization(iv,authorization){
   iv.tl.push({s:'controle-depart',h:getH(N()),who:CU.l,note:authorization.exempt?'Contrôle de position non requis — '+authorization.reason:'Présence à la caserne confirmée à '+authorization.distanceMeters+' m (précision '+authorization.accuracyMeters+' m)'});
 }
 function cS(id,s,confirmed){
-  const iv=IVS.find(v=>v.id===id);if(!iv)return;
+  const iv=interventionById(id);if(!iv)return;
   const previousStatus=iv.s;
   if(s==='en-attente'&&previousStatus==='en-cours'&&confirmed!==true){
     const oldStart=iv._hDebut||iv._hDebutReelle||'';
@@ -1688,6 +1727,7 @@ function cS(id,s,confirmed){
   }
   if(s==='en-cours'){
     if(confirmed!=='start-authorized'){
+      prepareRouteChainedOperationalStart(iv);
       requestOperationalStartAuthorization(iv,function(){cS(id,s,'start-authorized');});return;
     }
     const ec=agresEnCours();
@@ -1706,7 +1746,8 @@ function cS(id,s,confirmed){
   }
   if(!iv.tl)iv.tl=[];
   iv.s=s;
-  if(s==='selectionne'||s==='en-cours'){ if(isAgres()||isChef()||isAdminModeActive()) iv.agr=CU.l; }
+  if(s==='selectionne'||s==='en-cours'){ if(isAgres()||isChef()||isAdminModeActive()||(isPilpIntervention(iv)&&isTireurPILP())) iv.agr=CU.l; }
+  if(isPilpIntervention(iv)&&(s==='selectionne'||s==='en-cours'))iv.tireur=CU.l;
   if(s==='selectionne'){
     parcConfirmed.delete(iv.id);
     assignInterventionRoute(iv,iv.agr||CU.l);
@@ -1723,6 +1764,7 @@ function cS(id,s,confirmed){
     clearInterventionNumbersForPending(iv);
     parcConfirmed.delete(iv.id);
     iv.agr=null;
+    if(isPilpIntervention(iv))iv.tireur=null;
     delete iv._routeBatchId;delete iv._routeOrder;
   }
   const agr2Label=iv._agr2?(()=>{const u=USERS.find(u=>u.l===iv._agr2);return u?' + '+fullName(u)+' (2\u00e8me)':' + '+iv._agr2;})():'';
@@ -1731,17 +1773,17 @@ function cS(id,s,confirmed){
     :(s==='en-attente'&&previousStatus==='en-cours'?'Retour en attente confirmé'+(iv._hDebutAvantRetourAttente?' — ancien départ : '+iv._hDebutAvantRetourAttente:''):'');
   pushTL(iv,s,CU.l+agr2Label,statusNote);
   syncInternalReinforcementSource(iv);
-  if(CD())CD().ivs=IVS;
+  if(CD()){CD().ivs=IVS;CD().pilpIvs=PILP_IVS;}
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);
-  cM();rI();
+  cM();refreshOperationalInterventionViews();
   if(s==='terminee')rAccueil();
   rStatsHeader();
 }
 
 function getNextSelectedInterventions(closedIv){
   if(!closedIv)return[];
-  return sortRouteSelection(IVS.filter(function(candidate){
+  return sortRouteSelection(interventionCollection(closedIv).filter(function(candidate){
     if(candidate.id===closedIv.id||candidate.s!=='selectionne'||candidate.agr!==closedIv.agr)return false;
     if(closedIv._routeBatchId)return candidate._routeBatchId===closedIv._routeBatchId;
     return true;
@@ -1749,8 +1791,8 @@ function getNextSelectedInterventions(closedIv){
 }
 
 function chooseNextSelectedIntervention(nextId,previousId){
-  const next=IVS.find(function(x){return x.id===nextId;});
-  const previous=IVS.find(function(x){return x.id===previousId;});
+  const next=interventionById(nextId);
+  const previous=interventionById(previousId);
   if(!next||!previous)return;
   _pendingNextInterventionStarts[nextId]=previous._hFin||getHHMM(N());
   next._chainPreviousInterventionId=previous.id;
@@ -1777,7 +1819,8 @@ function showNextSelectedInterventionModal(closedIv){
 }
 
 function clot(id){
-  const iv=IVS.find(v=>v.id===id);if(!iv)return;
+  const iv=interventionById(id);if(!iv)return;
+  const collection=interventionCollection(iv);
   // Ne pas re-clôturer une intervention déjà liée à une PILP
   if(iv._lienPilp&&iv.s==='terminee'){showToast('Cette intervention est déjà clôturée (liée à une PILP).','warn');cM();return;}
   const avis=document.getElementById('chk-av')&&document.getElementById('chk-av').checked;
@@ -1807,7 +1850,7 @@ function clot(id){
   iv.s='terminee';iv._hFin=getHHMM(N());iv.tl.push({s:'terminee',h,who:CU.l+agr2Lbl});
   syncInternalReinforcementSource(iv);
   supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
-  (iv.avisIds||[]).forEach(aid=>{const av=IVS.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';av.tl.push({s:'terminee',h,who:CU.l+' (fusion)'});}});
+  (iv.avisIds||[]).forEach(aid=>{const av=collection.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';av.tl.push({s:'terminee',h,who:CU.l+' (fusion)'});}});
   const autorisationNids=Array.isArray(iv._autorisationNids)?iv._autorisationNids:(iv._autorisationData?[iv._autorisationData]:[]);
   if(autorisationNids.some(function(data){return data&&data.nom;})){
     iv._pdfAutorisations=[];iv._pdfAttestations=[];
@@ -1821,7 +1864,7 @@ function clot(id){
   }
   if(!iv.eng&&selEng)iv.eng=selEng;
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-  saveData(true);cM();rI();rAccueil();rStatsHeader(); // push immédiat : clôture d'intervention
+  saveData(true);cM();refreshOperationalInterventionViews();rAccueil();rStatsHeader(); // push immédiat : clôture d'intervention
   setTimeout(function(){showNextSelectedInterventionModal(iv);},80);
 }
 function clotAvis(id){
@@ -1835,13 +1878,13 @@ function clotAvis(id){
   saveData(true);cM();rI();
 }
 function reclasser(id){
-  const iv=IVS.find(v=>v.id===id);if(!iv)return;
+  const iv=interventionById(id);if(!iv)return;
   const sel=document.getElementById('reclass-sel');if(!sel)return;
   const oldN=iv.n;iv.n=sel.value;
   iv.tl.push({s:'reclasse',h:getH(N()),who:CU.l,note:`${oldN} → ${iv.n}`});
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true); // push immédiat : sinon le changement de nature est écrasé au prochain pull
-  cM();rI();
+  cM();refreshOperationalInterventionViews();
   // Reopen modal with fresh data
   setTimeout(()=>oM(id),50);
 }

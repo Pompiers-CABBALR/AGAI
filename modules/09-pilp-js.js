@@ -110,6 +110,14 @@ function rPilp(){
           <div class="ivrr"><span class="bdg bgr">Classé</span><button class="btn sm" style="font-size:10px;padding:3px 8px;background:#fff;color:#6B21A8;border-color:#A855F7;" onclick="event.stopPropagation();restaurerAvisPassage('${iv.id}','pilp')">↩ Remettre en attente</button></div></div>`).join('')}
       </div>`;
   }else if(pacs){pacs.style.display='none';if(pacl)pacl.innerHTML='';}
+  const pilpSelection=getSelPilp();
+  const pilpPanel=document.getElementById('pilp-pap');
+  if(pilpPanel&&pilpSelection.length){
+    pilpPanel.style.display='block';
+    document.getElementById('pilp-pagl').textContent=interventionRouteChefName({agr:CU.l});
+    document.getElementById('pilp-pac').textContent=pilpSelection.length;
+    rPLPilp(pilpSelection);
+  }else if(pilpPanel){pilpPanel.style.display='none';}
   let list;
   if(fltPilp==='all') list=PILP_IVS.filter(iv=>iv.s!=='avis-passage');
   else if(fltPilp==='mes-sel') list=PILP_IVS.filter(iv=>(iv.s==='selectionne'||iv.s==='en-cours')&&iv.agr===CU.l);
@@ -117,46 +125,18 @@ function rPilp(){
   else list=PILP_IVS.filter(iv=>iv.s===fltPilp);
   const cont=document.getElementById('pilp-list');
   if(!list.length){cont.innerHTML='<div style="padding:20px;text-align:center;font-size:13px;color:var(--t2);">Aucune intervention PILP.</div>';return;}
-  const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélect.'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis passage'],'annulee':['bgr','Annulée']};
   const ag=isAgres(),chef=isChef()||hasRight('Administration');
-  cont.innerHTML=list.map(iv=>{
-    const[bc,bt]=bm[iv.s]||['bgr','—'];
-    const chkShow=(ag||isTireurPILP()||chef)&&(iv.s==='en-attente'||(iv.s==='selectionne'&&iv.agr===CU.l));
-    const checked=iv.s==='selectionne'&&iv.agr===CU.l;
-    return `<div class="ivr pilp ${iv.s}">
-      ${chkShow?`<div class="ivr-chk"><input type="checkbox" ${checked?'checked':''} onchange="toggleChkPilp('${iv.id}',this)"/></div>`:''}
-      <div class="ivrl" style="cursor:pointer;" onclick="oPilp('${iv.id}')">
-        <div class="ivrh">&#x1F4C5; ${iv.h.slice(0,8)} — Réf: ${iv.ivRef}</div>
-        <div class="ivrn">&#x1F3AF; ${escHtml(iv.n)}</div>
-        <div class="ivrc">&#x1F4CD; ${escHtml(iv.addr)} — ${escHtml(iv.com)}</div>
-        <div style="font-size:11px;color:var(--t2);margin-top:2px;">${iv.localisation||'—'}${iv.hauteur?' · '+iv.hauteur+'m':''} ${iv.reconnaissanceFaite?'· ✅ Reco':'· ❌ Reco'} ${iv.axeTir?'· &#x1F3AF; Axe OK':'· ⚠️ Axe ?'}</div>
-      </div>
-      <div class="ivrr" style="cursor:pointer;" onclick="oPilp('${iv.id}')">
-        ${interventionRouteBadgeHTML(iv)}
-        <span class="bdg ${bc}">${bt}</span>
-        ${iv.rappels?`<span class="bdg bp" style="font-size:10px;">${iv.rappels}×</span>`:''}
-      </div>
-    </div>`;
-  }).join('');
+  cont.innerHTML=sortedIVS(list.slice()).map(function(iv){return renderInterventionRow(iv,ag||chef,true);}).join('');
 }
 function toggleChkPilp(id,el){
-  const iv=PILP_IVS.find(v=>v.id===id);if(!iv)return;
-  if(el.checked){
-    iv.s='selectionne';iv.agr=CU.l;parcConfirmed.delete(iv.id);
-    assignInterventionRoute(iv,CU.l);
-    pushTL(iv,'selectionne',CU.l,'Ordre de tourn\u00e9e : '+iv._routeOrder);
-  }
-  else{
-    iv.s='en-attente';iv.agr=null;parcConfirmed.delete(iv.id);
-    delete iv._routeBatchId;delete iv._routeOrder;
-    pushTL(iv,'en-attente',CU.l);
-  }
-  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-  saveData(true);rPilp(); // push immédiat : changement de statut partagé
+  cS(id,el.checked?'selectionne':'en-attente');
 }
 
 function oPilp(id){
   if(!isTireurPILP()){showToast('Accès réservé aux tireurs PILP.','warn');return;}
+  // La fiche PILP utilise exactement la même interface et les mêmes actions
+  // opérationnelles que la fiche Interventions. Seule la collection est filtrée.
+  return oM(id);
   const iv=PILP_IVS.find(v=>v.id===id);if(!iv)return;
   const ag=isAgres(),tireur=isTireurPILP(),chef=isChef()||hasRight('Administration');
   document.getElementById('mt').textContent=iv.n;
@@ -228,6 +208,7 @@ function oPilp(id){
   document.getElementById('mo').style.display='flex';
 }
 function cSPilp(id,s,confirmed){
+  return cS(id,s,confirmed);
   const iv=PILP_IVS.find(v=>v.id===id);if(!iv)return;
   if(s==='en-cours'){
     if(confirmed!=='start-authorized'){
@@ -489,6 +470,56 @@ function persistRouteOrder(ordered,position){
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);
   rPL(ordered,position||captureRouteViewPosition());
+}
+
+function getSelPilp(){
+  return sortRouteSelection(PILP_IVS.filter(function(iv){return iv.s==='selectionne'&&iv.agr===CU.l&&!parcConfirmed.has(iv.id);}));
+}
+function rPLPilp(sel){
+  const ordered=sortRouteSelection(sel),list=document.getElementById('pilp-pl2');if(!list)return;
+  list.innerHTML=ordered.map(function(iv,index){
+    return '<div class="pi" data-route-id="'+escHtml(iv.id)+'" draggable="true" ondragstart="pilpRouteDragStart(event,\''+iv.id+'\')" ondragover="event.preventDefault()" ondrop="pilpRouteDrop(event,\''+iv.id+'\')">'
+      +'<button type="button" class="pdrag" title="Glisser pour modifier l\'ordre">⠿</button>'
+      +'<div class="pnum">'+(index+1)+'</div><div class="pinfo"><div class="pn2">🎯 '+escHtml(iv.n)+'</div><div class="pa2">'+escHtml(iv.addr||iv.com)+' — '+escHtml(iv.com)+'</div></div>'
+      +'<div class="pmv"><button type="button" onclick="mvPilp('+index+','+(index-1)+')" '+(index===0?'disabled':'')+' title="Monter">▲</button><button type="button" onclick="mvPilp('+index+','+(index+1)+')" '+(index===ordered.length-1?'disabled':'')+' title="Descendre">▼</button></div></div>';
+  }).join('');
+}
+function persistPilpRouteOrder(ordered){
+  if(!ordered.length)return;
+  const batch=ordered.map(function(iv){return iv._routeBatchId;}).find(Boolean)||('PILP_ROUTE_'+Date.now()+'_'+(CU&&CU.l||''));
+  const stamp=getH(N());
+  ordered.forEach(function(iv,index){iv._routeBatchId=batch;iv._routeOrder=index+1;iv._routeOrderUpdatedAt=stamp;});
+  if(CD())CD().pilpIvs=PILP_IVS;
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);rPLPilp(ordered);rPilp();
+}
+function mvPilp(sourceIndex,destinationIndex){
+  const selected=getSelPilp();
+  if(destinationIndex<0||destinationIndex>=selected.length||sourceIndex===destinationIndex)return;
+  const moved=selected.splice(sourceIndex,1)[0];selected.splice(destinationIndex,0,moved);persistPilpRouteOrder(selected);
+}
+let _pilpDraggedRouteId='';
+function pilpRouteDragStart(event,id){_pilpDraggedRouteId=id;if(event.dataTransfer)event.dataTransfer.effectAllowed='move';}
+function pilpRouteDrop(event,targetId){
+  event.preventDefault();
+  const selected=getSelPilp(),from=selected.findIndex(function(iv){return iv.id===_pilpDraggedRouteId;}),to=selected.findIndex(function(iv){return iv.id===targetId;});
+  _pilpDraggedRouteId='';if(from<0||to<0||from===to)return;
+  const moved=selected.splice(from,1)[0];selected.splice(to,0,moved);persistPilpRouteOrder(selected);
+}
+function confirmerSelPilp(){
+  const selected=getSelPilp();if(!selected.length)return;
+  persistPilpRouteOrder(selected);selected.forEach(function(iv){parcConfirmed.add(iv.id);});rPilp();
+  showToast('Tournée PILP confirmée : l’ordre reste visible sur chaque intervention.','success');
+}
+function optPilp(){
+  const selected=getSelPilp();if(selected.length<=2)return;
+  const base=[50.508,2.548];let remaining=selected.slice(),result=[],current=base;
+  while(remaining.length){let best=null,distance=Infinity;remaining.forEach(function(iv){const coords=gc(iv.com),value=dst(current,coords);if(value<distance){distance=value;best=iv;}});result.push(best);remaining=remaining.filter(function(iv){return iv.id!==best.id;});current=gc(best.com);}
+  persistPilpRouteOrder(result);
+}
+function vpPilp(){
+  PILP_IVS.filter(function(iv){return iv.s==='selectionne'&&iv.agr===CU.l;}).forEach(function(iv){iv.s='en-attente';iv.agr=null;delete iv._routeBatchId;delete iv._routeOrder;pushTL(iv,'en-attente',CU.l);});
+  parcConfirmed.clear();saveData(true);rPilp();
 }
 
 function mvU(i){

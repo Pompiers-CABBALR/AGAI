@@ -12,7 +12,7 @@
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260827-depart-pc-superadmin-174';
+const APP_VERSION='20260827-pilp-interventions-chainage-175';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -144,7 +144,7 @@ const STORAGE_KEY='agai_data' // clé partagée entre toutes les versions;
 function savePdfDocuments(ivId) {
   // Sauvegarde les documents HTML dans l'IV pour consultation ultérieure
   saveAutorisationData(ivId);
-  const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  const iv = interventionById(ivId);if(!iv)return;
   const dataList=Array.isArray(iv._autorisationNids)?iv._autorisationNids.filter(Boolean):(iv._autorisationData?[iv._autorisationData]:[]);
   if(!dataList.length)return;
   iv._pdfAutorisations=[];iv._pdfAttestations=[];
@@ -159,7 +159,7 @@ function savePdfDocuments(ivId) {
 }
 
 function _buildAutorisationHTML(ivId, docType, nidIndex) {
-  const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return '';
+  const iv = interventionById(ivId);if(!iv)return '';
   const activeIndex=Number.isInteger(nidIndex)?nidIndex:(Number.isInteger(_autorisationActiveNid[ivId])?_autorisationActiveNid[ivId]:0);
   const saved = autorisationDataForNid(iv,activeIndex);
   if(!saved||(!saved.nom&&!saved.prenom&&!saved.adresse))return '';
@@ -277,7 +277,7 @@ function _buildAutorisationHTML(ivId, docType, nidIndex) {
 }
 
 function viewPdfDocument(ivId, docType, nidIndex) {
-  const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  const iv = interventionById(ivId);if(!iv)return;
   const index=Number.isInteger(nidIndex)?nidIndex:0;
   let html=docType==='autorisation'
     ?(Array.isArray(iv._pdfAutorisations)?iv._pdfAutorisations[index]:index===0?iv._pdfAutorisation:'')
