@@ -4921,7 +4921,7 @@ function isFollowingInterventionInSeries(iv){
   const startStamp=interventionTimelineStamp(iv,'en-cours',false);
   const startMillis=interventionCompactStampMillis(startStamp);
   if(!signature||!Number.isFinite(startMillis)||!iv._hDebut)return false;
-  return IVS.some(function(previous){
+  return [].concat(IVS||[],PILP_IVS||[]).some(function(previous){
     if(!previous||previous.id===iv.id||previous.s!=='terminee')return false;
     if(interventionCrewSignature(previous)!==signature)return false;
     if(!previous._hFin||previous._hFin!==iv._hDebut)return false;
@@ -4931,8 +4931,30 @@ function isFollowingInterventionInSeries(iv){
   });
 }
 
+function interventionChainedTimeNeighbors(iv){
+  if(!iv||!iv._hDebut||!iv._hFin)return null;
+  const all=[].concat(IVS||[],PILP_IVS||[]).filter(function(item){return item&&item.id!==iv.id&&item.s==='terminee';});
+  const number=parseInt(iv._numCaserne,10)||0;
+  const previous=all.find(function(item){
+    if(number&&parseInt(item._numCaserne,10)!==number-1)return false;
+    return item._hFin===iv._hDebut;
+  });
+  const next=all.find(function(item){
+    if(number&&parseInt(item._numCaserne,10)!==number+1)return false;
+    return item._hDebut===iv._hFin;
+  });
+  return previous&&next?{previous:previous,next:next}:null;
+}
+
+function isInterventionTimeLockedByNeighbors(iv){
+  return !!interventionChainedTimeNeighbors(iv);
+}
+
 function canEditInterventionStart(iv){
   if(!iv||!CU)return false;
+  // Une intervention exactement bornée par la fin de la précédente et le
+  // départ de la suivante reste immuable, y compris en mode administrateur.
+  if(isInterventionTimeLockedByNeighbors(iv))return false;
   if(typeof isAdminModeActive==='function'&&isAdminModeActive())return true;
   if(isFollowingInterventionInSeries(iv))return false;
   const own=isInterventionReportChef(iv,CU.l);
@@ -5372,7 +5394,7 @@ function interventionReportCrewFieldsHTML(iv,vehicle){
   }).join('');
 }
 function refreshInterventionReportCrewForVehicle(ivId,vehicle){
-  const iv=IVS.find(function(item){return item.id===ivId;});
+  const iv=interventionById(ivId);
   const container=document.getElementById('cr-crew-fields');
   if(!iv||!container)return;
   const fields=interventionReportCrewFieldsHTML(iv,vehicle);
@@ -5413,7 +5435,7 @@ function interventionTeammateEditorHTML(iv){
     +'</div><div style="font-size:10px;color:#64748B;margin-top:6px;">Les places correspondent au type d’engin configuré par le superadmin. Toute correction est ajoutée à l’historique, au rapport et aux exports.</div></div>';
 }
 function saveInterventionTeammate(ivId){
-  const iv=IVS.find(function(item){return item.id===ivId;});if(!iv||!CU)return;
+  const iv=interventionById(ivId);if(!iv||!CU)return;
   if(!isInterventionReportChef(iv,CU.l)&&!hasAdministrativeAccount()){
     showToast('Modification r\u00e9serv\u00e9e au chef d\u2019agr\u00e8s de l\u2019intervention ou \u00e0 un administrateur.','warn');return;
   }
@@ -5465,7 +5487,8 @@ function saveInterventionTeammate(ivId){
   traceRole('\u00c9quipier','equipier',beforeTeammateLogin,afterTeammateLogin);
   pushTL(iv,'modif-equipier',CU.l,notes.join(' \u00b7 '));
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-  saveData(true);rI();rHist();
+  markOperationalInterventionDirty(iv);
+  saveData(true);refreshOperationalInterventionViews();rHist();
   showCompteRenduModal(ivId);
   showToast('Composition de l\u2019\u00e9quipage enregistr\u00e9e.','success');
 }
@@ -5539,7 +5562,8 @@ function saveInterventionConfiguredCrew(iv,fields,selectedVehicle){
   if(changes.length)notes.push(changes.join(' · '));
   pushTL(iv,vehicleChanged?'modif-engin':'modif-equipier',CU.l,notes.join(' · '));
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-  saveData(true);rI();rHist();
+  markOperationalInterventionDirty(iv);
+  saveData(true);refreshOperationalInterventionViews();rHist();
   showCompteRenduModal(iv.id);
   showToast('Véhicule et composition de l’équipage enregistrés dans le rapport.','success');
 }
@@ -14310,7 +14334,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260827-droits-depart-formation-179';
+const APP_VERSION='20260827-pilp-equipage-horaires-verrouilles-180';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -15199,7 +15223,7 @@ function showStartCorrectionOperationalConflict(conflict){
 function saveInterventionStartCorrection(ivId){
   const iv=interventionById(ivId);if(!iv)return;
   if(!canEditInterventionStart(iv)){
-    showToast('Cette heure ne peut pas être modifiée par ce compte.','warn');return;
+    showToast(isInterventionTimeLockedByNeighbors(iv)?'Ces horaires sont verrouillés par les interventions précédente et suivante.':'Cette heure ne peut pas être modifiée par ce compte.','warn');return;
   }
   const field=document.getElementById('cr-start-correction');
   const next=field?field.value:'';
@@ -15254,6 +15278,7 @@ function saveInterventionStartCorrection(ivId){
 function interventionStartCorrectionHTML(iv){
   if(iv&&iv._sdis)return '';
   const following=isFollowingInterventionInSeries(iv);
+  const neighborLock=interventionChainedTimeNeighbors(iv);
   const canEdit=canEditInterventionStart(iv);
   const adminMode=isAdminModeActive();
   const admin=hasAdministrativeAccount();
@@ -15265,6 +15290,12 @@ function interventionStartCorrectionHTML(iv){
   const changes=Array.isArray(iv._heureDebutModifs)?iv._heureDebutModifs:[];
   const endChanges=Array.isArray(iv._heureFinModifs)?iv._heureFinModifs:[];
   if(!iv._hDebut&&!real)return '';
+  if(neighborLock){
+    return '<div style="background:#F8FAFC;border:1px solid #CBD5E1;border-radius:8px;padding:10px 12px;margin-bottom:10px;">'
+      +'<div style="font-size:12px;font-weight:700;color:#334155;">&#x23F1; Horaires de l’intervention : '+escHtml(iv._hDebut)+' — '+escHtml(iv._hFin)+'</div>'
+      +'<div style="font-size:11px;color:#92400E;margin-top:5px;">Intervention enchaînée entre l’UT '+escHtml(String(neighborLock.previous._numCaserne||''))+' et l’UT '+escHtml(String(neighborLock.next._numCaserne||''))+' : les heures de début et de fin sont automatiques et ne peuvent pas être modifiées.</div>'
+      +'</div>';
+  }
   if(following){
     if(!adminMode){
       const traceFollowing=changes.length

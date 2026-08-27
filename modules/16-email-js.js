@@ -506,7 +506,7 @@ function showStartCorrectionOperationalConflict(conflict){
 function saveInterventionStartCorrection(ivId){
   const iv=interventionById(ivId);if(!iv)return;
   if(!canEditInterventionStart(iv)){
-    showToast('Cette heure ne peut pas être modifiée par ce compte.','warn');return;
+    showToast(isInterventionTimeLockedByNeighbors(iv)?'Ces horaires sont verrouillés par les interventions précédente et suivante.':'Cette heure ne peut pas être modifiée par ce compte.','warn');return;
   }
   const field=document.getElementById('cr-start-correction');
   const next=field?field.value:'';
@@ -561,6 +561,7 @@ function saveInterventionStartCorrection(ivId){
 function interventionStartCorrectionHTML(iv){
   if(iv&&iv._sdis)return '';
   const following=isFollowingInterventionInSeries(iv);
+  const neighborLock=interventionChainedTimeNeighbors(iv);
   const canEdit=canEditInterventionStart(iv);
   const adminMode=isAdminModeActive();
   const admin=hasAdministrativeAccount();
@@ -572,6 +573,12 @@ function interventionStartCorrectionHTML(iv){
   const changes=Array.isArray(iv._heureDebutModifs)?iv._heureDebutModifs:[];
   const endChanges=Array.isArray(iv._heureFinModifs)?iv._heureFinModifs:[];
   if(!iv._hDebut&&!real)return '';
+  if(neighborLock){
+    return '<div style="background:#F8FAFC;border:1px solid #CBD5E1;border-radius:8px;padding:10px 12px;margin-bottom:10px;">'
+      +'<div style="font-size:12px;font-weight:700;color:#334155;">&#x23F1; Horaires de l’intervention : '+escHtml(iv._hDebut)+' — '+escHtml(iv._hFin)+'</div>'
+      +'<div style="font-size:11px;color:#92400E;margin-top:5px;">Intervention enchaînée entre l’UT '+escHtml(String(neighborLock.previous._numCaserne||''))+' et l’UT '+escHtml(String(neighborLock.next._numCaserne||''))+' : les heures de début et de fin sont automatiques et ne peuvent pas être modifiées.</div>'
+      +'</div>';
+  }
   if(following){
     if(!adminMode){
       const traceFollowing=changes.length
