@@ -706,20 +706,17 @@ function findInterruptedDepartureHandoff(chefLogin,targetId){
 
 function agaiRepairIntervention188ChainedStart(){
   const data=CURRENT_CASERNE_ID&&CASERNE_DATA[CURRENT_CASERNE_ID];
-  const version='20260827-ut188-chain-start-v1';
+  const version='20260827-apl-000263-ut188-chain-start-v2';
   if(!data||data._ut188ChainStartRepairVersion===version)return {applied:false,changed:false};
   const all=[].concat(data.ivs||[],data.pilpIvs||[]);
-  const target=all.find(function(iv){return iv&&Number(iv._numCaserne)===188;});
-  const previous=all.find(function(iv){return iv&&Number(iv._numCaserne)===187;});
-  if(!target||!previous||!previous._hFin)return {applied:false,changed:false};
-  const sameDay=String(target.h||'').slice(0,8)===String(previous.h||'').slice(0,8);
-  if(!sameDay)return {applied:false,changed:false};
+  const target=all.find(function(iv){return iv&&iv._numApl==='APL_2026_000263'&&Number(iv._numCaserne)===188;});
+  if(!target)return {applied:false,changed:false};
   let changed=false;
-  if(previous._hFin==='16:11'&&['16:38',''].includes(String(target._hDebut||''))){
+  if(String(target._hDebut||'')!=='16:11'){
     target._hDebut='16:11';target._hDebutReelle='16:11';target._hDebutInitiale='16:11';
-    target._startLockedByChain=true;target._chainedFromInterventionId=previous.id;
+    target._startLockedByChain=true;
     if(!Array.isArray(target.tl))target.tl=[];
-    target.tl.push({s:'modif-heure',h:getH(N()),who:'Correction automatique AGAI',note:'Départ corrigé à 16:11 — enchaînement après l’intervention UT 187'});
+    target.tl.push({s:'modif-heure',h:getH(N()),who:'Correction automatique AGAI',note:'Départ corrigé à 16:11 — enchaînement après l’intervention UT 187 (APL_2026_000263)'});
     changed=true;
   }
   data._ut188ChainStartRepairVersion=version;
@@ -5527,6 +5524,16 @@ function isPilpIntervention(iv){
 function refreshOperationalInterventionViews(){
   rI();rPilp();
 }
+function markOperationalInterventionDirty(iv){
+  if(!iv)return;
+  if(CD()){CD().ivs=IVS;CD().pilpIvs=PILP_IVS;}
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcPendingDirty!=='undefined'&&typeof _rcId==='function'&&CURRENT_CASERNE_ID){
+    _rcPendingDirty.add(_rcId(CURRENT_CASERNE_ID,isPilpIntervention(iv)?'pilp':'iv',iv.id));
+    if(typeof _rcDirtyGeneration!=='undefined')_rcDirtyGeneration++;
+    if(typeof _rcPersistPendingDirty==='function')_rcPersistPendingDirty();
+  }
+}
 
 function reqAvailabilityBadgeHTML(iv){
   const dispo=iv&&iv.reqDispo;
@@ -6124,9 +6131,10 @@ function oM(id){
     ${iv._transfertVers?`<div class="mr"><div class="ml">Transféré vers</div><div class="mv2" style="color:#888;">&#x1F500; ${CASERNES.find(c=>c.id===iv._transfertVers)?.nom||iv._transfertVers}</div></div>`:''}
     ${iv._refugeAnimalier?`<div class="mr"><div class="ml">Refuge animalier</div><div class="mv2" style="color:var(--grn);">&#x1F43E; Transmis au refuge — ${iv._refugeAnimalier}</div></div>`:''}
 
-    ${(iv.eng||detailStart||detailEnd)?'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:8px;margin:6px 0;">'+(iv.eng?'<div style="background:var(--bg);border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Engin</div><span class="bdg bb">'+iv.eng+'</span></div>':'')+(detailStart?'<div style="background:#FEF9EC;border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--amb);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">&#x23F1; Début</div><div style="font-weight:700;color:var(--amb);font-size:15px;">'+detailStart+'</div></div>':'')+(detailEnd?'<div style="background:#F0FAF0;border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--grn);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">&#x2705; Fin</div><div style="font-weight:700;color:var(--grn);font-size:15px;">'+detailEnd+'</div></div>':'')+(detailStart&&detailEnd?'<div style="background:#F0F4FF;border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--pur);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">&#x23F3; Durée</div><div style="font-weight:700;color:var(--pur);font-size:15px;">'+dureeHHMM(detailStart,detailEnd)+'</div></div>':'')+'</div>':''}
+    ${(iv.eng||detailStart||detailEnd||pilpScope)?'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:8px;margin:6px 0;">'+(iv.eng?'<div style="background:var(--bg);border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Engin</div><span class="bdg bb">'+iv.eng+'</span></div>':pilpScope?'<div style="background:var(--bg);border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Engin</div><span style="font-size:11px;color:var(--t2);">Non renseigné</span></div>':'')+(detailStart?'<div style="background:#FEF9EC;border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--amb);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">&#x23F1; Début</div><div style="font-weight:700;color:var(--amb);font-size:15px;">'+detailStart+'</div></div>':'')+(detailEnd?'<div style="background:#F0FAF0;border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--grn);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">&#x2705; Fin</div><div style="font-weight:700;color:var(--grn);font-size:15px;">'+detailEnd+'</div></div>':'')+(detailStart&&detailEnd?'<div style="background:#F0F4FF;border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--pur);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">&#x23F3; Durée</div><div style="font-weight:700;color:var(--pur);font-size:15px;">'+dureeHHMM(detailStart,detailEnd)+'</div></div>':'')+'</div>':''}
     ${iv._equipage1?`<div class="mr"><div class="ml">&#x1F692; ${iv._engin1||'Engin 1'}</div><div class="mv2"><div style="display:flex;flex-wrap:wrap;gap:4px;">${iv._equipage1.map(e=>{const u=USERS.find(x=>x.l===e.login);const nom=u?fullName(u):((e.prenom||e.nom)?((e.prenom||'')+' '+(e.nom||'')).trim():e.login);return'<span style="background:'+(e.renfort?'#F5F3FF':'#EEF2FF')+';color:'+(e.renfort?'#6D28D9':'#3730A3')+';border-radius:6px;padding:2px 8px;font-size:11px;">'+(e.renfort?'&#x1F692; ':'')+'<span style="font-size:9px;opacity:.7;">'+e.role+'</span> '+nom+(e.renfort&&e.caserneNom?' <span style="font-size:9px;opacity:.7;">('+e.caserneNom+')</span>':'')+'</span>';}).join('')}</div></div></div>`:''}
     ${iv._equipage2?`<div class="mr"><div class="ml">&#x1F692; ${iv._engin2||'Engin 2'}</div><div class="mv2"><div style="display:flex;flex-wrap:wrap;gap:4px;">${iv._equipage2.map(e=>{const u=USERS.find(x=>x.l===e.login);const nom=u?fullName(u):((e.prenom||e.nom)?((e.prenom||'')+' '+(e.nom||'')).trim():e.login);return'<span style="background:'+(e.renfort?'#F5F3FF':'#F0FDF4')+';color:'+(e.renfort?'#6D28D9':'#166534')+';border-radius:6px;padding:2px 8px;font-size:11px;">'+(e.renfort?'&#x1F692; ':'')+'<span style="font-size:9px;opacity:.7;">'+e.role+'</span> '+nom+(e.renfort&&e.caserneNom?' <span style="font-size:9px;opacity:.7;">('+e.caserneNom+')</span>':'')+'</span>';}).join('')}</div></div></div>`:''}
+    ${pilpScope&&iv.s==='terminee'&&!iv._equipage1?'<div style="background:#FFF7ED;border:1px solid #FDBA74;border-radius:8px;padding:8px 10px;margin:6px 0;font-size:11px;color:#9A3412;">Ancienne fiche PILP : l’équipage n’avait pas été enregistré par la version utilisée lors du départ.</div>':''}
     ${linkedInternalReinforcementsHTML(iv)}
     ${interventionInternalReinforcements(iv).length?`<div class="mr"><div class="ml" style="color:#047857;">🏠 Renforts internes</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:6px;">${interventionInternalReinforcements(iv).map((renfort,index)=>'<div style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:8px;padding:8px 10px;"><div style="font-size:11px;font-weight:700;color:#047857;margin-bottom:5px;">Renfort interne '+(index+1)+' · '+(renfort.engin||'Véhicule à corriger')+' · '+(renfort.hDebut||'')+'</div><div style="display:flex;flex-wrap:wrap;gap:4px;">'+(renfort.equipage||[]).map(e=>{const u=USERS.find(x=>x.l===e.login);return'<span style="background:#fff;color:#065F46;border:1px solid #A7F3D0;border-radius:6px;padding:2px 8px;font-size:10px;"><span style="opacity:.75;">'+(e.role||'Agent')+'</span> '+(u?fullName(u):e.login)+'</span>';}).join('')+'</div></div>').join('')}</div></div></div>`:''}
     ${(iv._releves&&iv._releves.filter(r=>!r.isRenfort&&!r.isRenfortInterne).length)?`<div class="mr"><div class="ml" style="color:#0369A1;">&#x1F504; Relèves</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:6px;">${iv._releves.filter(r=>!r.isRenfort&&!r.isRenfortInterne).map((r,ri)=>{
@@ -6698,18 +6706,22 @@ function creerPILP(ivId){
   err.style.display='none';
   const h=getH(N());
   const annee=new Date().getFullYear();
+  const localisation=document.getElementById('pf-loc').value;
+  const hauteur=parseFloat(document.getElementById('pf-haut').value)||null;
+  const reconnaissanceFaite=document.getElementById('pf-reco').checked;
+  const axeTir=document.getElementById('pf-axe').checked;
+  const observations=document.getElementById('pf-obs').value.trim();
   // La PILP créée reçoit un id temporaire PILP-2026-001
   // Elle n'a PAS encore de numéro INT — ce sera attribué à son passage En cours.
   const pilpId=nextPilpId(annee);
   PILP_IVS.unshift({
     id:pilpId,ivRef:iv.id,_numApl:interventionDisplayCallNumber(iv),
     // Pas de _numCaserne ni _numGlobal ici — attribués au passage En cours
-    n:'Nid de frelons asiatiques — PILP',addr,com:iv.com,h,req,tel,
-    localisation:document.getElementById('pf-loc').value,
-    hauteur:parseFloat(document.getElementById('pf-haut').value)||null,
-    reconnaissanceFaite:document.getElementById('pf-reco').checked,
-    axeTir:document.getElementById('pf-axe').checked,
-    obs:document.getElementById('pf-obs').value.trim(),
+    n:'Nid de frelons asiatiques — PILP',addr,addrComp:iv.addrComp||'',com:iv.com,h,req,tel,tels:Array.isArray(iv.tels)?iv.tels.slice():[tel],
+    op:iv.op||iv.agr||CU.l,reqDispo:iv.reqDispo?JSON.parse(JSON.stringify(iv.reqDispo)):null,
+    localisation:localisation,hauteur:hauteur,reconnaissanceFaite:reconnaissanceFaite,axeTir:axeTir,obs:observations,det:observations,
+    _appelDetails:Object.assign({},iv._appelDetails||{},{'Localisation du nid':localisation,'Hauteur':hauteur?hauteur+' m':'Non renseignée','Reconnaissance':reconnaissanceFaite?'Réalisée':'Non réalisée','Axe de tir':axeTir?'Disponible':'À vérifier'}),
+    _nidsAppel:Array.isArray(iv._nidsAppel)?JSON.parse(JSON.stringify(iv._nidsAppel)):undefined,
     s:'en-attente',agr:CU.l,tireur:null,rappels:0,avisIds:[],tl:[mkTL('en-attente',h,CU.l)]
   });
   if(CD())CD().pilpIvs=PILP_IVS;
@@ -6723,6 +6735,53 @@ function creerPILP(ivId){
 }
 
 // ────────────────── PILP LIST ──────────────────
+function timelineEntryHHMM(entry){
+  const digits=String(entry&&entry.h||'').replace(/\D/g,'');
+  return digits.length>=12?digits.slice(8,10)+':'+digits.slice(10,12):'';
+}
+function agaiRepairLegacyPilpDetails(){
+  const repaired=[];
+  (PILP_IVS||[]).forEach(function(iv){
+    if(!iv||iv._legacyPilpDetailsVersion==='20260827-pilp-details-v1')return;
+    const source=(IVS||[]).find(function(candidate){return candidate&&(candidate.id===iv.ivRef||candidate._pilpId===iv.id);})||null;
+    let changed=false;
+    const copyIfMissing=function(key,value,clone){
+      if((iv[key]===undefined||iv[key]===null||iv[key]==='')&&value!==undefined&&value!==null&&value!==''){
+        iv[key]=clone?JSON.parse(JSON.stringify(value)):value;changed=true;
+      }
+    };
+    if(source){
+      ['op','addrComp','det','reqDispo','_reqInit','_telInit','_natureAppelInitiale'].forEach(function(key){copyIfMissing(key,source[key],key==='reqDispo');});
+      ['tels','_nidsAppel'].forEach(function(key){if((!Array.isArray(iv[key])||!iv[key].length)&&Array.isArray(source[key])&&source[key].length){iv[key]=JSON.parse(JSON.stringify(source[key]));changed=true;}});
+      if(!iv._appelDetails&&source._appelDetails){iv._appelDetails=JSON.parse(JSON.stringify(source._appelDetails));changed=true;}
+      const sameOperationalChef=!!(iv.agr&&(source.agr===iv.agr||source._agr2===iv.agr||(typeof interventionReportParticipants==='function'&&interventionReportParticipants(source).some(function(member){return member.login===iv.agr;}))));
+      if(sameOperationalChef){
+        ['eng','_engin1','_engin2','_equipage1','_equipage2','_engin1RoleConfig','_engin2RoleConfig'].forEach(function(key){copyIfMissing(key,source[key],true);});
+      }
+    }
+    if(!iv.op){
+      const creation=(iv.tl||[])[0];iv.op=source&&source.op||creation&&creation.who||'';if(iv.op)changed=true;
+    }
+    if(!iv._hDebut){
+      const start=(iv.tl||[]).find(function(entry){return entry&&entry.s==='en-cours';});
+      const startTime=timelineEntryHHMM(start);if(startTime){iv._hDebut=startTime;iv._hDebutReelle=startTime;iv._hDebutInitiale=startTime;changed=true;}
+    }
+    if(!iv.det&&iv.obs){iv.det=iv.obs;changed=true;}
+    const pilpDetails=Object.assign({},iv._appelDetails||{});
+    if(iv.localisation&&!pilpDetails['Localisation du nid'])pilpDetails['Localisation du nid']=iv.localisation;
+    if(iv.hauteur&&!pilpDetails['Hauteur'])pilpDetails['Hauteur']=String(iv.hauteur).replace(/\s*m$/i,'')+' m';
+    if(iv.reconnaissanceFaite!==undefined&&!pilpDetails['Reconnaissance'])pilpDetails['Reconnaissance']=iv.reconnaissanceFaite?'Réalisée':'Non réalisée';
+    if(iv.axeTir!==undefined&&!pilpDetails['Axe de tir'])pilpDetails['Axe de tir']=iv.axeTir?'Disponible':'À vérifier';
+    if(JSON.stringify(pilpDetails)!==JSON.stringify(iv._appelDetails||{})){iv._appelDetails=pilpDetails;changed=true;}
+    iv._legacyPilpDetailsVersion='20260827-pilp-details-v1';
+    if(changed){
+      if(!Array.isArray(iv.tl))iv.tl=[];
+      iv.tl.push({s:'information',h:getH(N()),who:'Correction automatique AGAI',note:'Ancienne fiche PILP complétée avec les informations opérationnelles disponibles'});
+      repaired.push(iv.id);
+    }
+  });
+  return repaired;
+}
 function sfPilp(f,btn){
   fltPilp=f;
   document.querySelectorAll('#subtab-pilp .fb').forEach(b=>b.classList.remove('active'));
@@ -6734,6 +6793,12 @@ function rPilp(){
   if(!isTireurPILP()){
     const cont=document.getElementById('pilp-list');if(cont)cont.innerHTML='';
     return;
+  }
+  const legacyPilpRepairs=agaiRepairLegacyPilpDetails();
+  if(legacyPilpRepairs.length){
+    if(typeof syncCaserneContext==='function')syncCaserneContext();
+    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+    saveData(true);
   }
   // Compteurs récapitulatifs PILP
   document.getElementById('pilp-nb1').textContent=PILP_IVS.filter(iv=>iv.s==='en-attente').length;
@@ -10926,7 +10991,7 @@ function confirmerDepart(id){
     interruptedHandoff?'Départ à '+heure+' repris de l’intervention '+interruptedHandoff.source.id:(restartedAfterPending?'Nouveau départ à '+heure+' après retour en attente':(chained?'Début enchaîné à '+heure+' après l’intervention précédente':'Départ réel à '+heure)));
   delete iv._retourAttenteDepuis;
   assignInterventionNumbersAtStart(iv);
-  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  markOperationalInterventionDirty(iv);
   saveData(true);cM();refreshOperationalInterventionViews();rStatsHeader(); // push immédiat : changement de statut partagé
   setTimeout(function(){oM(id);},80);
 }
@@ -14172,7 +14237,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260827-nettoyage-retour-attente-176';
+const APP_VERSION='20260827-pilp-complet-ut188-177';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne

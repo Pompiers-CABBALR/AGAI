@@ -2990,7 +2990,7 @@ function confirmerDepart(id){
     interruptedHandoff?'Départ à '+heure+' repris de l’intervention '+interruptedHandoff.source.id:(restartedAfterPending?'Nouveau départ à '+heure+' après retour en attente':(chained?'Début enchaîné à '+heure+' après l’intervention précédente':'Départ réel à '+heure)));
   delete iv._retourAttenteDepuis;
   assignInterventionNumbersAtStart(iv);
-  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  markOperationalInterventionDirty(iv);
   saveData(true);cM();refreshOperationalInterventionViews();rStatsHeader(); // push immédiat : changement de statut partagé
   setTimeout(function(){oM(id);},80);
 }

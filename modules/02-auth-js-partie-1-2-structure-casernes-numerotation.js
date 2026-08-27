@@ -553,20 +553,17 @@ function findInterruptedDepartureHandoff(chefLogin,targetId){
 
 function agaiRepairIntervention188ChainedStart(){
   const data=CURRENT_CASERNE_ID&&CASERNE_DATA[CURRENT_CASERNE_ID];
-  const version='20260827-ut188-chain-start-v1';
+  const version='20260827-apl-000263-ut188-chain-start-v2';
   if(!data||data._ut188ChainStartRepairVersion===version)return {applied:false,changed:false};
   const all=[].concat(data.ivs||[],data.pilpIvs||[]);
-  const target=all.find(function(iv){return iv&&Number(iv._numCaserne)===188;});
-  const previous=all.find(function(iv){return iv&&Number(iv._numCaserne)===187;});
-  if(!target||!previous||!previous._hFin)return {applied:false,changed:false};
-  const sameDay=String(target.h||'').slice(0,8)===String(previous.h||'').slice(0,8);
-  if(!sameDay)return {applied:false,changed:false};
+  const target=all.find(function(iv){return iv&&iv._numApl==='APL_2026_000263'&&Number(iv._numCaserne)===188;});
+  if(!target)return {applied:false,changed:false};
   let changed=false;
-  if(previous._hFin==='16:11'&&['16:38',''].includes(String(target._hDebut||''))){
+  if(String(target._hDebut||'')!=='16:11'){
     target._hDebut='16:11';target._hDebutReelle='16:11';target._hDebutInitiale='16:11';
-    target._startLockedByChain=true;target._chainedFromInterventionId=previous.id;
+    target._startLockedByChain=true;
     if(!Array.isArray(target.tl))target.tl=[];
-    target.tl.push({s:'modif-heure',h:getH(N()),who:'Correction automatique AGAI',note:'Départ corrigé à 16:11 — enchaînement après l’intervention UT 187'});
+    target.tl.push({s:'modif-heure',h:getH(N()),who:'Correction automatique AGAI',note:'Départ corrigé à 16:11 — enchaînement après l’intervention UT 187 (APL_2026_000263)'});
     changed=true;
   }
   data._ut188ChainStartRepairVersion=version;

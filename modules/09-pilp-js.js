@@ -31,18 +31,22 @@ function creerPILP(ivId){
   err.style.display='none';
   const h=getH(N());
   const annee=new Date().getFullYear();
+  const localisation=document.getElementById('pf-loc').value;
+  const hauteur=parseFloat(document.getElementById('pf-haut').value)||null;
+  const reconnaissanceFaite=document.getElementById('pf-reco').checked;
+  const axeTir=document.getElementById('pf-axe').checked;
+  const observations=document.getElementById('pf-obs').value.trim();
   // La PILP créée reçoit un id temporaire PILP-2026-001
   // Elle n'a PAS encore de numéro INT — ce sera attribué à son passage En cours.
   const pilpId=nextPilpId(annee);
   PILP_IVS.unshift({
     id:pilpId,ivRef:iv.id,_numApl:interventionDisplayCallNumber(iv),
     // Pas de _numCaserne ni _numGlobal ici — attribués au passage En cours
-    n:'Nid de frelons asiatiques — PILP',addr,com:iv.com,h,req,tel,
-    localisation:document.getElementById('pf-loc').value,
-    hauteur:parseFloat(document.getElementById('pf-haut').value)||null,
-    reconnaissanceFaite:document.getElementById('pf-reco').checked,
-    axeTir:document.getElementById('pf-axe').checked,
-    obs:document.getElementById('pf-obs').value.trim(),
+    n:'Nid de frelons asiatiques — PILP',addr,addrComp:iv.addrComp||'',com:iv.com,h,req,tel,tels:Array.isArray(iv.tels)?iv.tels.slice():[tel],
+    op:iv.op||iv.agr||CU.l,reqDispo:iv.reqDispo?JSON.parse(JSON.stringify(iv.reqDispo)):null,
+    localisation:localisation,hauteur:hauteur,reconnaissanceFaite:reconnaissanceFaite,axeTir:axeTir,obs:observations,det:observations,
+    _appelDetails:Object.assign({},iv._appelDetails||{},{'Localisation du nid':localisation,'Hauteur':hauteur?hauteur+' m':'Non renseignée','Reconnaissance':reconnaissanceFaite?'Réalisée':'Non réalisée','Axe de tir':axeTir?'Disponible':'À vérifier'}),
+    _nidsAppel:Array.isArray(iv._nidsAppel)?JSON.parse(JSON.stringify(iv._nidsAppel)):undefined,
     s:'en-attente',agr:CU.l,tireur:null,rappels:0,avisIds:[],tl:[mkTL('en-attente',h,CU.l)]
   });
   if(CD())CD().pilpIvs=PILP_IVS;
@@ -56,6 +60,53 @@ function creerPILP(ivId){
 }
 
 // ────────────────── PILP LIST ──────────────────
+function timelineEntryHHMM(entry){
+  const digits=String(entry&&entry.h||'').replace(/\D/g,'');
+  return digits.length>=12?digits.slice(8,10)+':'+digits.slice(10,12):'';
+}
+function agaiRepairLegacyPilpDetails(){
+  const repaired=[];
+  (PILP_IVS||[]).forEach(function(iv){
+    if(!iv||iv._legacyPilpDetailsVersion==='20260827-pilp-details-v1')return;
+    const source=(IVS||[]).find(function(candidate){return candidate&&(candidate.id===iv.ivRef||candidate._pilpId===iv.id);})||null;
+    let changed=false;
+    const copyIfMissing=function(key,value,clone){
+      if((iv[key]===undefined||iv[key]===null||iv[key]==='')&&value!==undefined&&value!==null&&value!==''){
+        iv[key]=clone?JSON.parse(JSON.stringify(value)):value;changed=true;
+      }
+    };
+    if(source){
+      ['op','addrComp','det','reqDispo','_reqInit','_telInit','_natureAppelInitiale'].forEach(function(key){copyIfMissing(key,source[key],key==='reqDispo');});
+      ['tels','_nidsAppel'].forEach(function(key){if((!Array.isArray(iv[key])||!iv[key].length)&&Array.isArray(source[key])&&source[key].length){iv[key]=JSON.parse(JSON.stringify(source[key]));changed=true;}});
+      if(!iv._appelDetails&&source._appelDetails){iv._appelDetails=JSON.parse(JSON.stringify(source._appelDetails));changed=true;}
+      const sameOperationalChef=!!(iv.agr&&(source.agr===iv.agr||source._agr2===iv.agr||(typeof interventionReportParticipants==='function'&&interventionReportParticipants(source).some(function(member){return member.login===iv.agr;}))));
+      if(sameOperationalChef){
+        ['eng','_engin1','_engin2','_equipage1','_equipage2','_engin1RoleConfig','_engin2RoleConfig'].forEach(function(key){copyIfMissing(key,source[key],true);});
+      }
+    }
+    if(!iv.op){
+      const creation=(iv.tl||[])[0];iv.op=source&&source.op||creation&&creation.who||'';if(iv.op)changed=true;
+    }
+    if(!iv._hDebut){
+      const start=(iv.tl||[]).find(function(entry){return entry&&entry.s==='en-cours';});
+      const startTime=timelineEntryHHMM(start);if(startTime){iv._hDebut=startTime;iv._hDebutReelle=startTime;iv._hDebutInitiale=startTime;changed=true;}
+    }
+    if(!iv.det&&iv.obs){iv.det=iv.obs;changed=true;}
+    const pilpDetails=Object.assign({},iv._appelDetails||{});
+    if(iv.localisation&&!pilpDetails['Localisation du nid'])pilpDetails['Localisation du nid']=iv.localisation;
+    if(iv.hauteur&&!pilpDetails['Hauteur'])pilpDetails['Hauteur']=String(iv.hauteur).replace(/\s*m$/i,'')+' m';
+    if(iv.reconnaissanceFaite!==undefined&&!pilpDetails['Reconnaissance'])pilpDetails['Reconnaissance']=iv.reconnaissanceFaite?'Réalisée':'Non réalisée';
+    if(iv.axeTir!==undefined&&!pilpDetails['Axe de tir'])pilpDetails['Axe de tir']=iv.axeTir?'Disponible':'À vérifier';
+    if(JSON.stringify(pilpDetails)!==JSON.stringify(iv._appelDetails||{})){iv._appelDetails=pilpDetails;changed=true;}
+    iv._legacyPilpDetailsVersion='20260827-pilp-details-v1';
+    if(changed){
+      if(!Array.isArray(iv.tl))iv.tl=[];
+      iv.tl.push({s:'information',h:getH(N()),who:'Correction automatique AGAI',note:'Ancienne fiche PILP complétée avec les informations opérationnelles disponibles'});
+      repaired.push(iv.id);
+    }
+  });
+  return repaired;
+}
 function sfPilp(f,btn){
   fltPilp=f;
   document.querySelectorAll('#subtab-pilp .fb').forEach(b=>b.classList.remove('active'));
@@ -67,6 +118,12 @@ function rPilp(){
   if(!isTireurPILP()){
     const cont=document.getElementById('pilp-list');if(cont)cont.innerHTML='';
     return;
+  }
+  const legacyPilpRepairs=agaiRepairLegacyPilpDetails();
+  if(legacyPilpRepairs.length){
+    if(typeof syncCaserneContext==='function')syncCaserneContext();
+    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+    saveData(true);
   }
   // Compteurs récapitulatifs PILP
   document.getElementById('pilp-nb1').textContent=PILP_IVS.filter(iv=>iv.s==='en-attente').length;
