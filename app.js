@@ -3495,9 +3495,11 @@ function rAccueil(){
   const annee=String(d.getFullYear());
   const moisStr=annee+String(d.getMonth()+1).padStart(2,'0');
   const jourStr=moisStr+String(d.getDate()).padStart(2,'0');
-  // Exclure les interventions annulées, PILIP et non-terminées des stats
-  const ivStats=IVS.filter(iv=>!iv._isPilip&&isInterventionComptabilisee(iv));
-  const pilpStats=isTireurPILP()?PILP_IVS.filter(isInterventionComptabilisee):[];
+  // Les PILP terminées sont des interventions à part entière pour tous les
+  // utilisateurs. Les copies techniques créées uniquement pour l'historique
+  // sont exclues afin de ne jamais compter deux fois la même PILP.
+  const ivStats=IVS.filter(iv=>!iv._isPilip&&!iv._lienPilpSourceId&&isInterventionComptabilisee(iv));
+  const pilpStats=PILP_IVS.filter(isInterventionComptabilisee);
   const nbAnnee=ivStats.filter(iv=>statsInterventionInPeriod(iv,annee)).length+pilpStats.filter(iv=>statsInterventionInPeriod(iv,annee)).length;
   const nbMois=ivStats.filter(iv=>statsInterventionInPeriod(iv,moisStr)).length+pilpStats.filter(iv=>statsInterventionInPeriod(iv,moisStr)).length;
   const nbJour=ivStats.filter(iv=>statsInterventionInPeriod(iv,jourStr)).length+pilpStats.filter(iv=>statsInterventionInPeriod(iv,jourStr)).length;
@@ -14356,7 +14358,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260827-selection-equipier-renfort-181';
+const APP_VERSION='20260827-accueil-compteurs-pilp-182';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne

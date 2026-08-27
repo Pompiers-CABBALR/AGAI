@@ -14,9 +14,11 @@ function rAccueil(){
   const annee=String(d.getFullYear());
   const moisStr=annee+String(d.getMonth()+1).padStart(2,'0');
   const jourStr=moisStr+String(d.getDate()).padStart(2,'0');
-  // Exclure les interventions annulées, PILIP et non-terminées des stats
-  const ivStats=IVS.filter(iv=>!iv._isPilip&&isInterventionComptabilisee(iv));
-  const pilpStats=isTireurPILP()?PILP_IVS.filter(isInterventionComptabilisee):[];
+  // Les PILP terminées sont des interventions à part entière pour tous les
+  // utilisateurs. Les copies techniques créées uniquement pour l'historique
+  // sont exclues afin de ne jamais compter deux fois la même PILP.
+  const ivStats=IVS.filter(iv=>!iv._isPilip&&!iv._lienPilpSourceId&&isInterventionComptabilisee(iv));
+  const pilpStats=PILP_IVS.filter(isInterventionComptabilisee);
   const nbAnnee=ivStats.filter(iv=>statsInterventionInPeriod(iv,annee)).length+pilpStats.filter(iv=>statsInterventionInPeriod(iv,annee)).length;
   const nbMois=ivStats.filter(iv=>statsInterventionInPeriod(iv,moisStr)).length+pilpStats.filter(iv=>statsInterventionInPeriod(iv,moisStr)).length;
   const nbJour=ivStats.filter(iv=>statsInterventionInPeriod(iv,jourStr)).length+pilpStats.filter(iv=>statsInterventionInPeriod(iv,jourStr)).length;
