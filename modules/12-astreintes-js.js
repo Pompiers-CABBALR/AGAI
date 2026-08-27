@@ -2584,6 +2584,15 @@ function canCurrentUserStartIntervention(iv){
   return hasActiveOutgoingPersonnelReinforcementRequest(iv);
 }
 
+function canCurrentUserSelectIntervention(iv){
+  if(!iv||!CU)return false;
+  if(isAdminModeActive()||isAgres())return true;
+  if(isPilpIntervention(iv))return isTireurPILP();
+  // Le droit Interventions permet à un équipier de sélectionner la fiche afin
+  // de demander un renfort. Il ne lui donne pas, à lui seul, le droit au départ.
+  return hasRight('Interventions');
+}
+
 function agentSelectHtml(role,idSel,suggestedLogin,piqLabel,required,excludeLogins){
   const reqBadge=required?'<span style="color:#E24B4A;">*</span>':'<span style="font-size:10px;color:var(--t2);font-weight:400;">(optionnel)</span>';
   const piqBadge=suggestedLogin?'<span style="font-size:9px;background:#EAF3DE;color:#3B6D11;border-radius:4px;padding:1px 5px;margin-left:4px;">piquet</span>':'';
@@ -3395,6 +3404,9 @@ function syncInternalReinforcementSource(child){
 
 function showRenfortModal(ivId,forcePersonnel){
   const iv=interventionById(ivId);if(!iv)return;
+  if(!canCurrentUserSelectIntervention(iv)){
+    showToast('Vous n’êtes pas autorisé à demander un renfort pour cette intervention.','warn');return;
+  }
   // Si l'utilisateur n'est pas chef d'agrès, il ne peut demander qu'un renfort personnel
   if(forcePersonnel===undefined)forcePersonnel=!(isAgres()||isChef()||hasRight('Administration'));
   const autresCasernes=CASERNES.filter(function(c){return c.id!==CURRENT_CASERNE_ID;});

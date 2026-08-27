@@ -5626,7 +5626,7 @@ function renderInterventionRow(iv, ag, tireur) {
   const isPilp = iv.id.startsWith('PILP');
   const isRenfortInternal = iv._isRenfortInterneMission === true;
   const isRenfortUT = iv._isRenfort === true && !isRenfortInternal;
-  const chkShow = (ag || tireur || canCurrentUserStartIntervention(iv)) && !isRenfortUT && (iv.s === 'en-attente' || (iv.s === 'selectionne' && iv.agr === CU.l));
+  const chkShow = canCurrentUserSelectIntervention(iv) && !isRenfortUT && (iv.s === 'en-attente' || (iv.s === 'selectionne' && iv.agr === CU.l));
   const checked = iv.s === 'selectionne' && iv.agr === CU.l;
   const onchg = isPilp ? `toggleChkPilp('${iv.id}',this)` : `toggleChk('${iv.id}',this)`;
   const onclick = isPilp ? `oPilp('${iv.id}')` : `oM('${iv.id}')`;
@@ -6010,7 +6010,9 @@ function oM(id){
   const detailStart=iv._sdis?(iv._hAcquis||iv._hDebut||''):(iv._hDebut||'');
   const detailEnd=iv._sdis?(iv._hOpTerminee||iv._hFin||''):(iv._hFin||'');
   const ag=isAgres(),chef=isChef()||hasRight('Administration');
-  const operationalActor=canCurrentUserStartIntervention(iv);
+  const canSelect=canCurrentUserSelectIntervention(iv);
+  const canStart=canCurrentUserStartIntervention(iv);
+  const operationalActor=canSelect;
   // _showAutoBtn défini globalement pour toute la fonction oM
   const _isOwnAgres_=(iv.agr===CU.l||iv._agr2===CU.l);
   // Autorisation disponible pour toutes les interventions (sauf renforts)
@@ -6028,7 +6030,7 @@ function oM(id){
   const appelDetailEntries=iv._appelDetails&&typeof iv._appelDetails==='object'
     ?Object.entries(iv._appelDetails).filter(([key])=>(key!=='Nids à traiter'||!Array.isArray(iv._nidsAppel)||iv._nidsAppel.length!==1)&&key!=='Disponibilité du requérant')
     :[];
-  const reclassHtml=(operationalActor&&iv.s==='en-cours')?`<div class="reclass-box">
+  const reclassHtml=(canStart&&iv.s==='en-cours'&&(iv.agr===CU.l||iv._agr2===CU.l||isAdminModeActive()))?`<div class="reclass-box">
     <div class="reclass-title">Reclasser la nature</div>
     <select class="fi" id="reclass-sel" style="margin-bottom:8px;">${NAT.map(n=>`<option value="${n.l}"${n.l===iv.n?' selected':''}>${n.l}</option>`).join('')}</select>
     <button class="btn sm" onclick="reclasser('${iv.id}')">✏️ Appliquer</button>
@@ -6068,9 +6070,12 @@ function oM(id){
       ;
       actions=`<div class="brow">
         ${autreAgres?`<div style="padding:6px 8px;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;font-size:12px;color:#991B1B;">🔒 Sélectionnée par ${iv.agr}</div>`:
-        `${canUseOperationalStartInterface()
-          ?`<button class="btn am sm" onclick="cS('${iv.id}','en-cours')"${blocage?' style="opacity:.4;pointer-events:none;" title="Cl&#244;turez d&#39;abord '+enCours.id+'"':''}>▶ En cours</button>`
-          :`<button class="btn sm" disabled title="Le départ est réservé aux mobiles et tablettes" style="opacity:.65;">📱 En cours : mobile/tablette</button>`}
+        `${canStart
+          ?(canUseOperationalStartInterface()
+            ?`<button class="btn am sm" onclick="cS('${iv.id}','en-cours')"${blocage?' style="opacity:.4;pointer-events:none;" title="Cl&#244;turez d&#39;abord '+enCours.id+'"':''}>▶ En cours</button>`
+            :`<button class="btn sm" disabled title="Le départ est réservé aux mobiles et tablettes" style="opacity:.65;">📱 En cours : mobile/tablette</button>`)
+          :`<button class="btn sm" disabled title="Demandez d’abord un renfort de personnel à une autre caserne" style="opacity:.65;">🔒 Renfort personnel requis</button>`}
+        ${!iv._isRenfort&&hasRight('Interventions')?`<button class="btn sm" style="background:#7C3AED;color:#fff;border-color:#7C3AED;" onclick="showRenfortModal('${iv.id}',true)">&#x1F4E2; Renfort personnel</button>`:''}
         <button class="btn sm" onclick="cS('${iv.id}','en-attente')">↩ En attente</button>`}
       </div>
       ${agr2Html}
@@ -6572,6 +6577,10 @@ function saveOperationalStartAuthorization(iv,authorization){
 function cS(id,s,confirmed){
   const iv=interventionById(id);if(!iv)return;
   const previousStatus=iv.s;
+  if(s==='selectionne'&&!canCurrentUserSelectIntervention(iv)){
+    showToast('Vous n’êtes pas autorisé à sélectionner cette intervention.','warn');
+    return;
+  }
   if(s==='en-attente'&&previousStatus==='en-cours'&&confirmed!==true){
     const oldStart=iv._hDebut||iv._hDebutReelle||'';
     confirmModal('Remettre cette intervention en attente ?'+(oldStart?' Le départ enregistré à '+oldStart+' sera annulé.':'')+' Le numéro UT sera retiré et l’intervention devra être sélectionnée puis redémarrée.',function(){cS(id,s,true);});
@@ -6602,7 +6611,8 @@ function cS(id,s,confirmed){
   }
   if(!iv.tl)iv.tl=[];
   iv.s=s;
-  if(s==='selectionne'||s==='en-cours'){ if(isAgres()||isChef()||isAdminModeActive()||(isPilpIntervention(iv)&&isTireurPILP())) iv.agr=CU.l; }
+  if(s==='selectionne'&&canCurrentUserSelectIntervention(iv))iv.agr=CU.l;
+  if(s==='en-cours'&&canCurrentUserStartIntervention(iv))iv.agr=CU.l;
   if(isPilpIntervention(iv)&&(s==='selectionne'||s==='en-cours'))iv.tireur=CU.l;
   if(s==='selectionne'){
     parcConfirmed.delete(iv.id);
@@ -10663,6 +10673,15 @@ function canCurrentUserStartIntervention(iv){
   return hasActiveOutgoingPersonnelReinforcementRequest(iv);
 }
 
+function canCurrentUserSelectIntervention(iv){
+  if(!iv||!CU)return false;
+  if(isAdminModeActive()||isAgres())return true;
+  if(isPilpIntervention(iv))return isTireurPILP();
+  // Le droit Interventions permet à un équipier de sélectionner la fiche afin
+  // de demander un renfort. Il ne lui donne pas, à lui seul, le droit au départ.
+  return hasRight('Interventions');
+}
+
 function agentSelectHtml(role,idSel,suggestedLogin,piqLabel,required,excludeLogins){
   const reqBadge=required?'<span style="color:#E24B4A;">*</span>':'<span style="font-size:10px;color:var(--t2);font-weight:400;">(optionnel)</span>';
   const piqBadge=suggestedLogin?'<span style="font-size:9px;background:#EAF3DE;color:#3B6D11;border-radius:4px;padding:1px 5px;margin-left:4px;">piquet</span>':'';
@@ -11474,6 +11493,9 @@ function syncInternalReinforcementSource(child){
 
 function showRenfortModal(ivId,forcePersonnel){
   const iv=interventionById(ivId);if(!iv)return;
+  if(!canCurrentUserSelectIntervention(iv)){
+    showToast('Vous n’êtes pas autorisé à demander un renfort pour cette intervention.','warn');return;
+  }
   // Si l'utilisateur n'est pas chef d'agrès, il ne peut demander qu'un renfort personnel
   if(forcePersonnel===undefined)forcePersonnel=!(isAgres()||isChef()||hasRight('Administration'));
   const autresCasernes=CASERNES.filter(function(c){return c.id!==CURRENT_CASERNE_ID;});
@@ -14334,7 +14356,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260827-pilp-equipage-horaires-verrouilles-180';
+const APP_VERSION='20260827-selection-equipier-renfort-181';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
