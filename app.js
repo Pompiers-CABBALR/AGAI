@@ -4831,6 +4831,7 @@ function pushTL(iv,s,who,note){
   const entry=mkTL(s,getH(N()),who);
   if(note)entry.note=note;
   iv.tl.push(entry);
+  if(['en-attente','selectionne','en-cours','terminee','annulee','avis-passage'].includes(s))iv._statusUpdatedAt=Date.now();
 }
 
 // Les administrateurs doivent voir les corrections horaires même lorsque leur
@@ -14391,7 +14392,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260828-liste-pilp-coherente-183';
+const APP_VERSION='20260828-statut-intervention-anti-retour-184';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -17709,6 +17710,85 @@ function _rcOverlayPendingLocalRows(rows){
   });
   return rows;
 }
+const RC_OPERATIONAL_STATUSES=['en-attente','selectionne','en-cours','terminee','annulee','avis-passage'];
+const RC_OPERATIONAL_PROTECTED_FIELDS=[
+  's','agr','tireur','eng','_engin1','_engin2','_equipage1','_equipage2','_agr2',
+  '_hDebut','_hDebutReelle','_hDebutInitiale','_dateDebut','_hFin','_hFinReelle','_duree',
+  '_numGlobal','_numCaserne','_numMois','_numSDIS','_numRenfort',
+  '_routeBatchId','_routeOrder','_routeConfirmedAt','_routeConfirmedBy',
+  '_retourAttenteDepuis','_hDebutAvantRetourAttente','_dateDebutAvantRetourAttente','_retourAttenteAt','_retourAttentePar',
+  '_startLockedByChain','_chainedFromInterventionId','_chainPreviousInterventionId','_departGeoControle',
+  '_statusUpdatedAt'
+];
+function _rcOperationalStatusSequence(iv){
+  return (iv&&Array.isArray(iv.tl)?iv.tl:[]).filter(function(entry){return entry&&RC_OPERATIONAL_STATUSES.includes(entry.s);}).map(function(entry){return {s:entry.s,h:String(entry.h||'')};});
+}
+function _rcStatusSequencePrefix(shorter,longer){
+  if(shorter.length>=longer.length)return false;
+  return shorter.every(function(entry,index){return longer[index]&&longer[index].s===entry.s&&longer[index].h===entry.h;});
+}
+function _rcOperationalStatusSource(current,incoming){
+  if(!current)return'incoming';
+  if(!incoming)return'current';
+  if(current.s===incoming.s)return'incoming';
+  const currentSeq=_rcOperationalStatusSequence(current),incomingSeq=_rcOperationalStatusSequence(incoming);
+  if(_rcStatusSequencePrefix(currentSeq,incomingSeq))return'incoming';
+  if(_rcStatusSequencePrefix(incomingSeq,currentSeq))return'current';
+  const currentRevision=Number(current._statusUpdatedAt)||0,incomingRevision=Number(incoming._statusUpdatedAt)||0;
+  if(currentRevision&&incomingRevision&&currentRevision!==incomingRevision)return currentRevision>incomingRevision?'current':'incoming';
+  const currentLast=currentSeq.length?currentSeq[currentSeq.length-1].h:'',incomingLast=incomingSeq.length?incomingSeq[incomingSeq.length-1].h:'';
+  if(currentLast!==incomingLast)return currentLast>incomingLast?'current':'incoming';
+  if(currentSeq.length!==incomingSeq.length)return currentSeq.length>incomingSeq.length?'current':'incoming';
+  // Sécurité pour les anciennes fiches sans historique exploitable : un état
+  // En cours ou Terminé ne peut pas être écrasé par une simple sélection.
+  const rank={'terminee':5,'en-cours':4,'selectionne':2,'en-attente':1,'avis-passage':1,'annulee':1};
+  return (rank[current.s]||0)>(rank[incoming.s]||0)?'current':'incoming';
+}
+function _rcMergeOperationalInterventionVersions(current,incoming){
+  if(!current)return {value:incoming,keptCurrentStatus:false};
+  if(!incoming)return {value:current,keptCurrentStatus:true};
+  if(_rcOperationalStatusSource(current,incoming)!=='current')return {value:incoming,keptCurrentStatus:false};
+  // Conserver les éventuels compléments reçus, mais reprendre intégralement
+  // l'état opérationnel le plus récent afin d'éviter tout retour visuel.
+  const merged=Object.assign({},incoming);
+  RC_OPERATIONAL_PROTECTED_FIELDS.forEach(function(key){
+    if(Object.prototype.hasOwnProperty.call(current,key)){
+      const value=current[key];merged[key]=value===undefined?undefined:JSON.parse(JSON.stringify(value));
+    }
+    else delete merged[key];
+  });
+  const timeline=[],seen=new Set();
+  [].concat(incoming.tl||[],current.tl||[]).forEach(function(entry){
+    const signature=JSON.stringify(entry||{});if(seen.has(signature))return;seen.add(signature);timeline.push(entry);
+  });
+  timeline.sort(function(a,b){return String(a&&a.h||'').localeCompare(String(b&&b.h||''));});
+  merged.tl=timeline;
+  return {value:merged,keptCurrentStatus:true};
+}
+function _rcReplaceLocalOperationalRecord(caserne,type,value){
+  if(!value||!value.id||!CASERNE_DATA[caserne])return;
+  const key=type==='pilp'?'pilpIvs':'ivs',list=CASERNE_DATA[caserne][key]||(CASERNE_DATA[caserne][key]=[]);
+  const index=list.findIndex(function(item){return item&&item.id===value.id;});
+  if(index>=0)list[index]=value;else list.push(value);
+  if(caserne===CURRENT_CASERNE_ID)syncCaserneContext();
+}
+async function _rcProtectOperationalStatusRows(rows){
+  const operational=(rows||[]).filter(function(row){return row&&(row.type==='iv'||row.type==='pilp')&&!row.deleted;});
+  if(!operational.length)return rows;
+  const ids=operational.map(function(row){return row.id;});
+  const filter='('+ids.map(function(id){return '"'+String(id).replace(/"/g,'')+'"';}).join(',')+')';
+  const resp=await fetch(RC_REST+'?id=in.'+encodeURIComponent(filter)+'&select=id,data,deleted',{headers:_sbHeaders});
+  if(!resp.ok)throw new Error('status guard GET HTTP '+resp.status);
+  const remoteRows=await resp.json(),remoteById={};
+  (Array.isArray(remoteRows)?remoteRows:[]).forEach(function(row){if(row&&row.id&&!row.deleted)remoteById[row.id]=row;});
+  operational.forEach(function(row){
+    const remote=remoteById[row.id];if(!remote||!remote.data)return;
+    const resolved=_rcMergeOperationalInterventionVersions(remote.data,row.data);
+    row.data=resolved.value;
+    if(resolved.keptCurrentStatus)_rcReplaceLocalOperationalRecord(row.caserne,row.type,resolved.value);
+  });
+  return rows;
+}
 function _rcRenderRealtimeViews(){
   try{rI();}catch(e){}
   try{rAccueil();}catch(e){}
@@ -17780,10 +17860,15 @@ function _rcApplyRealtimeRecord(record){
         if(index>=0)list.splice(index,1);
       }else{
         const current=index>=0?list[index]:null;
-        const next=Object.assign({},incoming);
+        let next=Object.assign({},incoming);
+        const statusResolution=(record.type==='iv'||record.type==='pilp')&&current?_rcMergeOperationalInterventionVersions(current,next):null;
+        if(statusResolution)next=statusResolution.value;
         if(current&&current.frelonPhotos&&!next.frelonPhotos)next.frelonPhotos=current.frelonPhotos;
         if(current&&current._pdfCache&&!next._pdfCache)next._pdfCache=current._pdfCache;
         if(index>=0)list[index]=next;else list.push(next);
+        if(statusResolution&&statusResolution.keptCurrentStatus){
+          _rcPendingDirty.add(record.id);_rcDirtyGeneration++;_rcPersistPendingDirty();_rcScheduleRetry(0);
+        }
       }
     }else if(record.type==='user'){
       if(!incoming.l)return false;
@@ -18113,6 +18198,7 @@ async function _rcPush(fullPush){
     rows=await _rcProtectSensitiveGlobalRow(rows);
     if(hadGlobalRow&&!rows.some(function(row){return row&&row.type==='global'&&row.caserne==='_GLOBAL';}))throw new Error('protection de la ligne globale indisponible');
     rows=_rcUniqueRowsById(rows);
+    if(!fullPush)rows=await _rcProtectOperationalStatusRows(rows);
     if(!rows.length){_jbSetStatus(_rcPendingDirty.size?'pending':'ok');return;}
     const currentUser = (typeof CU!=='undefined' && CU) ? (CU.l||'') : '';
     const payload = rows.map(function(r){ return { id:r.id, caserne:r.caserne, type:r.type, data:r.data, deleted:r.deleted, updated_by:currentUser }; });
@@ -18215,6 +18301,19 @@ async function _rcPull(silent){
     // Protéger les modifications locales en cours et récupérer les anciennes
     // heures locales si elles étaient absentes de l'ancien format "records".
     const activeCid = CURRENT_CASERNE_ID;
+    if(activeCid&&CASERNE_DATA[activeCid]&&data.CASERNE_DATA[activeCid]){
+      [['ivs','iv'],['pilpIvs','pilp']].forEach(function(pair){
+        const localList=CASERNE_DATA[activeCid][pair[0]]||[],remoteList=data.CASERNE_DATA[activeCid][pair[0]]||[];
+        const localById={};localList.forEach(function(iv){if(iv&&iv.id)localById[iv.id]=iv;});
+        remoteList.forEach(function(remote,index){
+          const local=remote&&localById[remote.id];if(!local)return;
+          const resolved=_rcMergeOperationalInterventionVersions(local,remote);
+          remoteList[index]=resolved.value;
+          if(resolved.keptCurrentStatus){_rcPendingDirty.add(_rcId(activeCid,pair[1],remote.id));_rcDirtyGeneration++;}
+        });
+      });
+      _rcPersistPendingDirty();
+    }
     if(activeCid && CASERNE_DATA[activeCid]){
       const localTel=JSON.parse(JSON.stringify(CASERNE_DATA[activeCid].astrTelData||{}));
       const remoteTel=(data.CASERNE_DATA[activeCid]&&data.CASERNE_DATA[activeCid].astrTelData)||{};
@@ -18247,7 +18346,8 @@ async function _rcPull(silent){
     const isTyping = document.getElementById('admin-add') && document.getElementById('admin-add').style.display!=='none'
       && (document.getElementById('nu-prenom')?.value || document.getElementById('nu-nom')?.value || document.getElementById('nu-mdp')?.value);
     if(!isTyping){ try{rAdm();}catch(e){} }
-    _jbSetStatus('ok'); return true;
+    if(_rcPendingDirty.size)_rcScheduleRetry(0);
+    _jbSetStatus(_rcPendingDirty.size?'pending':'ok'); return true;
   } catch(e){
     console.warn('[AGAI][RC] Pull error:', e); _jbSetStatus('error'); return false;
   }

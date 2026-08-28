@@ -7,6 +7,7 @@ function pushTL(iv,s,who,note){
   const entry=mkTL(s,getH(N()),who);
   if(note)entry.note=note;
   iv.tl.push(entry);
+  if(['en-attente','selectionne','en-cours','terminee','annulee','avis-passage'].includes(s))iv._statusUpdatedAt=Date.now();
 }
 
 // Les administrateurs doivent voir les corrections horaires même lorsque leur
