@@ -824,7 +824,7 @@ function renderInterventionRow(iv, ag, tireur) {
     'terminee':['bg2','Terminée'],
   };
   const [bc, bt] = STATUS_BADGE[iv.s] || ['bgr', '—'];
-  const isPilp = iv.id.startsWith('PILP');
+  const isPilp = isPilpIntervention(iv);
   const isRenfortInternal = iv._isRenfortInterneMission === true;
   const isRenfortUT = iv._isRenfort === true && !isRenfortInternal;
   const chkShow = canCurrentUserSelectIntervention(iv) && !isRenfortUT && (iv.s === 'en-attente' || (iv.s === 'selectionne' && iv.agr === CU.l));
@@ -846,6 +846,10 @@ function renderInterventionRow(iv, ag, tireur) {
       <div class="ivrh">&#x1F4C5; ${(iv.h || '').slice(0, 8)}${isRenfortUT ? ' <span style="background:#7C3AED;color:#fff;border-radius:4px;padding:0 5px;font-size:9px;font-weight:700;margin-left:4px;">RENFORT UT</span>' : isRenfortInternal ? ' <span style="background:#047857;color:#fff;border-radius:4px;padding:0 5px;font-size:9px;font-weight:700;margin-left:4px;">RENFORT INTERNE</span>' : ''}</div>
       <div class="ivrn">${isPilp ? '&#x1F3AF; ' : ''}${escHtml(iv.n)}${isRenfortUT ? ` <span style="font-size:10px;color:#7C3AED;font-weight:400;">— ${escHtml(iv._caserneSourceNom || '')}</span>` : isRenfortInternal ? ` <span style="font-size:10px;color:#047857;font-weight:400;">— pour ${escHtml(iv._sourceInterventionNumber || iv._ivSourceId || '')}</span>` : ''}${iv._avisPassage ? ' <span style="background:#9B59B6;color:#fff;border-radius:4px;padding:0 5px;font-size:9px;font-weight:700;margin-left:4px;">🟣 Avis passage</span>' : ''}</div>
       <div class="ivrc">&#x1F4CD; ${escHtml(interventionAddressLabel(iv))}${iv.eng ? ' · ' + escHtml(iv.eng) : ''}${isRenfortUT && iv._hDebut ? ' · depuis ' + escHtml(iv._hDebut) : ''}${numBadges}</div>
+      ${isPilp?`<div class="ivrc" style="display:flex;gap:5px;flex-wrap:wrap;margin-top:3px;">
+        <span style="padding:2px 6px;border-radius:6px;background:${iv.reconnaissanceFaite===true?'#DCFCE7':'#FEE2E2'};color:${iv.reconnaissanceFaite===true?'#166534':'#991B1B'};font-weight:600;">${iv.reconnaissanceFaite===true?'✅ Reconnaissance réalisée':'❌ Reconnaissance non réalisée'}</span>
+        <span style="padding:2px 6px;border-radius:6px;background:${iv.axeTir===true?'#DCFCE7':'#FEF3C7'};color:${iv.axeTir===true?'#166534':'#92400E'};font-weight:600;">${iv.axeTir===true?'🎯 Axe de tir disponible':'⚠️ Axe de tir à vérifier'}</span>
+      </div>`:''}
       ${iv.s==='en-attente'?reqAvailabilityBadgeHTML(iv):''}
     </div>
     <div class="ivrr" onclick="${onclick}">
@@ -910,11 +914,13 @@ function updateRenfortBadge(){
 }
 function rI(){
   const pendingAssignmentRepairs=agaiRepairPendingOperationalAssignments();
-  if(pendingAssignmentRepairs.length){
+  const pendingPilpAssignmentRepairs=agaiRepairPendingPilpAssignments();
+  if(pendingAssignmentRepairs.length||pendingPilpAssignmentRepairs.length){
     if(typeof syncCaserneContext==='function')syncCaserneContext();
     if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
     saveData(true);
     if(pendingAssignmentRepairs.some(function(id){const iv=interventionById(id);return iv&&iv._numApl==='APL_2026_000259';}))showToast('APL_2026_000259 : véhicule et équipage retirés de la file d’attente.','success');
+    if(pendingPilpAssignmentRepairs.length)showToast('Affectation PILP incorrecte retirée : la fiche est de nouveau disponible pour les tireurs PILP.','success');
   }
   const ut188Repair=agaiRepairIntervention188ChainedStart();
   if(ut188Repair.applied){

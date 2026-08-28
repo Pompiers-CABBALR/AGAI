@@ -538,6 +538,27 @@ function agaiRepairPendingOperationalAssignments(){
   });
   return repaired;
 }
+function pilpQualifiedLogin(login){
+  if(!login)return false;
+  const user=(USERS||[]).find(function(item){return item&&item.l===login;});
+  return !!(user&&Array.isArray(user.rights)&&user.rights.includes('Tireur PILP'));
+}
+function agaiRepairPendingPilpAssignments(){
+  const repaired=[];
+  (PILP_IVS||[]).forEach(function(iv){
+    if(!iv||!['en-attente','selectionne'].includes(iv.s))return;
+    const invalidSelection=iv.s==='selectionne'&&!pilpQualifiedLogin(iv.agr);
+    const waitingAssigned=iv.s==='en-attente'&&!!(iv.agr||iv.tireur||iv._routeBatchId||iv._routeOrder);
+    if(!invalidSelection&&!waitingAssigned)return;
+    if(invalidSelection)iv.s='en-attente';
+    iv.agr=null;iv.tireur=null;
+    delete iv._routeBatchId;delete iv._routeOrder;
+    if(!Array.isArray(iv.tl))iv.tl=[];
+    iv.tl.push({s:'en-attente',h:getH(N()),who:'Correction automatique AGAI',note:'Affectation PILP retirée : intervention disponible pour un tireur PILP'});
+    repaired.push(iv.id);
+  });
+  return repaired;
+}
 function interventionStampMillis(stamp){
   const d=String(stamp||'').replace(/\D/g,'');if(d.length<12)return 0;
   const date=new Date(Number(d.slice(0,4)),Number(d.slice(4,6))-1,Number(d.slice(6,8)),Number(d.slice(8,10)),Number(d.slice(10,12)));

@@ -47,7 +47,7 @@ function creerPILP(ivId){
     localisation:localisation,hauteur:hauteur,reconnaissanceFaite:reconnaissanceFaite,axeTir:axeTir,obs:observations,det:observations,
     _appelDetails:Object.assign({},iv._appelDetails||{},{'Localisation du nid':localisation,'Hauteur':hauteur?hauteur+' m':'Non renseignée','Reconnaissance':reconnaissanceFaite?'Réalisée':'Non réalisée','Axe de tir':axeTir?'Disponible':'À vérifier'}),
     _nidsAppel:Array.isArray(iv._nidsAppel)?JSON.parse(JSON.stringify(iv._nidsAppel)):undefined,
-    s:'en-attente',agr:CU.l,tireur:null,rappels:0,avisIds:[],tl:[mkTL('en-attente',h,CU.l)]
+    s:'en-attente',agr:null,tireur:null,rappels:0,avisIds:[],tl:[mkTL('en-attente',h,CU.l)]
   });
   if(CD())CD().pilpIvs=PILP_IVS;
   // Marquer le lien PILP sans clôturer — le chef d'agrès clôture ensuite normalement
@@ -125,13 +125,17 @@ function rPilp(){
     if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
     saveData(true);
   }
+  // Même règle que la liste Interventions : les statuts actifs restent visibles,
+  // tandis qu'une terminée disparaît dès le changement de journée.
+  const pilpTermineeAujourdhui=function(iv){return iv.s==='terminee'&&iv.tl&&iv.tl.some(function(t){return t.s==='terminee'&&(t.h||'').startsWith(TDP);});};
+  const pilpJour=PILP_IVS.filter(function(iv){return isTdy(iv)||['en-attente','selectionne','en-cours'].includes(iv.s)||pilpTermineeAujourdhui(iv);});
   // Compteurs récapitulatifs PILP
   document.getElementById('pilp-nb1').textContent=PILP_IVS.filter(iv=>iv.s==='en-attente').length;
   document.getElementById('pilp-nb2s').textContent=PILP_IVS.filter(iv=>iv.s==='selectionne').length;
   document.getElementById('pilp-nb2').textContent=PILP_IVS.filter(iv=>iv.s==='avis-passage').length;
   document.getElementById('pilp-nb3').textContent=PILP_IVS.filter(iv=>iv.s==='en-cours').length;
-  document.getElementById('pilp-nb4').textContent=PILP_IVS.filter(iv=>iv.s==='terminee').length;
-  document.getElementById('pilp-nbtot').textContent=PILP_IVS.length;
+  document.getElementById('pilp-nb4').textContent=pilpJour.filter(iv=>iv.s==='terminee').length;
+  document.getElementById('pilp-nbtot').textContent=pilpJour.length;
   // Avis de passage PILP (visible tireur/chef uniquement)
   const avisP=PILP_IVS.filter(iv=>iv.s==='avis-passage');
   const pas=document.getElementById('pilp-avsec');
@@ -176,10 +180,10 @@ function rPilp(){
     rPLPilp(pilpSelection);
   }else if(pilpPanel){pilpPanel.style.display='none';}
   let list;
-  if(fltPilp==='all') list=PILP_IVS.filter(iv=>iv.s!=='avis-passage');
-  else if(fltPilp==='mes-sel') list=PILP_IVS.filter(iv=>(iv.s==='selectionne'||iv.s==='en-cours')&&iv.agr===CU.l);
-  else if(fltPilp==='mes-resp') list=PILP_IVS.filter(iv=>iv.agr===CU.l&&['selectionne','en-cours','terminee'].includes(iv.s));
-  else list=PILP_IVS.filter(iv=>iv.s===fltPilp);
+  if(fltPilp==='all') list=pilpJour.filter(iv=>iv.s!=='avis-passage');
+  else if(fltPilp==='mes-sel') list=pilpJour.filter(iv=>(iv.s==='selectionne'||iv.s==='en-cours')&&iv.agr===CU.l);
+  else if(fltPilp==='mes-resp') list=pilpJour.filter(iv=>iv.agr===CU.l&&['selectionne','en-cours','terminee'].includes(iv.s));
+  else list=pilpJour.filter(iv=>iv.s===fltPilp);
   const cont=document.getElementById('pilp-list');
   if(!list.length){cont.innerHTML='<div style="padding:20px;text-align:center;font-size:13px;color:var(--t2);">Aucune intervention PILP.</div>';return;}
   const ag=isAgres(),chef=isChef()||hasRight('Administration');

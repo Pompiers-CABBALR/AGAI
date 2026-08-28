@@ -691,6 +691,27 @@ function agaiRepairPendingOperationalAssignments(){
   });
   return repaired;
 }
+function pilpQualifiedLogin(login){
+  if(!login)return false;
+  const user=(USERS||[]).find(function(item){return item&&item.l===login;});
+  return !!(user&&Array.isArray(user.rights)&&user.rights.includes('Tireur PILP'));
+}
+function agaiRepairPendingPilpAssignments(){
+  const repaired=[];
+  (PILP_IVS||[]).forEach(function(iv){
+    if(!iv||!['en-attente','selectionne'].includes(iv.s))return;
+    const invalidSelection=iv.s==='selectionne'&&!pilpQualifiedLogin(iv.agr);
+    const waitingAssigned=iv.s==='en-attente'&&!!(iv.agr||iv.tireur||iv._routeBatchId||iv._routeOrder);
+    if(!invalidSelection&&!waitingAssigned)return;
+    if(invalidSelection)iv.s='en-attente';
+    iv.agr=null;iv.tireur=null;
+    delete iv._routeBatchId;delete iv._routeOrder;
+    if(!Array.isArray(iv.tl))iv.tl=[];
+    iv.tl.push({s:'en-attente',h:getH(N()),who:'Correction automatique AGAI',note:'Affectation PILP retirée : intervention disponible pour un tireur PILP'});
+    repaired.push(iv.id);
+  });
+  return repaired;
+}
 function interventionStampMillis(stamp){
   const d=String(stamp||'').replace(/\D/g,'');if(d.length<12)return 0;
   const date=new Date(Number(d.slice(0,4)),Number(d.slice(4,6))-1,Number(d.slice(6,8)),Number(d.slice(8,10)),Number(d.slice(10,12)));
@@ -4709,7 +4730,9 @@ function enr(){
       n:'Nid de frelons asiatiques — PILP',addr,com,h,
       req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,reqDispo,_nidsAppel:nidsAppel,_erp:erp,_urgence:erp,
       localisation:null,hauteur:null,reconnaissanceFaite:false,axeTir:null,obs:det,
-      s:'en-attente',agr:CU.l,tireur:null,rappels:exPilp.length,
+      // Une PILP en attente reste libre : l'opérateur qui prend l'appel
+      // n'est pas automatiquement le chef d'agrès ni le tireur.
+      s:'en-attente',agr:null,tireur:null,rappels:exPilp.length,
       avisIds:exPilp.map(iv=>iv.id),tl:[mkTL('en-attente',h,CU.l)]
     });
     if(CD())CD().pilpIvs=PILP_IVS;
@@ -5625,7 +5648,7 @@ function renderInterventionRow(iv, ag, tireur) {
     'terminee':['bg2','Terminée'],
   };
   const [bc, bt] = STATUS_BADGE[iv.s] || ['bgr', '—'];
-  const isPilp = iv.id.startsWith('PILP');
+  const isPilp = isPilpIntervention(iv);
   const isRenfortInternal = iv._isRenfortInterneMission === true;
   const isRenfortUT = iv._isRenfort === true && !isRenfortInternal;
   const chkShow = canCurrentUserSelectIntervention(iv) && !isRenfortUT && (iv.s === 'en-attente' || (iv.s === 'selectionne' && iv.agr === CU.l));
@@ -5647,6 +5670,10 @@ function renderInterventionRow(iv, ag, tireur) {
       <div class="ivrh">&#x1F4C5; ${(iv.h || '').slice(0, 8)}${isRenfortUT ? ' <span style="background:#7C3AED;color:#fff;border-radius:4px;padding:0 5px;font-size:9px;font-weight:700;margin-left:4px;">RENFORT UT</span>' : isRenfortInternal ? ' <span style="background:#047857;color:#fff;border-radius:4px;padding:0 5px;font-size:9px;font-weight:700;margin-left:4px;">RENFORT INTERNE</span>' : ''}</div>
       <div class="ivrn">${isPilp ? '&#x1F3AF; ' : ''}${escHtml(iv.n)}${isRenfortUT ? ` <span style="font-size:10px;color:#7C3AED;font-weight:400;">— ${escHtml(iv._caserneSourceNom || '')}</span>` : isRenfortInternal ? ` <span style="font-size:10px;color:#047857;font-weight:400;">— pour ${escHtml(iv._sourceInterventionNumber || iv._ivSourceId || '')}</span>` : ''}${iv._avisPassage ? ' <span style="background:#9B59B6;color:#fff;border-radius:4px;padding:0 5px;font-size:9px;font-weight:700;margin-left:4px;">🟣 Avis passage</span>' : ''}</div>
       <div class="ivrc">&#x1F4CD; ${escHtml(interventionAddressLabel(iv))}${iv.eng ? ' · ' + escHtml(iv.eng) : ''}${isRenfortUT && iv._hDebut ? ' · depuis ' + escHtml(iv._hDebut) : ''}${numBadges}</div>
+      ${isPilp?`<div class="ivrc" style="display:flex;gap:5px;flex-wrap:wrap;margin-top:3px;">
+        <span style="padding:2px 6px;border-radius:6px;background:${iv.reconnaissanceFaite===true?'#DCFCE7':'#FEE2E2'};color:${iv.reconnaissanceFaite===true?'#166534':'#991B1B'};font-weight:600;">${iv.reconnaissanceFaite===true?'✅ Reconnaissance réalisée':'❌ Reconnaissance non réalisée'}</span>
+        <span style="padding:2px 6px;border-radius:6px;background:${iv.axeTir===true?'#DCFCE7':'#FEF3C7'};color:${iv.axeTir===true?'#166534':'#92400E'};font-weight:600;">${iv.axeTir===true?'🎯 Axe de tir disponible':'⚠️ Axe de tir à vérifier'}</span>
+      </div>`:''}
       ${iv.s==='en-attente'?reqAvailabilityBadgeHTML(iv):''}
     </div>
     <div class="ivrr" onclick="${onclick}">
@@ -5711,11 +5738,13 @@ function updateRenfortBadge(){
 }
 function rI(){
   const pendingAssignmentRepairs=agaiRepairPendingOperationalAssignments();
-  if(pendingAssignmentRepairs.length){
+  const pendingPilpAssignmentRepairs=agaiRepairPendingPilpAssignments();
+  if(pendingAssignmentRepairs.length||pendingPilpAssignmentRepairs.length){
     if(typeof syncCaserneContext==='function')syncCaserneContext();
     if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
     saveData(true);
     if(pendingAssignmentRepairs.some(function(id){const iv=interventionById(id);return iv&&iv._numApl==='APL_2026_000259';}))showToast('APL_2026_000259 : véhicule et équipage retirés de la file d’attente.','success');
+    if(pendingPilpAssignmentRepairs.length)showToast('Affectation PILP incorrecte retirée : la fiche est de nouveau disponible pour les tireurs PILP.','success');
   }
   const ut188Repair=agaiRepairIntervention188ChainedStart();
   if(ut188Repair.applied){
@@ -6812,7 +6841,7 @@ function creerPILP(ivId){
     localisation:localisation,hauteur:hauteur,reconnaissanceFaite:reconnaissanceFaite,axeTir:axeTir,obs:observations,det:observations,
     _appelDetails:Object.assign({},iv._appelDetails||{},{'Localisation du nid':localisation,'Hauteur':hauteur?hauteur+' m':'Non renseignée','Reconnaissance':reconnaissanceFaite?'Réalisée':'Non réalisée','Axe de tir':axeTir?'Disponible':'À vérifier'}),
     _nidsAppel:Array.isArray(iv._nidsAppel)?JSON.parse(JSON.stringify(iv._nidsAppel)):undefined,
-    s:'en-attente',agr:CU.l,tireur:null,rappels:0,avisIds:[],tl:[mkTL('en-attente',h,CU.l)]
+    s:'en-attente',agr:null,tireur:null,rappels:0,avisIds:[],tl:[mkTL('en-attente',h,CU.l)]
   });
   if(CD())CD().pilpIvs=PILP_IVS;
   // Marquer le lien PILP sans clôturer — le chef d'agrès clôture ensuite normalement
@@ -6890,13 +6919,17 @@ function rPilp(){
     if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
     saveData(true);
   }
+  // Même règle que la liste Interventions : les statuts actifs restent visibles,
+  // tandis qu'une terminée disparaît dès le changement de journée.
+  const pilpTermineeAujourdhui=function(iv){return iv.s==='terminee'&&iv.tl&&iv.tl.some(function(t){return t.s==='terminee'&&(t.h||'').startsWith(TDP);});};
+  const pilpJour=PILP_IVS.filter(function(iv){return isTdy(iv)||['en-attente','selectionne','en-cours'].includes(iv.s)||pilpTermineeAujourdhui(iv);});
   // Compteurs récapitulatifs PILP
   document.getElementById('pilp-nb1').textContent=PILP_IVS.filter(iv=>iv.s==='en-attente').length;
   document.getElementById('pilp-nb2s').textContent=PILP_IVS.filter(iv=>iv.s==='selectionne').length;
   document.getElementById('pilp-nb2').textContent=PILP_IVS.filter(iv=>iv.s==='avis-passage').length;
   document.getElementById('pilp-nb3').textContent=PILP_IVS.filter(iv=>iv.s==='en-cours').length;
-  document.getElementById('pilp-nb4').textContent=PILP_IVS.filter(iv=>iv.s==='terminee').length;
-  document.getElementById('pilp-nbtot').textContent=PILP_IVS.length;
+  document.getElementById('pilp-nb4').textContent=pilpJour.filter(iv=>iv.s==='terminee').length;
+  document.getElementById('pilp-nbtot').textContent=pilpJour.length;
   // Avis de passage PILP (visible tireur/chef uniquement)
   const avisP=PILP_IVS.filter(iv=>iv.s==='avis-passage');
   const pas=document.getElementById('pilp-avsec');
@@ -6941,10 +6974,10 @@ function rPilp(){
     rPLPilp(pilpSelection);
   }else if(pilpPanel){pilpPanel.style.display='none';}
   let list;
-  if(fltPilp==='all') list=PILP_IVS.filter(iv=>iv.s!=='avis-passage');
-  else if(fltPilp==='mes-sel') list=PILP_IVS.filter(iv=>(iv.s==='selectionne'||iv.s==='en-cours')&&iv.agr===CU.l);
-  else if(fltPilp==='mes-resp') list=PILP_IVS.filter(iv=>iv.agr===CU.l&&['selectionne','en-cours','terminee'].includes(iv.s));
-  else list=PILP_IVS.filter(iv=>iv.s===fltPilp);
+  if(fltPilp==='all') list=pilpJour.filter(iv=>iv.s!=='avis-passage');
+  else if(fltPilp==='mes-sel') list=pilpJour.filter(iv=>(iv.s==='selectionne'||iv.s==='en-cours')&&iv.agr===CU.l);
+  else if(fltPilp==='mes-resp') list=pilpJour.filter(iv=>iv.agr===CU.l&&['selectionne','en-cours','terminee'].includes(iv.s));
+  else list=pilpJour.filter(iv=>iv.s===fltPilp);
   const cont=document.getElementById('pilp-list');
   if(!list.length){cont.innerHTML='<div style="padding:20px;text-align:center;font-size:13px;color:var(--t2);">Aucune intervention PILP.</div>';return;}
   const ag=isAgres(),chef=isChef()||hasRight('Administration');
@@ -14358,7 +14391,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260827-accueil-compteurs-pilp-182';
+const APP_VERSION='20260828-liste-pilp-coherente-183';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
