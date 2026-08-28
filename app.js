@@ -8908,11 +8908,13 @@ function repondreDispoRequest(wk,reqId,reponse){
   if(reponse==='accepte'){
     if(!DISPOS[wk])DISPOS[wk]={};
     if(!DISPOS[wk][req.login])DISPOS[wk][req.login]={};
+    const changedKeys=[];
     (req.slots||[]).forEach(function(s){
       const key=typeof s==='string'?s:s.key;
       const newVal=typeof s==='object'?s.newVal:'true';
-      if(newVal==='true'||newVal==='false')DISPOS[wk][req.login][key]=newVal==='true';
+      if(newVal==='true'||newVal==='false'){DISPOS[wk][req.login][key]=newVal==='true';changedKeys.push(key);}
     });
+    markDispoSlotsChanged(wk,req.login,changedKeys);
     // Sauvegarder les dispos dans la caserne
     if(CD())CD().dispos=DISPOS;
   }
@@ -9250,6 +9252,25 @@ function rAstrDispo(){
   }
 }
 
+let _dispoRevisionSequence=0;
+function markDispoSlotsChanged(wk,login,keys){
+  if(!wk||!login)return;
+  if(!DISPOS[wk])DISPOS[wk]={};
+  if(!DISPOS[wk][login])DISPOS[wk][login]={};
+  const slots=DISPOS[wk][login];
+  if(!slots._slotUpdatedAt||typeof slots._slotUpdatedAt!=='object')slots._slotUpdatedAt={};
+  // La séquence évite deux révisions identiques lors d'un remplissage rapide.
+  const stamp=Date.now()*1000+(++_dispoRevisionSequence%1000);
+  (Array.isArray(keys)?keys:[]).forEach(function(key){if(/^\d+_\d+$/.test(String(key||'')))slots._slotUpdatedAt[key]=stamp;});
+  slots._updatedAt=stamp;slots._updatedBy=CU&&CU.l||'';
+  _jbEditLock=Date.now();
+  if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcPendingDirty!=='undefined'&&typeof _rcId==='function'&&CURRENT_CASERNE_ID){
+    _rcPendingDirty.add(_rcId(CURRENT_CASERNE_ID,'dispo',wk+RC_SEP+login));
+    if(typeof _rcDirtyGeneration!=='undefined')_rcDirtyGeneration++;
+    if(typeof _rcPersistPendingDirty==='function')_rcPersistPendingDirty();
+  }
+}
+
 function toggleDispoCell(wk,login,d,s,el,eqColor){
   // Ignore le click synthétique généré juste après un geste tactile (évite le double-toggle)
   if(_dispoTouchHandled && (Date.now()-_dispoTouchHandled)<600){return;}
@@ -9260,6 +9281,7 @@ function toggleDispoCell(wk,login,d,s,el,eqColor){
   const cur=DISPOS[wk][login][key];
   const next=cur===true?false:true;
   DISPOS[wk][login][key]=next;
+  markDispoSlotsChanged(wk,login,[key]);
   el.style.background=next?'#22C55E':'#EF4444';
   el.dataset.val=String(next);
 }
@@ -9284,6 +9306,7 @@ function applyDispoDrag(el){
   if(!DISPOS[wk][login])DISPOS[wk][login]={};
   const key=`${d}_${s}`;
   DISPOS[wk][login][key]=_dragTargetVal;
+  markDispoSlotsChanged(wk,login,[key]);
   const bg=_dragTargetVal===true?'#22C55E':'#EF4444';
   el.style.background=bg;
   el.dataset.val=String(_dragTargetVal);
@@ -9387,10 +9410,13 @@ function setAllDispoFor(wk,login,val,eqColor,allowClear){
   const eq=getEquipeOfUser(login);
   const gran=eq?eq.granularity:ASTR_CONFIG.granularity;
   const slots=getSlotsPerDay(gran);
+  const changedKeys=[];
   for(let d=0;d<7;d++)for(let s=0;s<slots;s++){
-    if(val===null)delete DISPOS[wk][login][`${d}_${s}`];
-    else DISPOS[wk][login][`${d}_${s}`]=val;
+    const key=`${d}_${s}`;changedKeys.push(key);
+    if(val===null)delete DISPOS[wk][login][key];
+    else DISPOS[wk][login][key]=val;
   }
+  markDispoSlotsChanged(wk,login,changedKeys);
   saveData();rAstrDispo();
 }
 function clearAllDispoFor(wk,login,eqColor){
@@ -14400,7 +14426,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260828-historique-vehicule-equipage-185';
+const APP_VERSION='20260828-disponibilites-sans-perte-186';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -17797,6 +17823,60 @@ async function _rcProtectOperationalStatusRows(rows){
   });
   return rows;
 }
+function _rcDispoSlotKeys(slots){
+  const values=slots&&typeof slots==='object'?slots:{};
+  const direct=Object.keys(values).filter(function(key){return /^\d+_\d+$/.test(key);});
+  const tracked=Object.keys(values._slotUpdatedAt||{}).filter(function(key){return /^\d+_\d+$/.test(key);});
+  return Array.from(new Set(direct.concat(tracked)));
+}
+function _rcMergeDispoRows(current,incoming){
+  if(!current)return {value:incoming,keptCurrentData:false};
+  if(!incoming)return {value:current,keptCurrentData:true};
+  const currentSlots=current.slots&&typeof current.slots==='object'?current.slots:{};
+  const incomingSlots=incoming.slots&&typeof incoming.slots==='object'?incoming.slots:{};
+  const currentMeta=currentSlots._slotUpdatedAt||{},incomingMeta=incomingSlots._slotUpdatedAt||{};
+  const mergedSlots={},mergedMeta={},currentRowRevision=Number(currentSlots._updatedAt)||0,incomingRowRevision=Number(incomingSlots._updatedAt)||0;
+  let keptCurrentData=false;
+  const keys=Array.from(new Set(_rcDispoSlotKeys(currentSlots).concat(_rcDispoSlotKeys(incomingSlots))));
+  keys.forEach(function(key){
+    const currentRevision=Number(currentMeta[key])||0,incomingRevision=Number(incomingMeta[key])||0;
+    let useCurrent=false;
+    if(currentRevision||incomingRevision)useCurrent=currentRevision>incomingRevision;
+    else useCurrent=currentRowRevision>incomingRowRevision;
+    const source=useCurrent?currentSlots:incomingSlots;
+    const revision=useCurrent?currentRevision:incomingRevision;
+    if(Object.prototype.hasOwnProperty.call(source,key))mergedSlots[key]=source[key];
+    if(revision)mergedMeta[key]=revision;
+    if(useCurrent)keptCurrentData=true;
+  });
+  if(Object.keys(mergedMeta).length)mergedSlots._slotUpdatedAt=mergedMeta;
+  const maxRevision=Math.max(currentRowRevision,incomingRowRevision,Object.values(mergedMeta).reduce(function(max,value){return Math.max(max,Number(value)||0);},0));
+  if(maxRevision)mergedSlots._updatedAt=maxRevision;
+  mergedSlots._updatedBy=currentRowRevision>incomingRowRevision?(currentSlots._updatedBy||''):(incomingSlots._updatedBy||currentSlots._updatedBy||'');
+  return {value:Object.assign({},incoming,{wk:incoming.wk||current.wk,login:incoming.login||current.login,slots:mergedSlots}),keptCurrentData:keptCurrentData};
+}
+async function _rcProtectDispoRows(rows){
+  const availability=(rows||[]).filter(function(row){return row&&row.type==='dispo'&&!row.deleted;});
+  if(!availability.length)return rows;
+  const ids=availability.map(function(row){return row.id;});
+  const filter='('+ids.map(function(id){return '"'+String(id).replace(/"/g,'')+'"';}).join(',')+')';
+  const resp=await fetch(RC_REST+'?id=in.'+encodeURIComponent(filter)+'&select=id,data,deleted',{headers:_sbHeaders});
+  if(!resp.ok)throw new Error('dispo guard GET HTTP '+resp.status);
+  const remoteRows=await resp.json(),remoteById={};
+  (Array.isArray(remoteRows)?remoteRows:[]).forEach(function(row){if(row&&row.id&&!row.deleted)remoteById[row.id]=row;});
+  availability.forEach(function(row){
+    const remote=remoteById[row.id];if(!remote||!remote.data)return;
+    const resolved=_rcMergeDispoRows(remote.data,row.data);row.data=resolved.value;
+    if(resolved.keptCurrentData&&CASERNE_DATA[row.caserne]){
+      const slots=row.data.slots||{},wk=row.data.wk,login=row.data.login;
+      CASERNE_DATA[row.caserne].dispos=CASERNE_DATA[row.caserne].dispos||{};
+      CASERNE_DATA[row.caserne].dispos[wk]=CASERNE_DATA[row.caserne].dispos[wk]||{};
+      CASERNE_DATA[row.caserne].dispos[wk][login]=slots;
+      if(row.caserne===CURRENT_CASERNE_ID)syncCaserneContext();
+    }
+  });
+  return rows;
+}
 function _rcRenderRealtimeViews(){
   try{rI();}catch(e){}
   try{rAccueil();}catch(e){}
@@ -17892,7 +17972,10 @@ function _rcApplyRealtimeRecord(record){
         if(d.dispos[incoming.wk])delete d.dispos[incoming.wk][incoming.login];
       }else{
         if(!d.dispos[incoming.wk])d.dispos[incoming.wk]={};
-        d.dispos[incoming.wk][incoming.login]=incoming.slots;
+        const currentSlots=d.dispos[incoming.wk][incoming.login]||{};
+        const resolved=_rcMergeDispoRows({wk:incoming.wk,login:incoming.login,slots:currentSlots},incoming);
+        d.dispos[incoming.wk][incoming.login]=resolved.value.slots;
+        if(resolved.keptCurrentData){_rcPendingDirty.add(record.id);_rcDirtyGeneration++;_rcPersistPendingDirty();_rcScheduleRetry(0);}
       }
     }else if(record.type==='config'){
       const keys=['piquets','planningRotations','disposValidated','piquetsValidated','astrConfig','astrTelData','astrTelParams','statsTaux','adminLogins','adminLogin','_stationLocation'];
@@ -18207,6 +18290,7 @@ async function _rcPush(fullPush){
     if(hadGlobalRow&&!rows.some(function(row){return row&&row.type==='global'&&row.caserne==='_GLOBAL';}))throw new Error('protection de la ligne globale indisponible');
     rows=_rcUniqueRowsById(rows);
     if(!fullPush)rows=await _rcProtectOperationalStatusRows(rows);
+    if(!fullPush)rows=await _rcProtectDispoRows(rows);
     if(!rows.length){_jbSetStatus(_rcPendingDirty.size?'pending':'ok');return;}
     const currentUser = (typeof CU!=='undefined' && CU) ? (CU.l||'') : '';
     const payload = rows.map(function(r){ return { id:r.id, caserne:r.caserne, type:r.type, data:r.data, deleted:r.deleted, updated_by:currentUser }; });
@@ -18320,6 +18404,18 @@ async function _rcPull(silent){
           if(resolved.keptCurrentStatus){_rcPendingDirty.add(_rcId(activeCid,pair[1],remote.id));_rcDirtyGeneration++;}
         });
       });
+      const localDispos=CASERNE_DATA[activeCid].dispos||{},remoteDispos=data.CASERNE_DATA[activeCid].dispos||{};
+      Object.keys(localDispos).forEach(function(wk){
+        if(!remoteDispos[wk])remoteDispos[wk]={};
+        Object.keys(localDispos[wk]||{}).forEach(function(login){
+          const localRow={wk:wk,login:login,slots:localDispos[wk][login]||{}};
+          const remoteRow={wk:wk,login:login,slots:remoteDispos[wk][login]||{}};
+          const resolved=_rcMergeDispoRows(localRow,remoteRow);
+          remoteDispos[wk][login]=resolved.value.slots;
+          if(resolved.keptCurrentData){_rcPendingDirty.add(_rcId(activeCid,'dispo',wk+RC_SEP+login));_rcDirtyGeneration++;}
+        });
+      });
+      data.CASERNE_DATA[activeCid].dispos=remoteDispos;
       _rcPersistPendingDirty();
     }
     if(activeCid && CASERNE_DATA[activeCid]){
@@ -18330,20 +18426,6 @@ async function _rcPull(silent){
         data.CASERNE_DATA[activeCid].astrTelData=localTel;
         data.CASERNE_DATA[activeCid].astrTelParams=Object.assign({},CASERNE_DATA[activeCid].astrTelParams||{});
         _rcPendingDirty.add(_rcId(activeCid,'config','main'));
-      }
-    }
-    if(activeCid && Date.now()-_jbEditLock < 15000 && CASERNE_DATA[activeCid]){
-      // Fusionner les dispos : on garde le remote comme base, et on réapplique
-      // les dispos locales par-dessus (priorité au local en cours d'édition).
-      // Ainsi on ne perd ni mes dispos, ni celles qu'un autre agent vient d'enregistrer.
-      if(data.CASERNE_DATA[activeCid]){
-        const remoteDispos = data.CASERNE_DATA[activeCid].dispos || {};
-        const localDispos = CASERNE_DATA[activeCid].dispos || {};
-        const merged = JSON.parse(JSON.stringify(remoteDispos));
-        Object.keys(localDispos).forEach(function(wk){
-          merged[wk] = Object.assign({}, remoteDispos[wk]||{}, localDispos[wk]||{});
-        });
-        data.CASERNE_DATA[activeCid].dispos = merged;
       }
     }
     _applyDataObject(data);

@@ -775,11 +775,13 @@ function repondreDispoRequest(wk,reqId,reponse){
   if(reponse==='accepte'){
     if(!DISPOS[wk])DISPOS[wk]={};
     if(!DISPOS[wk][req.login])DISPOS[wk][req.login]={};
+    const changedKeys=[];
     (req.slots||[]).forEach(function(s){
       const key=typeof s==='string'?s:s.key;
       const newVal=typeof s==='object'?s.newVal:'true';
-      if(newVal==='true'||newVal==='false')DISPOS[wk][req.login][key]=newVal==='true';
+      if(newVal==='true'||newVal==='false'){DISPOS[wk][req.login][key]=newVal==='true';changedKeys.push(key);}
     });
+    markDispoSlotsChanged(wk,req.login,changedKeys);
     // Sauvegarder les dispos dans la caserne
     if(CD())CD().dispos=DISPOS;
   }
@@ -1117,6 +1119,25 @@ function rAstrDispo(){
   }
 }
 
+let _dispoRevisionSequence=0;
+function markDispoSlotsChanged(wk,login,keys){
+  if(!wk||!login)return;
+  if(!DISPOS[wk])DISPOS[wk]={};
+  if(!DISPOS[wk][login])DISPOS[wk][login]={};
+  const slots=DISPOS[wk][login];
+  if(!slots._slotUpdatedAt||typeof slots._slotUpdatedAt!=='object')slots._slotUpdatedAt={};
+  // La séquence évite deux révisions identiques lors d'un remplissage rapide.
+  const stamp=Date.now()*1000+(++_dispoRevisionSequence%1000);
+  (Array.isArray(keys)?keys:[]).forEach(function(key){if(/^\d+_\d+$/.test(String(key||'')))slots._slotUpdatedAt[key]=stamp;});
+  slots._updatedAt=stamp;slots._updatedBy=CU&&CU.l||'';
+  _jbEditLock=Date.now();
+  if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcPendingDirty!=='undefined'&&typeof _rcId==='function'&&CURRENT_CASERNE_ID){
+    _rcPendingDirty.add(_rcId(CURRENT_CASERNE_ID,'dispo',wk+RC_SEP+login));
+    if(typeof _rcDirtyGeneration!=='undefined')_rcDirtyGeneration++;
+    if(typeof _rcPersistPendingDirty==='function')_rcPersistPendingDirty();
+  }
+}
+
 function toggleDispoCell(wk,login,d,s,el,eqColor){
   // Ignore le click synthétique généré juste après un geste tactile (évite le double-toggle)
   if(_dispoTouchHandled && (Date.now()-_dispoTouchHandled)<600){return;}
@@ -1127,6 +1148,7 @@ function toggleDispoCell(wk,login,d,s,el,eqColor){
   const cur=DISPOS[wk][login][key];
   const next=cur===true?false:true;
   DISPOS[wk][login][key]=next;
+  markDispoSlotsChanged(wk,login,[key]);
   el.style.background=next?'#22C55E':'#EF4444';
   el.dataset.val=String(next);
 }
@@ -1151,6 +1173,7 @@ function applyDispoDrag(el){
   if(!DISPOS[wk][login])DISPOS[wk][login]={};
   const key=`${d}_${s}`;
   DISPOS[wk][login][key]=_dragTargetVal;
+  markDispoSlotsChanged(wk,login,[key]);
   const bg=_dragTargetVal===true?'#22C55E':'#EF4444';
   el.style.background=bg;
   el.dataset.val=String(_dragTargetVal);
@@ -1254,10 +1277,13 @@ function setAllDispoFor(wk,login,val,eqColor,allowClear){
   const eq=getEquipeOfUser(login);
   const gran=eq?eq.granularity:ASTR_CONFIG.granularity;
   const slots=getSlotsPerDay(gran);
+  const changedKeys=[];
   for(let d=0;d<7;d++)for(let s=0;s<slots;s++){
-    if(val===null)delete DISPOS[wk][login][`${d}_${s}`];
-    else DISPOS[wk][login][`${d}_${s}`]=val;
+    const key=`${d}_${s}`;changedKeys.push(key);
+    if(val===null)delete DISPOS[wk][login][key];
+    else DISPOS[wk][login][key]=val;
   }
+  markDispoSlotsChanged(wk,login,changedKeys);
   saveData();rAstrDispo();
 }
 function clearAllDispoFor(wk,login,eqColor){
