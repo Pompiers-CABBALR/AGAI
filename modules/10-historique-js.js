@@ -115,9 +115,15 @@ function historyCrewRoleLabel(role){
   if(value.includes('equip'))return'Éq.';
   return role||'';
 }
+function historyVehicleHTML(iv){
+  const vehicles=interventionVehicleNames(iv);if(!vehicles.length)return'';
+  return '<span class="hist-vehicle" title="Véhicule(s) engagé(s)">🚒 '+vehicles.map(function(vehicle){
+    return '<span class="hist-vehicle-name">'+escHtml(vehicle)+'</span>';
+  }).join('')+'</span>';
+}
 function historyCrewHTML(iv){
   const members=historyCrewMembers(iv);if(!members.length)return'';
-  return '<span class="hist-crew" title="Équipage de l’intervention">🚒 '+members.map(function(member){
+  return '<span class="hist-crew" title="Équipage de l’intervention">👥 '+members.map(function(member){
     const role=historyCrewRoleLabel(member.role);
     return '<span class="hist-crew-member">'+(role?escHtml(role)+' ':'')+escHtml(member.name)+'</span>';
   }).join('')+'</span>';
@@ -137,9 +143,10 @@ function historyIsoWeekInfo(dateKey){
 }
 function historySearchBlob(iv){
   const crew=historyCrewMembers(iv).map(function(member){return member.name+' '+member.login;});
+  const vehicles=interventionVehicleNames(iv);
   return historyNormalizeSearch([
     iv.id,iv.n,iv.addr,iv.com,iv.req,iv.tel,iv.s,iv._numCaserne,iv._numGlobal,iv._numMois,iv._numRenfort,iv._numSDIS,
-    iv._hDebut,iv._hFin,iv._crTexte,iv._compteRendu,crew.join(' ')
+    iv._hDebut,iv._hFin,iv._crTexte,iv._compteRendu,vehicles.join(' '),crew.join(' ')
   ].join(' '));
 }
 function historyReportOrder(iv){
@@ -163,6 +170,7 @@ function historyRowHTML(iv){
       ${!iv._isRenfort&&iv._numMois?`<span class="hist-num-m" style="color:#C0392B;">M:${escHtml(iv._numMois)}</span>`:''}
       ${iv._numSDIS?`<span style="color:#003399;"> S:${escHtml(iv._numSDIS)}</span>`:''}
     </span>`:''}
+    ${historyVehicleHTML(iv)}
     ${historyCrewHTML(iv)}
   </span>
   <span style="font-size:11px;color:var(--t2);text-align:right;">${iv.addr?escHtml(iv.addr)+', ':''}${escHtml(iv.com||'')}${(iv._hDebut||iv._hFin)?`<br><span style="font-size:10px;color:var(--t3);">${iv._hDebut?'\ud83d\udd50 '+escHtml(iv._hDebut):''}${iv._hDebut&&iv._hFin?' \u2192 ':''}${iv._hFin?escHtml(iv._hFin):''}</span>`:''}</span>
