@@ -1764,19 +1764,33 @@ function requestOperationalStartAuthorization(iv,onApproved){
   }
   if(!navigator.geolocation){showToast('La géolocalisation n’est pas disponible sur cet appareil.','warn');return;}
   showToast('Vérification de votre présence à la caserne…','info');
-  navigator.geolocation.getCurrentPosition(function(position){
-    const accuracy=Number(position.coords.accuracy)||0;
-    if(accuracy>1000){showToast('Position trop imprécise ('+Math.round(accuracy)+' m). Activez la localisation précise puis réessayez.','warn');return;}
+  const evaluatePosition=function(position,attempt){
+    const accuracy=Math.max(0,Number(position.coords.accuracy)||0);
     const distance=operationalDistanceMeters(position.coords.latitude,position.coords.longitude,stationLat,stationLon);
-    if(distance>OPERATIONAL_START_RADIUS_METERS){
-      showToast('Départ refusé : vous êtes à '+(distance/1000).toFixed(1).replace('.',',')+' km de la caserne. La première mise en cours doit se faire dans un rayon de 2 km.','warn');return;
+    // La précision représente le rayon d’incertitude annoncé par le téléphone.
+    // On accepte si cette zone recoupe le rayon autorisé, après une seconde
+    // mesure fraîche quand la première semble extérieure ou trop imprécise.
+    const effectiveDistance=Math.max(0,distance-accuracy);
+    const imprecise=accuracy>1000;
+    if((imprecise||effectiveDistance>OPERATIONAL_START_RADIUS_METERS)&&attempt<2){
+      showToast('Position GPS imprécise ou ancienne, nouvelle vérification…','info');
+      window.setTimeout(function(){locateForOperationalStart(2);},600);return;
+    }
+    if(imprecise){showToast('Position trop imprécise ('+Math.round(accuracy)+' m). Activez la localisation précise puis réessayez.','warn');return;}
+    if(effectiveDistance>OPERATIONAL_START_RADIUS_METERS){
+      showToast('Départ refusé : position mesurée à '+(distance/1000).toFixed(1).replace('.',',')+' km de la caserne (précision '+Math.round(accuracy)+' m).','warn');return;
     }
     _operationalStartAuthorizations[iv.id]={at:Date.now(),exempt:false,distanceMeters:Math.round(distance),accuracyMeters:Math.round(accuracy),caserneId:caserne.id};
     onApproved();
-  },function(error){
-    const denied=error&&error.code===1;
-    showToast(denied?'Autorisez la localisation pour démarrer la première intervention.':'Position introuvable. Activez le GPS puis réessayez.','warn');
-  },{enableHighAccuracy:true,timeout:15000,maximumAge:30000});
+  };
+  const locateForOperationalStart=function(attempt){
+    navigator.geolocation.getCurrentPosition(function(position){evaluatePosition(position,attempt);},function(error){
+      const denied=error&&error.code===1;
+      if(!denied&&attempt<2){window.setTimeout(function(){locateForOperationalStart(2);},600);return;}
+      showToast(denied?'Autorisez la localisation pour démarrer la première intervention.':'Position introuvable. Activez le GPS puis réessayez.','warn');
+    },{enableHighAccuracy:true,timeout:20000,maximumAge:0});
+  };
+  locateForOperationalStart(1);
 }
 function takeOperationalStartAuthorization(iv){
   const authorization=iv&&_operationalStartAuthorizations[iv.id];
