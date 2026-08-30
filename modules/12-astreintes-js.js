@@ -3007,6 +3007,17 @@ function findManualOperationalStartConflict(iv,time,vehicles,personnel){
   }
   return null;
 }
+function interventionOperationalConflictBounds(iv){
+  if(!iv)return {start:NaN,end:NaN};
+  const starts=(Array.isArray(iv.tl)?iv.tl:[]).filter(function(entry){return entry&&entry.s==='en-cours'&&/^\d{8}/.test(String(entry.h||''));});
+  // Après un retour en attente, _hDebut peut provenir de la première tentative.
+  // Le dernier passage en cours constitue alors le vrai début de l'engagement.
+  let start=starts.length>1?interventionCompactStampMillis(starts[starts.length-1].h):interventionClockMillis(iv,iv._hDebut||iv._hDebutReelle||iv._hDebutInitiale||'','en-cours',true);
+  let end=interventionClockMillis(iv,iv._hFin||iv._hFinReelle||iv._hFinInitiale||'','terminee',true);
+  if(!Number.isFinite(end)&&iv.s==='en-cours')end=Number.POSITIVE_INFINITY;
+  if(Number.isFinite(start)&&Number.isFinite(end)&&end<start)end+=24*60*60*1000;
+  return {start:start,end:end};
+}
 function findManualOperationalIntervalConflict(iv,startTime,endTime,vehicles,personnel){
   const proposedStart=interventionClockMillis(iv,startTime,'en-cours',false);
   if(!Number.isFinite(proposedStart))return null;
@@ -3018,7 +3029,7 @@ function findManualOperationalIntervalConflict(iv,startTime,endTime,vehicles,per
   const wantedVehicles=(vehicles||[]).map(nm).filter(Boolean),wantedPersonnel=(personnel||[]).filter(Boolean);
   const candidates=[].concat(IVS||[],PILP_IVS||[]).filter(function(other){return other&&other.id!==iv.id&&['en-cours','terminee'].includes(other.s);});
   for(const other of candidates){
-    const bounds=interventionOperationalBounds(other);
+    const bounds=interventionOperationalConflictBounds(other);
     if(!Number.isFinite(bounds.start))continue;
     const activeWithoutEnd=other.s==='en-cours'&&!Number.isFinite(bounds.end);
     const comparisonEnd=activeWithoutEnd?Number.POSITIVE_INFINITY:bounds.end;

@@ -5812,7 +5812,7 @@ function rI(){
       </div>
       <div id="av-detail" style="display:${avExpanded?'block':'none'};">
         ${avis.map(iv=>`<div class="ivr avis-passage" onclick="oM('${iv.id}')">
-          <div class="ivrl"><div class="ivrh">&#x1F4C5; ${escHtml(iv.h.slice(0,8))}</div><div class="ivrn">${escHtml(iv.n)}</div><div class="ivrc">&#x1F4CD; ${escHtml(interventionAddressLabel(iv))}${iv.rappels?' · '+Number(iv.rappels)+' rappel(s)':''}</div></div>
+          <div class="ivrl"><div class="ivrh">&#x1F4C5; ${escHtml(getAvisPassageDateTimeLabel(iv)||'Date non renseignée')}</div><div class="ivrn">${escHtml(iv.n)}</div><div class="ivrc">&#x1F4CD; ${escHtml(interventionAddressLabel(iv))}${iv.rappels?' · '+Number(iv.rappels)+' rappel(s)':''}</div></div>
           <div class="ivrr"><span class="bdg bp">Avis passage</span>${isAdminModeActive()?`<button class="btn sm" style="font-size:10px;padding:3px 8px;background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="event.stopPropagation();classerAvisPassage('${iv.id}','standard')">&#x1F5C3;&#xFE0F; Classer</button>`:''}</div></div>`).join('')}
       </div>`;
   } else as.style.display='none';
@@ -6205,7 +6205,7 @@ function oM(id){
     <div style="margin-bottom:8px;"><span class="bdg ${bc}">${bt}</span>${pilpScope?' <span class="bdg bpilp">PILP</span>':''}${iv.rappels?` <span class="bdg bp" style="${isAdminModeActive()?'cursor:pointer;':''}"${isAdminModeActive()?` title="Déjà intervenu ici ?" onclick="showInterventionsLiees('${iv.id}')"`:''}>${iv.rappels} rappel(s)</span>`:''}</div>
     ${iv._urgence?'<div style="background:#FEE2E2;border:2px solid #B91C1C;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:800;color:#991B1B;margin-bottom:10px;text-align:center;">🚨 URGENCE — ÉTABLISSEMENT RECEVANT DU PUBLIC (ERP)</div>':''}
     ${iv._sdis?'<div style="background:#DBEAFE;border:1px solid #93C5FD;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;color:#1D4ED8;margin-bottom:10px;text-align:center;">&#x1F691; INTERVENTION SDIS</div>':''}
-    ${iv._avisPassage?'<div style="background:#F3EAF8;border:2px solid #9B59B6;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;color:#6C3483;margin-bottom:10px;text-align:center;">🟣 Un avis de passage a été laissé'+(getAvisPassageHour(iv)?' à '+escHtml(getAvisPassageHour(iv)):'')+(iv._avisPassageClasse?' — classé':'')+' pour cette intervention</div>':''}
+    ${iv._avisPassage?'<div style="background:#F3EAF8;border:2px solid #9B59B6;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;color:#6C3483;margin-bottom:10px;text-align:center;">🟣 Un avis de passage a été laissé'+(getAvisPassageDateTimeLabel(iv)?' le '+escHtml(getAvisPassageDateTimeLabel(iv)):'')+(iv._avisPassageClasse?' — classé':'')+' pour cette intervention</div>':''}
     ${iv._echelleToiture?'<div style="background:#FEF3C7;border:2px solid #F59E0B;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:700;color:#92400E;margin-bottom:10px;text-align:center;">&#x26A0;&#xFE0F; INTERVENTION À FAIRE AVEC ÉCHELLE DE TOIT</div>':''}
     ${iv._epa?'<div style="background:#F3EAF8;border:2px solid #8E44AD;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:700;color:#6C3483;margin-bottom:10px;text-align:center;">&#x1F9F0; INTERVENTION À FAIRE AVEC EPA</div>':''}
     <div class="mr"><div class="ml">Adresse</div><div class="mv2" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">&#x1F4CD; ${escHtml(iv.addr)}, ${escHtml(iv.com)}${iv.addrComp?' · '+escHtml(iv.addrComp):''}${(isAgres()||isChef()||hasRight('Administration'))&&iv.s!=='terminee'?`<button class="btn sm" style="font-size:10px;padding:2px 7px;" onclick="editAdresse('${iv.id}')">✏️ Corriger</button>`:''}<button class="btn sm" style="font-size:10px;padding:2px 7px;background:#4285F4;color:#fff;border-color:#4285F4;" onclick="openMaps('${iv.id}')">🗺️ Maps</button></div></div>
@@ -6315,7 +6315,7 @@ function oM(id){
       ${autorisationDocumentsHTML(iv)}
     </div>`:''}
     ${iv._avisPassage&&(iv.agr===CU.l||iv._agr2===CU.l||hasAdministrativeAccount())?`<div style="background:#FAF5FF;border:1px solid #D8B4FE;border-radius:10px;padding:10px 12px;margin-bottom:10px;">
-      <div style="font-size:11px;font-weight:700;color:#6B21A8;margin-bottom:8px;">&#x1F4EC; Avis de passage${getAvisPassageHour(iv)?' — déposé à '+escHtml(getAvisPassageHour(iv)):''}${iv._avisPassageClasse?' — classé':''}</div>
+      <div style="font-size:11px;font-weight:700;color:#6B21A8;margin-bottom:8px;">&#x1F4EC; Avis de passage${getAvisPassageDateTimeLabel(iv)?' — déposé le '+escHtml(getAvisPassageDateTimeLabel(iv)):''}${iv._avisPassageClasse?' — classé':''}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn sm" style="background:#7E22CE;color:#fff;border-color:#7E22CE;" onclick="viewAvisPassageDocument('${iv.id}')">&#x1F4CB; Voir l'avis de passage</button>${isAdminModeActive()&&iv._avisEnAttente?`<button class="btn sm" style="background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="classerAvisPassage('${iv.id}','${pilpScope?'pilp':'standard'}')">&#x1F5C3;&#xFE0F; Classer</button>`:''}${isAdminModeActive()&&iv._avisPassageClasse===true&&!iv._avisEnAttente?`<button class="btn sm" style="background:#fff;color:#6B21A8;border-color:#A855F7;" onclick="restaurerAvisPassage('${iv.id}','${pilpScope?'pilp':'standard'}')">↩ Remettre en attente</button>`:''}</div>
     </div>`:''}
     ${(['en-attente','selectionne','en-cours'].includes(iv.s)&&(hasRight('Interventions')||isAgres()||isChef()||isAdminModeActive()))?`<button class="btn sm" style="width:100%;margin-bottom:8px;background:#0369A1;color:#fff;border-color:#0369A1;" onclick="showComplementModal('${iv.id}')">&#x2139;&#xFE0F; Compléter : information, téléphone ou disponibilité</button>`:''}
@@ -6980,7 +6980,7 @@ function rPilp(){
       </div>
       <div id="pilp-av-detail" style="display:${apExpanded?'block':'none'};">
         ${avisP.map(iv=>`<div class="ivr avis-passage" style="cursor:pointer;" onclick="oPilp('${iv.id}')">
-          <div class="ivrl"><div class="ivrh">&#x1F4C5; ${escHtml(iv.h.slice(0,8))}</div><div class="ivrn">&#x1F3AF; ${escHtml(iv.n)}</div><div class="ivrc">&#x1F4CD; ${escHtml(iv.com)}${iv.rappels?' · '+Number(iv.rappels)+' rappel(s)':''}</div></div>
+          <div class="ivrl"><div class="ivrh">&#x1F4C5; ${escHtml(getAvisPassageDateTimeLabel(iv)||'Date non renseignée')}</div><div class="ivrn">&#x1F3AF; ${escHtml(iv.n)}</div><div class="ivrc">&#x1F4CD; ${escHtml(iv.com)}${iv.rappels?' · '+Number(iv.rappels)+' rappel(s)':''}</div></div>
           <div class="ivrr"><span class="bdg bp">Avis PILP</span>${isAdminModeActive()?`<button class="btn sm" style="font-size:10px;padding:3px 8px;background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="event.stopPropagation();classerAvisPassage('${iv.id}','pilp')">&#x1F5C3;&#xFE0F; Classer</button>`:''}</div></div>`).join('')}
       </div>`;
   } else pas.style.display='none';
@@ -7085,7 +7085,7 @@ function oPilp(id){
     <div class="mr"><div class="ml">Créé par</div><div class="mv2" style="font-family:monospace;">${iv.agr||'—'}</div></div>
     ${iv.tireur?`<div class="mr"><div class="ml">Tireur</div><div class="mv2" style="font-family:monospace;">${iv.tireur}</div></div>`:''}
     ${iv._avisPassage?`<div style="background:#FAF5FF;border:1px solid #D8B4FE;border-radius:10px;padding:10px 12px;margin:8px 0;">
-      <div style="font-size:11px;font-weight:700;color:#6B21A8;margin-bottom:8px;">&#x1F4EC; Avis de passage${getAvisPassageHour(iv)?' — déposé à '+escHtml(getAvisPassageHour(iv)):''}${iv._avisPassageClasse?' — classé':''}</div>
+      <div style="font-size:11px;font-weight:700;color:#6B21A8;margin-bottom:8px;">&#x1F4EC; Avis de passage${getAvisPassageDateTimeLabel(iv)?' — déposé le '+escHtml(getAvisPassageDateTimeLabel(iv)):''}${iv._avisPassageClasse?' — classé':''}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn sm" style="background:#7E22CE;color:#fff;border-color:#7E22CE;" onclick="viewAvisPassageDocument('${iv.id}')">&#x1F4CB; Voir l'avis de passage</button>${isAdminModeActive()&&(iv._avisEnAttente||iv.s==='avis-passage')?`<button class="btn sm" style="background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="classerAvisPassage('${iv.id}','pilp')">&#x1F5C3;&#xFE0F; Classer</button>`:''}${isAdminModeActive()&&iv._avisPassageClasse===true&&!iv._avisEnAttente?`<button class="btn sm" style="background:#fff;color:#6B21A8;border-color:#A855F7;" onclick="restaurerAvisPassage('${iv.id}','pilp')">↩ Remettre en attente</button>`:''}</div>
     </div>`:''}
     <div class="msep"></div>
@@ -11175,6 +11175,17 @@ function findManualOperationalStartConflict(iv,time,vehicles,personnel){
   }
   return null;
 }
+function interventionOperationalConflictBounds(iv){
+  if(!iv)return {start:NaN,end:NaN};
+  const starts=(Array.isArray(iv.tl)?iv.tl:[]).filter(function(entry){return entry&&entry.s==='en-cours'&&/^\d{8}/.test(String(entry.h||''));});
+  // Après un retour en attente, _hDebut peut provenir de la première tentative.
+  // Le dernier passage en cours constitue alors le vrai début de l'engagement.
+  let start=starts.length>1?interventionCompactStampMillis(starts[starts.length-1].h):interventionClockMillis(iv,iv._hDebut||iv._hDebutReelle||iv._hDebutInitiale||'','en-cours',true);
+  let end=interventionClockMillis(iv,iv._hFin||iv._hFinReelle||iv._hFinInitiale||'','terminee',true);
+  if(!Number.isFinite(end)&&iv.s==='en-cours')end=Number.POSITIVE_INFINITY;
+  if(Number.isFinite(start)&&Number.isFinite(end)&&end<start)end+=24*60*60*1000;
+  return {start:start,end:end};
+}
 function findManualOperationalIntervalConflict(iv,startTime,endTime,vehicles,personnel){
   const proposedStart=interventionClockMillis(iv,startTime,'en-cours',false);
   if(!Number.isFinite(proposedStart))return null;
@@ -11186,7 +11197,7 @@ function findManualOperationalIntervalConflict(iv,startTime,endTime,vehicles,per
   const wantedVehicles=(vehicles||[]).map(nm).filter(Boolean),wantedPersonnel=(personnel||[]).filter(Boolean);
   const candidates=[].concat(IVS||[],PILP_IVS||[]).filter(function(other){return other&&other.id!==iv.id&&['en-cours','terminee'].includes(other.s);});
   for(const other of candidates){
-    const bounds=interventionOperationalBounds(other);
+    const bounds=interventionOperationalConflictBounds(other);
     if(!Number.isFinite(bounds.start))continue;
     const activeWithoutEnd=other.s==='en-cours'&&!Number.isFinite(bounds.end);
     const comparisonEnd=activeWithoutEnd?Number.POSITIVE_INFINITY:bounds.end;
@@ -14583,7 +14594,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260830-superadmin-cloture-retroactive-189';
+const APP_VERSION='20260830-cloture-retroactive-dernier-depart-191';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -14880,6 +14891,11 @@ function getAvisPassageDateFr(iv){
   let raw=String(iv._avisPassageDate||iv._avisPassageAt||(getAvisPassageTimelineEntry(iv)||{}).h||iv.h||'').replace(/\D/g,'').slice(0,8);
   if(raw.length!==8)return '';
   return raw.slice(6,8)+'/'+raw.slice(4,6)+'/'+raw.slice(0,4);
+}
+
+function getAvisPassageDateTimeLabel(iv){
+  const date=getAvisPassageDateFr(iv),heure=getAvisPassageHour(iv);
+  return date&&heure?date+' à '+heure:(date||heure||'');
 }
 
 function getAvisPassageCaserne(iv){

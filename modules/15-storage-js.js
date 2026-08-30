@@ -12,7 +12,7 @@
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260830-superadmin-cloture-retroactive-189';
+const APP_VERSION='20260830-cloture-retroactive-dernier-depart-191';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -309,6 +309,11 @@ function getAvisPassageDateFr(iv){
   let raw=String(iv._avisPassageDate||iv._avisPassageAt||(getAvisPassageTimelineEntry(iv)||{}).h||iv.h||'').replace(/\D/g,'').slice(0,8);
   if(raw.length!==8)return '';
   return raw.slice(6,8)+'/'+raw.slice(4,6)+'/'+raw.slice(0,4);
+}
+
+function getAvisPassageDateTimeLabel(iv){
+  const date=getAvisPassageDateFr(iv),heure=getAvisPassageHour(iv);
+  return date&&heure?date+' à '+heure:(date||heure||'');
 }
 
 function getAvisPassageCaserne(iv){
