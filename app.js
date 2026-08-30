@@ -6010,6 +6010,7 @@ function classerAvisPassage(id,scope){
 }
 function autorisationDocumentsHTML(iv){
   if(!iv)return'';
+  if(!canOpenInterventionPdfOnThisDevice())return desktopOnlyInterventionPdfMessageHTML();
   const list=Array.isArray(iv._autorisationNids)?iv._autorisationNids:(iv._autorisationData?[iv._autorisationData]:[]);
   const rows=list.map(function(data,index){
     if(!data)return'';
@@ -6058,7 +6059,7 @@ function oM(id){
    const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis de passage'],'avis-classe':['bp','Avis classé'],'avis-restaure':['binfo','Avis remis en attente'],'modif':['bgr','Modification'],'modif-adresse':['bgr','Adresse corrigée'],'modif-heure':['binfo','Horaire corrigé'],'modif-equipier':['binfo','Équipage corrigé'],'modif-engin':['binfo','Véhicule corrigé'],'reclasse':['bgr','Reclasé'],'releve':['binfo','Relève'],'info-compl':['binfo','ℹ️ Complément d\u2019info']};
   const[bc,bt]=bm[iv.s]||['bgr','—'];
   const sdots={'en-attente':'#E24B4A','selectionne':'var(--sel)','en-cours':'var(--amb)','terminee':'var(--grn)','avis-passage':'var(--pur)','avis-classe':'#6B21A8','avis-restaure':'#2563EB','modif':'#888','modif-adresse':'#888','modif-heure':'#C2410C','modif-equipier':'#2563EB','modif-engin':'#0F766E','reclasse':'#888','releve':'#0369A1','info-compl':'#0369A1'};
-  const tlHtml=(iv.tl||[]).map(t=>`<div class="tl-item"><div class="tl-dot" style="background:${sdots[t.s]||'#aaa'};"></div><div class="tl-info"><span class="tl-status">${bm[t.s]?bm[t.s][1]:t.s}${t.note?` — ${t.note}`:''}</span> <span class="tl-horo">&#x1F4C5; ${t.h}</span><div class="tl-who">${t.who}</div></div></div>`).join('');
+  const tlHtml=hasAdministrativeAccount()?(iv.tl||[]).map(t=>`<div class="tl-item"><div class="tl-dot" style="background:${sdots[t.s]||'#aaa'};"></div><div class="tl-info"><span class="tl-status">${bm[t.s]?bm[t.s][1]:t.s}${t.note?` — ${t.note}`:''}</span> <span class="tl-horo">&#x1F4C5; ${t.h}</span><div class="tl-who">${t.who}</div></div></div>`).join(''):'';
   const appelDetailEntries=iv._appelDetails&&typeof iv._appelDetails==='object'
     ?Object.entries(iv._appelDetails).filter(([key])=>(key!=='Nids à traiter'||!Array.isArray(iv._nidsAppel)||iv._nidsAppel.length!==1)&&key!=='Disponibilité du requérant')
     :[];
@@ -6308,7 +6309,7 @@ function oM(id){
     ${iv.s==='terminee'&&(iv._crTexte||iv._compteRendu)&&(isInterventionReportChef(iv,CU.l)||agentInIV(iv,CU.l)||hasAdministrativeAccount())?`<div class="mr"><div class="ml" style="color:#0F766E;">&#x1F4CB; Compte rendu${iv._crValide?' &#x1F512;':''}</div><div class="mv2" style="white-space:pre-wrap;font-size:12px;background:#F0FDFA;border-radius:8px;padding:8px 10px;border:1px solid #99F6E4;">${iv._crTexte||iv._compteRendu}</div></div>`:''}
     ${iv.s==='terminee'&&(isInterventionReportChef(iv,CU.l)||hasAdministrativeAccount())?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 2px 0;">
       <button class="btn sm" style="background:#0F766E;color:#fff;border-color:#0F766E;" onclick="showCompteRenduModal('${iv.id}')">${iv._crValide?'&#x1F512; Voir':iv._crTexte||iv._compteRendu?'&#x270F;&#xFE0F; Modifier':'&#x1F4CB; Rédiger le compte rendu'}</button>
-      <button class="btn sm" style="background:#C0392B;color:#fff;" onclick="voirRapportIntervention('${iv.id}')">&#x1F5A8; Rapport PDF</button>
+      ${canOpenInterventionPdfOnThisDevice()?`<button class="btn sm" style="background:#C0392B;color:#fff;" onclick="voirRapportIntervention('${iv.id}')">&#x1F5A8; Rapport PDF</button>`:''}
     </div>`:``}    <div class="msep"></div>
     ${(iv._pdfAutorisation||iv._pdfAttestation||iv._autorisationData||(Array.isArray(iv._autorisationNids)&&iv._autorisationNids.some(Boolean)))&&_showAutoBtn&&(iv.agr===CU.l||iv._agr2===CU.l||isAdminModeActive())?`<div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:10px;padding:10px 12px;margin-bottom:10px;">
       <div style="font-size:11px;font-weight:700;color:#6B3AA0;margin-bottom:8px;">&#x1F4DD; Documents autorisation / attestation</div>
@@ -6316,15 +6317,15 @@ function oM(id){
     </div>`:''}
     ${iv._avisPassage&&(iv.agr===CU.l||iv._agr2===CU.l||hasAdministrativeAccount())?`<div style="background:#FAF5FF;border:1px solid #D8B4FE;border-radius:10px;padding:10px 12px;margin-bottom:10px;">
       <div style="font-size:11px;font-weight:700;color:#6B21A8;margin-bottom:8px;">&#x1F4EC; Avis de passage${getAvisPassageDateTimeLabel(iv)?' — déposé le '+escHtml(getAvisPassageDateTimeLabel(iv)):''}${iv._avisPassageClasse?' — classé':''}</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn sm" style="background:#7E22CE;color:#fff;border-color:#7E22CE;" onclick="viewAvisPassageDocument('${iv.id}')">&#x1F4CB; Voir l'avis de passage</button>${isAdminModeActive()&&iv._avisEnAttente?`<button class="btn sm" style="background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="classerAvisPassage('${iv.id}','${pilpScope?'pilp':'standard'}')">&#x1F5C3;&#xFE0F; Classer</button>`:''}${isAdminModeActive()&&iv._avisPassageClasse===true&&!iv._avisEnAttente?`<button class="btn sm" style="background:#fff;color:#6B21A8;border-color:#A855F7;" onclick="restaurerAvisPassage('${iv.id}','${pilpScope?'pilp':'standard'}')">↩ Remettre en attente</button>`:''}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">${canOpenInterventionPdfOnThisDevice()?`<button class="btn sm" style="background:#7E22CE;color:#fff;border-color:#7E22CE;" onclick="viewAvisPassageDocument('${iv.id}')">&#x1F4CB; Voir l'avis de passage</button>`:desktopOnlyInterventionPdfMessageHTML()}${isAdminModeActive()&&iv._avisEnAttente?`<button class="btn sm" style="background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="classerAvisPassage('${iv.id}','${pilpScope?'pilp':'standard'}')">&#x1F5C3;&#xFE0F; Classer</button>`:''}${isAdminModeActive()&&iv._avisPassageClasse===true&&!iv._avisEnAttente?`<button class="btn sm" style="background:#fff;color:#6B21A8;border-color:#A855F7;" onclick="restaurerAvisPassage('${iv.id}','${pilpScope?'pilp':'standard'}')">↩ Remettre en attente</button>`:''}</div>
     </div>`:''}
     ${(['en-attente','selectionne','en-cours'].includes(iv.s)&&(hasRight('Interventions')||isAgres()||isChef()||isAdminModeActive()))?`<button class="btn sm" style="width:100%;margin-bottom:8px;background:#0369A1;color:#fff;border-color:#0369A1;" onclick="showComplementModal('${iv.id}')">&#x2139;&#xFE0F; Compléter : information, téléphone ou disponibilité</button>`:''}
-    <details style="background:var(--bg);border-radius:10px;margin-bottom:8px;" id="tl-details-${iv.id}">
+    ${hasAdministrativeAccount()?`<details style="background:var(--bg);border-radius:10px;margin-bottom:8px;" id="tl-details-${iv.id}">
       <summary style="font-size:11px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;padding:10px 12px;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;">
         Historique des statuts <span style="font-size:10px;background:var(--brd);border-radius:10px;padding:1px 7px;color:var(--t2);font-weight:400;">${(iv.tl||[]).length}</span>
       </summary>
       <div style="padding:0 12px 10px 12px;">${tlHtml||'<div style="font-size:12px;color:var(--t2);">Aucun historique.</div>'}</div>
-    </details>
+    </details>`:''}
     ${reclassHtml}${actions}`;
   document.getElementById('mo').style.display='flex';
 }
@@ -6505,6 +6506,17 @@ function canUseOperationalStartDevice(){
   if(/Android|iPhone|iPad|iPod|Mobile|Tablet|Silk|Kindle/i.test(ua))return true;
   // Depuis iPadOS 13, Safari peut se présenter comme un Mac.
   return /Macintosh/i.test(ua)&&Number(navigator.maxTouchPoints||0)>1;
+}
+function canOpenInterventionPdfOnThisDevice(){
+  return !canUseOperationalStartDevice();
+}
+function requireInterventionPdfDesktop(){
+  if(canOpenInterventionPdfOnThisDevice())return true;
+  showToast('Les documents PDF des interventions sont consultables uniquement sur ordinateur.','warn');
+  return false;
+}
+function desktopOnlyInterventionPdfMessageHTML(){
+  return '<span style="font-size:11px;color:var(--t2);padding:4px 0;">PDF consultable uniquement sur ordinateur.</span>';
 }
 function hasSuperAdminOperationalStartOverride(){
   return GLOBAL_ROLE==='superadmin'&&typeof isSuperAdmin==='function'&&isSuperAdmin();
@@ -7087,7 +7099,7 @@ function oPilp(id){
     }
   }
   const sdots={'en-attente':'#E24B4A','en-cours':'var(--amb)','terminee':'var(--grn)','avis-passage':'var(--pur)','avis-classe':'#6B21A8','avis-restaure':'#2563EB'};
-  const tlHtml=(iv.tl||[]).map(t=>`<div class="tl-item"><div class="tl-dot" style="background:${sdots[t.s]||'#aaa'};"></div><div class="tl-info"><span class="tl-status">${bm[t.s]?bm[t.s][1]:t.s}</span> <span class="tl-horo">&#x1F4C5; ${t.h}</span><div class="tl-who">${t.who}</div></div></div>`).join('');
+  const tlHtml=hasAdministrativeAccount()?(iv.tl||[]).map(t=>`<div class="tl-item"><div class="tl-dot" style="background:${sdots[t.s]||'#aaa'};"></div><div class="tl-info"><span class="tl-status">${bm[t.s]?bm[t.s][1]:t.s}</span> <span class="tl-horo">&#x1F4C5; ${t.h}</span><div class="tl-who">${t.who}</div></div></div>`).join(''):'';
   document.getElementById('mb').innerHTML=`
     <div style="margin-bottom:10px;"><span class="bdg ${bc}">${bt}</span> <span class="bdg bpilp">PILP</span>${iv.rappels?` <span class="bdg bp" style="${isAdminModeActive()?'cursor:pointer;':''}"${isAdminModeActive()?` title="Déjà intervenu ici ?" onclick="showInterventionsLiees('${iv.id}')"`:''}>${iv.rappels} rappel(s)</span>`:''}</div>
     <div class="mr"><div class="ml">Adresse</div><div class="mv2" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">&#x1F4CD; ${escHtml(iv.addr)}, ${escHtml(iv.com)}${iv.addrComp?' · '+escHtml(iv.addrComp):''}${(isAgres()||isChef()||hasRight('Administration'))&&iv.s!=='terminee'?`<button class="btn sm" style="font-size:10px;padding:2px 7px;" onclick="editAdresse('${iv.id}')">✏️ Corriger</button>`:''}</div></div>
@@ -7100,15 +7112,15 @@ function oPilp(id){
     ${iv.tireur?`<div class="mr"><div class="ml">Tireur</div><div class="mv2" style="font-family:monospace;">${iv.tireur}</div></div>`:''}
     ${iv._avisPassage?`<div style="background:#FAF5FF;border:1px solid #D8B4FE;border-radius:10px;padding:10px 12px;margin:8px 0;">
       <div style="font-size:11px;font-weight:700;color:#6B21A8;margin-bottom:8px;">&#x1F4EC; Avis de passage${getAvisPassageDateTimeLabel(iv)?' — déposé le '+escHtml(getAvisPassageDateTimeLabel(iv)):''}${iv._avisPassageClasse?' — classé':''}</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn sm" style="background:#7E22CE;color:#fff;border-color:#7E22CE;" onclick="viewAvisPassageDocument('${iv.id}')">&#x1F4CB; Voir l'avis de passage</button>${isAdminModeActive()&&(iv._avisEnAttente||iv.s==='avis-passage')?`<button class="btn sm" style="background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="classerAvisPassage('${iv.id}','pilp')">&#x1F5C3;&#xFE0F; Classer</button>`:''}${isAdminModeActive()&&iv._avisPassageClasse===true&&!iv._avisEnAttente?`<button class="btn sm" style="background:#fff;color:#6B21A8;border-color:#A855F7;" onclick="restaurerAvisPassage('${iv.id}','pilp')">↩ Remettre en attente</button>`:''}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">${canOpenInterventionPdfOnThisDevice()?`<button class="btn sm" style="background:#7E22CE;color:#fff;border-color:#7E22CE;" onclick="viewAvisPassageDocument('${iv.id}')">&#x1F4CB; Voir l'avis de passage</button>`:desktopOnlyInterventionPdfMessageHTML()}${isAdminModeActive()&&(iv._avisEnAttente||iv.s==='avis-passage')?`<button class="btn sm" style="background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="classerAvisPassage('${iv.id}','pilp')">&#x1F5C3;&#xFE0F; Classer</button>`:''}${isAdminModeActive()&&iv._avisPassageClasse===true&&!iv._avisEnAttente?`<button class="btn sm" style="background:#fff;color:#6B21A8;border-color:#A855F7;" onclick="restaurerAvisPassage('${iv.id}','pilp')">↩ Remettre en attente</button>`:''}</div>
     </div>`:''}
     <div class="msep"></div>
-    <details style="background:var(--bg);border-radius:10px;margin-bottom:8px;">
+    ${hasAdministrativeAccount()?`<details style="background:var(--bg);border-radius:10px;margin-bottom:8px;">
       <summary style="font-size:11px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;padding:10px 12px;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;">
-        Historique <span style="font-size:10px;background:var(--brd);border-radius:10px;padding:1px 7px;color:var(--t2);font-weight:400;">${(iv.tl||[]).length}</span>
+        Historique des statuts <span style="font-size:10px;background:var(--brd);border-radius:10px;padding:1px 7px;color:var(--t2);font-weight:400;">${(iv.tl||[]).length}</span>
       </summary>
       <div style="padding:0 12px 10px 12px;">${tlHtml||'<div style="font-size:12px;color:var(--t2);">Aucun historique.</div>'}</div>
-    </details>
+    </details>`:''}
     ${actions}`;
   document.getElementById('mo').style.display='flex';
 }
@@ -12358,7 +12370,7 @@ function showAutorisationModal(ivId, nidIndex) {
     + '<div id="aut-sig-hint" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:12px;color:#ccc;pointer-events:none;">Signer ici</div>'
     + '</div></div>'
     + '<div class="brow" style="margin-top:12px;flex-wrap:wrap;gap:6px;">'
-    + '<button class="btn sm" style="background:#185FA5;color:#fff;" onclick="previewAutorisationPDF(\'' + ivId + '\',\'autorisation\')">&#x1F4CB; Autorisation</button>'
+    + (canOpenInterventionPdfOnThisDevice()?'<button class="btn sm" style="background:#185FA5;color:#fff;" onclick="previewAutorisationPDF(\'' + ivId + '\',\'autorisation\')">&#x1F4CB; Autorisation</button>':desktopOnlyInterventionPdfMessageHTML())
     + '<button class="btn sm" style="background:#E67E22;color:#fff;" onclick="envoyerAttestationMail(\'' + ivId + '\')">&#x2709;&#xFE0F; Envoyer attestation</button>'
     + '<button class="btn sm" onclick="saveAutorisationData(\'' + ivId + '\')">&#x1F4BE; Sauvegarder</button>'
     + (nids.length>1?'<button class="btn sm" onclick="saveAutorisationData(\''+ivId+'\');showAutorisationNidPicker(\''+ivId+'\')">← Tous les nids</button>':'')
@@ -12443,6 +12455,7 @@ function clearSignature(){
 }
 
 function previewAutorisationPDF(ivId, docType) {
+  if(!requireInterventionPdfDesktop())return;
   saveAutorisationData(ivId);
   const iv = interventionById(ivId);if(!iv)return;
   // Toujours reprendre la caserne de l'intervention : un superadmin peut
@@ -14608,7 +14621,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260830-geolocalisation-depart-fiable-192';
+const APP_VERSION='20260830-pdf-ordinateur-historique-admin-193';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -14873,6 +14886,7 @@ function _buildAutorisationHTML(ivId, docType, nidIndex) {
 }
 
 function viewPdfDocument(ivId, docType, nidIndex) {
+  if(!requireInterventionPdfDesktop())return;
   const iv = interventionById(ivId);if(!iv)return;
   const index=Number.isInteger(nidIndex)?nidIndex:0;
   let html=docType==='autorisation'
@@ -14987,6 +15001,7 @@ function _buildAvisPassageHTML(ivId){
 }
 
 function viewAvisPassageDocument(ivId){
+  if(!requireInterventionPdfDesktop())return;
   const html=_buildAvisPassageHTML(ivId);
   if(!html){showToast('Avis de passage non disponible.','warn');return;}
   openIframeModal(html,ivId);
@@ -15675,11 +15690,11 @@ function showCompteRenduModal(ivId) {
       }
     } else {
       btns += '<button class="btn sm" style="background:#0F766E;color:#fff;" onclick="saveCompteRendu(\'' + ivId + '\',false)">&#x1F4BE; Modifier (admin)</button>';
-      btns += '<button class="btn sm" style="background:#C0392B;color:#fff;" onclick="voirRapportIntervention(\'' + ivId + '\')">&#x1F5A8; Rapport</button>';
+      if(canOpenInterventionPdfOnThisDevice())btns += '<button class="btn sm" style="background:#C0392B;color:#fff;" onclick="voirRapportIntervention(\'' + ivId + '\')">&#x1F5A8; Rapport</button>';
     }
   } else {
     if(iv._crTexte||iv._compteRendu){
-      btns += '<button class="btn sm" style="background:#C0392B;color:#fff;" onclick="voirRapportIntervention(\'' + ivId + '\')">&#x1F5A8; Rapport PDF</button>';
+      if(canOpenInterventionPdfOnThisDevice())btns += '<button class="btn sm" style="background:#C0392B;color:#fff;" onclick="voirRapportIntervention(\'' + ivId + '\')">&#x1F5A8; Rapport PDF</button>';
     }
   }
 
@@ -16154,6 +16169,7 @@ function genRapportInterventionHTML(ivId) {
     +'</body></html>';
 }
 function voirRapportIntervention(ivId) {
+  if(!requireInterventionPdfDesktop())return;
   const html = genRapportInterventionHTML(ivId);
   if(!html){ showToast('Données insuffisantes','warn'); return; }
   openIframeModal(html, ivId);
@@ -16359,7 +16375,7 @@ function showPriseEnChargeModal(ivId,ficheIndex) {
 
     // Boutons
     + '<div class="brow" style="margin-top:12px;flex-wrap:wrap;gap:6px;">'
-    + '<button class="btn sm" style="background:#185FA5;color:#fff;" onclick="previewPriseEnCharge(\''+ivId+'\','+ficheIndex+')">&#x1F5A8; Aperçu PDF</button>'
+    + (canOpenInterventionPdfOnThisDevice()?'<button class="btn sm" style="background:#185FA5;color:#fff;" onclick="previewPriseEnCharge(\''+ivId+'\','+ficheIndex+')">&#x1F5A8; Aperçu PDF</button>':desktopOnlyInterventionPdfMessageHTML())
     + '<button class="btn sm" style="background:#E67E22;color:#fff;" onclick="envoyerPriseEnCharge(\''+ivId+'\','+ficheIndex+')">&#x2709;&#xFE0F; Envoyer</button>'
     + '<button class="btn sm" onclick="savePriseEnCharge(\''+ivId+'\','+ficheIndex+')">&#x1F4BE; Sauvegarder</button>'
     + '<button class="btn sm" onclick="showPrisesEnChargeManager(\''+ivId+'\')">← Toutes les fiches</button>'
@@ -16762,6 +16778,7 @@ function _buildPriseEnChargeHTML(ivId,ficheIndex) {
 
 
 function previewPriseEnCharge(ivId,ficheIndex) {
+  if(!requireInterventionPdfDesktop())return;
   savePriseEnCharge(ivId,ficheIndex);
   const html = _buildPriseEnChargeHTML(ivId,ficheIndex);
   if(!html){showToast('Remplissez le formulaire','warn');return;}

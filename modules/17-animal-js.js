@@ -147,7 +147,7 @@ function showPriseEnChargeModal(ivId,ficheIndex) {
 
     // Boutons
     + '<div class="brow" style="margin-top:12px;flex-wrap:wrap;gap:6px;">'
-    + '<button class="btn sm" style="background:#185FA5;color:#fff;" onclick="previewPriseEnCharge(\''+ivId+'\','+ficheIndex+')">&#x1F5A8; Aperçu PDF</button>'
+    + (canOpenInterventionPdfOnThisDevice()?'<button class="btn sm" style="background:#185FA5;color:#fff;" onclick="previewPriseEnCharge(\''+ivId+'\','+ficheIndex+')">&#x1F5A8; Aperçu PDF</button>':desktopOnlyInterventionPdfMessageHTML())
     + '<button class="btn sm" style="background:#E67E22;color:#fff;" onclick="envoyerPriseEnCharge(\''+ivId+'\','+ficheIndex+')">&#x2709;&#xFE0F; Envoyer</button>'
     + '<button class="btn sm" onclick="savePriseEnCharge(\''+ivId+'\','+ficheIndex+')">&#x1F4BE; Sauvegarder</button>'
     + '<button class="btn sm" onclick="showPrisesEnChargeManager(\''+ivId+'\')">← Toutes les fiches</button>'
@@ -550,6 +550,7 @@ function _buildPriseEnChargeHTML(ivId,ficheIndex) {
 
 
 function previewPriseEnCharge(ivId,ficheIndex) {
+  if(!requireInterventionPdfDesktop())return;
   savePriseEnCharge(ivId,ficheIndex);
   const html = _buildPriseEnChargeHTML(ivId,ficheIndex);
   if(!html){showToast('Remplissez le formulaire','warn');return;}

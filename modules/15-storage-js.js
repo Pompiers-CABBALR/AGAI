@@ -12,7 +12,7 @@
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260830-geolocalisation-depart-fiable-192';
+const APP_VERSION='20260830-pdf-ordinateur-historique-admin-193';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -277,6 +277,7 @@ function _buildAutorisationHTML(ivId, docType, nidIndex) {
 }
 
 function viewPdfDocument(ivId, docType, nidIndex) {
+  if(!requireInterventionPdfDesktop())return;
   const iv = interventionById(ivId);if(!iv)return;
   const index=Number.isInteger(nidIndex)?nidIndex:0;
   let html=docType==='autorisation'
@@ -391,6 +392,7 @@ function _buildAvisPassageHTML(ivId){
 }
 
 function viewAvisPassageDocument(ivId){
+  if(!requireInterventionPdfDesktop())return;
   const html=_buildAvisPassageHTML(ivId);
   if(!html){showToast('Avis de passage non disponible.','warn');return;}
   openIframeModal(html,ivId);

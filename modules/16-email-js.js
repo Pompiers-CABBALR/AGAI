@@ -679,11 +679,11 @@ function showCompteRenduModal(ivId) {
       }
     } else {
       btns += '<button class="btn sm" style="background:#0F766E;color:#fff;" onclick="saveCompteRendu(\'' + ivId + '\',false)">&#x1F4BE; Modifier (admin)</button>';
-      btns += '<button class="btn sm" style="background:#C0392B;color:#fff;" onclick="voirRapportIntervention(\'' + ivId + '\')">&#x1F5A8; Rapport</button>';
+      if(canOpenInterventionPdfOnThisDevice())btns += '<button class="btn sm" style="background:#C0392B;color:#fff;" onclick="voirRapportIntervention(\'' + ivId + '\')">&#x1F5A8; Rapport</button>';
     }
   } else {
     if(iv._crTexte||iv._compteRendu){
-      btns += '<button class="btn sm" style="background:#C0392B;color:#fff;" onclick="voirRapportIntervention(\'' + ivId + '\')">&#x1F5A8; Rapport PDF</button>';
+      if(canOpenInterventionPdfOnThisDevice())btns += '<button class="btn sm" style="background:#C0392B;color:#fff;" onclick="voirRapportIntervention(\'' + ivId + '\')">&#x1F5A8; Rapport PDF</button>';
     }
   }
 
@@ -1158,6 +1158,7 @@ function genRapportInterventionHTML(ivId) {
     +'</body></html>';
 }
 function voirRapportIntervention(ivId) {
+  if(!requireInterventionPdfDesktop())return;
   const html = genRapportInterventionHTML(ivId);
   if(!html){ showToast('Données insuffisantes','warn'); return; }
   openIframeModal(html, ivId);

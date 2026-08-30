@@ -190,7 +190,7 @@ function showAutorisationModal(ivId, nidIndex) {
     + '<div id="aut-sig-hint" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:12px;color:#ccc;pointer-events:none;">Signer ici</div>'
     + '</div></div>'
     + '<div class="brow" style="margin-top:12px;flex-wrap:wrap;gap:6px;">'
-    + '<button class="btn sm" style="background:#185FA5;color:#fff;" onclick="previewAutorisationPDF(\'' + ivId + '\',\'autorisation\')">&#x1F4CB; Autorisation</button>'
+    + (canOpenInterventionPdfOnThisDevice()?'<button class="btn sm" style="background:#185FA5;color:#fff;" onclick="previewAutorisationPDF(\'' + ivId + '\',\'autorisation\')">&#x1F4CB; Autorisation</button>':desktopOnlyInterventionPdfMessageHTML())
     + '<button class="btn sm" style="background:#E67E22;color:#fff;" onclick="envoyerAttestationMail(\'' + ivId + '\')">&#x2709;&#xFE0F; Envoyer attestation</button>'
     + '<button class="btn sm" onclick="saveAutorisationData(\'' + ivId + '\')">&#x1F4BE; Sauvegarder</button>'
     + (nids.length>1?'<button class="btn sm" onclick="saveAutorisationData(\''+ivId+'\');showAutorisationNidPicker(\''+ivId+'\')">← Tous les nids</button>':'')
@@ -275,6 +275,7 @@ function clearSignature(){
 }
 
 function previewAutorisationPDF(ivId, docType) {
+  if(!requireInterventionPdfDesktop())return;
   saveAutorisationData(ivId);
   const iv = interventionById(ivId);if(!iv)return;
   // Toujours reprendre la caserne de l'intervention : un superadmin peut
