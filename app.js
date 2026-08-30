@@ -6034,7 +6034,7 @@ function interventionAppelDetailValue(iv,key,value){
 function oM(id){
   const iv=interventionById(id);if(!iv)return;
   const pilpScope=isPilpIntervention(iv);
-  if(pilpScope&&!isTireurPILP()){showToast('Accès réservé aux tireurs PILP.','warn');return;}
+  if(pilpScope&&!isTireurPILP()&&!isAdminModeActive()){showToast('Accès réservé aux tireurs PILP.','warn');return;}
   const isInternalReinforcement=iv._isRenfortInterneMission===true;
   // Pour un départ SDIS, la synthèse opérationnelle commence à l'acquis
   // présence et se termine à l'opération terminée. Les heures de départ et
@@ -6078,6 +6078,7 @@ function oM(id){
           ?`<button class="btn sel-btn sm" disabled style="opacity:0.5;cursor:not-allowed;">⏳ Sélectionné par ${nomAutre}</button>`
           :`<button class="btn sel-btn sm" onclick="cS('${iv.id}','selectionne')">☑ Sélectionner</button>`
         }
+        ${canSuperAdminOperateForAnotherChief()?`<button class="btn am sm" onclick="showSuperAdminDepartureModal('${iv.id}')">🛡️ Démarrer pour un chef d’agrès</button>`:''}
         ${!iv._isRenfort&&(ag||chef||hasRight('Interventions'))?`<button class="btn sm" style="background:#7C3AED;color:#fff;border-color:#7C3AED;" onclick="showRenfortModal('${iv.id}')">&#x1F4E2; Renfort UT</button>`:''}
         ${!iv._isRenfort&&chef?`<button class="btn sm" style="color:#E67E22;border-color:#E67E22;" onclick="transfererIV('${iv.id}')">&#x1F500; Transférer</button>`:''}
         ${!iv._isRenfort&&chef&&iv.n&&(iv.n.toLowerCase().includes('animal')||iv.n.toLowerCase().includes('animaux'))?`<button class="btn sm" style="color:#27AE60;border-color:#27AE60;" onclick="refugeAnimalier('${iv.id}')">&#x1F43E; Refuge animalier</button>`:''}
@@ -6104,7 +6105,9 @@ function oM(id){
         ${autreAgres?`<div style="padding:6px 8px;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;font-size:12px;color:#991B1B;">🔒 Sélectionnée par ${iv.agr}</div>`:
         `${canStart
           ?(canUseOperationalStartInterface()
-            ?`<button class="btn am sm" onclick="cS('${iv.id}','en-cours')"${blocage?' style="opacity:.4;pointer-events:none;" title="Cl&#244;turez d&#39;abord '+enCours.id+'"':''}>▶ En cours</button>`
+            ?(canSuperAdminOperateForAnotherChief()
+              ?`<button class="btn am sm" onclick="showSuperAdminDepartureModal('${iv.id}')">🛡️ En cours pour un chef d’agrès</button>`
+              :`<button class="btn am sm" onclick="cS('${iv.id}','en-cours')"${blocage?' style="opacity:.4;pointer-events:none;" title="Cl&#244;turez d&#39;abord '+enCours.id+'"':''}>▶ En cours</button>`)
             :`<button class="btn sm" disabled title="Le départ est réservé aux mobiles et tablettes" style="opacity:.65;">📱 En cours : mobile/tablette</button>`)
           :`<button class="btn sm" disabled title="Demandez d’abord un renfort de personnel à une autre caserne" style="opacity:.65;">🔒 Renfort personnel requis</button>`}
         ${!iv._isRenfort&&hasRight('Interventions')?`<button class="btn sm" style="background:#7C3AED;color:#fff;border-color:#7C3AED;" onclick="showRenfortModal('${iv.id}',true)">&#x1F4E2; Renfort personnel</button>`:''}
@@ -6153,7 +6156,11 @@ function oM(id){
           <label for="avis-passage-hour" style="display:block;font-size:11px;font-weight:700;color:#6B21A8;margin-bottom:5px;">Heure de dépôt dans la boîte aux lettres *</label>
           <input class="fi" type="time" id="avis-passage-hour" value="${getHHMM(N())}" style="width:100%;"/>
         </div>`}
-        ${(iv.agr===CU.l||iv._agr2===CU.l||chef||isAdminModeActive())?`<button class="btn gn" style="width:100%;margin-bottom:10px;" onclick="clot('${iv.id}')">✅ Confirmer la clôture</button>`:`<div style="font-size:12px;color:#991B1B;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:8px;margin-bottom:10px;">🔒 Clôture réservée au chef d'agrès assigné ou à un administrateur.</div>`}
+        ${(iv.agr===CU.l||iv._agr2===CU.l||chef||isAdminModeActive())?(canSuperAdminOperateForAnotherChief()?`<div style="background:#EEF2FF;border:1px solid #A5B4FC;border-radius:9px;padding:10px;margin-bottom:10px;">
+          <label for="superadmin-end-time" style="display:block;font-size:11px;font-weight:700;color:#3730A3;margin-bottom:5px;">Heure de retour saisie manuellement *</label>
+          <input class="fi" type="time" id="superadmin-end-time" value="${getHHMM(N())}" style="width:100%;margin-bottom:8px;"/>
+          <button class="btn gn" style="width:100%;" onclick="clotSuperAdmin('${iv.id}')">🛡️ Clôturer pour ${escHtml(iv.agr||'le chef d’agrès')}</button>
+        </div>`:`<button class="btn gn" style="width:100%;margin-bottom:10px;" onclick="clot('${iv.id}')">✅ Confirmer la clôture</button>`):`<div style="font-size:12px;color:#991B1B;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:8px;margin-bottom:10px;">🔒 Clôture réservée au chef d'agrès assigné ou à un administrateur.</div>`}
         <div style="border-top:1px solid var(--brd);padding-top:10px;margin-bottom:6px;">
           <div style="font-size:10px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Gestion de l'équipage</div>
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:5px;">
@@ -6502,6 +6509,9 @@ function canUseOperationalStartDevice(){
 function hasSuperAdminOperationalStartOverride(){
   return GLOBAL_ROLE==='superadmin'&&typeof isSuperAdmin==='function'&&isSuperAdmin();
 }
+function canSuperAdminOperateForAnotherChief(){
+  return hasSuperAdminOperationalStartOverride()&&isAdminModeActive();
+}
 function canUseOperationalStartInterface(){
   return canUseOperationalStartDevice()||hasSuperAdminOperationalStartOverride();
 }
@@ -6722,8 +6732,26 @@ function showNextSelectedInterventionModal(closedIv){
   document.getElementById('mo').style.display='flex';
 }
 
-function clot(id){
+function manualOperationalTimelineStamp(iv,time,isEnd){
+  let startStamp=interventionTimelineStamp(iv,'en-cours',false)||iv&&iv.h||getH(N());
+  const digits=String(startStamp||'').replace(/\D/g,'');
+  let date=digits.length>=8?new Date(Number(digits.slice(0,4)),Number(digits.slice(4,6))-1,Number(digits.slice(6,8))):new Date();
+  if(isEnd){
+    const startMinutes=hhmmToMinutes(iv&&iv._hDebut||''),endMinutes=hhmmToMinutes(time);
+    if(startMinutes!==null&&endMinutes!==null&&endMinutes<startMinutes)date.setDate(date.getDate()+1);
+  }
+  return getDS(date)+'_'+String(time||'').replace(':','');
+}
+function clotSuperAdmin(id){
+  if(!canSuperAdminOperateForAnotherChief()){showToast('Activez le pouvoir superadmin pour utiliser cette commande.','warn');return;}
+  const field=document.getElementById('superadmin-end-time'),time=field&&field.value||'';
+  if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)){showToast('Saisissez une heure de retour valide.','warn');return;}
+  clot(id,{superAdminManual:true,endTime:time});
+}
+function clot(id,options){
   const iv=interventionById(id);if(!iv)return;
+  const opts=options||{};
+  if(opts.superAdminManual&&!canSuperAdminOperateForAnotherChief()){showToast('Le pouvoir superadmin n’est plus actif.','warn');return;}
   const collection=interventionCollection(iv);
   // Ne pas re-clôturer une intervention déjà liée à une PILP
   if(iv._lienPilp&&iv.s==='terminee'){showToast('Cette intervention est déjà clôturée (liée à une PILP).','warn');cM();return;}
@@ -6734,7 +6762,8 @@ function clot(id){
     const field=document.getElementById('avis-passage-hour');if(field){field.focus();field.scrollIntoView({behavior:'smooth',block:'center'});}
     return;
   }
-  const h=getH(N());
+  const endTime=opts.superAdminManual?opts.endTime:getHHMM(N());
+  const h=opts.superAdminManual?manualOperationalTimelineStamp(iv,endTime,true):getH(N());
   const agr2Lbl=iv._agr2?(()=>{const u=USERS.find(u=>u.l===iv._agr2);return u?' + '+fullName(u)+' (2\u00e8me)':' + '+iv._agr2;})():'';
   if(avis){
     // Avis de passage : le requérant était absent. L'intervention de CETTE équipe
@@ -6751,7 +6780,13 @@ function clot(id){
   // Clôture normale : verrouiller immédiatement avant toute autre opération afin
   // qu'un pull déjà en cours ne puisse pas restaurer l'ancien statut.
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-  iv.s='terminee';iv._hFin=getHHMM(N());iv.tl.push({s:'terminee',h,who:CU.l+agr2Lbl});
+  iv.s='terminee';iv._hFin=endTime;
+  const closeWho=opts.superAdminManual?(iv.agr+agr2Lbl+' (clôture saisie par le superadmin '+CU.l+')'):(CU.l+agr2Lbl);
+  iv.tl.push({s:'terminee',h,who:closeWho,note:opts.superAdminManual?'Retour manuel à '+endTime:''});
+  if(opts.superAdminManual){
+    iv._superAdminOperationalEdits=Array.isArray(iv._superAdminOperationalEdits)?iv._superAdminOperationalEdits:[];
+    iv._superAdminOperationalEdits.push({action:'cloture',at:getH(N()),by:CU.l,chef:iv.agr||'',heure:endTime});
+  }
   syncInternalReinforcementSource(iv);
   supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
   (iv.avisIds||[]).forEach(aid=>{const av=collection.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';av.tl.push({s:'terminee',h,who:CU.l+' (fusion)'});}});
@@ -10607,12 +10642,12 @@ function departureCrewSlotId(prefix,slot){
   return prefix+'-'+slot.key+'-'+slot.ordinal;
 }
 
-function buildDepartureCrewFields(engin,prefix,suggestions,excludeLogins){
+function buildDepartureCrewFields(engin,prefix,suggestions,excludeLogins,requireAll){
   suggestions=suggestions||{};
   return configuredCrewSlotsForVehicle(engin).map(function(slot){
     const label=slot.role+(slot.total>1?' '+slot.ordinal:'');
     const suggested=slot.ordinal===1?(suggestions[slot.key]||''):'';
-    return agentSelectHtml(label,departureCrewSlotId(prefix,slot),suggested,!!suggested,slot.key==='conducteur',excludeLogins||[]);
+    return agentSelectHtml(label,departureCrewSlotId(prefix,slot),suggested,!!suggested,requireAll===true||slot.key==='conducteur',excludeLogins||[]);
   }).join('');
 }
 
@@ -11080,6 +11115,103 @@ function buildEquipage2Dyn(enginVal){
   return ca2Html+buildDepartureCrewFields(enginVal,'eq2',{
     conducteur:d.cond2Sugg,chefdequipe:d.chefEq2Sugg,equipier:d.eq2Sugg
   },[d.CUl,d.agr2]);
+}
+
+// ── Départ saisi par le superadmin pour un autre chef d'agrès ──
+function superAdminChiefOptions(selected){
+  return sortByGradeThenName(USERS.filter(function(user){return user&&user.l&&isChefAgresByGrade(user);})).map(function(user){
+    return '<option value="'+escHtml(user.l)+'"'+(user.l===selected?' selected':'')+'>'+escHtml(fullName(user))+' ('+escHtml(gradeAbbr(user.grade)) +')</option>';
+  }).join('');
+}
+function superAdminVehicleOptions(selected){
+  return [''].concat(ASTR_CONFIG&&Array.isArray(ASTR_CONFIG.engins)?ASTR_CONFIG.engins:[]).map(function(engin){
+    return '<option value="'+escHtml(engin)+'"'+(engin===selected?' selected':'')+'>'+(engin?escHtml(engin):'— Sélectionner le véhicule —')+'</option>';
+  }).join('');
+}
+function refreshSuperAdminDepartureCrew(){
+  const chief=document.getElementById('superadmin-depart-chief')?.value||'';
+  const vehicle=document.getElementById('superadmin-depart-vehicle')?.value||'';
+  const body=document.getElementById('superadmin-depart-crew');if(!body)return;
+  body.innerHTML=vehicle
+    ?buildDepartureCrewFields(vehicle,'saeq',{},chief?[chief]:[],true)
+    :'<div style="font-size:11px;color:var(--t2);">Choisissez d’abord le véhicule pour afficher toutes les places de l’équipage.</div>';
+  refreshEquipageSelects();
+}
+function showSuperAdminDepartureModal(id){
+  const iv=interventionById(id);if(!iv)return;
+  if(!canSuperAdminOperateForAnotherChief()){showToast('Activez le pouvoir superadmin pour utiliser cette commande.','warn');return;}
+  const initialChief=iv.agr&&USERS.some(function(user){return user.l===iv.agr&&isChefAgresByGrade(user);})?iv.agr:'';
+  const initialVehicle=iv._engin1||iv.eng||'';
+  document.getElementById('mt').textContent='Départ pour un autre chef d’agrès';
+  document.getElementById('mi').textContent=interventionDisplayCallNumber(iv)+' — '+iv.n;
+  document.getElementById('mb').innerHTML=
+    '<div style="background:#EEF2FF;border:1px solid #A5B4FC;border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;color:#3730A3;">Le superadmin saisit le départ, mais le chef d’agrès choisi reste le responsable opérationnel et figurera dans le rapport.</div>'
+    +'<div class="fg"><div class="fgl">Chef d’agrès <span class="req">*</span></div><select class="fi" id="superadmin-depart-chief" onchange="refreshSuperAdminDepartureCrew()"><option value="">— Sélectionner le chef d’agrès —</option>'+superAdminChiefOptions(initialChief)+'</select></div>'
+    +'<div class="fg"><div class="fgl">Heure de départ <span class="req">*</span></div><input class="fi" type="time" id="superadmin-depart-time" value="'+getHHMM(N())+'"/></div>'
+    +'<div class="fg"><div class="fgl">Véhicule <span class="req">*</span></div><select class="fi" id="superadmin-depart-vehicle" onchange="refreshSuperAdminDepartureCrew()">'+superAdminVehicleOptions(initialVehicle)+'</select></div>'
+    +'<div style="font-size:12px;font-weight:700;margin:12px 0 8px;">Équipage complet selon les places du véhicule</div><div id="superadmin-depart-crew"></div>'
+    +'<div class="brow" style="margin-top:12px;"><button class="btn am sm" onclick="confirmerDepartSuperAdmin(\''+id+'\')">🛡️ Confirmer le départ</button><button class="btn sm" onclick="cM()">Annuler</button></div>';
+  document.getElementById('mo').style.display='flex';
+  window._piqData={ivId:id};
+  refreshSuperAdminDepartureCrew();
+}
+function findManualOperationalStartConflict(iv,time,vehicles,personnel){
+  const proposed=interventionClockMillis(iv,time,'en-cours',false);
+  if(!Number.isFinite(proposed))return null;
+  const wantedVehicles=(vehicles||[]).map(nm).filter(Boolean),wantedPersonnel=(personnel||[]).filter(Boolean);
+  const candidates=[].concat(IVS||[],PILP_IVS||[]).filter(function(other){return other&&other.id!==iv.id&&['en-cours','terminee'].includes(other.s);});
+  for(const other of candidates){
+    const bounds=interventionOperationalBounds(other);
+    if(!Number.isFinite(bounds.start)||!Number.isFinite(bounds.end)||bounds.start>proposed||proposed>=bounds.end)continue;
+    const vehicle=interventionVehicleNames(other).find(function(name){return wantedVehicles.includes(nm(name));});
+    if(vehicle)return {kind:'vehicle',value:vehicle,iv:other,end:bounds.end};
+    const otherPersonnel=interventionHistoricalPersonnelLogins(other);
+    const login=wantedPersonnel.find(function(item){return otherPersonnel.includes(item);});
+    if(login)return {kind:'personnel',value:login,iv:other,end:bounds.end};
+  }
+  return null;
+}
+function confirmerDepartSuperAdmin(id){
+  const iv=interventionById(id);if(!iv)return;
+  if(!canSuperAdminOperateForAnotherChief()){cM();showToast('Le pouvoir superadmin n’est plus actif.','warn');return;}
+  const chief=document.getElementById('superadmin-depart-chief')?.value||'';
+  const time=document.getElementById('superadmin-depart-time')?.value||'';
+  const vehicle=document.getElementById('superadmin-depart-vehicle')?.value||'';
+  const chiefUser=USERS.find(function(user){return user.l===chief;});
+  if(!chiefUser||!isChefAgresByGrade(chiefUser)){showToast('Sélectionnez obligatoirement un chef d’agrès qualifié.','warn');return;}
+  if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)){showToast('Saisissez une heure de départ valide.','warn');return;}
+  if(!vehicle){showToast('Sélectionnez obligatoirement le véhicule.','warn');return;}
+  const crew=readDepartureCrewFields(vehicle,'saeq',chief);
+  const slots=configuredCrewSlotsForVehicle(vehicle);
+  if(crew.length!==slots.length+1){
+    const missing=slots.filter(function(slot){const field=document.getElementById(departureCrewSlotId('saeq',slot));return !field||!field.value;}).map(function(slot){return slot.role+(slot.total>1?' '+slot.ordinal:'');});
+    showToast('Complétez toutes les places de l’équipage : '+missing.join(', ')+'.','warn');return;
+  }
+  const logins=crew.map(function(member){return member.login;}).filter(Boolean);
+  if(new Set(logins).size!==logins.length){showToast('Un agent ne peut pas occuper plusieurs places dans le même véhicule.','warn');return;}
+  const activeConflict=validateOperationalDeparture(iv,vehicle,'',logins);
+  if(activeConflict){
+    if(activeConflict.sameDeparture)showToast(activeConflict.kind==='vehicle'?'Le même véhicule ne peut pas être engagé deux fois.':'Le même agent ne peut pas occuper plusieurs places.','warn');
+    else showOperationalConflict(activeConflict.kind,activeConflict.value,activeConflict.iv);
+    return;
+  }
+  const historicalConflict=findManualOperationalStartConflict(iv,time,[vehicle],logins);
+  if(historicalConflict){showStartCorrectionOperationalConflict(historicalConflict);return;}
+  if(!iv.tl)iv.tl=[];
+  iv.s='en-cours';iv.agr=chief;iv._agr2=null;
+  iv._hDebut=time;iv._hDebutReelle=time;if(!iv._hDebutInitiale)iv._hDebutInitiale=time;
+  iv._equipage1=crew;iv._engin1=vehicle;iv.eng=vehicle;
+  iv._engin1RoleConfig=JSON.parse(JSON.stringify(getEnginRoles(vehicle)));
+  iv._equipage2=null;iv._engin2=null;iv._engin2RoleConfig=null;
+  delete iv._retourAttenteDepuis;delete iv._chainPreviousInterventionId;
+  const who=chief+' (départ saisi par le superadmin '+CU.l+')';
+  iv.tl.push({s:'en-cours',h:manualOperationalTimelineStamp(iv,time,false),who:who,note:'Départ manuel à '+time+' — '+vehicle});
+  iv._statusUpdatedAt=Date.now();
+  iv._superAdminOperationalEdits=Array.isArray(iv._superAdminOperationalEdits)?iv._superAdminOperationalEdits:[];
+  iv._superAdminOperationalEdits.push({action:'depart',at:getH(N()),by:CU.l,chef:chief,heure:time,engin:vehicle,equipage:crew.map(function(member){return {role:member.role,login:member.login};})});
+  assignInterventionNumbersAtStart(iv);syncInternalReinforcementSource(iv);markOperationalInterventionDirty(iv);
+  saveData(true);cM();refreshOperationalInterventionViews();rAccueil();rStatsHeader();
+  setTimeout(function(){oM(id);},80);
 }
 
 function confirmerDepart(id){
@@ -14426,7 +14558,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260828-disponibilites-sans-perte-186';
+const APP_VERSION='20260830-superadmin-depart-equipage-horaires-187';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
