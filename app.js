@@ -10804,6 +10804,7 @@ function agentSelectHtml(role,idSel,suggestedLogin,piqLabel,required,excludeLogi
 function refreshEquipageSelects(){
   const sels=Array.from(document.querySelectorAll('.eq-sel'));
   const currentIvId=window._piqData&&window._piqData.ivId;
+  const allowHistoricalBusy=!!(window._piqData&&window._piqData.allowHistoricalBusy);
   const vals={};
   sels.forEach(function(s){
     // La suggestion du piquet ne s'applique QU'À LA PREMIÈRE initialisation du champ.
@@ -10821,12 +10822,12 @@ function refreshEquipageSelects(){
     const takenByOthers=sels.filter(function(o){return o.id!==sel.id&&vals[o.id];}).map(function(o){return vals[o.id];});
     const allExclude=baseExclude.concat(takenByOthers);
     const users=USERS.filter(function(u){
-      return (u.l===currentVal||!allExclude.includes(u.l))&&!findActivePersonnelConflict(u.l,currentIvId);
+      return (u.l===currentVal||!allExclude.includes(u.l))&&(allowHistoricalBusy||!findActivePersonnelConflict(u.l,currentIvId));
     }).sort(function(a,b){return (a.nom+' '+a.prenom).localeCompare(b.nom+' '+b.prenom,'fr');});
     const suggested=sel.dataset.suggested||'';
     // Personnel renfort (autre caserne) — affiché en tête de liste
     const renforts=_getRenfortPersonnel().filter(function(r){
-      return (r.login===currentVal||!allExclude.includes(r.login))&&!findActivePersonnelConflict(r.login,currentIvId);
+      return (r.login===currentVal||!allExclude.includes(r.login))&&(allowHistoricalBusy||!findActivePersonnelConflict(r.login,currentIvId));
     });
     const renfortOpts=renforts.map(function(r){
       const nom=(r.prenom||r.nom)?((r.prenom||'')+' '+(r.nom||'')).trim():r.login;
@@ -11153,7 +11154,9 @@ function showSuperAdminDirectClosureModal(id){
     +'<div style="font-size:12px;font-weight:700;margin:12px 0 8px;">Équipage complet selon les places du véhicule</div><div id="superadmin-depart-crew"></div>'
     +'<div class="brow" style="margin-top:12px;"><button class="btn gn sm" onclick="confirmerClotureSuperAdminDirecte(\''+id+'\')">🛡️ Enregistrer et clôturer</button><button class="btn sm" onclick="cM()">Annuler</button></div>';
   document.getElementById('mo').style.display='flex';
-  window._piqData={ivId:id};
+  // Une saisie rétroactive doit proposer tout le personnel, y compris les agents
+  // actuellement engagés. Le contrôle porte ensuite sur la plage horaire saisie.
+  window._piqData={ivId:id,allowHistoricalBusy:true};
   refreshSuperAdminDepartureCrew();
 }
 function findManualOperationalStartConflict(iv,time,vehicles,personnel){
@@ -11184,12 +11187,16 @@ function findManualOperationalIntervalConflict(iv,startTime,endTime,vehicles,per
   const candidates=[].concat(IVS||[],PILP_IVS||[]).filter(function(other){return other&&other.id!==iv.id&&['en-cours','terminee'].includes(other.s);});
   for(const other of candidates){
     const bounds=interventionOperationalBounds(other);
-    if(!Number.isFinite(bounds.start)||!Number.isFinite(bounds.end)||proposedStart>=bounds.end||proposedEnd<=bounds.start)continue;
+    if(!Number.isFinite(bounds.start))continue;
+    const activeWithoutEnd=other.s==='en-cours'&&!Number.isFinite(bounds.end);
+    const comparisonEnd=activeWithoutEnd?Number.POSITIVE_INFINITY:bounds.end;
+    if(!Number.isFinite(comparisonEnd)&&!activeWithoutEnd)continue;
+    if(proposedStart>=comparisonEnd||proposedEnd<=bounds.start)continue;
     const vehicle=interventionVehicleNames(other).find(function(name){return wantedVehicles.includes(nm(name));});
-    if(vehicle)return {kind:'vehicle',value:vehicle,iv:other,end:bounds.end};
+    if(vehicle)return {kind:'vehicle',value:vehicle,iv:other,end:comparisonEnd,active:activeWithoutEnd};
     const otherPersonnel=interventionHistoricalPersonnelLogins(other);
     const login=wantedPersonnel.find(function(item){return otherPersonnel.includes(item);});
-    if(login)return {kind:'personnel',value:login,iv:other,end:bounds.end};
+    if(login)return {kind:'personnel',value:login,iv:other,end:comparisonEnd,active:activeWithoutEnd};
   }
   return null;
 }
@@ -11210,14 +11217,12 @@ function confirmerClotureSuperAdminDirecte(id){
   if(!driver){showToast('Sélectionnez obligatoirement le conducteur. Les autres membres de l’équipage sont optionnels.','warn');return;}
   const logins=crew.map(function(member){return member.login;}).filter(Boolean);
   if(new Set(logins).size!==logins.length){showToast('Un agent ne peut pas occuper plusieurs places dans le même véhicule.','warn');return;}
-  const activeConflict=validateOperationalDeparture(iv,vehicle,'',logins);
-  if(activeConflict){
-    if(activeConflict.sameDeparture)showToast(activeConflict.kind==='vehicle'?'Le même véhicule ne peut pas être engagé deux fois.':'Le même agent ne peut pas occuper plusieurs places.','warn');
-    else showOperationalConflict(activeConflict.kind,activeConflict.value,activeConflict.iv);
+  const intervalConflict=findManualOperationalIntervalConflict(iv,time,endTime,[vehicle],logins);
+  if(intervalConflict){
+    if(intervalConflict.active)showOperationalConflict(intervalConflict.kind,intervalConflict.value,intervalConflict.iv);
+    else showStartCorrectionOperationalConflict(intervalConflict);
     return;
   }
-  const intervalConflict=findManualOperationalIntervalConflict(iv,time,endTime,[vehicle],logins);
-  if(intervalConflict){showStartCorrectionOperationalConflict(intervalConflict);return;}
   if(!iv.tl)iv.tl=[];
   iv.s='en-cours';iv.agr=chief;iv._agr2=null;
   iv._hDebut=time;iv._hDebutReelle=time;if(!iv._hDebutInitiale)iv._hDebutInitiale=time;
@@ -14578,7 +14583,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260830-superadmin-cloture-directe-188';
+const APP_VERSION='20260830-superadmin-cloture-retroactive-189';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
