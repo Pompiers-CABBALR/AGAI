@@ -2965,24 +2965,25 @@ function refreshSuperAdminDepartureCrew(){
   const vehicle=document.getElementById('superadmin-depart-vehicle')?.value||'';
   const body=document.getElementById('superadmin-depart-crew');if(!body)return;
   body.innerHTML=vehicle
-    ?buildDepartureCrewFields(vehicle,'saeq',{},chief?[chief]:[],true)
+    ?buildDepartureCrewFields(vehicle,'saeq',{},chief?[chief]:[],false)
     :'<div style="font-size:11px;color:var(--t2);">Choisissez d’abord le véhicule pour afficher toutes les places de l’équipage.</div>';
   refreshEquipageSelects();
 }
-function showSuperAdminDepartureModal(id){
+function showSuperAdminDirectClosureModal(id){
   const iv=interventionById(id);if(!iv)return;
   if(!canSuperAdminOperateForAnotherChief()){showToast('Activez le pouvoir superadmin pour utiliser cette commande.','warn');return;}
   const initialChief=iv.agr&&USERS.some(function(user){return user.l===iv.agr&&isChefAgresByGrade(user);})?iv.agr:'';
   const initialVehicle=iv._engin1||iv.eng||'';
-  document.getElementById('mt').textContent='Départ pour un autre chef d’agrès';
+  document.getElementById('mt').textContent='Saisir et clôturer l’intervention';
   document.getElementById('mi').textContent=interventionDisplayCallNumber(iv)+' — '+iv.n;
   document.getElementById('mb').innerHTML=
-    '<div style="background:#EEF2FF;border:1px solid #A5B4FC;border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;color:#3730A3;">Le superadmin saisit le départ, mais le chef d’agrès choisi reste le responsable opérationnel et figurera dans le rapport.</div>'
+    '<div style="background:#EEF2FF;border:1px solid #A5B4FC;border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;color:#3730A3;">L’intervention sera enregistrée directement comme terminée, sans apparaître auparavant en cours. Le chef d’agrès choisi restera le responsable opérationnel et figurera dans le rapport.</div>'
     +'<div class="fg"><div class="fgl">Chef d’agrès <span class="req">*</span></div><select class="fi" id="superadmin-depart-chief" onchange="refreshSuperAdminDepartureCrew()"><option value="">— Sélectionner le chef d’agrès —</option>'+superAdminChiefOptions(initialChief)+'</select></div>'
     +'<div class="fg"><div class="fgl">Heure de départ <span class="req">*</span></div><input class="fi" type="time" id="superadmin-depart-time" value="'+getHHMM(N())+'"/></div>'
+    +'<div class="fg"><div class="fgl">Heure de retour <span class="req">*</span></div><input class="fi" type="time" id="superadmin-direct-end-time" value="'+getHHMM(N())+'"/></div>'
     +'<div class="fg"><div class="fgl">Véhicule <span class="req">*</span></div><select class="fi" id="superadmin-depart-vehicle" onchange="refreshSuperAdminDepartureCrew()">'+superAdminVehicleOptions(initialVehicle)+'</select></div>'
     +'<div style="font-size:12px;font-weight:700;margin:12px 0 8px;">Équipage complet selon les places du véhicule</div><div id="superadmin-depart-crew"></div>'
-    +'<div class="brow" style="margin-top:12px;"><button class="btn am sm" onclick="confirmerDepartSuperAdmin(\''+id+'\')">🛡️ Confirmer le départ</button><button class="btn sm" onclick="cM()">Annuler</button></div>';
+    +'<div class="brow" style="margin-top:12px;"><button class="btn gn sm" onclick="confirmerClotureSuperAdminDirecte(\''+id+'\')">🛡️ Enregistrer et clôturer</button><button class="btn sm" onclick="cM()">Annuler</button></div>';
   document.getElementById('mo').style.display='flex';
   window._piqData={ivId:id};
   refreshSuperAdminDepartureCrew();
@@ -3003,22 +3004,42 @@ function findManualOperationalStartConflict(iv,time,vehicles,personnel){
   }
   return null;
 }
-function confirmerDepartSuperAdmin(id){
+function findManualOperationalIntervalConflict(iv,startTime,endTime,vehicles,personnel){
+  const proposedStart=interventionClockMillis(iv,startTime,'en-cours',false);
+  if(!Number.isFinite(proposedStart))return null;
+  const proposedEndDate=new Date(proposedStart),endMinutes=hhmmToMinutes(endTime);
+  if(endMinutes===null)return null;
+  proposedEndDate.setHours(Math.floor(endMinutes/60),endMinutes%60,0,0);
+  if(proposedEndDate.getTime()<proposedStart)proposedEndDate.setDate(proposedEndDate.getDate()+1);
+  const proposedEnd=proposedEndDate.getTime();
+  const wantedVehicles=(vehicles||[]).map(nm).filter(Boolean),wantedPersonnel=(personnel||[]).filter(Boolean);
+  const candidates=[].concat(IVS||[],PILP_IVS||[]).filter(function(other){return other&&other.id!==iv.id&&['en-cours','terminee'].includes(other.s);});
+  for(const other of candidates){
+    const bounds=interventionOperationalBounds(other);
+    if(!Number.isFinite(bounds.start)||!Number.isFinite(bounds.end)||proposedStart>=bounds.end||proposedEnd<=bounds.start)continue;
+    const vehicle=interventionVehicleNames(other).find(function(name){return wantedVehicles.includes(nm(name));});
+    if(vehicle)return {kind:'vehicle',value:vehicle,iv:other,end:bounds.end};
+    const otherPersonnel=interventionHistoricalPersonnelLogins(other);
+    const login=wantedPersonnel.find(function(item){return otherPersonnel.includes(item);});
+    if(login)return {kind:'personnel',value:login,iv:other,end:bounds.end};
+  }
+  return null;
+}
+function confirmerClotureSuperAdminDirecte(id){
   const iv=interventionById(id);if(!iv)return;
   if(!canSuperAdminOperateForAnotherChief()){cM();showToast('Le pouvoir superadmin n’est plus actif.','warn');return;}
   const chief=document.getElementById('superadmin-depart-chief')?.value||'';
   const time=document.getElementById('superadmin-depart-time')?.value||'';
+  const endTime=document.getElementById('superadmin-direct-end-time')?.value||'';
   const vehicle=document.getElementById('superadmin-depart-vehicle')?.value||'';
   const chiefUser=USERS.find(function(user){return user.l===chief;});
   if(!chiefUser||!isChefAgresByGrade(chiefUser)){showToast('Sélectionnez obligatoirement un chef d’agrès qualifié.','warn');return;}
   if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)){showToast('Saisissez une heure de départ valide.','warn');return;}
+  if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(endTime)){showToast('Saisissez une heure de retour valide.','warn');return;}
   if(!vehicle){showToast('Sélectionnez obligatoirement le véhicule.','warn');return;}
   const crew=readDepartureCrewFields(vehicle,'saeq',chief);
-  const slots=configuredCrewSlotsForVehicle(vehicle);
-  if(crew.length!==slots.length+1){
-    const missing=slots.filter(function(slot){const field=document.getElementById(departureCrewSlotId('saeq',slot));return !field||!field.value;}).map(function(slot){return slot.role+(slot.total>1?' '+slot.ordinal:'');});
-    showToast('Complétez toutes les places de l’équipage : '+missing.join(', ')+'.','warn');return;
-  }
+  const driver=crew.find(function(member){return member&&interventionRoleKey(member.role)==='conducteur'&&member.login;});
+  if(!driver){showToast('Sélectionnez obligatoirement le conducteur. Les autres membres de l’équipage sont optionnels.','warn');return;}
   const logins=crew.map(function(member){return member.login;}).filter(Boolean);
   if(new Set(logins).size!==logins.length){showToast('Un agent ne peut pas occuper plusieurs places dans le même véhicule.','warn');return;}
   const activeConflict=validateOperationalDeparture(iv,vehicle,'',logins);
@@ -3027,8 +3048,8 @@ function confirmerDepartSuperAdmin(id){
     else showOperationalConflict(activeConflict.kind,activeConflict.value,activeConflict.iv);
     return;
   }
-  const historicalConflict=findManualOperationalStartConflict(iv,time,[vehicle],logins);
-  if(historicalConflict){showStartCorrectionOperationalConflict(historicalConflict);return;}
+  const intervalConflict=findManualOperationalIntervalConflict(iv,time,endTime,[vehicle],logins);
+  if(intervalConflict){showStartCorrectionOperationalConflict(intervalConflict);return;}
   if(!iv.tl)iv.tl=[];
   iv.s='en-cours';iv.agr=chief;iv._agr2=null;
   iv._hDebut=time;iv._hDebutReelle=time;if(!iv._hDebutInitiale)iv._hDebutInitiale=time;
@@ -3040,10 +3061,9 @@ function confirmerDepartSuperAdmin(id){
   iv.tl.push({s:'en-cours',h:manualOperationalTimelineStamp(iv,time,false),who:who,note:'Départ manuel à '+time+' — '+vehicle});
   iv._statusUpdatedAt=Date.now();
   iv._superAdminOperationalEdits=Array.isArray(iv._superAdminOperationalEdits)?iv._superAdminOperationalEdits:[];
-  iv._superAdminOperationalEdits.push({action:'depart',at:getH(N()),by:CU.l,chef:chief,heure:time,engin:vehicle,equipage:crew.map(function(member){return {role:member.role,login:member.login};})});
+  iv._superAdminOperationalEdits.push({action:'saisie-directe',at:getH(N()),by:CU.l,chef:chief,heureDepart:time,heureRetour:endTime,engin:vehicle,equipage:crew.map(function(member){return {role:member.role,login:member.login};})});
   assignInterventionNumbersAtStart(iv);syncInternalReinforcementSource(iv);markOperationalInterventionDirty(iv);
-  saveData(true);cM();refreshOperationalInterventionViews();rAccueil();rStatsHeader();
-  setTimeout(function(){oM(id);},80);
+  clot(id,{superAdminManual:true,endTime:endTime,directClosure:true});
 }
 
 function confirmerDepart(id){

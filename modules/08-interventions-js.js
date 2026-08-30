@@ -1254,7 +1254,7 @@ function oM(id){
           ?`<button class="btn sel-btn sm" disabled style="opacity:0.5;cursor:not-allowed;">⏳ Sélectionné par ${nomAutre}</button>`
           :`<button class="btn sel-btn sm" onclick="cS('${iv.id}','selectionne')">☑ Sélectionner</button>`
         }
-        ${canSuperAdminOperateForAnotherChief()?`<button class="btn am sm" onclick="showSuperAdminDepartureModal('${iv.id}')">🛡️ Démarrer pour un chef d’agrès</button>`:''}
+        ${canSuperAdminOperateForAnotherChief()?`<button class="btn gn sm" onclick="showSuperAdminDirectClosureModal('${iv.id}')">🛡️ Saisir et clôturer</button>`:''}
         ${!iv._isRenfort&&(ag||chef||hasRight('Interventions'))?`<button class="btn sm" style="background:#7C3AED;color:#fff;border-color:#7C3AED;" onclick="showRenfortModal('${iv.id}')">&#x1F4E2; Renfort UT</button>`:''}
         ${!iv._isRenfort&&chef?`<button class="btn sm" style="color:#E67E22;border-color:#E67E22;" onclick="transfererIV('${iv.id}')">&#x1F500; Transférer</button>`:''}
         ${!iv._isRenfort&&chef&&iv.n&&(iv.n.toLowerCase().includes('animal')||iv.n.toLowerCase().includes('animaux'))?`<button class="btn sm" style="color:#27AE60;border-color:#27AE60;" onclick="refugeAnimalier('${iv.id}')">&#x1F43E; Refuge animalier</button>`:''}
@@ -1282,7 +1282,7 @@ function oM(id){
         `${canStart
           ?(canUseOperationalStartInterface()
             ?(canSuperAdminOperateForAnotherChief()
-              ?`<button class="btn am sm" onclick="showSuperAdminDepartureModal('${iv.id}')">🛡️ En cours pour un chef d’agrès</button>`
+              ?`<button class="btn gn sm" onclick="showSuperAdminDirectClosureModal('${iv.id}')">🛡️ Saisir et clôturer</button>`
               :`<button class="btn am sm" onclick="cS('${iv.id}','en-cours')"${blocage?' style="opacity:.4;pointer-events:none;" title="Cl&#244;turez d&#39;abord '+enCours.id+'"':''}>▶ En cours</button>`)
             :`<button class="btn sm" disabled title="Le départ est réservé aux mobiles et tablettes" style="opacity:.65;">📱 En cours : mobile/tablette</button>`)
           :`<button class="btn sm" disabled title="Demandez d’abord un renfort de personnel à une autre caserne" style="opacity:.65;">🔒 Renfort personnel requis</button>`}
