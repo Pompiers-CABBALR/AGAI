@@ -6214,7 +6214,7 @@ function oM(id){
       <span>${escHtml(iv.req||'—')}${getInterventionPhones(iv).length?' · '+getInterventionPhones(iv).map(escHtml).join(' · '):''}</span>
       ${getInterventionPhones(iv).map((phone,index)=>`<button class="btn sm" style="font-size:10px;padding:2px 7px;background:#16A34A;color:#fff;border-color:#16A34A;" onclick="callRequerantMasque('${iv.id}',${index})" title="Appeler ${escHtml(phone)} en numéro masqué (non garanti selon téléphone)">📞 ${escHtml(phone)}</button>`).join('')}
       ${(iv._reqInit||iv._telInit)?`<span style="font-size:10px;color:var(--t2);font-style:italic;">(initial : ${escHtml(iv._reqInit||'')}${iv._telInit?' · '+escHtml(iv._telInit):''})</span>`:''}
-      ${(isAgres()&&iv.agr===CU.l||hasRight('Administration'))&&iv.s!=='terminee'?`<button class="btn sm" style="font-size:10px;padding:2px 7px;" onclick="editRequerant('${iv.id}')">✏️ Corriger</button>`:''}
+      ${canEditInterventionRequester(iv)?`<button class="btn sm" style="font-size:10px;padding:2px 7px;" onclick="editRequerant('${iv.id}')">✏️ Corriger</button>`:''}
     </div></div>
     ${iv.reqDispo&&iv.reqDispo.label?`<div class="mr"><div class="ml">Disponibilité du requérant</div><div class="mv2">${reqAvailabilityBadgeHTML(iv)}</div></div>`:''}
     <div class="mr" style="padding:4px 0;">
@@ -11395,8 +11395,13 @@ function confirmerDepart(id){
 }
 
 // ── Correction requérant ──
+function canEditInterventionRequester(iv){
+  return !!(iv&&['en-attente','selectionne','en-cours'].includes(iv.s))
+    &&(hasRight('Interventions')||isAgres()||isChef()||isAdminModeActive());
+}
 function editRequerant(id){
   const iv=interventionById(id);if(!iv)return;
+  if(!canEditInterventionRequester(iv)){showToast('Le requérant ne peut être corrigé que sur une intervention en attente, sélectionnée ou en cours.','warn');return;}
   document.getElementById('mt').textContent='Corriger le requ\u00e9rant';
   document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
   const initBanner=iv._reqInit
@@ -11406,9 +11411,9 @@ function editRequerant(id){
   document.getElementById('mb').innerHTML=
     '<div>'+initBanner
     +'<div class="fg"><div class="fgl">Nom du requ\u00e9rant</div>'
-    +'<input class="fi" type="text" id="edit-req" value="'+(iv.req||'')+'"/></div>'
+    +'<input class="fi" type="text" id="edit-req" value="'+escHtml(iv.req||'')+'"/></div>'
     +'<div class="fg"><div class="fgl">T\u00e9l\u00e9phone</div>'
-    +'<input class="fi" type="tel" id="edit-tel" value="'+(iv.tel||'')+'"/></div>'
+    +'<input class="fi" type="tel" id="edit-tel" value="'+escHtml(iv.tel||'')+'"/></div>'
     +'<div class="brow">'
     +'<button class="btn pr sm" onclick="saveRequerant(\''+id+'\')">&#x1F4BE; Enregistrer</button>'
     +'<button class="btn sm" onclick="cM()">Annuler</button></div></div>';
@@ -11416,6 +11421,7 @@ function editRequerant(id){
 }
 function saveRequerant(id){
   const iv=interventionById(id);if(!iv)return;
+  if(!canEditInterventionRequester(iv)){showToast('Cette intervention ne peut plus être modifiée.','warn');return;}
   const newReq=document.getElementById('edit-req').value.trim();
   const newTel=document.getElementById('edit-tel').value.trim();
   if(!newReq){showToast('Le nom du requérant est obligatoire.','warn');return;}
@@ -11425,9 +11431,11 @@ function saveRequerant(id){
   if(!iv._reqInit){iv._reqInit=iv.req;iv._telInit=iv.tel||'';}
   iv.req=newReq;iv.tel=newTel;
   if(Array.isArray(iv.tels)){if(iv.tels.length)iv.tels[0]=newTel;else if(newTel)iv.tels=[newTel];}
+  if(!Array.isArray(iv.tl))iv.tl=[];
   iv.tl.push({s:'modif',h:getH(N()),who:CU.l,note:notes.length?notes.join(' ; '):'Requérant corrigé'});
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-  saveData(true);cM(); // push immédiat : sinon la correction est écrasée au prochain pull
+  markOperationalInterventionDirty(iv);
+  saveData(true);cM();refreshOperationalInterventionViews(); // push immédiat : sinon la correction est écrasée au prochain pull
   setTimeout(function(){oM(id);},80);
 }
 
@@ -14643,7 +14651,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260831-sdis-sans-geolocalisation-196';
+const APP_VERSION='20260831-correction-requerant-actif-197';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
