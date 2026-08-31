@@ -1735,20 +1735,33 @@ function prepareRouteChainedOperationalStart(iv){
   iv._chainPreviousInterventionId=previous.id;
   return previous;
 }
-function operationalStartGeoExemption(iv){
+function prepareOperationalChainedStart(iv){
+  if(!iv)return null;
+  const interrupted=(IVS||[]).includes(iv)?findInterruptedDepartureHandoff(CU&&CU.l,iv.id):null;
+  if(interrupted)return null;
+  if(_pendingNextInterventionStarts[iv.id]){
+    const source=iv._chainPreviousInterventionId?interventionById(iv._chainPreviousInterventionId):null;
+    return {iv:source,reason:'enchaînement confirmé',sourceId:source&&source.id||iv._chainPreviousInterventionId||''};
+  }
+  // L'ordre de tournée reste une intention. Si le chef d'agrès vient de
+  // terminer une autre intervention, la chronologie réellement effectuée
+  // doit toujours primer, même si l'ordre prévu a été modifié en route.
+  const recent=recentFinishedInterventionForChef(CU&&CU.l,iv.id);
+  if(recent){
+    _pendingNextInterventionStarts[iv.id]=recent.iv._hFin||getHHMM(new Date(recent.end));
+    iv._chainPreviousInterventionId=recent.iv.id;
+    return {iv:recent.iv,reason:'intervention précédente terminée depuis moins de 15 minutes',sourceId:recent.iv.id};
+  }
   const routePrevious=prepareRouteChainedOperationalStart(iv);
-  if(routePrevious)return {reason:'enchaînement de tournée après '+routePrevious.id,sourceId:routePrevious.id};
-  if(iv&&_pendingNextInterventionStarts&&_pendingNextInterventionStarts[iv.id])return {reason:'enchaînement de tournée'};
+  return routePrevious?{iv:routePrevious,reason:'enchaînement de tournée après '+routePrevious.id,sourceId:routePrevious.id}:null;
+}
+function operationalStartGeoExemption(iv){
   if(iv&&(IVS||[]).includes(iv)){
     const interrupted=findInterruptedDepartureHandoff(CU.l,iv.id);
     if(interrupted)return {reason:'reprise d’un départ interrompu',sourceId:interrupted.source.id};
   }
-  const recent=recentFinishedInterventionForChef(CU&&CU.l,iv&&iv.id);
-  if(recent){
-    _pendingNextInterventionStarts[iv.id]=recent.iv._hFin||getHHMM(new Date(recent.end));
-    iv._chainPreviousInterventionId=recent.iv.id;
-    return {reason:'intervention précédente terminée depuis moins de 15 minutes',sourceId:recent.iv.id};
-  }
+  const chained=prepareOperationalChainedStart(iv);
+  if(chained)return {reason:chained.reason,sourceId:chained.sourceId};
   return null;
 }
 function requestOperationalStartAuthorization(iv,onApproved){
@@ -1836,7 +1849,7 @@ function cS(id,s,confirmed){
       return;
     }
     if(confirmed!=='start-authorized'){
-      prepareRouteChainedOperationalStart(iv);
+      prepareOperationalChainedStart(iv);
       requestOperationalStartAuthorization(iv,function(){cS(id,s,'start-authorized');});return;
     }
     const ec=agresEnCours();
