@@ -1772,6 +1772,11 @@ function requestOperationalStartAuthorization(iv,onApproved){
   if(!canUseOperationalStartDevice()){
     showToast('Le passage « En cours » est autorisé uniquement sur mobile ou tablette.','warn');return;
   }
+  // Les départs SDIS ne sont jamais soumis au contrôle de position.
+  if(iv&&iv._sdis){
+    _operationalStartAuthorizations[iv.id]={at:Date.now(),exempt:true,reason:'intervention SDIS — contrôle de position non requis'};
+    onApproved();return;
+  }
   if(!operationalStartGeolocationEnabled()){
     const exemptReason=(typeof isChefCorps==='function'&&isChefCorps())||(CU&&CU.appRole==='chef_corps')?'chef de corps exempté du contrôle de présence':'contrôle de présence désactivé pour cette caserne';
     _operationalStartAuthorizations[iv.id]={at:Date.now(),exempt:true,reason:exemptReason};
@@ -1785,10 +1790,10 @@ function requestOperationalStartAuthorization(iv,onApproved){
   const caserne=CC(),stationLocation=getCaserneStationLocation(CURRENT_CASERNE_ID);
   const stationLat=stationLocation.latitude,stationLon=stationLocation.longitude;
   if(!caserne||!validCaserneCoordinates(stationLat,stationLon)){
-    showToast('La position de la caserne n’est pas configurée. Le superadmin doit enregistrer son adresse avant le premier départ.','warn');return;
+    showToast('Impossible de passer cette intervention « En cours ».','warn');return;
   }
-  if(!navigator.geolocation){showToast('La géolocalisation n’est pas disponible sur cet appareil.','warn');return;}
-  showToast('Vérification de votre présence à la caserne…','info');
+  if(!navigator.geolocation){showToast('Impossible de passer cette intervention « En cours ».','warn');return;}
+  showToast('Vérification du départ…','info');
   const evaluatePosition=function(position,attempt){
     const accuracy=Math.max(0,Number(position.coords.accuracy)||0);
     const distance=operationalDistanceMeters(position.coords.latitude,position.coords.longitude,stationLat,stationLon);
@@ -1798,12 +1803,12 @@ function requestOperationalStartAuthorization(iv,onApproved){
     const effectiveDistance=Math.max(0,distance-accuracy);
     const imprecise=accuracy>1000;
     if((imprecise||effectiveDistance>OPERATIONAL_START_RADIUS_METERS)&&attempt<2){
-      showToast('Position GPS imprécise ou ancienne, nouvelle vérification…','info');
+      showToast('Nouvelle vérification du départ…','info');
       window.setTimeout(function(){locateForOperationalStart(2);},600);return;
     }
-    if(imprecise){showToast('Position trop imprécise ('+Math.round(accuracy)+' m). Activez la localisation précise puis réessayez.','warn');return;}
+    if(imprecise){showToast('Impossible de passer cette intervention « En cours ».','warn');return;}
     if(effectiveDistance>OPERATIONAL_START_RADIUS_METERS){
-      showToast('Départ refusé : position mesurée à '+(distance/1000).toFixed(1).replace('.',',')+' km de la caserne (précision '+Math.round(accuracy)+' m).','warn');return;
+      showToast('Impossible de passer cette intervention « En cours ».','warn');return;
     }
     _operationalStartAuthorizations[iv.id]={at:Date.now(),exempt:false,distanceMeters:Math.round(distance),accuracyMeters:Math.round(accuracy),caserneId:caserne.id};
     onApproved();
@@ -1812,7 +1817,7 @@ function requestOperationalStartAuthorization(iv,onApproved){
     navigator.geolocation.getCurrentPosition(function(position){evaluatePosition(position,attempt);},function(error){
       const denied=error&&error.code===1;
       if(!denied&&attempt<2){window.setTimeout(function(){locateForOperationalStart(2);},600);return;}
-      showToast(denied?'Autorisez la localisation pour démarrer la première intervention.':'Position introuvable. Activez le GPS puis réessayez.','warn');
+      showToast('Impossible de passer cette intervention « En cours ».','warn');
     },{enableHighAccuracy:true,timeout:20000,maximumAge:0});
   };
   locateForOperationalStart(1);
