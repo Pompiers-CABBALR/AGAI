@@ -13,10 +13,12 @@ function showPilpForm(ivId){
         <div class="fg"><div class="fgl">Localisation</div><select class="fi" id="pf-loc"><option>Arbre</option><option>Toiture</option><option>Nichoir à oiseaux</option><option>Haie</option><option>Façade</option><option>Autre</option></select></div>
         <div class="fg"><div class="fgl">Hauteur (m)</div><input class="fi" type="number" id="pf-haut" min="0" placeholder="ex. 8"/></div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+      <div style="display:grid;grid-template-columns:1fr;gap:8px;margin-bottom:10px;">
         <label style="display:flex;align-items:center;gap:8px;padding:8px;background:#fff;border-radius:8px;font-size:13px;cursor:pointer;border:1px solid var(--brd);"><input type="checkbox" id="pf-reco" style="width:16px;height:16px;accent-color:var(--pilp);"/>Reconnaissance faite</label>
-        <label style="display:flex;align-items:center;gap:8px;padding:8px;background:#fff;border-radius:8px;font-size:13px;cursor:pointer;border:1px solid var(--brd);"><input type="checkbox" id="pf-axe" style="width:16px;height:16px;accent-color:var(--pilp);"/>Axe de tir dispo.</label>
       </div>
+      <div class="fg"><div class="fgl">État de l’axe de tir</div><select class="fi" id="pf-axe"><option value="disponible">Axe de tir disponible</option><option value="a-verifier" selected>Axe de tir à vérifier</option><option value="indisponible">Axe de tir non satisfaisant</option></select></div>
+      <div class="fg"><div class="fgl">Période possible pour l’intervention</div><select class="fi" id="pf-periode"><option value="des-que-possible">Dès que possible</option><option value="printemps">Au printemps</option><option value="ete">En été</option><option value="automne">En automne</option><option value="hiver">En hiver</option><option value="apres-feuilles">Après la chute des feuilles</option><option value="a-determiner" selected>À déterminer</option><option value="personnalisee">Autre période</option></select></div>
+      <div class="fg"><div class="fgl">Précision ou motif</div><textarea class="fta" id="pf-periode-precision" placeholder="Ex. Trop de feuilles, attendre l’automne..."></textarea></div>
       <div class="fg"><div class="fgl">Observations</div><textarea class="fta" id="pf-obs" placeholder="Informations pour le tireur..."></textarea></div>
       <div id="pf-err" style="font-size:12px;color:#E24B4A;display:none;margin-bottom:8px;"></div>
       <button class="btn pilp-btn" style="width:100%;" onclick="creerPILP('${ivId}')">&#x1F3AF; Créer la PILP</button>
@@ -34,7 +36,10 @@ function creerPILP(ivId){
   const localisation=document.getElementById('pf-loc').value;
   const hauteur=parseFloat(document.getElementById('pf-haut').value)||null;
   const reconnaissanceFaite=document.getElementById('pf-reco').checked;
-  const axeTir=document.getElementById('pf-axe').checked;
+  const axeTirEtat=document.getElementById('pf-axe').value;
+  const axeTir=axeTirEtat==='disponible';
+  const pilpPeriode=document.getElementById('pf-periode').value;
+  const pilpPeriodePrecision=document.getElementById('pf-periode-precision').value.trim();
   const observations=document.getElementById('pf-obs').value.trim();
   // La PILP créée reçoit un id temporaire PILP-2026-001
   // Elle n'a PAS encore de numéro INT — ce sera attribué à son passage En cours.
@@ -44,8 +49,8 @@ function creerPILP(ivId){
     // Pas de _numCaserne ni _numGlobal ici — attribués au passage En cours
     n:'Nid de frelons asiatiques — PILP',addr,addrComp:iv.addrComp||'',com:iv.com,h,req,tel,tels:Array.isArray(iv.tels)?iv.tels.slice():[tel],
     op:iv.op||iv.agr||CU.l,reqDispo:iv.reqDispo?JSON.parse(JSON.stringify(iv.reqDispo)):null,
-    localisation:localisation,hauteur:hauteur,reconnaissanceFaite:reconnaissanceFaite,axeTir:axeTir,obs:observations,det:observations,
-    _appelDetails:Object.assign({},iv._appelDetails||{},{'Localisation du nid':localisation,'Hauteur':hauteur?hauteur+' m':'Non renseignée','Reconnaissance':reconnaissanceFaite?'Réalisée':'Non réalisée','Axe de tir':axeTir?'Disponible':'À vérifier'}),
+    localisation:localisation,hauteur:hauteur,reconnaissanceFaite:reconnaissanceFaite,axeTir:axeTir,_axeTirEtat:axeTirEtat,_pilpPeriode:pilpPeriode,_pilpPeriodePrecision:pilpPeriodePrecision,obs:observations,det:observations,
+    _appelDetails:Object.assign({},iv._appelDetails||{},{'Localisation du nid':localisation,'Hauteur':hauteur?hauteur+' m':'Non renseignée','Reconnaissance':reconnaissanceFaite?'Réalisée':'Non réalisée','Axe de tir':axeTirEtat==='disponible'?'Disponible':axeTirEtat==='indisponible'?'Non satisfaisant':'À vérifier','Période PILP':pilpPeriodeLabel({_pilpPeriode:pilpPeriode,_pilpPeriodePrecision:pilpPeriodePrecision})}),
     _nidsAppel:Array.isArray(iv._nidsAppel)?JSON.parse(JSON.stringify(iv._nidsAppel)):undefined,
     s:'en-attente',agr:null,tireur:null,rappels:0,avisIds:[],tl:[mkTL('en-attente',h,CU.l)]
   });
@@ -57,6 +62,35 @@ function creerPILP(ivId){
   saveData();
   cM();rI();rAccueil();
   showToast('PILP créée ✓ — Clôturez maintenant votre intervention Frelons','success');
+}
+
+function showPilpPlanningModal(ivId){
+  const iv=interventionById(ivId);if(!iv||!isPilpIntervention(iv))return;
+  if(!canOperatePilp()){showToast('La programmation PILP est en lecture seule.','warn');return;}
+  const axe=pilpAxeEtat(iv),periode=iv._pilpPeriode||'a-determiner';
+  document.getElementById('mt').textContent='Programmation de l’intervention PILP';
+  document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
+  document.getElementById('mb').innerHTML=`
+    <div style="background:#F5F3FF;border:1px solid #C4B5FD;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#4C1D95;">Indiquez si l’axe de tir est utilisable et la période à laquelle l’intervention pourra être réalisée.</div>
+    <div class="fg"><div class="fgl">État de l’axe de tir</div><select class="fi" id="pilp-edit-axe"><option value="disponible"${axe==='disponible'?' selected':''}>Axe de tir disponible</option><option value="a-verifier"${axe==='a-verifier'?' selected':''}>Axe de tir à vérifier</option><option value="indisponible"${axe==='indisponible'?' selected':''}>Axe de tir non satisfaisant</option></select></div>
+    <div class="fg"><div class="fgl">Période possible pour l’intervention</div><select class="fi" id="pilp-edit-periode"><option value="des-que-possible"${periode==='des-que-possible'?' selected':''}>Dès que possible</option><option value="printemps"${periode==='printemps'?' selected':''}>Au printemps</option><option value="ete"${periode==='ete'?' selected':''}>En été</option><option value="automne"${periode==='automne'?' selected':''}>En automne</option><option value="hiver"${periode==='hiver'?' selected':''}>En hiver</option><option value="apres-feuilles"${periode==='apres-feuilles'?' selected':''}>Après la chute des feuilles</option><option value="a-determiner"${periode==='a-determiner'?' selected':''}>À déterminer</option><option value="personnalisee"${periode==='personnalisee'?' selected':''}>Autre période</option></select></div>
+    <div class="fg"><div class="fgl">Précision ou motif</div><textarea class="fta" id="pilp-edit-precision" placeholder="Ex. Trop de feuilles, attendre l’automne...">${escHtml(iv._pilpPeriodePrecision||'')}</textarea></div>
+    <div class="brow"><button class="btn pilp-btn" onclick="savePilpPlanning('${iv.id}')">💾 Enregistrer</button><button class="btn" onclick="oM('${iv.id}')">Annuler</button></div>`;
+  document.getElementById('mo').style.display='flex';
+}
+function savePilpPlanning(ivId){
+  const iv=interventionById(ivId);if(!iv||!isPilpIntervention(iv))return;
+  if(!canOperatePilp()){showToast('La programmation PILP est en lecture seule.','warn');return;}
+  const axe=document.getElementById('pilp-edit-axe').value,periode=document.getElementById('pilp-edit-periode').value;
+  const precision=document.getElementById('pilp-edit-precision').value.trim();
+  iv._axeTirEtat=axe;iv.axeTir=axe==='disponible';iv._pilpPeriode=periode;iv._pilpPeriodePrecision=precision;
+  if(!iv._appelDetails||typeof iv._appelDetails!=='object')iv._appelDetails={};
+  iv._appelDetails['Axe de tir']=axe==='disponible'?'Disponible':axe==='indisponible'?'Non satisfaisant':'À vérifier';
+  iv._appelDetails['Période PILP']=pilpPeriodeLabel(iv);
+  pushTL(iv,'modif',CU.l,'Programmation PILP : '+pilpAxeLabel(iv)+' · '+pilpPeriodeLabel(iv));
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  markOperationalInterventionDirty(iv);saveData(true);refreshOperationalInterventionViews();
+  setTimeout(function(){oM(ivId);},80);
 }
 
 // ────────────────── PILP LIST ──────────────────
