@@ -115,10 +115,6 @@ function sfPilp(f,btn){
 }
 
 function rPilp(){
-  if(!isTireurPILP()){
-    const cont=document.getElementById('pilp-list');if(cont)cont.innerHTML='';
-    return;
-  }
   const legacyPilpRepairs=agaiRepairLegacyPilpDetails();
   if(legacyPilpRepairs.length){
     if(typeof syncCaserneContext==='function')syncCaserneContext();
@@ -136,11 +132,12 @@ function rPilp(){
   document.getElementById('pilp-nb3').textContent=PILP_IVS.filter(iv=>iv.s==='en-cours').length;
   document.getElementById('pilp-nb4').textContent=pilpJour.filter(iv=>iv.s==='terminee').length;
   document.getElementById('pilp-nbtot').textContent=pilpJour.length;
-  // Avis de passage PILP (visible tireur/chef uniquement)
+  // Les avis PILP sont eux aussi consultables par tous. Les commandes de
+  // classement restent soumises à leurs droits propres.
   const avisP=PILP_IVS.filter(iv=>iv.s==='avis-passage');
   const pas=document.getElementById('pilp-avsec');
   document.getElementById('pilp-avc').textContent=avisP.length;
-  if(avisP.length&&(isTireurPILP()||isChef()||hasRight('Administration'))){
+  if(avisP.length){
     pas.style.display='block';
     const apExpanded=pas.dataset.expanded==='1';
     document.getElementById('pilp-avl').innerHTML=`
@@ -171,7 +168,7 @@ function rPilp(){
           <div class="ivrr"><span class="bdg bgr">Classé</span><button class="btn sm" style="font-size:10px;padding:3px 8px;background:#fff;color:#6B21A8;border-color:#A855F7;" onclick="event.stopPropagation();restaurerAvisPassage('${iv.id}','pilp')">↩ Remettre en attente</button></div></div>`).join('')}
       </div>`;
   }else if(pacs){pacs.style.display='none';if(pacl)pacl.innerHTML='';}
-  const pilpSelection=getSelPilp();
+  const pilpSelection=canOperatePilp()?getSelPilp():[];
   const pilpPanel=document.getElementById('pilp-pap');
   if(pilpPanel&&pilpSelection.length){
     pilpPanel.style.display='block';
@@ -187,14 +184,13 @@ function rPilp(){
   const cont=document.getElementById('pilp-list');
   if(!list.length){cont.innerHTML='<div style="padding:20px;text-align:center;font-size:13px;color:var(--t2);">Aucune intervention PILP.</div>';return;}
   const ag=isAgres(),chef=isChef()||hasRight('Administration');
-  cont.innerHTML=sortedIVS(list.slice()).map(function(iv){return renderInterventionRow(iv,ag||chef,true);}).join('');
+  cont.innerHTML=sortedIVS(list.slice()).map(function(iv){return renderInterventionRow(iv,ag||chef,canOperatePilp());}).join('');
 }
 function toggleChkPilp(id,el){
   cS(id,el.checked?'selectionne':'en-attente');
 }
 
 function oPilp(id){
-  if(!isTireurPILP()){showToast('Accès réservé aux tireurs PILP.','warn');return;}
   // La fiche PILP utilise exactement la même interface et les mêmes actions
   // opérationnelles que la fiche Interventions. Seule la collection est filtrée.
   return oM(id);
@@ -293,6 +289,7 @@ function cSPilp(id,s,confirmed){
 }
 function clotPilp(id){
   const iv=PILP_IVS.find(v=>v.id===id);if(!iv)return;
+  if(!canOperatePilp()){showToast('La clôture d’une intervention PILP est réservée aux tireurs PILP, aux administrateurs actifs et au superadmin.','warn');return;}
   const avis=document.getElementById('chk-pilp-avis')&&document.getElementById('chk-pilp-avis').checked;
   const avisHeure=avis&&document.getElementById('pilp-avis-passage-hour')?document.getElementById('pilp-avis-passage-hour').value:'';
   if(avis&&!/^([01]\d|2[0-3]):[0-5]\d$/.test(avisHeure)){
@@ -320,6 +317,7 @@ function clotPilp(id){
 }
 function clotAvisPilp(id){
   const iv=PILP_IVS.find(v=>v.id===id);if(!iv)return;
+  if(!canOperatePilp()){showToast('La clôture d’une intervention PILP est réservée aux tireurs PILP, aux administrateurs actifs et au superadmin.','warn');return;}
   const h=getH(N());iv.s='terminee';iv.tl.push({s:'terminee',h,who:CU.l});
   if(iv._numCaserne&&!IVS.some(function(item){return item&&item._lienPilpSourceId===iv.id;})){
     IVS.unshift({id:String(iv.id)+'_historique',_numApl:interventionDisplayCallNumber(iv),_numCaserne:iv._numCaserne,_numGlobal:iv._numGlobal,_numMois:iv._numMois,
@@ -546,6 +544,7 @@ function rPLPilp(sel){
   }).join('');
 }
 function persistPilpRouteOrder(ordered){
+  if(!canOperatePilp()){showToast('La tournée PILP est en lecture seule.','warn');return;}
   if(!ordered.length)return;
   const batch=ordered.map(function(iv){return iv._routeBatchId;}).find(Boolean)||('PILP_ROUTE_'+Date.now()+'_'+(CU&&CU.l||''));
   const stamp=getH(N());
@@ -568,17 +567,20 @@ function pilpRouteDrop(event,targetId){
   const moved=selected.splice(from,1)[0];selected.splice(to,0,moved);persistPilpRouteOrder(selected);
 }
 function confirmerSelPilp(){
+  if(!canOperatePilp()){showToast('La sélection PILP est réservée aux tireurs PILP, aux administrateurs actifs et au superadmin.','warn');return;}
   const selected=getSelPilp();if(!selected.length)return;
   persistPilpRouteOrder(selected);selected.forEach(function(iv){parcConfirmed.add(iv.id);});rPilp();
   showToast('Tournée PILP confirmée : l’ordre reste visible sur chaque intervention.','success');
 }
 function optPilp(){
+  if(!canOperatePilp()){showToast('La tournée PILP est réservée aux tireurs PILP, aux administrateurs actifs et au superadmin.','warn');return;}
   const selected=getSelPilp();if(selected.length<=2)return;
   const base=[50.508,2.548];let remaining=selected.slice(),result=[],current=base;
   while(remaining.length){let best=null,distance=Infinity;remaining.forEach(function(iv){const coords=gc(iv.com),value=dst(current,coords);if(value<distance){distance=value;best=iv;}});result.push(best);remaining=remaining.filter(function(iv){return iv.id!==best.id;});current=gc(best.com);}
   persistPilpRouteOrder(result);
 }
 function vpPilp(){
+  if(!canOperatePilp()){showToast('La sélection PILP est réservée aux tireurs PILP, aux administrateurs actifs et au superadmin.','warn');return;}
   PILP_IVS.filter(function(iv){return iv.s==='selectionne'&&iv.agr===CU.l;}).forEach(function(iv){iv.s='en-attente';iv.agr=null;delete iv._routeBatchId;delete iv._routeOrder;pushTL(iv,'en-attente',CU.l);});
   parcConfirmed.clear();saveData(true);rPilp();
 }

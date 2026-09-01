@@ -793,7 +793,11 @@ function isAdminModeActive(){return hasRight('Administration')||isSuperAdmin();}
 function isAgres(){return hasRight('Chef d\'agrès');}
 function isChef(){return hasRight('Historique complet');}
 function isTireurPILP(){return hasRight('Tireur PILP');}
-function canSeePILP(){return isTireurPILP();}
+// Le secteur PILP est consultable par tout utilisateur connecté. Les droits
+// opérationnels restent contrôlés séparément par canOperatePilp().
+function canSeePILP(){return !!CU;}
+function canOperatePilp(){return GLOBAL_ROLE==='superadmin'||isTireurPILP()||isAdminModeActive();}
+function isPilpReadOnlyForCurrentUser(iv){return !!(iv&&isPilpIntervention(iv)&&!canOperatePilp());}
 
 function isRespEquipe(){
   if(!CU)return false;
@@ -834,9 +838,13 @@ function applyNavRights(){
   if(adminTab)adminTab.style.display=hasRight('Administration')?'':'none';
   const syncTab=document.getElementById('params-btn-onedrive');
   if(syncTab)syncTab.style.display=isSuperAdmin()?'':'none';
-  document.getElementById('fb-mes-sel').style.display=(isAgres()||isTireurPILP())?'':'none';
+  document.getElementById('fb-mes-sel').style.display=(isAgres()||canOperatePilp())?'':'none';
   const fbResp=document.getElementById('fb-mes-resp');
   if(fbResp)fbResp.style.display=(isChef()||isAgres()||hasRight('Administration'))?'':'none';
+  const pilpOwnSelection=document.getElementById('pilp-fb-mes-sel');
+  const pilpOwnResponsibility=document.getElementById('pilp-fb-mes-resp');
+  if(pilpOwnSelection)pilpOwnSelection.style.display=canOperatePilp()?'':'none';
+  if(pilpOwnResponsibility)pilpOwnResponsibility.style.display=canOperatePilp()?'':'none';
   const isAdminActive=hasRight('Administration');
   const isAdminAccount=hasAdministrativeAccount();
   const isResp=isRespEquipe();
@@ -874,10 +882,6 @@ function applyNavRights(){
   }
 }
 function showSubtab(sub,btn){
-  if(sub==='pilp'&&!isTireurPILP()){
-    sub='std';
-    btn=document.getElementById('subtab-btn-std');
-  }
   document.querySelectorAll('#interv-subtabs .subtab-btn').forEach(b=>b.classList.remove('active'));
   if(btn)btn.classList.add('active');
   document.getElementById('subtab-std').style.display=sub==='std'?'':'none';

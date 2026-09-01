@@ -2602,8 +2602,8 @@ function hasActiveOutgoingPersonnelReinforcementRequest(iv){
 
 function canCurrentUserStartIntervention(iv){
   if(!iv||!CU)return false;
+  if(isPilpIntervention(iv))return canOperatePilp();
   if(isAdminModeActive())return true;
-  if(isPilpIntervention(iv))return isTireurPILP()||isAgres();
   if(isAgres())return true;
   // Exception opérationnelle : un équipier peut assurer le départ seulement
   // si cette intervention attend réellement du personnel provenant d’une autre caserne.
@@ -2612,8 +2612,8 @@ function canCurrentUserStartIntervention(iv){
 
 function canCurrentUserSelectIntervention(iv){
   if(!iv||!CU)return false;
+  if(isPilpIntervention(iv))return canOperatePilp();
   if(isAdminModeActive()||isAgres())return true;
-  if(isPilpIntervention(iv))return isTireurPILP();
   // Le droit Interventions permet à un équipier de sélectionner la fiche afin
   // de demander un renfort. Il ne lui donne pas, à lui seul, le droit au départ.
   return hasRight('Interventions');
@@ -3185,6 +3185,7 @@ function confirmerDepart(id){
 // ── Correction requérant ──
 function canEditInterventionRequester(iv){
   return !!(iv&&['en-attente','selectionne','en-cours'].includes(iv.s))
+    &&!isPilpReadOnlyForCurrentUser(iv)
     &&(hasRight('Interventions')||isAgres()||isChef()||isAdminModeActive());
 }
 function editRequerant(id){
