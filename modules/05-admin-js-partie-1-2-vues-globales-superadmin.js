@@ -36,6 +36,33 @@ function _trimLoginHistoryDeleted(){
   const entries=Object.entries(LOGIN_HISTORY_DELETED||{}).sort(function(a,b){return String(b[1]).localeCompare(String(a[1]));}).slice(0,2000);
   LOGIN_HISTORY_DELETED=Object.fromEntries(entries);
 }
+function loginHistoryRetentionPartition(entries){
+  const sorted=(entries||[]).filter(function(entry){return entry&&entry.id&&!LOGIN_HISTORY_DELETED[entry.id];}).slice().sort(function(a,b){return String(b.hConnexion||'').localeCompare(String(a.hConnexion||''));});
+  const counts={},kept=[],removed=[];
+  sorted.forEach(function(entry){
+    // Le même identifiant peut théoriquement exister dans deux casernes : la
+    // limite s'applique donc à un compte dans sa caserne, pas au seul login.
+    const key=String(entry.caserneId||'_GLOBAL')+'\u0000'+String(entry.login||'Compte inconnu');
+    counts[key]=(counts[key]||0)+1;
+    if(counts[key]<=LOGIN_HISTORY_PER_ACCOUNT_MAX)kept.push(entry);else removed.push(entry);
+  });
+  return {kept:kept.slice(0,LOGIN_HISTORY_MAX),removed:removed};
+}
+function pruneLoginHistoryToRecentLimit(syncDeletes){
+  const partition=loginHistoryRetentionPartition(LOGIN_HISTORY);
+  if(!partition.removed.length){LOGIN_HISTORY=partition.kept;return partition.removed;}
+  const deletedAt=new Date().toISOString(),groups={};
+  partition.removed.forEach(function(entry){
+    LOGIN_HISTORY_DELETED[entry.id]=deletedAt;
+    const caserneId=entry.caserneId||'_GLOBAL';
+    (groups[caserneId]||(groups[caserneId]=[])).push(entry.id);
+  });
+  LOGIN_HISTORY=partition.kept;_trimLoginHistoryDeleted();
+  if(syncDeletes&&typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcMarkDeleted==='function'){
+    Object.keys(groups).forEach(function(caserneId){_rcMarkDeleted(caserneId,'login',groups[caserneId]);});
+  }
+  return partition.removed;
+}
 function deleteLoginHistoryEntries(ids){
   if(!isSuperAdmin()){showToast('Accès réservé au super-administrateur','warn');return;}
   const unique=[...new Set((ids||[]).filter(Boolean))];
@@ -189,7 +216,7 @@ function renderLoginHistorySummary(){
   if(!LOGIN_HISTORY.length)return'';
   const sorted=LOGIN_HISTORY.slice().sort(function(a,b){return String(a.hConnexion||'').localeCompare(String(b.hConnexion||''));});
   const fmt=function(value){const d=new Date(value);return Number.isNaN(d.getTime())?'—':d.toLocaleDateString('fr-FR')+' '+d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});};
-  return '<div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:9px;padding:8px 11px;margin-bottom:10px;font-size:11px;color:#475569;display:flex;gap:14px;flex-wrap:wrap;"><strong>'+LOGIN_HISTORY.length+' connexion(s) conservée(s)</strong><span>Du '+fmt(sorted[0]&&sorted[0].hConnexion)+' au '+fmt(sorted[sorted.length-1]&&sorted[sorted.length-1].hConnexion)+'</span><span>Nouvelles connexions : support et navigateur enregistrés</span></div>';
+  return '<div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:9px;padding:8px 11px;margin-bottom:10px;font-size:11px;color:#475569;display:flex;gap:14px;flex-wrap:wrap;"><strong>'+LOGIN_HISTORY.length+' connexion(s) conservée(s)</strong><span>6 dernières maximum par compte</span><span>Du '+fmt(sorted[0]&&sorted[0].hConnexion)+' au '+fmt(sorted[sorted.length-1]&&sorted[sorted.length-1].hConnexion)+'</span><span>Support et navigateur enregistrés</span></div>';
 }
 function refreshLoginHistoryPanel(){
   const panel=document.getElementById('login-history-content');if(!panel)return;
@@ -603,6 +630,7 @@ function renderSuperAdmin(){
           <button class="btn sm danger" onclick="deleteAllLoginHistory()">🧹 Tout effacer</button>
         </div>
       </div>
+      <div style="font-size:11px;color:#64748B;margin:-4px 0 10px;">Seules les 6 connexions les plus récentes de chaque compte sont conservées.</div>
       <div id="login-history-content">${renderLoginHistorySummary()}${renderLoginHistoryByCaserne()}</div>
     </div>
     </section>

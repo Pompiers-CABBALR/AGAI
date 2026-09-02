@@ -370,6 +370,7 @@ let USERS=[];let IVS=[];let PILP_IVS=[];let EQUIPES=[];let DISPOS={};let PIQUETS
 let LOGIN_HISTORY=[];
 let LOGIN_HISTORY_DELETED={};
 const LOGIN_HISTORY_MAX=5000;
+const LOGIN_HISTORY_PER_ACCOUNT_MAX=6;
 const LOGIN_PRESENCE_TIMEOUT_MS=150000;
 let _equipeIsolationCleanupTimer=null;
 const _equipeIsolationCleanupPending={};
@@ -1164,7 +1165,7 @@ function _createSession(){
     };
     LOGIN_HISTORY.unshift(entry);
     _loginPresenceLastPush=Date.now();
-    if(LOGIN_HISTORY.length>LOGIN_HISTORY_MAX)LOGIN_HISTORY=LOGIN_HISTORY.slice(0,LOGIN_HISTORY_MAX);
+    pruneLoginHistoryToRecentLimit(true);
     if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
     saveData(true);
   }
@@ -1390,6 +1391,33 @@ function _trimLoginHistoryDeleted(){
   const entries=Object.entries(LOGIN_HISTORY_DELETED||{}).sort(function(a,b){return String(b[1]).localeCompare(String(a[1]));}).slice(0,2000);
   LOGIN_HISTORY_DELETED=Object.fromEntries(entries);
 }
+function loginHistoryRetentionPartition(entries){
+  const sorted=(entries||[]).filter(function(entry){return entry&&entry.id&&!LOGIN_HISTORY_DELETED[entry.id];}).slice().sort(function(a,b){return String(b.hConnexion||'').localeCompare(String(a.hConnexion||''));});
+  const counts={},kept=[],removed=[];
+  sorted.forEach(function(entry){
+    // Le même identifiant peut théoriquement exister dans deux casernes : la
+    // limite s'applique donc à un compte dans sa caserne, pas au seul login.
+    const key=String(entry.caserneId||'_GLOBAL')+'\u0000'+String(entry.login||'Compte inconnu');
+    counts[key]=(counts[key]||0)+1;
+    if(counts[key]<=LOGIN_HISTORY_PER_ACCOUNT_MAX)kept.push(entry);else removed.push(entry);
+  });
+  return {kept:kept.slice(0,LOGIN_HISTORY_MAX),removed:removed};
+}
+function pruneLoginHistoryToRecentLimit(syncDeletes){
+  const partition=loginHistoryRetentionPartition(LOGIN_HISTORY);
+  if(!partition.removed.length){LOGIN_HISTORY=partition.kept;return partition.removed;}
+  const deletedAt=new Date().toISOString(),groups={};
+  partition.removed.forEach(function(entry){
+    LOGIN_HISTORY_DELETED[entry.id]=deletedAt;
+    const caserneId=entry.caserneId||'_GLOBAL';
+    (groups[caserneId]||(groups[caserneId]=[])).push(entry.id);
+  });
+  LOGIN_HISTORY=partition.kept;_trimLoginHistoryDeleted();
+  if(syncDeletes&&typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcMarkDeleted==='function'){
+    Object.keys(groups).forEach(function(caserneId){_rcMarkDeleted(caserneId,'login',groups[caserneId]);});
+  }
+  return partition.removed;
+}
 function deleteLoginHistoryEntries(ids){
   if(!isSuperAdmin()){showToast('Accès réservé au super-administrateur','warn');return;}
   const unique=[...new Set((ids||[]).filter(Boolean))];
@@ -1543,7 +1571,7 @@ function renderLoginHistorySummary(){
   if(!LOGIN_HISTORY.length)return'';
   const sorted=LOGIN_HISTORY.slice().sort(function(a,b){return String(a.hConnexion||'').localeCompare(String(b.hConnexion||''));});
   const fmt=function(value){const d=new Date(value);return Number.isNaN(d.getTime())?'—':d.toLocaleDateString('fr-FR')+' '+d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});};
-  return '<div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:9px;padding:8px 11px;margin-bottom:10px;font-size:11px;color:#475569;display:flex;gap:14px;flex-wrap:wrap;"><strong>'+LOGIN_HISTORY.length+' connexion(s) conservée(s)</strong><span>Du '+fmt(sorted[0]&&sorted[0].hConnexion)+' au '+fmt(sorted[sorted.length-1]&&sorted[sorted.length-1].hConnexion)+'</span><span>Nouvelles connexions : support et navigateur enregistrés</span></div>';
+  return '<div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:9px;padding:8px 11px;margin-bottom:10px;font-size:11px;color:#475569;display:flex;gap:14px;flex-wrap:wrap;"><strong>'+LOGIN_HISTORY.length+' connexion(s) conservée(s)</strong><span>6 dernières maximum par compte</span><span>Du '+fmt(sorted[0]&&sorted[0].hConnexion)+' au '+fmt(sorted[sorted.length-1]&&sorted[sorted.length-1].hConnexion)+'</span><span>Support et navigateur enregistrés</span></div>';
 }
 function refreshLoginHistoryPanel(){
   const panel=document.getElementById('login-history-content');if(!panel)return;
@@ -1957,6 +1985,7 @@ function renderSuperAdmin(){
           <button class="btn sm danger" onclick="deleteAllLoginHistory()">🧹 Tout effacer</button>
         </div>
       </div>
+      <div style="font-size:11px;color:#64748B;margin:-4px 0 10px;">Seules les 6 connexions les plus récentes de chaque compte sont conservées.</div>
       <div id="login-history-content">${renderLoginHistorySummary()}${renderLoginHistoryByCaserne()}</div>
     </div>
     </section>
@@ -14755,7 +14784,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260902-pilp-periode-sync-201';
+const APP_VERSION='20260902-historique-connexions-six-202';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -17264,7 +17293,7 @@ function _applyDataObject(data){
   if(data.DISPOS_UNLOCKED)Object.assign(DISPOS_UNLOCKED,data.DISPOS_UNLOCKED);
   if(data.DISPO_REQUESTS)Object.assign(DISPO_REQUESTS,data.DISPO_REQUESTS);
   if(data.LOGIN_HISTORY_DELETED)LOGIN_HISTORY_DELETED={...data.LOGIN_HISTORY_DELETED};
-  if(data.LOGIN_HISTORY)LOGIN_HISTORY=data.LOGIN_HISTORY.filter(function(entry){return!LOGIN_HISTORY_DELETED[entry.id];});
+  if(data.LOGIN_HISTORY)LOGIN_HISTORY=loginHistoryRetentionPartition(data.LOGIN_HISTORY.filter(function(entry){return!LOGIN_HISTORY_DELETED[entry.id];})).kept;
   // Migration fonctions formateur
   const MFF={'EAP 1 (Op\u00e9rateur des Activit\u00e9s Physiques)':'EAP 1','EAP 2 (\u00c9ducateur des Activit\u00e9s Physiques)':'EAP 2','EAP 3 (Conseiller des Activit\u00e9s Physiques)':'EAP 3','ACCPRO (Accompagnateur de Proximit\u00e9)':'ACCPRO','FOR ACC (Formateur Accompagnateur)':'FOR ACC','FPS (Formateur Premier Secours)':'FPS','FFPS (Formateur de formateur de premiers secours)':'FFPS'};
   function migrateUser(u){if(u.fonctionsFormateur&&u.fonctionsFormateur.length){const m=u.fonctionsFormateur.map(f=>MFF[f]||f);u.fonctionsFormateur=[...new Set(m)];}}
@@ -17421,7 +17450,7 @@ async function _jbPush(data){
     merged.DISPO_REQUESTS=Object.assign({},current.DISPO_REQUESTS||{},data.DISPO_REQUESTS||{});
     merged.DISPOS_UNLOCKED=Object.assign({},current.DISPOS_UNLOCKED||{},data.DISPOS_UNLOCKED||{});
     merged.LOGIN_HISTORY_DELETED=Object.assign({},current.LOGIN_HISTORY_DELETED||{},data.LOGIN_HISTORY_DELETED||{});
-    merged.LOGIN_HISTORY=(data.LOGIN_HISTORY||current.LOGIN_HISTORY||[]).filter(function(entry){return!merged.LOGIN_HISTORY_DELETED[entry.id];});
+    merged.LOGIN_HISTORY=loginHistoryRetentionPartition((data.LOGIN_HISTORY||current.LOGIN_HISTORY||[]).filter(function(entry){return!merged.LOGIN_HISTORY_DELETED[entry.id];})).kept;
     merged.v=data.v;
     // Sauvegarder le merge — version allégée pour le PUT (réduit le payload sous
     // la limite JSONBin). On ne touche PAS à `merged` : le cache local garde tout.
@@ -18552,7 +18581,7 @@ async function _rcMarkDeleted(caserne, type, recordIds){
 // Si fullPush=true, envoie tout (utilisé pour la migration et le 1er chargement).
 // ── Fusionne deux historiques de connexion par id de session ──
 // Garde l'entrée la plus complète : une déconnexion renseignée prime sur "actif".
-function _mergeLoginHistory(localArr, remoteArr, deletedMap){
+function _mergeLoginHistory(localArr, remoteArr, deletedMap,unbounded){
   const deleted=deletedMap||LOGIN_HISTORY_DELETED||{};
   const map={};
   const add=function(e){
@@ -18572,7 +18601,7 @@ function _mergeLoginHistory(localArr, remoteArr, deletedMap){
   // anciennes connexions des autres casernes.
   const out=Object.keys(map).map(function(k){return map[k];});
   out.sort(function(a,b){return (b.hConnexion||'').localeCompare(a.hConnexion||'');});
-  return out.slice(0,LOGIN_HISTORY_MAX);
+  return unbounded?out.slice(0,LOGIN_HISTORY_MAX):loginHistoryRetentionPartition(out).kept;
 }
 
 // ── Pousse uniquement la ligne globale (LOGIN_HISTORY, etc.) avec keepalive ──
@@ -18707,7 +18736,7 @@ async function _rcPull(silent){
   }
   try {
     if(!silent) _jbSetStatus('loading');
-    const resp = await fetch(RC_REST + '?select=id,caserne,type,data,deleted', { headers:_sbHeaders });
+    const resp = await fetch(RC_REST + '?deleted=eq.false&select=id,caserne,type,data,deleted', { headers:_sbHeaders });
     if(!resp.ok) throw new Error('records GET HTTP '+resp.status);
     const rows = await resp.json();
     if(!Array.isArray(rows)) throw new Error('Données records invalides');
@@ -18753,11 +18782,23 @@ async function _rcPull(silent){
       byCaserne[r.caserne].push(r);
     });
     data.LOGIN_HISTORY_DELETED=Object.assign({},data.LOGIN_HISTORY_DELETED||{},typeof LOGIN_HISTORY_DELETED!=='undefined'?LOGIN_HISTORY_DELETED:{});
-    data.LOGIN_HISTORY=_mergeLoginHistory(
-      _mergeLoginHistory(typeof LOGIN_HISTORY!=='undefined'?LOGIN_HISTORY:[],data.LOGIN_HISTORY||[],data.LOGIN_HISTORY_DELETED),
+    const mergedLoginHistory=_mergeLoginHistory(
+      _mergeLoginHistory(typeof LOGIN_HISTORY!=='undefined'?LOGIN_HISTORY:[],data.LOGIN_HISTORY||[],data.LOGIN_HISTORY_DELETED,true),
       loginSessionRows,
-      data.LOGIN_HISTORY_DELETED
+      data.LOGIN_HISTORY_DELETED,
+      true
     );
+    const loginRetention=loginHistoryRetentionPartition(mergedLoginHistory);
+    data.LOGIN_HISTORY=loginRetention.kept;
+    if(loginRetention.removed.length&&GLOBAL_ROLE==='superadmin'){
+      const deletedAt=new Date().toISOString(),deleteGroups={};
+      loginRetention.removed.forEach(function(entry){
+        data.LOGIN_HISTORY_DELETED[entry.id]=deletedAt;
+        const caserneId=entry.caserneId||'_GLOBAL';
+        (deleteGroups[caserneId]||(deleteGroups[caserneId]=[])).push(entry.id);
+      });
+      Object.keys(deleteGroups).forEach(function(caserneId){_rcMarkDeleted(caserneId,'login',deleteGroups[caserneId]);});
+    }
     Object.keys(byCaserne).forEach(function(cid){
       data.CASERNE_DATA[cid] = _rcAssembleCaserne(byCaserne[cid]);
     });
@@ -18800,6 +18841,9 @@ async function _rcPull(silent){
       }
     }
     _applyDataObject(data);
+    if(loginRetention.removed.length&&GLOBAL_ROLE==='superadmin'){
+      window.setTimeout(function(){if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();saveData(true);},0);
+    }
     _postLoadInit();
     if(activeCid) syncCaserneContext();
     localStorage.setItem(JB_CACHE_KEY, JSON.stringify(data));

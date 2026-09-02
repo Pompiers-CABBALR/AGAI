@@ -217,6 +217,7 @@ let USERS=[];let IVS=[];let PILP_IVS=[];let EQUIPES=[];let DISPOS={};let PIQUETS
 let LOGIN_HISTORY=[];
 let LOGIN_HISTORY_DELETED={};
 const LOGIN_HISTORY_MAX=5000;
+const LOGIN_HISTORY_PER_ACCOUNT_MAX=6;
 const LOGIN_PRESENCE_TIMEOUT_MS=150000;
 let _equipeIsolationCleanupTimer=null;
 const _equipeIsolationCleanupPending={};
