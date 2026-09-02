@@ -49,7 +49,7 @@ function creerPILP(ivId){
     // Pas de _numCaserne ni _numGlobal ici — attribués au passage En cours
     n:'Nid de frelons asiatiques — PILP',addr,addrComp:iv.addrComp||'',com:iv.com,h,req,tel,tels:Array.isArray(iv.tels)?iv.tels.slice():[tel],
     op:iv.op||iv.agr||CU.l,reqDispo:iv.reqDispo?JSON.parse(JSON.stringify(iv.reqDispo)):null,
-    localisation:localisation,hauteur:hauteur,reconnaissanceFaite:reconnaissanceFaite,axeTir:axeTir,_axeTirEtat:axeTirEtat,_pilpPeriode:pilpPeriode,_pilpPeriodePrecision:pilpPeriodePrecision,obs:observations,det:observations,
+    localisation:localisation,hauteur:hauteur,reconnaissanceFaite:reconnaissanceFaite,axeTir:axeTir,_axeTirEtat:axeTirEtat,_pilpPeriode:pilpPeriode,_pilpPeriodePrecision:pilpPeriodePrecision,_pilpPlanningUpdatedAt:Date.now(),_pilpPlanningUpdatedBy:CU.l,obs:observations,det:observations,
     _appelDetails:Object.assign({},iv._appelDetails||{},{'Localisation du nid':localisation,'Hauteur':hauteur?hauteur+' m':'Non renseignée','Reconnaissance':reconnaissanceFaite?'Réalisée':'Non réalisée','Axe de tir':axeTirEtat==='disponible'?'Disponible':axeTirEtat==='indisponible'?'Non satisfaisant':'À vérifier','Période PILP':pilpPeriodeLabel({_pilpPeriode:pilpPeriode,_pilpPeriodePrecision:pilpPeriodePrecision})}),
     _nidsAppel:Array.isArray(iv._nidsAppel)?JSON.parse(JSON.stringify(iv._nidsAppel)):undefined,
     s:'en-attente',agr:null,tireur:null,rappels:0,avisIds:[],tl:[mkTL('en-attente',h,CU.l)]
@@ -84,6 +84,7 @@ function savePilpPlanning(ivId){
   const axe=document.getElementById('pilp-edit-axe').value,periode=document.getElementById('pilp-edit-periode').value;
   const precision=document.getElementById('pilp-edit-precision').value.trim();
   iv._axeTirEtat=axe;iv.axeTir=axe==='disponible';iv._pilpPeriode=periode;iv._pilpPeriodePrecision=precision;
+  iv._pilpPlanningUpdatedAt=Date.now();iv._pilpPlanningUpdatedBy=CU.l;
   if(!iv._appelDetails||typeof iv._appelDetails!=='object')iv._appelDetails={};
   iv._appelDetails['Axe de tir']=axe==='disponible'?'Disponible':axe==='indisponible'?'Non satisfaisant':'À vérifier';
   iv._appelDetails['Période PILP']=pilpPeriodeLabel(iv);
@@ -97,6 +98,42 @@ function savePilpPlanning(ivId){
 function timelineEntryHHMM(entry){
   const digits=String(entry&&entry.h||'').replace(/\D/g,'');
   return digits.length>=12?digits.slice(8,10)+':'+digits.slice(10,12):'';
+}
+function pilpPlanningFromStoredLabel(label){
+  const raw=String(label||'').trim(),normalized=raw.toLowerCase();
+  let periode='a-determiner';
+  if(normalized.includes('chute des feuilles'))periode='apres-feuilles';
+  else if(normalized.includes('automne'))periode='automne';
+  else if(normalized.includes('hiver'))periode='hiver';
+  else if(normalized.includes('printemps'))periode='printemps';
+  else if(normalized.includes('été')||normalized.includes('ete'))periode='ete';
+  else if(normalized.includes('dès que possible')||normalized.includes('des que possible'))periode='des-que-possible';
+  else if(normalized.includes('personnalis'))periode='personnalisee';
+  const separator=raw.indexOf(' — '),precision=separator>=0?raw.slice(separator+3).trim():'';
+  return {periode:periode,precision:precision};
+}
+function agaiRepairPilpPlanningRevisions(){
+  const repaired=[];
+  (PILP_IVS||[]).forEach(function(iv){
+    if(!iv)return;
+    let changed=false;
+    const details=iv._appelDetails&&typeof iv._appelDetails==='object'?iv._appelDetails:{};
+    if(!iv._pilpPeriode&&details['Période PILP']){
+      const recovered=pilpPlanningFromStoredLabel(details['Période PILP']);
+      iv._pilpPeriode=recovered.periode;iv._pilpPeriodePrecision=recovered.precision;changed=true;
+    }
+    if(!iv._axeTirEtat&&details['Axe de tir']){
+      const axe=String(details['Axe de tir']).toLowerCase();
+      iv._axeTirEtat=axe.includes('non satisfaisant')?'indisponible':axe.includes('disponible')?'disponible':'a-verifier';
+      iv.axeTir=iv._axeTirEtat==='disponible';changed=true;
+    }
+    const hasPlanning=!!(iv._pilpPeriode||iv._pilpPeriodePrecision||iv._axeTirEtat||details['Période PILP']);
+    if(hasPlanning&&!Number(iv._pilpPlanningUpdatedAt)){
+      iv._pilpPlanningUpdatedAt=Date.now();iv._pilpPlanningUpdatedBy=iv._pilpPlanningUpdatedBy||'Migration AGAI';changed=true;
+    }
+    if(changed){markOperationalInterventionDirty(iv);repaired.push(iv.id);}
+  });
+  return repaired;
 }
 function agaiRepairLegacyPilpDetails(){
   const repaired=[];
@@ -149,8 +186,9 @@ function sfPilp(f,btn){
 }
 
 function rPilp(){
+  const planningRevisionRepairs=agaiRepairPilpPlanningRevisions();
   const legacyPilpRepairs=agaiRepairLegacyPilpDetails();
-  if(legacyPilpRepairs.length){
+  if(legacyPilpRepairs.length||planningRevisionRepairs.length){
     if(typeof syncCaserneContext==='function')syncCaserneContext();
     if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
     saveData(true);

@@ -4733,7 +4733,7 @@ function enr(){
       // Aucun numéro d'intervention tant que la PILP reste en attente.
       n:'Nid de frelons asiatiques — PILP',addr,com,h,
       req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,reqDispo,_nidsAppel:nidsAppel,_erp:erp,_urgence:erp,
-      localisation:null,hauteur:null,reconnaissanceFaite:false,axeTir:null,_axeTirEtat:'a-verifier',_pilpPeriode:'a-determiner',_pilpPeriodePrecision:'',obs:det,
+      localisation:null,hauteur:null,reconnaissanceFaite:false,axeTir:null,_axeTirEtat:'a-verifier',_pilpPeriode:'a-determiner',_pilpPeriodePrecision:'',_pilpPlanningUpdatedAt:Date.now(),_pilpPlanningUpdatedBy:CU.l,obs:det,
       // Une PILP en attente reste libre : l'opérateur qui prend l'appel
       // n'est pas automatiquement le chef d'agrès ni le tireur.
       s:'en-attente',agr:null,tireur:null,rappels:exPilp.length,
@@ -6952,7 +6952,7 @@ function creerPILP(ivId){
     // Pas de _numCaserne ni _numGlobal ici — attribués au passage En cours
     n:'Nid de frelons asiatiques — PILP',addr,addrComp:iv.addrComp||'',com:iv.com,h,req,tel,tels:Array.isArray(iv.tels)?iv.tels.slice():[tel],
     op:iv.op||iv.agr||CU.l,reqDispo:iv.reqDispo?JSON.parse(JSON.stringify(iv.reqDispo)):null,
-    localisation:localisation,hauteur:hauteur,reconnaissanceFaite:reconnaissanceFaite,axeTir:axeTir,_axeTirEtat:axeTirEtat,_pilpPeriode:pilpPeriode,_pilpPeriodePrecision:pilpPeriodePrecision,obs:observations,det:observations,
+    localisation:localisation,hauteur:hauteur,reconnaissanceFaite:reconnaissanceFaite,axeTir:axeTir,_axeTirEtat:axeTirEtat,_pilpPeriode:pilpPeriode,_pilpPeriodePrecision:pilpPeriodePrecision,_pilpPlanningUpdatedAt:Date.now(),_pilpPlanningUpdatedBy:CU.l,obs:observations,det:observations,
     _appelDetails:Object.assign({},iv._appelDetails||{},{'Localisation du nid':localisation,'Hauteur':hauteur?hauteur+' m':'Non renseignée','Reconnaissance':reconnaissanceFaite?'Réalisée':'Non réalisée','Axe de tir':axeTirEtat==='disponible'?'Disponible':axeTirEtat==='indisponible'?'Non satisfaisant':'À vérifier','Période PILP':pilpPeriodeLabel({_pilpPeriode:pilpPeriode,_pilpPeriodePrecision:pilpPeriodePrecision})}),
     _nidsAppel:Array.isArray(iv._nidsAppel)?JSON.parse(JSON.stringify(iv._nidsAppel)):undefined,
     s:'en-attente',agr:null,tireur:null,rappels:0,avisIds:[],tl:[mkTL('en-attente',h,CU.l)]
@@ -6987,6 +6987,7 @@ function savePilpPlanning(ivId){
   const axe=document.getElementById('pilp-edit-axe').value,periode=document.getElementById('pilp-edit-periode').value;
   const precision=document.getElementById('pilp-edit-precision').value.trim();
   iv._axeTirEtat=axe;iv.axeTir=axe==='disponible';iv._pilpPeriode=periode;iv._pilpPeriodePrecision=precision;
+  iv._pilpPlanningUpdatedAt=Date.now();iv._pilpPlanningUpdatedBy=CU.l;
   if(!iv._appelDetails||typeof iv._appelDetails!=='object')iv._appelDetails={};
   iv._appelDetails['Axe de tir']=axe==='disponible'?'Disponible':axe==='indisponible'?'Non satisfaisant':'À vérifier';
   iv._appelDetails['Période PILP']=pilpPeriodeLabel(iv);
@@ -7000,6 +7001,42 @@ function savePilpPlanning(ivId){
 function timelineEntryHHMM(entry){
   const digits=String(entry&&entry.h||'').replace(/\D/g,'');
   return digits.length>=12?digits.slice(8,10)+':'+digits.slice(10,12):'';
+}
+function pilpPlanningFromStoredLabel(label){
+  const raw=String(label||'').trim(),normalized=raw.toLowerCase();
+  let periode='a-determiner';
+  if(normalized.includes('chute des feuilles'))periode='apres-feuilles';
+  else if(normalized.includes('automne'))periode='automne';
+  else if(normalized.includes('hiver'))periode='hiver';
+  else if(normalized.includes('printemps'))periode='printemps';
+  else if(normalized.includes('été')||normalized.includes('ete'))periode='ete';
+  else if(normalized.includes('dès que possible')||normalized.includes('des que possible'))periode='des-que-possible';
+  else if(normalized.includes('personnalis'))periode='personnalisee';
+  const separator=raw.indexOf(' — '),precision=separator>=0?raw.slice(separator+3).trim():'';
+  return {periode:periode,precision:precision};
+}
+function agaiRepairPilpPlanningRevisions(){
+  const repaired=[];
+  (PILP_IVS||[]).forEach(function(iv){
+    if(!iv)return;
+    let changed=false;
+    const details=iv._appelDetails&&typeof iv._appelDetails==='object'?iv._appelDetails:{};
+    if(!iv._pilpPeriode&&details['Période PILP']){
+      const recovered=pilpPlanningFromStoredLabel(details['Période PILP']);
+      iv._pilpPeriode=recovered.periode;iv._pilpPeriodePrecision=recovered.precision;changed=true;
+    }
+    if(!iv._axeTirEtat&&details['Axe de tir']){
+      const axe=String(details['Axe de tir']).toLowerCase();
+      iv._axeTirEtat=axe.includes('non satisfaisant')?'indisponible':axe.includes('disponible')?'disponible':'a-verifier';
+      iv.axeTir=iv._axeTirEtat==='disponible';changed=true;
+    }
+    const hasPlanning=!!(iv._pilpPeriode||iv._pilpPeriodePrecision||iv._axeTirEtat||details['Période PILP']);
+    if(hasPlanning&&!Number(iv._pilpPlanningUpdatedAt)){
+      iv._pilpPlanningUpdatedAt=Date.now();iv._pilpPlanningUpdatedBy=iv._pilpPlanningUpdatedBy||'Migration AGAI';changed=true;
+    }
+    if(changed){markOperationalInterventionDirty(iv);repaired.push(iv.id);}
+  });
+  return repaired;
 }
 function agaiRepairLegacyPilpDetails(){
   const repaired=[];
@@ -7052,8 +7089,9 @@ function sfPilp(f,btn){
 }
 
 function rPilp(){
+  const planningRevisionRepairs=agaiRepairPilpPlanningRevisions();
   const legacyPilpRepairs=agaiRepairLegacyPilpDetails();
-  if(legacyPilpRepairs.length){
+  if(legacyPilpRepairs.length||planningRevisionRepairs.length){
     if(typeof syncCaserneContext==='function')syncCaserneContext();
     if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
     saveData(true);
@@ -14717,7 +14755,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260901-pilp-periode-axe-tir-200';
+const APP_VERSION='20260902-pilp-periode-sync-201';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -18054,6 +18092,26 @@ const RC_OPERATIONAL_PROTECTED_FIELDS=[
   '_startLockedByChain','_chainedFromInterventionId','_chainPreviousInterventionId','_departGeoControle',
   '_statusUpdatedAt'
 ];
+const RC_PILP_PLANNING_FIELDS=['axeTir','_axeTirEtat','_pilpPeriode','_pilpPeriodePrecision','_pilpPlanningUpdatedAt','_pilpPlanningUpdatedBy'];
+function _rcMergePilpPlanningFields(current,incoming,target){
+  const currentRevision=Number(current&&current._pilpPlanningUpdatedAt)||0;
+  const incomingRevision=Number(incoming&&incoming._pilpPlanningUpdatedAt)||0;
+  if(!currentRevision&&!incomingRevision)return false;
+  const keepCurrent=currentRevision>incomingRevision;
+  const source=keepCurrent?current:incoming;
+  RC_PILP_PLANNING_FIELDS.forEach(function(key){
+    if(Object.prototype.hasOwnProperty.call(source,key)){
+      const value=source[key];target[key]=value===undefined?undefined:JSON.parse(JSON.stringify(value));
+    }else delete target[key];
+  });
+  if(source&&source._appelDetails&&typeof source._appelDetails==='object'){
+    target._appelDetails=Object.assign({},target._appelDetails||{});
+    ['Axe de tir','Période PILP'].forEach(function(key){
+      if(Object.prototype.hasOwnProperty.call(source._appelDetails,key))target._appelDetails[key]=source._appelDetails[key];
+    });
+  }
+  return keepCurrent;
+}
 function _rcOperationalStatusSequence(iv){
   return (iv&&Array.isArray(iv.tl)?iv.tl:[]).filter(function(entry){return entry&&RC_OPERATIONAL_STATUSES.includes(entry.s);}).map(function(entry){return {s:entry.s,h:String(entry.h||'')};});
 }
@@ -18081,7 +18139,19 @@ function _rcOperationalStatusSource(current,incoming){
 function _rcMergeOperationalInterventionVersions(current,incoming){
   if(!current)return {value:incoming,keptCurrentStatus:false};
   if(!incoming)return {value:current,keptCurrentStatus:true};
-  if(_rcOperationalStatusSource(current,incoming)!=='current')return {value:incoming,keptCurrentStatus:false};
+  if(_rcOperationalStatusSource(current,incoming)!=='current'){
+    const merged=Object.assign({},incoming);
+    const keptCurrentPlanning=_rcMergePilpPlanningFields(current,incoming,merged);
+    if(keptCurrentPlanning){
+      const timeline=[],seen=new Set();
+      [].concat(incoming.tl||[],current.tl||[]).forEach(function(entry){
+        const signature=JSON.stringify(entry||{});if(seen.has(signature))return;seen.add(signature);timeline.push(entry);
+      });
+      timeline.sort(function(a,b){return String(a&&a.h||'').localeCompare(String(b&&b.h||''));});
+      merged.tl=timeline;
+    }
+    return {value:merged,keptCurrentStatus:keptCurrentPlanning};
+  }
   // Conserver les éventuels compléments reçus, mais reprendre intégralement
   // l'état opérationnel le plus récent afin d'éviter tout retour visuel.
   const merged=Object.assign({},incoming);
@@ -18097,6 +18167,7 @@ function _rcMergeOperationalInterventionVersions(current,incoming){
   });
   timeline.sort(function(a,b){return String(a&&a.h||'').localeCompare(String(b&&b.h||''));});
   merged.tl=timeline;
+  _rcMergePilpPlanningFields(current,incoming,merged);
   return {value:merged,keptCurrentStatus:true};
 }
 function _rcReplaceLocalOperationalRecord(caserne,type,value){

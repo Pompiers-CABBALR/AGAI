@@ -1730,6 +1730,26 @@ const RC_OPERATIONAL_PROTECTED_FIELDS=[
   '_startLockedByChain','_chainedFromInterventionId','_chainPreviousInterventionId','_departGeoControle',
   '_statusUpdatedAt'
 ];
+const RC_PILP_PLANNING_FIELDS=['axeTir','_axeTirEtat','_pilpPeriode','_pilpPeriodePrecision','_pilpPlanningUpdatedAt','_pilpPlanningUpdatedBy'];
+function _rcMergePilpPlanningFields(current,incoming,target){
+  const currentRevision=Number(current&&current._pilpPlanningUpdatedAt)||0;
+  const incomingRevision=Number(incoming&&incoming._pilpPlanningUpdatedAt)||0;
+  if(!currentRevision&&!incomingRevision)return false;
+  const keepCurrent=currentRevision>incomingRevision;
+  const source=keepCurrent?current:incoming;
+  RC_PILP_PLANNING_FIELDS.forEach(function(key){
+    if(Object.prototype.hasOwnProperty.call(source,key)){
+      const value=source[key];target[key]=value===undefined?undefined:JSON.parse(JSON.stringify(value));
+    }else delete target[key];
+  });
+  if(source&&source._appelDetails&&typeof source._appelDetails==='object'){
+    target._appelDetails=Object.assign({},target._appelDetails||{});
+    ['Axe de tir','Période PILP'].forEach(function(key){
+      if(Object.prototype.hasOwnProperty.call(source._appelDetails,key))target._appelDetails[key]=source._appelDetails[key];
+    });
+  }
+  return keepCurrent;
+}
 function _rcOperationalStatusSequence(iv){
   return (iv&&Array.isArray(iv.tl)?iv.tl:[]).filter(function(entry){return entry&&RC_OPERATIONAL_STATUSES.includes(entry.s);}).map(function(entry){return {s:entry.s,h:String(entry.h||'')};});
 }
@@ -1757,7 +1777,19 @@ function _rcOperationalStatusSource(current,incoming){
 function _rcMergeOperationalInterventionVersions(current,incoming){
   if(!current)return {value:incoming,keptCurrentStatus:false};
   if(!incoming)return {value:current,keptCurrentStatus:true};
-  if(_rcOperationalStatusSource(current,incoming)!=='current')return {value:incoming,keptCurrentStatus:false};
+  if(_rcOperationalStatusSource(current,incoming)!=='current'){
+    const merged=Object.assign({},incoming);
+    const keptCurrentPlanning=_rcMergePilpPlanningFields(current,incoming,merged);
+    if(keptCurrentPlanning){
+      const timeline=[],seen=new Set();
+      [].concat(incoming.tl||[],current.tl||[]).forEach(function(entry){
+        const signature=JSON.stringify(entry||{});if(seen.has(signature))return;seen.add(signature);timeline.push(entry);
+      });
+      timeline.sort(function(a,b){return String(a&&a.h||'').localeCompare(String(b&&b.h||''));});
+      merged.tl=timeline;
+    }
+    return {value:merged,keptCurrentStatus:keptCurrentPlanning};
+  }
   // Conserver les éventuels compléments reçus, mais reprendre intégralement
   // l'état opérationnel le plus récent afin d'éviter tout retour visuel.
   const merged=Object.assign({},incoming);
@@ -1773,6 +1805,7 @@ function _rcMergeOperationalInterventionVersions(current,incoming){
   });
   timeline.sort(function(a,b){return String(a&&a.h||'').localeCompare(String(b&&b.h||''));});
   merged.tl=timeline;
+  _rcMergePilpPlanningFields(current,incoming,merged);
   return {value:merged,keptCurrentStatus:true};
 }
 function _rcReplaceLocalOperationalRecord(caserne,type,value){
