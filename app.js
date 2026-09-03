@@ -8213,7 +8213,7 @@ function rAdm(){
     const rfLbl=u.responsableFormation===true?'<span style="font-size:9px;background:#F3E8FF;color:#6D28D9;padding:2px 6px;border-radius:8px;font-weight:700;white-space:nowrap;">Resp. formation</span>':'';
     const nomCell=(isSA&&!saEditable)?`<td style="font-size:12px;font-weight:500;">${u.nom} ${roLbl} ${rfLbl}</td>`:`<td><input type="text" value="${u.nom}" data-login="${u.l}" data-field="nom" onchange="updateUser(this.dataset.login,this.dataset.field,this.value)" style="width:80px;padding:3px 6px;border:1px solid var(--brd);border-radius:5px;font-size:12px;"/>${saEditable?roLbl:''}${rfLbl}</td>`;
     const prenomCell=(isSA&&!saEditable)?`<td style="font-size:12px;">${u.prenom}</td>`:`<td><input type="text" value="${u.prenom}" data-login="${u.l}" data-field="prenom" onchange="updateUser(this.dataset.login,this.dataset.field,this.value)" style="width:70px;padding:3px 6px;border:1px solid var(--brd);border-radius:5px;font-size:12px;"/></td>`;
-    const gradeCell=(isSA&&!saEditable)?`<td style="font-size:12px;color:var(--t2);">${u.grade||''}</td>`:`<td><div style="display:flex;align-items:center;gap:3px;"><select data-login="${u.l}" onchange="openPersonnelGradeChange(this.dataset.login,this.value)" style="width:110px;padding:3px 5px;border:1px solid var(--brd);border-radius:5px;font-size:11px;">${GRADES.map(g=>`<option${g===u.grade?' selected':''}>${g}</option>`).join('')}</select><button type="button" onclick="showPersonnelGradeHistory('${u.l}')" title="Historique des grades" style="padding:3px 5px;border:1px solid var(--brd);background:#fff;border-radius:5px;cursor:pointer;">📅</button></div></td>`;
+    const gradeCell=(isSA&&!saEditable)?`<td style="font-size:12px;color:var(--t2);">${u.grade||''}</td>`:`<td><div style="display:flex;align-items:center;gap:3px;"><select data-login="${u.l}" onchange="requestPersonnelGradeChange(this)" style="width:110px;padding:3px 5px;border:1px solid var(--brd);border-radius:5px;font-size:11px;">${GRADES.map(g=>`<option${g===u.grade?' selected':''}>${g}</option>`).join('')}</select><button type="button" onclick="showPersonnelGradeHistory('${u.l}')" title="Historique des grades" style="padding:3px 5px;border:1px solid var(--brd);background:#fff;border-radius:5px;cursor:pointer;">📅</button></div></td>`;
     const fonctionCell=(isSA&&!saEditable)?`<td style="font-size:12px;color:var(--t2);">${u.fonction||''}</td>`:`<td><select data-login="${u.l}" data-field="fonction" onchange="updateUser(this.dataset.login,this.dataset.field,this.value)" style="width:160px;padding:3px 5px;border:1px solid var(--brd);border-radius:5px;font-size:11px;">${FONCTIONS.map(f=>`<option${f===(u.fonction||'Équipier')?' selected':''}>${f}</option>`).join('')}</select></td>`;
     // Fonction secondaire (pour Chef de centre et Adjoint au chef de centre)
     const showFonct2=u.fonction==='Chef de centre'||u.fonction==='Adjoint au chef de centre';
@@ -8399,6 +8399,15 @@ function personnelGradeHistoryRows(user){
     const future=entry.effectiveDate>personnelGradeTodayIso()?' <span style="color:#B45309;font-weight:700;">À venir</span>':'';
     return '<tr style="border-bottom:1px solid #E5E7EB;"><td style="padding:7px 8px;">'+escHtml(date)+future+'</td><td style="padding:7px 8px;font-weight:700;">'+escHtml(entry.grade)+'</td></tr>';
   }).join('');
+}
+function requestPersonnelGradeChange(select){
+  if(!select)return;
+  const login=select.dataset.login||'',user=USERS.find(function(item){return item&&item.l===login;});if(!user)return;
+  const requestedGrade=select.value;
+  // La liste principale reflète uniquement le grade réellement validé.
+  // Fermer la fenêtre, y compris avec sa croix, ne laisse donc aucun faux changement visible.
+  select.value=user.grade||'';
+  openPersonnelGradeChange(login,requestedGrade);
 }
 function openPersonnelGradeChange(login,newGrade){
   const user=USERS.find(function(item){return item&&item.l===login;});if(!user)return;
@@ -14886,7 +14895,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260903-grade-date-obligatoire-204';
+const APP_VERSION='20260903-annulation-changement-grade-205';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
