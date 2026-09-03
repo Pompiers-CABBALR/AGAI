@@ -261,7 +261,7 @@ function openPersonnelGradeChange(login,newGrade){
   document.getElementById('mi').textContent='';
   document.getElementById('mb').innerHTML='<div style="font-size:12px;color:var(--t2);margin-bottom:12px;">Le nouveau grade sera utilisé pour les indemnités uniquement à partir de sa date de mise en place.</div>'
     +'<label class="fg"><span class="fgl">Nouveau grade</span><select class="fi" id="personnel-grade-new">'+GRADES.map(function(grade){return '<option'+(grade===newGrade?' selected':'')+'>'+escHtml(grade)+'</option>';}).join('')+'</select></label>'
-    +'<label class="fg"><span class="fgl">Date de mise en place *</span><input class="fi" id="personnel-grade-effective" type="date" value="'+personnelGradeTodayIso()+'"></label>'
+    +'<label class="fg"><span class="fgl">Date de mise en place *</span><input class="fi" id="personnel-grade-effective" type="date"></label>'
     +'<div style="margin-top:13px;font-weight:700;font-size:12px;">Historique conservé</div><div style="max-height:210px;overflow:auto;margin-top:5px;"><table style="width:100%;border-collapse:collapse;font-size:11px;"><thead><tr style="background:#F3F4F6;"><th style="padding:7px 8px;text-align:left;">Mise en place</th><th style="padding:7px 8px;text-align:left;">Grade</th></tr></thead><tbody>'+personnelGradeHistoryRows(user)+'</tbody></table></div>'
     +'<div class="brow" style="margin-top:12px;"><button class="btn pr" onclick="savePersonnelGradeChange(\''+encodeURIComponent(login)+'\')">💾 Enregistrer</button><button class="btn" onclick="cM();rAdm();">Annuler</button></div>';
   document.getElementById('mo').style.display='flex';

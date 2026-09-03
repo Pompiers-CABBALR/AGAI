@@ -1426,6 +1426,7 @@ function ccEditMesInfos(){
       <div class="fg"><div class="fgl">Nom</div><input class="fi" type="text" id="cc-nom" value="${escHtml(acc.nom||'')}"/></div>
     </div>
     <div class="fg"><div class="fgl">Grade</div><select class="fi" id="cc-grade">${GRADES.map(g=>`<option${g===acc.grade?' selected':''}>${g}</option>`).join('')}</select></div>
+    <div class="fg"><div class="fgl">Date de mise en place du nouveau grade</div><input class="fi" type="date" id="cc-grade-effective"/><div style="font-size:10px;color:var(--t2);margin-top:3px;">Obligatoire si le grade est modifié.</div></div>
     <div class="fg"><div class="fgl">Fonction</div><select class="fi" id="cc-fonction">${FONCTIONS.map(f=>`<option${f===acc.fonction?' selected':''}>${f}</option>`).join('')}</select></div>
     <div class="fg"><div class="fgl">Matricule</div><input class="fi" type="text" id="cc-matricule" value="${escHtml(acc.matricule||'')}"/></div>
     <div class="fg"><div class="fgl">Fonctions formateur</div>
@@ -1451,15 +1452,19 @@ function ccSaveMesInfos(){
   const prenom=document.getElementById('cc-prenom').value.trim();
   const nom=document.getElementById('cc-nom').value.trim();
   const grade=document.getElementById('cc-grade').value;
+  const gradeEffective=document.getElementById('cc-grade-effective').value;
   const fonction=document.getElementById('cc-fonction').value;
   const matricule=document.getElementById('cc-matricule').value.trim();
   const err=document.getElementById('cc-infos-err');
   if(!prenom||!nom){err.style.display='block';err.textContent='Le prénom et le nom sont obligatoires.';return;}
+  const gradeChanged=grade!==String(acc.grade||'');
+  if(gradeChanged&&!gradeEffective){err.style.display='block';err.textContent='La date de mise en place est obligatoire pour modifier le grade.';return;}
   const ff=[...document.querySelectorAll('.cc-ff:checked')].map(c=>c.value);
   // Écriture dans le compte GLOBAL (source de vérité pour le chef de corps)
-  acc.prenom=prenom;acc.nom=nom;acc.grade=grade;acc.fonction=fonction;acc.matricule=matricule;acc.fonctionsFormateur=ff;
+  if(gradeChanged)recordPersonnelGradeChange(acc,grade,gradeEffective,CU&&CU.l);
+  acc.prenom=prenom;acc.nom=nom;acc.fonction=fonction;acc.matricule=matricule;acc.fonctionsFormateur=ff;
   // Répercuter sur la session courante
-  if(CU){CU.prenom=prenom;CU.nom=nom;CU.grade=grade;CU.fonction=fonction;CU.matricule=matricule;CU.fonctionsFormateur=ff;}
+  if(CU){CU.prenom=prenom;CU.nom=nom;CU.grade=acc.grade;CU.gradeHistory=JSON.parse(JSON.stringify(normalizePersonnelGradeHistory(acc)));CU._gradeHistoryUpdatedAt=Number(acc._gradeHistoryUpdatedAt||0);CU.fonction=fonction;CU.matricule=matricule;CU.fonctionsFormateur=ff;}
   saveData();cM();
   showToast('Informations enregistrées ✓','success');
   // Rafraîchir l'affichage selon le contexte (tableau de bord ou espace de saisie)
@@ -1487,6 +1492,7 @@ function editCompteSpecial(role){
     <div class="fg"><div class="fgl">Prénom</div><input class="fi" type="text" id="ec-prenom" value="${acc.prenom}" oninput="prevEcLogin()"/></div>
     <div class="fg"><div class="fgl">Nom</div><input class="fi" type="text" id="ec-nom" value="${acc.nom}" oninput="prevEcLogin()"/></div>
     <div class="fg"><div class="fgl">Grade</div><select class="fi" id="ec-grade">${GRADES.map(g=>`<option${g===acc.grade?' selected':''}>${g}</option>`).join('')}</select></div>
+    <div class="fg"><div class="fgl">Date de mise en place du nouveau grade</div><input class="fi" type="date" id="ec-grade-effective"/><div style="font-size:10px;color:var(--t2);margin-top:3px;">Obligatoire si le grade est modifié.</div></div>
     <div class="fg"><div class="fgl">Identifiant (auto)</div><input class="fi" type="text" id="ec-login" value="${acc.l}" style="font-family:monospace;font-size:12px;"/></div>
     <div class="fg"><div class="fgl">Nouveau mot de passe</div><input class="fi" type="password" id="ec-mdp" placeholder="Laisser vide pour ne pas changer"/></div>
     ${rightsSection}
@@ -1511,21 +1517,25 @@ async function saveCompteSpecial(role){
   const prenom=document.getElementById('ec-prenom').value.trim();
   const nom=document.getElementById('ec-nom').value.trim();
   const grade=document.getElementById('ec-grade').value;
+  const gradeEffective=document.getElementById('ec-grade-effective').value;
   const login=document.getElementById('ec-login').value.trim().toLowerCase();
   const mdp=document.getElementById('ec-mdp').value;
   const err=document.getElementById('ec-err');
   if(!prenom||!nom||!login){err.style.display='block';err.textContent='Champs obligatoires.';return;}
+  const gradeChanged=grade!==String(acc.grade||'');
+  if(gradeChanged&&!gradeEffective){err.style.display='block';err.textContent='La date de mise en place est obligatoire pour modifier le grade.';return;}
   const pwdErr=mdp?passwordPolicyError(mdp):'';
   if(pwdErr){err.style.display='block';err.textContent=pwdErr;return;}
   const oldLogin=acc.l;
-  acc.prenom=prenom;acc.nom=nom;acc.l=login;acc.grade=grade;
+  if(gradeChanged)recordPersonnelGradeChange(acc,grade,gradeEffective,CU&&CU.l);
+  acc.prenom=prenom;acc.nom=nom;acc.l=login;
   if(mdp){acc.p=await hashPassword(mdp);} // P1
   // Droits du chef de corps (définis par le superadmin)
   if(role==='chef_corps'){
     const checked=[...document.querySelectorAll('.ec-cc-right:checked')].map(function(c){return c.value;});
     acc.rightsCC=checked;
   }
-  if(CU&&(CU.l===oldLogin||CU.l===login)){CU.prenom=prenom;CU.nom=nom;CU.l=login;
+  if(CU&&(CU.l===oldLogin||CU.l===login)){CU.prenom=prenom;CU.nom=nom;CU.l=login;CU.grade=acc.grade;CU.gradeHistory=JSON.parse(JSON.stringify(normalizePersonnelGradeHistory(acc)));CU._gradeHistoryUpdatedAt=Number(acc._gradeHistoryUpdatedAt||0);
     const t2u=document.getElementById('t2u');
     if(t2u)t2u.textContent=login+(CC()?' \u2014 '+CC().nom:'');
   }
@@ -1546,6 +1556,7 @@ function editAdminCaserne(cid,adminLogin){
     <div class="fg"><div class="fgl">Grade</div>
       <select class="fi" id="adm-grade">${GRADES.map(g=>`<option${g===admin.grade?' selected':''}>${g}</option>`).join('')}</select>
     </div>
+    <div class="fg"><div class="fgl">Date de mise en place du nouveau grade</div><input class="fi" type="date" id="adm-grade-effective"/><div style="font-size:10px;color:var(--t2);margin-top:3px;">Obligatoire si le grade est modifié.</div></div>
     <div class="fg"><div class="fgl">Identifiant (généré auto)</div>
       <input class="fi" type="text" id="adm-login" value="${admin.l}" style="font-family:monospace;font-size:12px;"/>
     </div>
@@ -1580,15 +1591,19 @@ async function saveAdminCaserne(cid,adminLogin){
   const prenom=document.getElementById('adm-prenom').value.trim();
   const nom=document.getElementById('adm-nom').value.trim();
   const grade=document.getElementById('adm-grade').value;
+  const gradeEffective=document.getElementById('adm-grade-effective').value;
   const login=document.getElementById('adm-login').value.trim().toLowerCase();
   const mdp=document.getElementById('adm-mdp').value;
   const couleur=document.getElementById('adm-couleur').value;
   const err=document.getElementById('adm-err');
   if(!prenom||!nom||!login){err.style.display='block';err.textContent='Prénom, nom et identifiant sont obligatoires.';return;}
+  const gradeChanged=grade!==String(admin.grade||'');
+  if(gradeChanged&&!gradeEffective){err.style.display='block';err.textContent='La date de mise en place est obligatoire pour modifier le grade.';return;}
   const pwdErr=mdp?passwordPolicyError(mdp):'';
   if(pwdErr){err.style.display='block';err.textContent=pwdErr;return;}
   const oldLogin=admin.l;
-  admin.prenom=prenom;admin.nom=nom;admin.grade=grade;admin.l=login;
+  if(gradeChanged)recordPersonnelGradeChange(admin,grade,gradeEffective,CU&&CU.l);
+  admin.prenom=prenom;admin.nom=nom;admin.l=login;
   const adminLogins=getCaserneAdmins(cid).map(function(item){return item.l===oldLogin?login:item.l;});
   d.adminLogins=[...new Set(adminLogins)];
   d.adminLogin=d.adminLogins[0]||'';

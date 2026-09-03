@@ -310,7 +310,7 @@ function syncCaserneContext(){
   GLOBAL_ACCOUNTS.filter(a=>a.role==='superadmin'&&a.caserneId===CURRENT_CASERNE_ID).forEach(sa=>{
     const existing=USERS.find(u=>u.l===sa.l);
     if(!existing){
-      USERS.push({l:sa.l,prenom:sa.prenom,nom:sa.nom,grade:sa.grade||'Lieutenant',
+      USERS.push({l:sa.l,prenom:sa.prenom,nom:sa.nom,grade:sa.grade||'Lieutenant',gradeHistory:JSON.parse(JSON.stringify(normalizePersonnelGradeHistory(sa))),_gradeHistoryUpdatedAt:Number(sa._gradeHistoryUpdatedAt||0),
         fonction:sa.fonction||'Chef de centre',fonction2:sa.fonction2||'',matricule:sa.matricule||'',
         p:sa.p, // le compte injecté partage le mot de passe du compte superadmin
         rights:["Prise d'appel","Interventions","Historique complet","Chef d'agrès","Tireur PILP","Administration"],
@@ -320,6 +320,8 @@ function syncCaserneContext(){
       existing.fonction=sa.fonction||'Chef de centre';
       existing.fonction2=sa.fonction2||'';
       existing.grade=sa.grade||existing.grade;
+      existing.gradeHistory=JSON.parse(JSON.stringify(normalizePersonnelGradeHistory(sa)));
+      existing._gradeHistoryUpdatedAt=Number(sa._gradeHistoryUpdatedAt||0);
       existing.prenom=sa.prenom||existing.prenom;
       existing.nom=sa.nom||existing.nom;
       existing.matricule=sa.matricule||'';
