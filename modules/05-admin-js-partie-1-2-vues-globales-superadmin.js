@@ -822,6 +822,53 @@ function indemnityGradeGroup(grade){
   if(/sapeur|(^| )(1cl|2cl)( |$)/.test(value))return 'sapeur';
   return '';
 }
+const PERSONNEL_GRADE_HISTORY_BASELINE='1900-01-01';
+function personnelGradeTodayIso(){
+  const now=new Date();
+  return now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+}
+function personnelGradeDateIso(value){
+  const match=String(value||'').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return match?match[1]+'-'+match[2]+'-'+match[3]:'';
+}
+function normalizePersonnelGradeHistory(user){
+  if(!user||typeof user!=='object')return [];
+  const fallback=String(user.grade||'').trim();
+  const source=Array.isArray(user.gradeHistory)?user.gradeHistory:[];
+  const byDate={};
+  source.forEach(function(entry,index){
+    const grade=String(entry&&entry.grade||'').trim(),effectiveDate=personnelGradeDateIso(entry&&entry.effectiveDate);
+    if(!grade||!effectiveDate)return;
+    byDate[effectiveDate]={id:String(entry.id||('grade-'+effectiveDate+'-'+index)),grade:grade,effectiveDate:effectiveDate,recordedAt:String(entry.recordedAt||''),recordedBy:String(entry.recordedBy||'')};
+  });
+  if(!Object.keys(byDate).length&&fallback)byDate[PERSONNEL_GRADE_HISTORY_BASELINE]={id:'grade-initial',grade:fallback,effectiveDate:PERSONNEL_GRADE_HISTORY_BASELINE,recordedAt:'',recordedBy:''};
+  user.gradeHistory=Object.keys(byDate).sort().map(function(date){return byDate[date];});
+  return user.gradeHistory;
+}
+function personnelGradeForDate(user,dateIso){
+  if(!user)return '';
+  const date=personnelGradeDateIso(dateIso)||personnelGradeTodayIso();let applicable='';
+  normalizePersonnelGradeHistory(user).forEach(function(entry){if(entry.effectiveDate<=date)applicable=entry.grade;});
+  return applicable||String(user.grade||'').trim();
+}
+function recordPersonnelGradeChange(user,newGrade,effectiveDate,recordedBy){
+  if(!user)return false;
+  const grade=String(newGrade||'').trim(),date=personnelGradeDateIso(effectiveDate);if(!grade||!date)return false;
+  const history=normalizePersonnelGradeHistory(user).filter(function(entry){return entry.effectiveDate!==date;});
+  const stamp=new Date().toISOString();
+  history.push({id:'grade-'+date+'-'+Date.now(),grade:grade,effectiveDate:date,recordedAt:stamp,recordedBy:String(recordedBy||'')});
+  user.gradeHistory=history.sort(function(a,b){return a.effectiveDate.localeCompare(b.effectiveDate);});
+  user._gradeHistoryUpdatedAt=Date.now();
+  user.grade=personnelGradeForDate(user,personnelGradeTodayIso())||grade;
+  return true;
+}
+function mergePersonnelGradeData(current,incoming){
+  if(!current)return Object.assign({},incoming||{});if(!incoming)return Object.assign({},current||{});
+  const next=Object.assign({},incoming),localRevision=Number(current._gradeHistoryUpdatedAt||0),remoteRevision=Number(incoming._gradeHistoryUpdatedAt||0);
+  if(localRevision>remoteRevision){next.grade=current.grade;next.gradeHistory=JSON.parse(JSON.stringify(normalizePersonnelGradeHistory(current)));next._gradeHistoryUpdatedAt=localRevision;next._keptLocalGradeHistory=true;}
+  else normalizePersonnelGradeHistory(next);
+  return next;
+}
 function indemnityEuro(value){return Number(value||0).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';}
 function showIndemnityParams(){
   if(!isSuperAdmin()){showToast('Accès réservé au super-administrateur','warn');return;}

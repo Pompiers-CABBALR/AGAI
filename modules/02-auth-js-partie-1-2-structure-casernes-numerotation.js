@@ -126,6 +126,8 @@ function deriveAccountRole(account){
 
 function normalizeAllAccountMetadata(){
   GLOBAL_ACCOUNTS.forEach(function(account){
+    normalizePersonnelGradeHistory(account);
+    account.grade=personnelGradeForDate(account,personnelGradeTodayIso())||account.grade;
     account.appRole=deriveAccountRole(account);
     if(!account.caserneId&&account.role==='chef_corps')account.caserneId='EMAJ';
   });
@@ -133,6 +135,8 @@ function normalizeAllAccountMetadata(){
     if(cid.startsWith('_'))return;
     const data=CASERNE_DATA[cid];
     (data&&Array.isArray(data.users)?data.users:[]).forEach(function(user){
+      normalizePersonnelGradeHistory(user);
+      user.grade=personnelGradeForDate(user,personnelGradeTodayIso())||user.grade;
       user.caserneId=cid;
       user.appRole=deriveAccountRole(user);
     });

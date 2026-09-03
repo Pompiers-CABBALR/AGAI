@@ -148,7 +148,7 @@ function indemnityAgentDailyDetailHTML(login){
   const detail=statsIndemnityDailyDetails[String(login||'')];
   if(!detail)return '';
   const rows=(detail.days||[]).map(function(day){
-    const parts=(day.categories||[]).map(function(category){return '<span style="display:inline-block;background:#F1F5F9;border-radius:6px;padding:2px 6px;margin:1px 3px 1px 0;white-space:nowrap;">'+escHtml(category.label)+' : '+adminExportMinutesHHMM(Math.round(category.minutes))+' · '+indemnityEuro(category.amount)+'</span>';}).join('');
+    const parts=(day.categories||[]).map(function(category){const gradeText=Array.isArray(category.grades)&&category.grades.length?' · '+category.grades.map(escHtml).join(' / '):'';return '<span style="display:inline-block;background:#F1F5F9;border-radius:6px;padding:2px 6px;margin:1px 3px 1px 0;white-space:nowrap;">'+escHtml(category.label)+' : '+adminExportMinutesHHMM(Math.round(category.minutes))+' · '+indemnityEuro(category.amount)+gradeText+'</span>';}).join('');
     return '<tr><td style="padding:7px 8px;white-space:nowrap;">'+escHtml(day.label)+'</td><td style="padding:7px 8px;text-align:center;font-weight:700;">'+adminExportMinutesHHMM(Math.round(day.minutes))+'</td><td style="padding:7px 8px;text-align:right;font-weight:700;color:#166534;white-space:nowrap;">'+indemnityEuro(day.amount)+'</td><td style="padding:5px 8px;font-size:10px;">'+parts+'</td></tr>';
   }).join('');
   return '<div style="margin-top:12px;border:2px solid #111;border-radius:10px;overflow:hidden;"><div style="display:flex;justify-content:space-between;gap:10px;align-items:center;background:#F8FAFC;padding:9px 11px;border-bottom:2px solid #111;"><strong>Détail journalier — '+escHtml(detail.label)+'</strong><span style="font-size:11px;color:#475569;">'+detail.days.length+' jour'+(detail.days.length>1?'s':'')+'</span></div>'+(rows?'<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:#fff;border-bottom:1px solid #CBD5E1;"><th style="padding:6px 8px;text-align:left;">Date</th><th style="padding:6px 8px;text-align:center;">Heures</th><th style="padding:6px 8px;text-align:right;">Montant</th><th style="padding:6px 8px;text-align:left;">Répartition</th></tr></thead><tbody>'+rows+'</tbody></table></div>':'<div style="padding:14px;text-align:center;color:#64748B;">Aucune heure indemnisable sur cette période.</div>')+'</div>';
@@ -188,9 +188,11 @@ function rStatsIndemnites(){
     const row=rowsByLogin[login],mins=Math.max(0,Number(minutes)||0);if(!row||!mins||!dateInPeriod(dateIso))return;
     const scale=indemnityScaleForDate(dateIso);if(!scale)return;
     const daily=row.daily[dateIso]||(row.daily[dateIso]={}),dailyValue=daily[key]||(daily[key]=emptyValue());
-    const group=indemnityGradeGroup(row.user.grade),base=group?Number(scale.rates&&scale.rates[group]):0;
+    const applicableGrade=personnelGradeForDate(row.user,dateIso);
+    const group=indemnityGradeGroup(applicableGrade),base=group?Number(scale.rates&&scale.rates[group]):0;
     row.values[key].minutes+=mins;
-    dailyValue.minutes+=mins;
+    dailyValue.minutes+=mins;dailyValue.grades=Array.isArray(dailyValue.grades)?dailyValue.grades:[];
+    if(applicableGrade&&!dailyValue.grades.includes(applicableGrade))dailyValue.grades.push(applicableGrade);
     if(!group||!Number.isFinite(base)){row.unknownGrade=true;return;}
     const amount=(mins/60)*base*(Number(percentage)||0)/100;
     row.values[key].amount+=amount;dailyValue.amount+=amount;
@@ -256,7 +258,7 @@ function rStatsIndemnites(){
   statsIndemnityDailyDetails={};
   rows.forEach(function(row){
     const days=Object.keys(row.daily).sort().map(function(date){
-      const values=row.daily[date],active=categories.filter(function(category){return values[category.key]&&values[category.key].minutes>0;}).map(function(category){return {label:category.short||category.label,minutes:values[category.key].minutes,amount:values[category.key].amount};});
+      const values=row.daily[date],active=categories.filter(function(category){return values[category.key]&&values[category.key].minutes>0;}).map(function(category){return {label:category.short||category.label,minutes:values[category.key].minutes,amount:values[category.key].amount,grades:values[category.key].grades||[]};});
       const total=active.reduce(function(sum,value){sum.minutes+=value.minutes;sum.amount+=value.amount;return sum;},emptyValue());
       const parts=date.split('-');
       return {date:date,label:parts.length===3?parts[2]+'/'+parts[1]+'/'+parts[0]:date,minutes:total.minutes,amount:total.amount,categories:active};

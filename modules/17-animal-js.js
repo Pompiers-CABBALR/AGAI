@@ -1886,6 +1886,26 @@ async function _rcProtectDispoRows(rows){
   });
   return rows;
 }
+async function _rcProtectPersonnelGradeRows(rows){
+  const users=(rows||[]).filter(function(row){return row&&row.type==='user'&&!row.deleted;});
+  if(!users.length)return rows;
+  const ids=users.map(function(row){return row.id;}),filter='('+ids.map(function(id){return '"'+String(id).replace(/"/g,'')+'"';}).join(',')+')';
+  const resp=await fetch(RC_REST+'?id=in.'+encodeURIComponent(filter)+'&select=id,data,deleted',{headers:_sbHeaders});
+  if(!resp.ok)throw new Error('grade history guard GET HTTP '+resp.status);
+  const remoteRows=await resp.json(),remoteById={};
+  (Array.isArray(remoteRows)?remoteRows:[]).forEach(function(row){if(row&&row.id&&!row.deleted)remoteById[row.id]=row;});
+  users.forEach(function(row){
+    const remote=remoteById[row.id];if(!remote||!remote.data)return;
+    const merged=mergePersonnelGradeData(remote.data,row.data);row.data=merged;
+    if(merged._keptLocalGradeHistory){
+      delete merged._keptLocalGradeHistory;
+      const station=CASERNE_DATA[row.caserne],list=station&&station.users||[],index=list.findIndex(function(user){return user&&user.l===merged.l;});
+      if(index>=0)list[index]=Object.assign({},merged);
+      if(row.caserne===CURRENT_CASERNE_ID)syncCaserneContext();
+    }
+  });
+  return rows;
+}
 function _rcRenderRealtimeViews(){
   try{rI();}catch(e){}
   try{rAccueil();}catch(e){}
@@ -1972,7 +1992,10 @@ function _rcApplyRealtimeRecord(record){
       const users=d.users||(d.users=[]);
       const index=users.findIndex(function(user){return user&&user.l===incoming.l;});
       if(record.deleted===true){if(index>=0)users.splice(index,1);}
-      else if(index>=0)users[index]=Object.assign({},incoming);
+      else if(index>=0){
+        const mergedUser=mergePersonnelGradeData(users[index],incoming);users[index]=mergedUser;
+        if(mergedUser._keptLocalGradeHistory){delete mergedUser._keptLocalGradeHistory;_rcPendingDirty.add(record.id);_rcDirtyGeneration++;_rcPersistPendingDirty();_rcScheduleRetry(0);}
+      }
       else users.push(Object.assign({},incoming));
     }else if(record.type==='dispo'){
       if(!incoming.wk||!incoming.login)return false;
@@ -2300,6 +2323,7 @@ async function _rcPush(fullPush){
     rows=_rcUniqueRowsById(rows);
     if(!fullPush)rows=await _rcProtectOperationalStatusRows(rows);
     if(!fullPush)rows=await _rcProtectDispoRows(rows);
+    if(!fullPush)rows=await _rcProtectPersonnelGradeRows(rows);
     if(!rows.length){_jbSetStatus(_rcPendingDirty.size?'pending':'ok');return;}
     const currentUser = (typeof CU!=='undefined' && CU) ? (CU.l||'') : '';
     const payload = rows.map(function(r){ return { id:r.id, caserne:r.caserne, type:r.type, data:r.data, deleted:r.deleted, updated_by:currentUser }; });
@@ -2437,6 +2461,14 @@ async function _rcPull(silent){
         });
       });
       data.CASERNE_DATA[activeCid].dispos=remoteDispos;
+      const localUsers=CASERNE_DATA[activeCid].users||[],remoteUsers=data.CASERNE_DATA[activeCid].users||[],localUsersByLogin={};
+      localUsers.forEach(function(user){if(user&&user.l)localUsersByLogin[user.l]=user;});
+      remoteUsers.forEach(function(remote,index){
+        const local=remote&&localUsersByLogin[remote.l];if(!local)return;
+        const merged=mergePersonnelGradeData(local,remote);remoteUsers[index]=merged;
+        if(merged._keptLocalGradeHistory){delete merged._keptLocalGradeHistory;_rcPendingDirty.add(_rcId(activeCid,'user',remote.l));_rcDirtyGeneration++;}
+      });
+      data.CASERNE_DATA[activeCid].users=remoteUsers;
       _rcPersistPendingDirty();
     }
     if(activeCid && CASERNE_DATA[activeCid]){

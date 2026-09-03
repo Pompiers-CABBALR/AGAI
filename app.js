@@ -279,6 +279,8 @@ function deriveAccountRole(account){
 
 function normalizeAllAccountMetadata(){
   GLOBAL_ACCOUNTS.forEach(function(account){
+    normalizePersonnelGradeHistory(account);
+    account.grade=personnelGradeForDate(account,personnelGradeTodayIso())||account.grade;
     account.appRole=deriveAccountRole(account);
     if(!account.caserneId&&account.role==='chef_corps')account.caserneId='EMAJ';
   });
@@ -286,6 +288,8 @@ function normalizeAllAccountMetadata(){
     if(cid.startsWith('_'))return;
     const data=CASERNE_DATA[cid];
     (data&&Array.isArray(data.users)?data.users:[]).forEach(function(user){
+      normalizePersonnelGradeHistory(user);
+      user.grade=personnelGradeForDate(user,personnelGradeTodayIso())||user.grade;
       user.caserneId=cid;
       user.appRole=deriveAccountRole(user);
     });
@@ -2176,6 +2180,53 @@ function indemnityGradeGroup(grade){
   if(/caporal/.test(value))return 'caporal';
   if(/sapeur|(^| )(1cl|2cl)( |$)/.test(value))return 'sapeur';
   return '';
+}
+const PERSONNEL_GRADE_HISTORY_BASELINE='1900-01-01';
+function personnelGradeTodayIso(){
+  const now=new Date();
+  return now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+}
+function personnelGradeDateIso(value){
+  const match=String(value||'').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return match?match[1]+'-'+match[2]+'-'+match[3]:'';
+}
+function normalizePersonnelGradeHistory(user){
+  if(!user||typeof user!=='object')return [];
+  const fallback=String(user.grade||'').trim();
+  const source=Array.isArray(user.gradeHistory)?user.gradeHistory:[];
+  const byDate={};
+  source.forEach(function(entry,index){
+    const grade=String(entry&&entry.grade||'').trim(),effectiveDate=personnelGradeDateIso(entry&&entry.effectiveDate);
+    if(!grade||!effectiveDate)return;
+    byDate[effectiveDate]={id:String(entry.id||('grade-'+effectiveDate+'-'+index)),grade:grade,effectiveDate:effectiveDate,recordedAt:String(entry.recordedAt||''),recordedBy:String(entry.recordedBy||'')};
+  });
+  if(!Object.keys(byDate).length&&fallback)byDate[PERSONNEL_GRADE_HISTORY_BASELINE]={id:'grade-initial',grade:fallback,effectiveDate:PERSONNEL_GRADE_HISTORY_BASELINE,recordedAt:'',recordedBy:''};
+  user.gradeHistory=Object.keys(byDate).sort().map(function(date){return byDate[date];});
+  return user.gradeHistory;
+}
+function personnelGradeForDate(user,dateIso){
+  if(!user)return '';
+  const date=personnelGradeDateIso(dateIso)||personnelGradeTodayIso();let applicable='';
+  normalizePersonnelGradeHistory(user).forEach(function(entry){if(entry.effectiveDate<=date)applicable=entry.grade;});
+  return applicable||String(user.grade||'').trim();
+}
+function recordPersonnelGradeChange(user,newGrade,effectiveDate,recordedBy){
+  if(!user)return false;
+  const grade=String(newGrade||'').trim(),date=personnelGradeDateIso(effectiveDate);if(!grade||!date)return false;
+  const history=normalizePersonnelGradeHistory(user).filter(function(entry){return entry.effectiveDate!==date;});
+  const stamp=new Date().toISOString();
+  history.push({id:'grade-'+date+'-'+Date.now(),grade:grade,effectiveDate:date,recordedAt:stamp,recordedBy:String(recordedBy||'')});
+  user.gradeHistory=history.sort(function(a,b){return a.effectiveDate.localeCompare(b.effectiveDate);});
+  user._gradeHistoryUpdatedAt=Date.now();
+  user.grade=personnelGradeForDate(user,personnelGradeTodayIso())||grade;
+  return true;
+}
+function mergePersonnelGradeData(current,incoming){
+  if(!current)return Object.assign({},incoming||{});if(!incoming)return Object.assign({},current||{});
+  const next=Object.assign({},incoming),localRevision=Number(current._gradeHistoryUpdatedAt||0),remoteRevision=Number(incoming._gradeHistoryUpdatedAt||0);
+  if(localRevision>remoteRevision){next.grade=current.grade;next.gradeHistory=JSON.parse(JSON.stringify(normalizePersonnelGradeHistory(current)));next._gradeHistoryUpdatedAt=localRevision;next._keptLocalGradeHistory=true;}
+  else normalizePersonnelGradeHistory(next);
+  return next;
 }
 function indemnityEuro(value){return Number(value||0).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';}
 function showIndemnityParams(){
@@ -8145,7 +8196,7 @@ function rAdm(){
     const rfLbl=u.responsableFormation===true?'<span style="font-size:9px;background:#F3E8FF;color:#6D28D9;padding:2px 6px;border-radius:8px;font-weight:700;white-space:nowrap;">Resp. formation</span>':'';
     const nomCell=(isSA&&!saEditable)?`<td style="font-size:12px;font-weight:500;">${u.nom} ${roLbl} ${rfLbl}</td>`:`<td><input type="text" value="${u.nom}" data-login="${u.l}" data-field="nom" onchange="updateUser(this.dataset.login,this.dataset.field,this.value)" style="width:80px;padding:3px 6px;border:1px solid var(--brd);border-radius:5px;font-size:12px;"/>${saEditable?roLbl:''}${rfLbl}</td>`;
     const prenomCell=(isSA&&!saEditable)?`<td style="font-size:12px;">${u.prenom}</td>`:`<td><input type="text" value="${u.prenom}" data-login="${u.l}" data-field="prenom" onchange="updateUser(this.dataset.login,this.dataset.field,this.value)" style="width:70px;padding:3px 6px;border:1px solid var(--brd);border-radius:5px;font-size:12px;"/></td>`;
-    const gradeCell=(isSA&&!saEditable)?`<td style="font-size:12px;color:var(--t2);">${u.grade||''}</td>`:`<td><select data-login="${u.l}" data-field="grade" onchange="updateUser(this.dataset.login,this.dataset.field,this.value)" style="width:110px;padding:3px 5px;border:1px solid var(--brd);border-radius:5px;font-size:11px;">${GRADES.map(g=>`<option${g===u.grade?' selected':''}>${g}</option>`).join('')}</select></td>`;
+    const gradeCell=(isSA&&!saEditable)?`<td style="font-size:12px;color:var(--t2);">${u.grade||''}</td>`:`<td><div style="display:flex;align-items:center;gap:3px;"><select data-login="${u.l}" onchange="openPersonnelGradeChange(this.dataset.login,this.value)" style="width:110px;padding:3px 5px;border:1px solid var(--brd);border-radius:5px;font-size:11px;">${GRADES.map(g=>`<option${g===u.grade?' selected':''}>${g}</option>`).join('')}</select><button type="button" onclick="showPersonnelGradeHistory('${u.l}')" title="Historique des grades" style="padding:3px 5px;border:1px solid var(--brd);background:#fff;border-radius:5px;cursor:pointer;">📅</button></div></td>`;
     const fonctionCell=(isSA&&!saEditable)?`<td style="font-size:12px;color:var(--t2);">${u.fonction||''}</td>`:`<td><select data-login="${u.l}" data-field="fonction" onchange="updateUser(this.dataset.login,this.dataset.field,this.value)" style="width:160px;padding:3px 5px;border:1px solid var(--brd);border-radius:5px;font-size:11px;">${FONCTIONS.map(f=>`<option${f===(u.fonction||'Équipier')?' selected':''}>${f}</option>`).join('')}</select></td>`;
     // Fonction secondaire (pour Chef de centre et Adjoint au chef de centre)
     const showFonct2=u.fonction==='Chef de centre'||u.fonction==='Adjoint au chef de centre';
@@ -8252,7 +8303,8 @@ async function addUser(){
   const login=genLogin(nom,prenom);
   err.style.display='none';
   const hashed=await hashPassword(mdp);
-  USERS.push({l:login,p:hashed,prenom,nom,grade,fonction,matricule,caserneId:CURRENT_CASERNE_ID,appRole:'agent',rights:['Prise d\'appel','Interventions'],rl:'Utilisateur'});
+  const newUser={l:login,p:hashed,prenom,nom,grade,fonction,matricule,caserneId:CURRENT_CASERNE_ID,appRole:'agent',rights:['Prise d\'appel','Interventions'],rl:'Utilisateur'};
+  normalizePersonnelGradeHistory(newUser);newUser._gradeHistoryUpdatedAt=Date.now();USERS.push(newUser);
   // Réinitialiser tous les champs du formulaire
   ['nu-matricule','nu-prenom','nu-nom','nu-mdp'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.value='';
@@ -8293,6 +8345,7 @@ function updateRight(login,right,checked){
   rAdm();
 }
 function updateUser(login,field,val){
+  if(field==='grade'){openPersonnelGradeChange(login,val);return;}
   const isSAAccount=GLOBAL_ACCOUNTS.find(a=>a.l===login&&a.role==='superadmin');
   if(isSAAccount&&!isSuperAdmin())return;
   if(isSAAccount&&isSuperAdmin()){
@@ -8321,6 +8374,36 @@ function updateUser(login,field,val){
   }
   saveData();
   _updateUserRefresh(login,field);
+}
+
+function personnelGradeHistoryRows(user){
+  return normalizePersonnelGradeHistory(user).slice().reverse().map(function(entry){
+    const date=entry.effectiveDate===PERSONNEL_GRADE_HISTORY_BASELINE?'Grade initial connu':entry.effectiveDate.split('-').reverse().join('/');
+    const future=entry.effectiveDate>personnelGradeTodayIso()?' <span style="color:#B45309;font-weight:700;">À venir</span>':'';
+    return '<tr style="border-bottom:1px solid #E5E7EB;"><td style="padding:7px 8px;">'+escHtml(date)+future+'</td><td style="padding:7px 8px;font-weight:700;">'+escHtml(entry.grade)+'</td></tr>';
+  }).join('');
+}
+function openPersonnelGradeChange(login,newGrade){
+  const user=USERS.find(function(item){return item&&item.l===login;});if(!user)return;
+  document.getElementById('mt').textContent='Changement de grade — '+fullName(user);
+  document.getElementById('mi').textContent='';
+  document.getElementById('mb').innerHTML='<div style="font-size:12px;color:var(--t2);margin-bottom:12px;">Le nouveau grade sera utilisé pour les indemnités uniquement à partir de sa date de mise en place.</div>'
+    +'<label class="fg"><span class="fgl">Nouveau grade</span><select class="fi" id="personnel-grade-new">'+GRADES.map(function(grade){return '<option'+(grade===newGrade?' selected':'')+'>'+escHtml(grade)+'</option>';}).join('')+'</select></label>'
+    +'<label class="fg"><span class="fgl">Date de mise en place *</span><input class="fi" id="personnel-grade-effective" type="date" value="'+personnelGradeTodayIso()+'"></label>'
+    +'<div style="margin-top:13px;font-weight:700;font-size:12px;">Historique conservé</div><div style="max-height:210px;overflow:auto;margin-top:5px;"><table style="width:100%;border-collapse:collapse;font-size:11px;"><thead><tr style="background:#F3F4F6;"><th style="padding:7px 8px;text-align:left;">Mise en place</th><th style="padding:7px 8px;text-align:left;">Grade</th></tr></thead><tbody>'+personnelGradeHistoryRows(user)+'</tbody></table></div>'
+    +'<div class="brow" style="margin-top:12px;"><button class="btn pr" onclick="savePersonnelGradeChange(\''+encodeURIComponent(login)+'\')">💾 Enregistrer</button><button class="btn" onclick="cM();rAdm();">Annuler</button></div>';
+  document.getElementById('mo').style.display='flex';
+}
+function showPersonnelGradeHistory(login){const user=USERS.find(function(item){return item&&item.l===login;});if(user)openPersonnelGradeChange(login,user.grade||GRADES[0]);}
+function savePersonnelGradeChange(encodedLogin){
+  const login=decodeURIComponent(encodedLogin),user=USERS.find(function(item){return item&&item.l===login;});if(!user)return;
+  const grade=document.getElementById('personnel-grade-new')?.value||'',effectiveDate=document.getElementById('personnel-grade-effective')?.value||'';
+  if(!effectiveDate){showToast('Renseignez la date de mise en place du grade','warn');return;}
+  if(!recordPersonnelGradeChange(user,grade,effectiveDate,CU&&CU.l))return;
+  const globalAccount=GLOBAL_ACCOUNTS.find(function(account){return account&&account.l===login;});
+  if(globalAccount){globalAccount.gradeHistory=JSON.parse(JSON.stringify(user.gradeHistory));globalAccount._gradeHistoryUpdatedAt=user._gradeHistoryUpdatedAt;globalAccount.grade=user.grade;}
+  if(CU&&CU.l===login){CU.gradeHistory=JSON.parse(JSON.stringify(user.gradeHistory));CU._gradeHistoryUpdatedAt=user._gradeHistoryUpdatedAt;CU.grade=user.grade;}
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();saveData();cM();rAdm();showToast('Grade enregistré avec sa date de mise en place','success');
 }
 
 // Rafraîchit tous les affichages concernés après une modification admin
@@ -13278,7 +13361,7 @@ function indemnityAgentDailyDetailHTML(login){
   const detail=statsIndemnityDailyDetails[String(login||'')];
   if(!detail)return '';
   const rows=(detail.days||[]).map(function(day){
-    const parts=(day.categories||[]).map(function(category){return '<span style="display:inline-block;background:#F1F5F9;border-radius:6px;padding:2px 6px;margin:1px 3px 1px 0;white-space:nowrap;">'+escHtml(category.label)+' : '+adminExportMinutesHHMM(Math.round(category.minutes))+' · '+indemnityEuro(category.amount)+'</span>';}).join('');
+    const parts=(day.categories||[]).map(function(category){const gradeText=Array.isArray(category.grades)&&category.grades.length?' · '+category.grades.map(escHtml).join(' / '):'';return '<span style="display:inline-block;background:#F1F5F9;border-radius:6px;padding:2px 6px;margin:1px 3px 1px 0;white-space:nowrap;">'+escHtml(category.label)+' : '+adminExportMinutesHHMM(Math.round(category.minutes))+' · '+indemnityEuro(category.amount)+gradeText+'</span>';}).join('');
     return '<tr><td style="padding:7px 8px;white-space:nowrap;">'+escHtml(day.label)+'</td><td style="padding:7px 8px;text-align:center;font-weight:700;">'+adminExportMinutesHHMM(Math.round(day.minutes))+'</td><td style="padding:7px 8px;text-align:right;font-weight:700;color:#166534;white-space:nowrap;">'+indemnityEuro(day.amount)+'</td><td style="padding:5px 8px;font-size:10px;">'+parts+'</td></tr>';
   }).join('');
   return '<div style="margin-top:12px;border:2px solid #111;border-radius:10px;overflow:hidden;"><div style="display:flex;justify-content:space-between;gap:10px;align-items:center;background:#F8FAFC;padding:9px 11px;border-bottom:2px solid #111;"><strong>Détail journalier — '+escHtml(detail.label)+'</strong><span style="font-size:11px;color:#475569;">'+detail.days.length+' jour'+(detail.days.length>1?'s':'')+'</span></div>'+(rows?'<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:#fff;border-bottom:1px solid #CBD5E1;"><th style="padding:6px 8px;text-align:left;">Date</th><th style="padding:6px 8px;text-align:center;">Heures</th><th style="padding:6px 8px;text-align:right;">Montant</th><th style="padding:6px 8px;text-align:left;">Répartition</th></tr></thead><tbody>'+rows+'</tbody></table></div>':'<div style="padding:14px;text-align:center;color:#64748B;">Aucune heure indemnisable sur cette période.</div>')+'</div>';
@@ -13318,9 +13401,11 @@ function rStatsIndemnites(){
     const row=rowsByLogin[login],mins=Math.max(0,Number(minutes)||0);if(!row||!mins||!dateInPeriod(dateIso))return;
     const scale=indemnityScaleForDate(dateIso);if(!scale)return;
     const daily=row.daily[dateIso]||(row.daily[dateIso]={}),dailyValue=daily[key]||(daily[key]=emptyValue());
-    const group=indemnityGradeGroup(row.user.grade),base=group?Number(scale.rates&&scale.rates[group]):0;
+    const applicableGrade=personnelGradeForDate(row.user,dateIso);
+    const group=indemnityGradeGroup(applicableGrade),base=group?Number(scale.rates&&scale.rates[group]):0;
     row.values[key].minutes+=mins;
-    dailyValue.minutes+=mins;
+    dailyValue.minutes+=mins;dailyValue.grades=Array.isArray(dailyValue.grades)?dailyValue.grades:[];
+    if(applicableGrade&&!dailyValue.grades.includes(applicableGrade))dailyValue.grades.push(applicableGrade);
     if(!group||!Number.isFinite(base)){row.unknownGrade=true;return;}
     const amount=(mins/60)*base*(Number(percentage)||0)/100;
     row.values[key].amount+=amount;dailyValue.amount+=amount;
@@ -13386,7 +13471,7 @@ function rStatsIndemnites(){
   statsIndemnityDailyDetails={};
   rows.forEach(function(row){
     const days=Object.keys(row.daily).sort().map(function(date){
-      const values=row.daily[date],active=categories.filter(function(category){return values[category.key]&&values[category.key].minutes>0;}).map(function(category){return {label:category.short||category.label,minutes:values[category.key].minutes,amount:values[category.key].amount};});
+      const values=row.daily[date],active=categories.filter(function(category){return values[category.key]&&values[category.key].minutes>0;}).map(function(category){return {label:category.short||category.label,minutes:values[category.key].minutes,amount:values[category.key].amount,grades:values[category.key].grades||[]};});
       const total=active.reduce(function(sum,value){sum.minutes+=value.minutes;sum.amount+=value.amount;return sum;},emptyValue());
       const parts=date.split('-');
       return {date:date,label:parts.length===3?parts[2]+'/'+parts[1]+'/'+parts[0]:date,minutes:total.minutes,amount:total.amount,categories:active};
@@ -14784,7 +14869,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260902-historique-connexions-six-202';
+const APP_VERSION='20260903-historique-grades-indemnites-203';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -18277,6 +18362,26 @@ async function _rcProtectDispoRows(rows){
   });
   return rows;
 }
+async function _rcProtectPersonnelGradeRows(rows){
+  const users=(rows||[]).filter(function(row){return row&&row.type==='user'&&!row.deleted;});
+  if(!users.length)return rows;
+  const ids=users.map(function(row){return row.id;}),filter='('+ids.map(function(id){return '"'+String(id).replace(/"/g,'')+'"';}).join(',')+')';
+  const resp=await fetch(RC_REST+'?id=in.'+encodeURIComponent(filter)+'&select=id,data,deleted',{headers:_sbHeaders});
+  if(!resp.ok)throw new Error('grade history guard GET HTTP '+resp.status);
+  const remoteRows=await resp.json(),remoteById={};
+  (Array.isArray(remoteRows)?remoteRows:[]).forEach(function(row){if(row&&row.id&&!row.deleted)remoteById[row.id]=row;});
+  users.forEach(function(row){
+    const remote=remoteById[row.id];if(!remote||!remote.data)return;
+    const merged=mergePersonnelGradeData(remote.data,row.data);row.data=merged;
+    if(merged._keptLocalGradeHistory){
+      delete merged._keptLocalGradeHistory;
+      const station=CASERNE_DATA[row.caserne],list=station&&station.users||[],index=list.findIndex(function(user){return user&&user.l===merged.l;});
+      if(index>=0)list[index]=Object.assign({},merged);
+      if(row.caserne===CURRENT_CASERNE_ID)syncCaserneContext();
+    }
+  });
+  return rows;
+}
 function _rcRenderRealtimeViews(){
   try{rI();}catch(e){}
   try{rAccueil();}catch(e){}
@@ -18363,7 +18468,10 @@ function _rcApplyRealtimeRecord(record){
       const users=d.users||(d.users=[]);
       const index=users.findIndex(function(user){return user&&user.l===incoming.l;});
       if(record.deleted===true){if(index>=0)users.splice(index,1);}
-      else if(index>=0)users[index]=Object.assign({},incoming);
+      else if(index>=0){
+        const mergedUser=mergePersonnelGradeData(users[index],incoming);users[index]=mergedUser;
+        if(mergedUser._keptLocalGradeHistory){delete mergedUser._keptLocalGradeHistory;_rcPendingDirty.add(record.id);_rcDirtyGeneration++;_rcPersistPendingDirty();_rcScheduleRetry(0);}
+      }
       else users.push(Object.assign({},incoming));
     }else if(record.type==='dispo'){
       if(!incoming.wk||!incoming.login)return false;
@@ -18691,6 +18799,7 @@ async function _rcPush(fullPush){
     rows=_rcUniqueRowsById(rows);
     if(!fullPush)rows=await _rcProtectOperationalStatusRows(rows);
     if(!fullPush)rows=await _rcProtectDispoRows(rows);
+    if(!fullPush)rows=await _rcProtectPersonnelGradeRows(rows);
     if(!rows.length){_jbSetStatus(_rcPendingDirty.size?'pending':'ok');return;}
     const currentUser = (typeof CU!=='undefined' && CU) ? (CU.l||'') : '';
     const payload = rows.map(function(r){ return { id:r.id, caserne:r.caserne, type:r.type, data:r.data, deleted:r.deleted, updated_by:currentUser }; });
@@ -18828,6 +18937,14 @@ async function _rcPull(silent){
         });
       });
       data.CASERNE_DATA[activeCid].dispos=remoteDispos;
+      const localUsers=CASERNE_DATA[activeCid].users||[],remoteUsers=data.CASERNE_DATA[activeCid].users||[],localUsersByLogin={};
+      localUsers.forEach(function(user){if(user&&user.l)localUsersByLogin[user.l]=user;});
+      remoteUsers.forEach(function(remote,index){
+        const local=remote&&localUsersByLogin[remote.l];if(!local)return;
+        const merged=mergePersonnelGradeData(local,remote);remoteUsers[index]=merged;
+        if(merged._keptLocalGradeHistory){delete merged._keptLocalGradeHistory;_rcPendingDirty.add(_rcId(activeCid,'user',remote.l));_rcDirtyGeneration++;}
+      });
+      data.CASERNE_DATA[activeCid].users=remoteUsers;
       _rcPersistPendingDirty();
     }
     if(activeCid && CASERNE_DATA[activeCid]){

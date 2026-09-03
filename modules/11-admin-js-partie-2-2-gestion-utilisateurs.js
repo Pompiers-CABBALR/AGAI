@@ -68,7 +68,7 @@ function rAdm(){
     const rfLbl=u.responsableFormation===true?'<span style="font-size:9px;background:#F3E8FF;color:#6D28D9;padding:2px 6px;border-radius:8px;font-weight:700;white-space:nowrap;">Resp. formation</span>':'';
     const nomCell=(isSA&&!saEditable)?`<td style="font-size:12px;font-weight:500;">${u.nom} ${roLbl} ${rfLbl}</td>`:`<td><input type="text" value="${u.nom}" data-login="${u.l}" data-field="nom" onchange="updateUser(this.dataset.login,this.dataset.field,this.value)" style="width:80px;padding:3px 6px;border:1px solid var(--brd);border-radius:5px;font-size:12px;"/>${saEditable?roLbl:''}${rfLbl}</td>`;
     const prenomCell=(isSA&&!saEditable)?`<td style="font-size:12px;">${u.prenom}</td>`:`<td><input type="text" value="${u.prenom}" data-login="${u.l}" data-field="prenom" onchange="updateUser(this.dataset.login,this.dataset.field,this.value)" style="width:70px;padding:3px 6px;border:1px solid var(--brd);border-radius:5px;font-size:12px;"/></td>`;
-    const gradeCell=(isSA&&!saEditable)?`<td style="font-size:12px;color:var(--t2);">${u.grade||''}</td>`:`<td><select data-login="${u.l}" data-field="grade" onchange="updateUser(this.dataset.login,this.dataset.field,this.value)" style="width:110px;padding:3px 5px;border:1px solid var(--brd);border-radius:5px;font-size:11px;">${GRADES.map(g=>`<option${g===u.grade?' selected':''}>${g}</option>`).join('')}</select></td>`;
+    const gradeCell=(isSA&&!saEditable)?`<td style="font-size:12px;color:var(--t2);">${u.grade||''}</td>`:`<td><div style="display:flex;align-items:center;gap:3px;"><select data-login="${u.l}" onchange="openPersonnelGradeChange(this.dataset.login,this.value)" style="width:110px;padding:3px 5px;border:1px solid var(--brd);border-radius:5px;font-size:11px;">${GRADES.map(g=>`<option${g===u.grade?' selected':''}>${g}</option>`).join('')}</select><button type="button" onclick="showPersonnelGradeHistory('${u.l}')" title="Historique des grades" style="padding:3px 5px;border:1px solid var(--brd);background:#fff;border-radius:5px;cursor:pointer;">📅</button></div></td>`;
     const fonctionCell=(isSA&&!saEditable)?`<td style="font-size:12px;color:var(--t2);">${u.fonction||''}</td>`:`<td><select data-login="${u.l}" data-field="fonction" onchange="updateUser(this.dataset.login,this.dataset.field,this.value)" style="width:160px;padding:3px 5px;border:1px solid var(--brd);border-radius:5px;font-size:11px;">${FONCTIONS.map(f=>`<option${f===(u.fonction||'Équipier')?' selected':''}>${f}</option>`).join('')}</select></td>`;
     // Fonction secondaire (pour Chef de centre et Adjoint au chef de centre)
     const showFonct2=u.fonction==='Chef de centre'||u.fonction==='Adjoint au chef de centre';
@@ -175,7 +175,8 @@ async function addUser(){
   const login=genLogin(nom,prenom);
   err.style.display='none';
   const hashed=await hashPassword(mdp);
-  USERS.push({l:login,p:hashed,prenom,nom,grade,fonction,matricule,caserneId:CURRENT_CASERNE_ID,appRole:'agent',rights:['Prise d\'appel','Interventions'],rl:'Utilisateur'});
+  const newUser={l:login,p:hashed,prenom,nom,grade,fonction,matricule,caserneId:CURRENT_CASERNE_ID,appRole:'agent',rights:['Prise d\'appel','Interventions'],rl:'Utilisateur'};
+  normalizePersonnelGradeHistory(newUser);newUser._gradeHistoryUpdatedAt=Date.now();USERS.push(newUser);
   // Réinitialiser tous les champs du formulaire
   ['nu-matricule','nu-prenom','nu-nom','nu-mdp'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.value='';
@@ -216,6 +217,7 @@ function updateRight(login,right,checked){
   rAdm();
 }
 function updateUser(login,field,val){
+  if(field==='grade'){openPersonnelGradeChange(login,val);return;}
   const isSAAccount=GLOBAL_ACCOUNTS.find(a=>a.l===login&&a.role==='superadmin');
   if(isSAAccount&&!isSuperAdmin())return;
   if(isSAAccount&&isSuperAdmin()){
@@ -244,6 +246,36 @@ function updateUser(login,field,val){
   }
   saveData();
   _updateUserRefresh(login,field);
+}
+
+function personnelGradeHistoryRows(user){
+  return normalizePersonnelGradeHistory(user).slice().reverse().map(function(entry){
+    const date=entry.effectiveDate===PERSONNEL_GRADE_HISTORY_BASELINE?'Grade initial connu':entry.effectiveDate.split('-').reverse().join('/');
+    const future=entry.effectiveDate>personnelGradeTodayIso()?' <span style="color:#B45309;font-weight:700;">À venir</span>':'';
+    return '<tr style="border-bottom:1px solid #E5E7EB;"><td style="padding:7px 8px;">'+escHtml(date)+future+'</td><td style="padding:7px 8px;font-weight:700;">'+escHtml(entry.grade)+'</td></tr>';
+  }).join('');
+}
+function openPersonnelGradeChange(login,newGrade){
+  const user=USERS.find(function(item){return item&&item.l===login;});if(!user)return;
+  document.getElementById('mt').textContent='Changement de grade — '+fullName(user);
+  document.getElementById('mi').textContent='';
+  document.getElementById('mb').innerHTML='<div style="font-size:12px;color:var(--t2);margin-bottom:12px;">Le nouveau grade sera utilisé pour les indemnités uniquement à partir de sa date de mise en place.</div>'
+    +'<label class="fg"><span class="fgl">Nouveau grade</span><select class="fi" id="personnel-grade-new">'+GRADES.map(function(grade){return '<option'+(grade===newGrade?' selected':'')+'>'+escHtml(grade)+'</option>';}).join('')+'</select></label>'
+    +'<label class="fg"><span class="fgl">Date de mise en place *</span><input class="fi" id="personnel-grade-effective" type="date" value="'+personnelGradeTodayIso()+'"></label>'
+    +'<div style="margin-top:13px;font-weight:700;font-size:12px;">Historique conservé</div><div style="max-height:210px;overflow:auto;margin-top:5px;"><table style="width:100%;border-collapse:collapse;font-size:11px;"><thead><tr style="background:#F3F4F6;"><th style="padding:7px 8px;text-align:left;">Mise en place</th><th style="padding:7px 8px;text-align:left;">Grade</th></tr></thead><tbody>'+personnelGradeHistoryRows(user)+'</tbody></table></div>'
+    +'<div class="brow" style="margin-top:12px;"><button class="btn pr" onclick="savePersonnelGradeChange(\''+encodeURIComponent(login)+'\')">💾 Enregistrer</button><button class="btn" onclick="cM();rAdm();">Annuler</button></div>';
+  document.getElementById('mo').style.display='flex';
+}
+function showPersonnelGradeHistory(login){const user=USERS.find(function(item){return item&&item.l===login;});if(user)openPersonnelGradeChange(login,user.grade||GRADES[0]);}
+function savePersonnelGradeChange(encodedLogin){
+  const login=decodeURIComponent(encodedLogin),user=USERS.find(function(item){return item&&item.l===login;});if(!user)return;
+  const grade=document.getElementById('personnel-grade-new')?.value||'',effectiveDate=document.getElementById('personnel-grade-effective')?.value||'';
+  if(!effectiveDate){showToast('Renseignez la date de mise en place du grade','warn');return;}
+  if(!recordPersonnelGradeChange(user,grade,effectiveDate,CU&&CU.l))return;
+  const globalAccount=GLOBAL_ACCOUNTS.find(function(account){return account&&account.l===login;});
+  if(globalAccount){globalAccount.gradeHistory=JSON.parse(JSON.stringify(user.gradeHistory));globalAccount._gradeHistoryUpdatedAt=user._gradeHistoryUpdatedAt;globalAccount.grade=user.grade;}
+  if(CU&&CU.l===login){CU.gradeHistory=JSON.parse(JSON.stringify(user.gradeHistory));CU._gradeHistoryUpdatedAt=user._gradeHistoryUpdatedAt;CU.grade=user.grade;}
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();saveData();cM();rAdm();showToast('Grade enregistré avec sa date de mise en place','success');
 }
 
 // Rafraîchit tous les affichages concernés après une modification admin
