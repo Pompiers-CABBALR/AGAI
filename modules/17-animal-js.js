@@ -20,6 +20,7 @@ function getPrisesEnChargeAnimal(iv){
 }
 function showPrisesEnChargeManager(ivId){
   const iv=IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La prise en charge animale'))return;
   const fiches=getPrisesEnChargeAnimal(iv);
   document.getElementById('mt').textContent='Prises en charge des animaux';
   document.getElementById('mi').textContent=iv.n+' — '+iv.com;
@@ -52,6 +53,7 @@ function deletePriseEnChargeAnimal(ivId,index){
 }
 function showPriseEnChargeModal(ivId,ficheIndex) {
   const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La prise en charge animale'))return;
   if(ficheIndex===undefined||ficheIndex===null){showPrisesEnChargeManager(ivId);return;}
   const fiches=getPrisesEnChargeAnimal(iv);
   ficheIndex=Math.max(0,Number(ficheIndex)||0);
@@ -285,6 +287,7 @@ function pecChipClick(type, val) {
 
 function savePriseEnCharge(ivId,ficheIndex) {
   const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La prise en charge animale'))return;
   const fiches=getPrisesEnChargeAnimal(iv);
   ficheIndex=Math.max(0,Number(ficheIndex)||0);
   const statuts = Array.from(document.querySelectorAll('input[name="pec-statut"]:checked')).map(function(c){return c.value;});

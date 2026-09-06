@@ -5143,10 +5143,23 @@ function isInterventionReportChef(iv,login){
 
 function canCurrentUserCloseIntervention(iv){
   if(!iv||!CU||iv.s!=='en-cours')return false;
+  return canCurrentUserManageOperationalOptions(iv);
+}
+
+function canCurrentUserManageOperationalOptions(iv){
+  if(!iv||!CU)return false;
+  // Les pouvoirs administrateur activés conservent leur rôle de secours.
   if(isAdminModeActive())return true;
-  // Hors pouvoir administrateur, seuls les chefs d'agrès explicitement
-  // affectés à cette intervention peuvent la clôturer.
-  return iv.agr===CU.l||iv._agr2===CU.l;
+  const assigned=iv.agr===CU.l||iv._agr2===CU.l;
+  if(!assigned)return false;
+  // Une affectation ancienne ou erronée ne transforme jamais un équipier en
+  // chef d'agrès. En PILP, le tireur affecté est l'acteur opérationnel.
+  return isPilpIntervention(iv)?isTireurPILP():isAgres();
+}
+function requireCurrentUserOperationalManager(iv,actionLabel){
+  if(canCurrentUserManageOperationalOptions(iv))return true;
+  showToast((actionLabel||'Cette action')+' est réservée au chef d’agrès affecté à cette intervention.','warn');
+  return false;
 }
 
 function interventionRoleKey(role){
@@ -6208,7 +6221,7 @@ function oM(id){
   // _showAutoBtn défini globalement pour toute la fonction oM
   const _isOwnAgres_=(iv.agr===CU.l||iv._agr2===CU.l);
   // Autorisation disponible pour toutes les interventions (sauf renforts)
-  const _showAutoBtn=!pilpReadOnly&&(_isOwnAgres_||chef||isAdminModeActive())&&!iv._isRenfort;
+  const _showAutoBtn=!pilpReadOnly&&canCurrentUserManageOperationalOptions(iv)&&!iv._isRenfort;
   document.getElementById('mt').textContent=iv.n;
     // Seul le numéro APL est affiché (numérotation INT désactivée)
   const dispApl=interventionDisplayCallNumber(iv);
@@ -6239,7 +6252,6 @@ function oM(id){
           :`<button class="btn sel-btn sm" onclick="cS('${iv.id}','selectionne')">☑ Sélectionner</button>`
         }
         ${canSuperAdminOperateForAnotherChief()?`<button class="btn gn sm" onclick="showSuperAdminDirectClosureModal('${iv.id}')">🛡️ Saisir et clôturer</button>`:''}
-        ${!iv._isRenfort&&(ag||chef||hasRight('Interventions'))?`<button class="btn sm" style="background:#7C3AED;color:#fff;border-color:#7C3AED;" onclick="showRenfortModal('${iv.id}')">&#x1F4E2; Renfort UT</button>`:''}
         ${!iv._isRenfort&&chef?`<button class="btn sm" style="color:#E67E22;border-color:#E67E22;" onclick="transfererIV('${iv.id}')">&#x1F500; Transférer</button>`:''}
         ${!iv._isRenfort&&chef&&iv.n&&(iv.n.toLowerCase().includes('animal')||iv.n.toLowerCase().includes('animaux'))?`<button class="btn sm" style="color:#27AE60;border-color:#27AE60;" onclick="refugeAnimalier('${iv.id}')">&#x1F43E; Refuge animalier</button>`:''}
         ${!iv._isRenfort&&chef?`<button class="btn sm" style="color:#888;border-color:#ccc;" onclick="annulerIV('${iv.id}')">✕ Annuler</button>`:''}
@@ -6252,7 +6264,7 @@ function oM(id){
       // Sélecteur 2ème chef pour interventions échelle
       const chefPool=sortByGradeThenName(USERS.filter(u=>isChefAgresByGrade(u)&&u.l!==CU.l));
       const agr2Sel=iv._agr2||'';
-      const agr2Html=iv._echelleToiture?`
+      const agr2Html=iv._echelleToiture&&canCurrentUserManageOperationalOptions(iv)?`
         <div style="margin-top:8px;background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:10px;">
           <div style="font-size:12px;font-weight:600;color:#92400E;margin-bottom:6px;">&#x1FA9C; 2ème chef d'agrès (optionnel)</div>
           <select class="fi" style="width:100%;" onchange="setAgr2('${iv.id}',this.value)">
@@ -6270,7 +6282,7 @@ function oM(id){
               :`<button class="btn am sm" onclick="cS('${iv.id}','en-cours')"${blocage?' style="opacity:.4;pointer-events:none;" title="Cl&#244;turez d&#39;abord '+enCours.id+'"':''}>▶ En cours</button>`)
             :`<button class="btn sm" disabled title="Le départ est réservé aux mobiles et tablettes" style="opacity:.65;">📱 En cours : mobile/tablette</button>`)
           :`<button class="btn sm" disabled title="Demandez d’abord un renfort de personnel à une autre caserne" style="opacity:.65;">🔒 Renfort personnel requis</button>`}
-        ${!iv._isRenfort&&hasRight('Interventions')?`<button class="btn sm" style="background:#7C3AED;color:#fff;border-color:#7C3AED;" onclick="showRenfortModal('${iv.id}',true)">&#x1F4E2; Renfort personnel</button>`:''}
+        ${!iv._isRenfort&&canCurrentUserManageOperationalOptions(iv)?`<button class="btn sm" style="background:#7C3AED;color:#fff;border-color:#7C3AED;" onclick="showRenfortModal('${iv.id}',true)">&#x1F4E2; Renfort personnel</button>`:''}
         <button class="btn sm" onclick="cS('${iv.id}','en-attente')">↩ En attente</button>`}
       </div>
       ${agr2Html}
@@ -6293,7 +6305,7 @@ function oM(id){
       </div>`:'';
       const _natExclus=["Sauvetage et capture d'animaux","Sauvetage de personne"];
       const _isOwnAgres=(iv.agr===CU.l||iv._agr2===CU.l);
-      const _canSeeAuto=_isOwnAgres||chef||isAdminModeActive();
+      const _canSeeAuto=canCurrentUserManageOperationalOptions(iv);
       const autorisationBtn=_showAutoBtn
         ?`<button class="btn sm" style="width:100%;margin-bottom:10px;background:#8E44AD;color:#fff;border-color:#8E44AD;" onclick="showAutorisationModal('${iv.id}')">&#x1F4DD; Autorisation &amp; Attestation</button>`
         :'';
@@ -6302,7 +6314,7 @@ function oM(id){
         :'';
       // Bouton prise en charge animal (sauvetage/capture uniquement)
       const _isAnimal=iv.n&&iv.n.toLowerCase().includes('sauvetage et capture d');
-      const _showAnimalBtn=_isAnimal&&(_isOwnAgres||chef||isAdminModeActive())&&!iv._isRenfort;
+      const _showAnimalBtn=_isAnimal&&canCurrentUserManageOperationalOptions(iv)&&!iv._isRenfort;
       const _animalCount=Array.isArray(iv._prisesEnCharge)?iv._prisesEnCharge.length:Array.isArray(iv._animauxAppel)&&iv._animauxAppel.length?iv._animauxAppel.length:(iv._priseEnCharge?1:0);
       const animalBtn=_showAnimalBtn
         ?`<button class="btn sm" style="width:100%;margin-bottom:10px;background:#E67E22;color:#fff;border-color:#E67E22;" onclick="showPriseEnChargeModal('${iv.id}')">&#x1F43E; Prises en charge animaux${_animalCount?' ('+_animalCount+')':''}</button>`
@@ -6492,6 +6504,7 @@ function oM(id){
 }
 function setAgr2(ivId,login){
   const iv=interventionById(ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La modification du second chef d’agrès'))return;
   if(login){
     const conflict=findActivePersonnelConflict(login,ivId);
     if(conflict){
@@ -6696,7 +6709,7 @@ function operationalDistanceMeters(lat1,lon1,lat2,lon2){
 function operationalStartPositionAccepted(distance,accuracy){
   const measuredDistance=Math.max(0,Number(distance)||0),measuredAccuracy=Math.max(0,Number(accuracy)||0);
   if(measuredDistance<=OPERATIONAL_START_RADIUS_METERS)return true;
-  return measuredAccuracy<=1000&&Math.max(0,measuredDistance-measuredAccuracy)<=OPERATIONAL_START_RADIUS_METERS;
+  return measuredAccuracy<=5000&&Math.max(0,measuredDistance-measuredAccuracy)<=OPERATIONAL_START_RADIUS_METERS;
 }
 function recentFinishedInterventionForChef(login,excludeId){
   const now=N().getTime(),maxDelay=OPERATIONAL_START_GRACE_MINUTES*60*1000;
@@ -6784,9 +6797,17 @@ function requestOperationalStartAuthorization(iv,onApproved){
   }
   if(!navigator.geolocation){showToast('Impossible de passer cette intervention « En cours ».','warn');return;}
   showToast('Vérification du départ…','info');
+  let bestMeasurement=null,authorizationCompleted=false;
+  const approvePosition=function(distance,accuracy){
+    if(authorizationCompleted)return;
+    authorizationCompleted=true;
+    _operationalStartAuthorizations[iv.id]={at:Date.now(),exempt:false,distanceMeters:Math.round(distance),accuracyMeters:Math.round(accuracy),caserneId:caserne.id};
+    onApproved();
+  };
   const evaluatePosition=function(position,attempt){
     const accuracy=Math.max(0,Number(position.coords.accuracy)||0);
     const distance=operationalDistanceMeters(position.coords.latitude,position.coords.longitude,stationLat,stationLon);
+    if(!bestMeasurement||distance<bestMeasurement.distance)bestMeasurement={distance:distance,accuracy:accuracy};
     // La précision représente le rayon d’incertitude annoncé par le téléphone.
     // On accepte si cette zone recoupe le rayon autorisé, après une seconde
     // mesure fraîche quand la première semble extérieure ou trop imprécise.
@@ -6794,22 +6815,22 @@ function requestOperationalStartAuthorization(iv,onApproved){
     // central est déjà à l'intérieur des 2 km. En dehors du rayon, la marge
     // d'incertitude n'est utilisée que si elle reste raisonnable.
     const accepted=operationalStartPositionAccepted(distance,accuracy);
-    if(!accepted&&attempt<2){
+    if(accepted){approvePosition(distance,accuracy);return;}
+    if(attempt<3){
       showToast('Nouvelle vérification du départ…','info');
-      window.setTimeout(function(){locateForOperationalStart(2);},600);return;
+      window.setTimeout(function(){locateForOperationalStart(attempt+1);},600);return;
     }
-    if(!accepted){
-      showToast('Impossible de passer cette intervention « En cours ».','warn');return;
-    }
-    _operationalStartAuthorizations[iv.id]={at:Date.now(),exempt:false,distanceMeters:Math.round(distance),accuracyMeters:Math.round(accuracy),caserneId:caserne.id};
-    onApproved();
+    if(bestMeasurement&&operationalStartPositionAccepted(bestMeasurement.distance,bestMeasurement.accuracy))approvePosition(bestMeasurement.distance,bestMeasurement.accuracy);
+    else showToast('Impossible de passer cette intervention « En cours ».','warn');
   };
   const locateForOperationalStart=function(attempt){
     navigator.geolocation.getCurrentPosition(function(position){evaluatePosition(position,attempt);},function(error){
       const denied=error&&error.code===1;
-      if(!denied&&attempt<2){window.setTimeout(function(){locateForOperationalStart(2);},600);return;}
+      if(!denied&&attempt<3){window.setTimeout(function(){locateForOperationalStart(attempt+1);},600);return;}
       showToast('Impossible de passer cette intervention « En cours ».','warn');
-    },{enableHighAccuracy:true,timeout:20000,maximumAge:0});
+    },attempt===1
+      ?{enableHighAccuracy:true,timeout:15000,maximumAge:30000}
+      :{enableHighAccuracy:false,timeout:20000,maximumAge:600000});
   };
   locateForOperationalStart(1);
 }
@@ -6838,6 +6859,7 @@ function cS(id,s,confirmed){
     showToast('Vous n’êtes pas autorisé à sélectionner cette intervention.','warn');
     return;
   }
+  if(s==='en-attente'&&['selectionne','en-cours'].includes(previousStatus)&&!requireCurrentUserOperationalManager(iv,'La remise en attente'))return;
   if(s==='en-attente'&&previousStatus==='en-cours'&&confirmed!==true){
     const oldStart=iv._hDebut||iv._hDebutReelle||'';
     confirmModal('Remettre cette intervention en attente ?'+(oldStart?' Le départ enregistré à '+oldStart+' sera annulé.':'')+' Le numéro UT sera retiré et l’intervention devra être sélectionnée puis redémarrée.',function(){cS(id,s,true);});
@@ -7040,6 +7062,7 @@ function clotAvis(id){
 }
 function reclasser(id){
   const iv=interventionById(id);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'Le reclassement'))return;
   const sel=document.getElementById('reclass-sel');if(!sel)return;
   const oldN=iv.n;iv.n=sel.value;
   iv.tl.push({s:'reclasse',h:getH(N()),who:CU.l,note:`${oldN} → ${iv.n}`});
@@ -7054,6 +7077,7 @@ function reclasser(id){
 // ────────────────── PILP FORM ──────────────────
 function showPilpForm(ivId){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La création PILP'))return;
   document.getElementById('mb').innerHTML+=`
     <div id="pilp-form" style="margin-top:12px;border:1.5px solid var(--pilp);border-radius:12px;padding:14px;background:var(--pilpl);">
       <div style="font-size:14px;font-weight:700;color:var(--pilp);margin-bottom:12px;">&#x1F3AF; Créer une intervention PILP</div>
@@ -7079,6 +7103,7 @@ function showPilpForm(ivId){
 
 function creerPILP(ivId){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La création PILP'))return;
   const addr=document.getElementById('pf-addr').value.trim(),req=document.getElementById('pf-req').value.trim(),tel=document.getElementById('pf-tel').value.trim();
   const err=document.getElementById('pf-err');
   if(!addr||!req||!tel){err.style.display='block';err.textContent='Adresse, requérant et téléphone obligatoires.';return;}
@@ -10772,6 +10797,7 @@ function confirmerAnnulation(id){
 // ── Échelle de toit ──
 function demandeEchelleToiture(ivId){
   const iv=interventionById(ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La demande d’échelle'))return;
   document.getElementById('mt').textContent='\U0001FA9C \u00c9chelle de toit requise';
   document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
   document.getElementById('mb').innerHTML=`<div>
@@ -10788,6 +10814,7 @@ function demandeEchelleToiture(ivId){
 }
 function confirmerEchelleToiture(ivId){
   const iv=interventionById(ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La demande d’échelle'))return;
   const obs=document.getElementById('et-obs').value.trim();
   const h=getH(N());const annee=new Date().getFullYear();
   const numApl=nextAplNum(annee);
@@ -10804,6 +10831,7 @@ function confirmerEchelleToiture(ivId){
 // ── Inter. SDIS ──
 function demandeEPA(ivId){
   const iv=interventionById(ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La demande EPA'))return;
   document.getElementById('mt').textContent='&#x1F9F0; EPA requis';
   document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
   document.getElementById('mb').innerHTML='<div>'
@@ -10818,6 +10846,7 @@ function demandeEPA(ivId){
 }
 function confirmerEPA(ivId){
   const iv=interventionById(ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La demande EPA'))return;
   const obs=document.getElementById('epa-obs').value.trim();
   const h=getH(N());const annee=new Date().getFullYear();
   const numApl=nextAplNum(annee);
@@ -10833,6 +10862,7 @@ function confirmerEPA(ivId){
 }
 function demandeSDIS(ivId){
   const iv=interventionById(ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'Le passage en intervention SDIS'))return;
   document.getElementById('mt').textContent='&#x1F691; Inter. SDIS';
   document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
   document.getElementById('mb').innerHTML=`<div>
@@ -10852,6 +10882,7 @@ function demandeSDIS(ivId){
 }
 function confirmerSDIS(ivId){
   const iv=interventionById(ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'Le passage en intervention SDIS'))return;
   if(!canUseOperationalStartInterface()){showToast('La mise en cours d’une intervention SDIS est réservée au mobile ou à la tablette.','warn');return;}
   const h=getH(N());const annee=new Date().getFullYear();
   iv.s='terminee';
@@ -11108,6 +11139,9 @@ function hasActiveOutgoingPersonnelReinforcementRequest(iv){
 
 function canCurrentUserStartIntervention(iv){
   if(!iv||!CU)return false;
+  // Une fois sélectionnée, l'intervention appartient à son chef d'agrès :
+  // aucun autre chef ne peut prendre le départ à sa place.
+  if(iv.s==='selectionne'&&iv.agr&&iv.agr!==CU.l&&iv._agr2!==CU.l&&!isAdminModeActive())return false;
   if(isPilpIntervention(iv))return canOperatePilp();
   if(isAdminModeActive())return true;
   if(isAgres())return true;
@@ -11913,6 +11947,7 @@ function saveComplementInfo(id){
 // ────────────────── RELÈVE DE PERSONNEL ──────────────────
 function showReleveModal(id){
   const iv=interventionById(id);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La relève'))return;
   const heure=getHHMM(N());
   // Équipage actuel (dernier équipage actif)
   const releves=(iv._releves||[]).filter(function(releve){return releve&&!releve.isRenfort&&!releve.isRenfortInterne;});
@@ -11959,6 +11994,7 @@ function showReleveModal(id){
 
 function validerReleve(id){
   const iv=interventionById(id);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La relève'))return;
   const heure=getHHMM(N());
   const releves=(iv._releves||[]).filter(function(releve){return releve&&!releve.isRenfort&&!releve.isRenfortInterne;});
   const equipActuel=releves.length?releves[releves.length-1].nouvelEquipage:(iv._equipage1||[]);
@@ -12027,6 +12063,7 @@ function confirmerRetour(ivId,releveIdx,login){
 // ────────────────── DEMANDE DE RENFORT UT ──────────────────
 function showRenfortInterneModal(ivId){
   const iv=interventionById(ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La demande de renfort interne'))return;
   document.getElementById('mt').textContent='Demande de renfort interne';
   document.getElementById('mi').textContent=iv.n+' \u2014 '+iv.com;
   document.getElementById('mb').innerHTML=
@@ -12042,6 +12079,7 @@ function showRenfortInterneModal(ivId){
 
 function confirmerRenfortInterne(ivId){
   const iv=interventionById(ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La demande de renfort interne'))return;
   const h=getH(N()),heure=getHHMM(N());
   const note=((document.getElementById('renfort-int-note')||{}).value||'').trim();
   const childId=iv.id+'-RI-'+Date.now();
@@ -12082,11 +12120,8 @@ function syncInternalReinforcementSource(child){
 
 function showRenfortModal(ivId,forcePersonnel){
   const iv=interventionById(ivId);if(!iv)return;
-  if(!canCurrentUserSelectIntervention(iv)){
-    showToast('Vous n’êtes pas autorisé à demander un renfort pour cette intervention.','warn');return;
-  }
-  // Si l'utilisateur n'est pas chef d'agrès, il ne peut demander qu'un renfort personnel
-  if(forcePersonnel===undefined)forcePersonnel=!(isAgres()||isChef()||hasRight('Administration'));
+  if(!requireCurrentUserOperationalManager(iv,'La demande de renfort'))return;
+  if(forcePersonnel===undefined)forcePersonnel=false;
   const autresCasernes=CASERNES.filter(function(c){return c.id!==CURRENT_CASERNE_ID;});
   if(!autresCasernes.length){showToast('Aucune autre caserne disponible.','warn');return;}
 
@@ -12138,6 +12173,7 @@ function updateRenfortType(){
 
 function envoyerRenfort(ivId){
   const iv=interventionById(ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La demande de renfort'))return;
   const checkedType=document.querySelector('input[name="renfort-type"]:checked')?.value;
   const hiddenType=document.querySelector('input[type="hidden"][name="renfort-type"]')?.value;
   const type=checkedType||hiddenType||'complet';
@@ -12524,6 +12560,7 @@ function autorisationDataForNid(iv,nidIndex){
 }
 function showAddRecognizedNidModal(ivId){
   const iv=interventionById(ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'L’ajout d’un nid'))return;
   document.getElementById('mt').textContent='Ajouter un nid après reconnaissance';
   document.getElementById('mi').textContent=iv.n+' — '+iv.com;
   document.getElementById('mb').innerHTML='<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Ajoutez chaque nid découvert sur place. Une autorisation et une attestation distinctes seront créées.</div>'
@@ -12559,6 +12596,7 @@ function renderRecognizedNidLocations(nature){
 }
 function saveRecognizedNid(ivId){
   const iv=interventionById(ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'L’ajout d’un nid'))return;
   const nature=(document.getElementById('reco-nid-nature')||{}).value||'';
   let localisation=(document.getElementById('reco-nid-location')||{}).value||'';
   if(localisation==='Autre')localisation=((document.getElementById('reco-nid-other')||{}).value||'').trim();
@@ -12586,6 +12624,7 @@ function saveRecognizedNid(ivId){
 }
 function deleteAdditionalInterventionNid(ivId,nidIndex){
   const iv=interventionById(ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La suppression d’un nid'))return;
   const index=Number(nidIndex);
   if(!Number.isInteger(index)||index<=0){showToast('Le nid d’origine de l’appel ne peut pas être supprimé','warn');return;}
   if(!isInterventionReportChef(iv,CU&&CU.l)||!CU){
@@ -12624,6 +12663,7 @@ function deleteAdditionalInterventionNid(ivId,nidIndex){
 }
 function showAutorisationNidPicker(ivId){
   const iv=interventionById(ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'L’autorisation et l’attestation'))return;
   const nids=interventionNids(iv);
   document.getElementById('mt').textContent='Autorisation & Attestation';
   document.getElementById('mi').textContent='Choisir le nid concerné';
@@ -12638,6 +12678,7 @@ function showAutorisationNidPicker(ivId){
 function showAutorisationModal(ivId, nidIndex) {
   const iv = interventionById(ivId);
   if (!iv) return;
+  if(!requireCurrentUserOperationalManager(iv,'L’autorisation et l’attestation'))return;
   const nids=interventionNids(iv);
   if(nids.length>1&&!Number.isInteger(nidIndex)){showAutorisationNidPicker(ivId);return;}
   const activeIndex=Number.isInteger(nidIndex)?nidIndex:0;
@@ -12720,6 +12761,8 @@ function autToggleAutre() {
 }
 
 function saveAutorisationData(ivId) {
+  const iv = interventionById(ivId);
+  if(!iv||!requireCurrentUserOperationalManager(iv,'L’autorisation et l’attestation'))return;
   const travaux = Array.from(document.querySelectorAll('input[name="aut-trav"]:checked')).map(function(cb) { return cb.value; });
   const sig = (_sigCanvas && _sigHasSig) ? _sigCanvas.toDataURL('image/png') : null;
   const d = {
@@ -12740,7 +12783,6 @@ function saveAutorisationData(ivId) {
     signature: sig
   };
   _autorisationData[ivId] = d;
-  const iv = interventionById(ivId);
   const nidIndex=Number.isInteger(_autorisationActiveNid[ivId])?_autorisationActiveNid[ivId]:0;
   if(iv){
     if(!Array.isArray(iv._autorisationNids))iv._autorisationNids=[];
@@ -14948,7 +14990,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260906-blocage-doublons-appels-207';
+const APP_VERSION='20260906-gps-fiable-et-actions-chef-208';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -16575,6 +16617,7 @@ function getPrisesEnChargeAnimal(iv){
 }
 function showPrisesEnChargeManager(ivId){
   const iv=IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La prise en charge animale'))return;
   const fiches=getPrisesEnChargeAnimal(iv);
   document.getElementById('mt').textContent='Prises en charge des animaux';
   document.getElementById('mi').textContent=iv.n+' — '+iv.com;
@@ -16607,6 +16650,7 @@ function deletePriseEnChargeAnimal(ivId,index){
 }
 function showPriseEnChargeModal(ivId,ficheIndex) {
   const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La prise en charge animale'))return;
   if(ficheIndex===undefined||ficheIndex===null){showPrisesEnChargeManager(ivId);return;}
   const fiches=getPrisesEnChargeAnimal(iv);
   ficheIndex=Math.max(0,Number(ficheIndex)||0);
@@ -16840,6 +16884,7 @@ function pecChipClick(type, val) {
 
 function savePriseEnCharge(ivId,ficheIndex) {
   const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La prise en charge animale'))return;
   const fiches=getPrisesEnChargeAnimal(iv);
   ficheIndex=Math.max(0,Number(ficheIndex)||0);
   const statuts = Array.from(document.querySelectorAll('input[name="pec-statut"]:checked')).map(function(c){return c.value;});

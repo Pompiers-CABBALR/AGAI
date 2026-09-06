@@ -2,6 +2,7 @@
 // ────────────────── PILP FORM ──────────────────
 function showPilpForm(ivId){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La création PILP'))return;
   document.getElementById('mb').innerHTML+=`
     <div id="pilp-form" style="margin-top:12px;border:1.5px solid var(--pilp);border-radius:12px;padding:14px;background:var(--pilpl);">
       <div style="font-size:14px;font-weight:700;color:var(--pilp);margin-bottom:12px;">&#x1F3AF; Créer une intervention PILP</div>
@@ -27,6 +28,7 @@ function showPilpForm(ivId){
 
 function creerPILP(ivId){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La création PILP'))return;
   const addr=document.getElementById('pf-addr').value.trim(),req=document.getElementById('pf-req').value.trim(),tel=document.getElementById('pf-tel').value.trim();
   const err=document.getElementById('pf-err');
   if(!addr||!req||!tel){err.style.display='block';err.textContent='Adresse, requérant et téléphone obligatoires.';return;}

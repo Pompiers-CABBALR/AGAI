@@ -183,10 +183,23 @@ function isInterventionReportChef(iv,login){
 
 function canCurrentUserCloseIntervention(iv){
   if(!iv||!CU||iv.s!=='en-cours')return false;
+  return canCurrentUserManageOperationalOptions(iv);
+}
+
+function canCurrentUserManageOperationalOptions(iv){
+  if(!iv||!CU)return false;
+  // Les pouvoirs administrateur activés conservent leur rôle de secours.
   if(isAdminModeActive())return true;
-  // Hors pouvoir administrateur, seuls les chefs d'agrès explicitement
-  // affectés à cette intervention peuvent la clôturer.
-  return iv.agr===CU.l||iv._agr2===CU.l;
+  const assigned=iv.agr===CU.l||iv._agr2===CU.l;
+  if(!assigned)return false;
+  // Une affectation ancienne ou erronée ne transforme jamais un équipier en
+  // chef d'agrès. En PILP, le tireur affecté est l'acteur opérationnel.
+  return isPilpIntervention(iv)?isTireurPILP():isAgres();
+}
+function requireCurrentUserOperationalManager(iv,actionLabel){
+  if(canCurrentUserManageOperationalOptions(iv))return true;
+  showToast((actionLabel||'Cette action')+' est réservée au chef d’agrès affecté à cette intervention.','warn');
+  return false;
 }
 
 function interventionRoleKey(role){
@@ -1248,7 +1261,7 @@ function oM(id){
   // _showAutoBtn défini globalement pour toute la fonction oM
   const _isOwnAgres_=(iv.agr===CU.l||iv._agr2===CU.l);
   // Autorisation disponible pour toutes les interventions (sauf renforts)
-  const _showAutoBtn=!pilpReadOnly&&(_isOwnAgres_||chef||isAdminModeActive())&&!iv._isRenfort;
+  const _showAutoBtn=!pilpReadOnly&&canCurrentUserManageOperationalOptions(iv)&&!iv._isRenfort;
   document.getElementById('mt').textContent=iv.n;
     // Seul le numéro APL est affiché (numérotation INT désactivée)
   const dispApl=interventionDisplayCallNumber(iv);
@@ -1279,7 +1292,6 @@ function oM(id){
           :`<button class="btn sel-btn sm" onclick="cS('${iv.id}','selectionne')">☑ Sélectionner</button>`
         }
         ${canSuperAdminOperateForAnotherChief()?`<button class="btn gn sm" onclick="showSuperAdminDirectClosureModal('${iv.id}')">🛡️ Saisir et clôturer</button>`:''}
-        ${!iv._isRenfort&&(ag||chef||hasRight('Interventions'))?`<button class="btn sm" style="background:#7C3AED;color:#fff;border-color:#7C3AED;" onclick="showRenfortModal('${iv.id}')">&#x1F4E2; Renfort UT</button>`:''}
         ${!iv._isRenfort&&chef?`<button class="btn sm" style="color:#E67E22;border-color:#E67E22;" onclick="transfererIV('${iv.id}')">&#x1F500; Transférer</button>`:''}
         ${!iv._isRenfort&&chef&&iv.n&&(iv.n.toLowerCase().includes('animal')||iv.n.toLowerCase().includes('animaux'))?`<button class="btn sm" style="color:#27AE60;border-color:#27AE60;" onclick="refugeAnimalier('${iv.id}')">&#x1F43E; Refuge animalier</button>`:''}
         ${!iv._isRenfort&&chef?`<button class="btn sm" style="color:#888;border-color:#ccc;" onclick="annulerIV('${iv.id}')">✕ Annuler</button>`:''}
@@ -1292,7 +1304,7 @@ function oM(id){
       // Sélecteur 2ème chef pour interventions échelle
       const chefPool=sortByGradeThenName(USERS.filter(u=>isChefAgresByGrade(u)&&u.l!==CU.l));
       const agr2Sel=iv._agr2||'';
-      const agr2Html=iv._echelleToiture?`
+      const agr2Html=iv._echelleToiture&&canCurrentUserManageOperationalOptions(iv)?`
         <div style="margin-top:8px;background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:10px;">
           <div style="font-size:12px;font-weight:600;color:#92400E;margin-bottom:6px;">&#x1FA9C; 2ème chef d'agrès (optionnel)</div>
           <select class="fi" style="width:100%;" onchange="setAgr2('${iv.id}',this.value)">
@@ -1310,7 +1322,7 @@ function oM(id){
               :`<button class="btn am sm" onclick="cS('${iv.id}','en-cours')"${blocage?' style="opacity:.4;pointer-events:none;" title="Cl&#244;turez d&#39;abord '+enCours.id+'"':''}>▶ En cours</button>`)
             :`<button class="btn sm" disabled title="Le départ est réservé aux mobiles et tablettes" style="opacity:.65;">📱 En cours : mobile/tablette</button>`)
           :`<button class="btn sm" disabled title="Demandez d’abord un renfort de personnel à une autre caserne" style="opacity:.65;">🔒 Renfort personnel requis</button>`}
-        ${!iv._isRenfort&&hasRight('Interventions')?`<button class="btn sm" style="background:#7C3AED;color:#fff;border-color:#7C3AED;" onclick="showRenfortModal('${iv.id}',true)">&#x1F4E2; Renfort personnel</button>`:''}
+        ${!iv._isRenfort&&canCurrentUserManageOperationalOptions(iv)?`<button class="btn sm" style="background:#7C3AED;color:#fff;border-color:#7C3AED;" onclick="showRenfortModal('${iv.id}',true)">&#x1F4E2; Renfort personnel</button>`:''}
         <button class="btn sm" onclick="cS('${iv.id}','en-attente')">↩ En attente</button>`}
       </div>
       ${agr2Html}
@@ -1333,7 +1345,7 @@ function oM(id){
       </div>`:'';
       const _natExclus=["Sauvetage et capture d'animaux","Sauvetage de personne"];
       const _isOwnAgres=(iv.agr===CU.l||iv._agr2===CU.l);
-      const _canSeeAuto=_isOwnAgres||chef||isAdminModeActive();
+      const _canSeeAuto=canCurrentUserManageOperationalOptions(iv);
       const autorisationBtn=_showAutoBtn
         ?`<button class="btn sm" style="width:100%;margin-bottom:10px;background:#8E44AD;color:#fff;border-color:#8E44AD;" onclick="showAutorisationModal('${iv.id}')">&#x1F4DD; Autorisation &amp; Attestation</button>`
         :'';
@@ -1342,7 +1354,7 @@ function oM(id){
         :'';
       // Bouton prise en charge animal (sauvetage/capture uniquement)
       const _isAnimal=iv.n&&iv.n.toLowerCase().includes('sauvetage et capture d');
-      const _showAnimalBtn=_isAnimal&&(_isOwnAgres||chef||isAdminModeActive())&&!iv._isRenfort;
+      const _showAnimalBtn=_isAnimal&&canCurrentUserManageOperationalOptions(iv)&&!iv._isRenfort;
       const _animalCount=Array.isArray(iv._prisesEnCharge)?iv._prisesEnCharge.length:Array.isArray(iv._animauxAppel)&&iv._animauxAppel.length?iv._animauxAppel.length:(iv._priseEnCharge?1:0);
       const animalBtn=_showAnimalBtn
         ?`<button class="btn sm" style="width:100%;margin-bottom:10px;background:#E67E22;color:#fff;border-color:#E67E22;" onclick="showPriseEnChargeModal('${iv.id}')">&#x1F43E; Prises en charge animaux${_animalCount?' ('+_animalCount+')':''}</button>`
@@ -1532,6 +1544,7 @@ function oM(id){
 }
 function setAgr2(ivId,login){
   const iv=interventionById(ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La modification du second chef d’agrès'))return;
   if(login){
     const conflict=findActivePersonnelConflict(login,ivId);
     if(conflict){
@@ -1736,7 +1749,7 @@ function operationalDistanceMeters(lat1,lon1,lat2,lon2){
 function operationalStartPositionAccepted(distance,accuracy){
   const measuredDistance=Math.max(0,Number(distance)||0),measuredAccuracy=Math.max(0,Number(accuracy)||0);
   if(measuredDistance<=OPERATIONAL_START_RADIUS_METERS)return true;
-  return measuredAccuracy<=1000&&Math.max(0,measuredDistance-measuredAccuracy)<=OPERATIONAL_START_RADIUS_METERS;
+  return measuredAccuracy<=5000&&Math.max(0,measuredDistance-measuredAccuracy)<=OPERATIONAL_START_RADIUS_METERS;
 }
 function recentFinishedInterventionForChef(login,excludeId){
   const now=N().getTime(),maxDelay=OPERATIONAL_START_GRACE_MINUTES*60*1000;
@@ -1824,9 +1837,17 @@ function requestOperationalStartAuthorization(iv,onApproved){
   }
   if(!navigator.geolocation){showToast('Impossible de passer cette intervention « En cours ».','warn');return;}
   showToast('Vérification du départ…','info');
+  let bestMeasurement=null,authorizationCompleted=false;
+  const approvePosition=function(distance,accuracy){
+    if(authorizationCompleted)return;
+    authorizationCompleted=true;
+    _operationalStartAuthorizations[iv.id]={at:Date.now(),exempt:false,distanceMeters:Math.round(distance),accuracyMeters:Math.round(accuracy),caserneId:caserne.id};
+    onApproved();
+  };
   const evaluatePosition=function(position,attempt){
     const accuracy=Math.max(0,Number(position.coords.accuracy)||0);
     const distance=operationalDistanceMeters(position.coords.latitude,position.coords.longitude,stationLat,stationLon);
+    if(!bestMeasurement||distance<bestMeasurement.distance)bestMeasurement={distance:distance,accuracy:accuracy};
     // La précision représente le rayon d’incertitude annoncé par le téléphone.
     // On accepte si cette zone recoupe le rayon autorisé, après une seconde
     // mesure fraîche quand la première semble extérieure ou trop imprécise.
@@ -1834,22 +1855,22 @@ function requestOperationalStartAuthorization(iv,onApproved){
     // central est déjà à l'intérieur des 2 km. En dehors du rayon, la marge
     // d'incertitude n'est utilisée que si elle reste raisonnable.
     const accepted=operationalStartPositionAccepted(distance,accuracy);
-    if(!accepted&&attempt<2){
+    if(accepted){approvePosition(distance,accuracy);return;}
+    if(attempt<3){
       showToast('Nouvelle vérification du départ…','info');
-      window.setTimeout(function(){locateForOperationalStart(2);},600);return;
+      window.setTimeout(function(){locateForOperationalStart(attempt+1);},600);return;
     }
-    if(!accepted){
-      showToast('Impossible de passer cette intervention « En cours ».','warn');return;
-    }
-    _operationalStartAuthorizations[iv.id]={at:Date.now(),exempt:false,distanceMeters:Math.round(distance),accuracyMeters:Math.round(accuracy),caserneId:caserne.id};
-    onApproved();
+    if(bestMeasurement&&operationalStartPositionAccepted(bestMeasurement.distance,bestMeasurement.accuracy))approvePosition(bestMeasurement.distance,bestMeasurement.accuracy);
+    else showToast('Impossible de passer cette intervention « En cours ».','warn');
   };
   const locateForOperationalStart=function(attempt){
     navigator.geolocation.getCurrentPosition(function(position){evaluatePosition(position,attempt);},function(error){
       const denied=error&&error.code===1;
-      if(!denied&&attempt<2){window.setTimeout(function(){locateForOperationalStart(2);},600);return;}
+      if(!denied&&attempt<3){window.setTimeout(function(){locateForOperationalStart(attempt+1);},600);return;}
       showToast('Impossible de passer cette intervention « En cours ».','warn');
-    },{enableHighAccuracy:true,timeout:20000,maximumAge:0});
+    },attempt===1
+      ?{enableHighAccuracy:true,timeout:15000,maximumAge:30000}
+      :{enableHighAccuracy:false,timeout:20000,maximumAge:600000});
   };
   locateForOperationalStart(1);
 }
@@ -1878,6 +1899,7 @@ function cS(id,s,confirmed){
     showToast('Vous n’êtes pas autorisé à sélectionner cette intervention.','warn');
     return;
   }
+  if(s==='en-attente'&&['selectionne','en-cours'].includes(previousStatus)&&!requireCurrentUserOperationalManager(iv,'La remise en attente'))return;
   if(s==='en-attente'&&previousStatus==='en-cours'&&confirmed!==true){
     const oldStart=iv._hDebut||iv._hDebutReelle||'';
     confirmModal('Remettre cette intervention en attente ?'+(oldStart?' Le départ enregistré à '+oldStart+' sera annulé.':'')+' Le numéro UT sera retiré et l’intervention devra être sélectionnée puis redémarrée.',function(){cS(id,s,true);});
@@ -2080,6 +2102,7 @@ function clotAvis(id){
 }
 function reclasser(id){
   const iv=interventionById(id);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'Le reclassement'))return;
   const sel=document.getElementById('reclass-sel');if(!sel)return;
   const oldN=iv.n;iv.n=sel.value;
   iv.tl.push({s:'reclasse',h:getH(N()),who:CU.l,note:`${oldN} → ${iv.n}`});

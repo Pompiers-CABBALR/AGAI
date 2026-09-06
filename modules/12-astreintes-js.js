@@ -2266,6 +2266,7 @@ function confirmerAnnulation(id){
 // ── Échelle de toit ──
 function demandeEchelleToiture(ivId){
   const iv=interventionById(ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La demande d’échelle'))return;
   document.getElementById('mt').textContent='\U0001FA9C \u00c9chelle de toit requise';
   document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
   document.getElementById('mb').innerHTML=`<div>
@@ -2282,6 +2283,7 @@ function demandeEchelleToiture(ivId){
 }
 function confirmerEchelleToiture(ivId){
   const iv=interventionById(ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La demande d’échelle'))return;
   const obs=document.getElementById('et-obs').value.trim();
   const h=getH(N());const annee=new Date().getFullYear();
   const numApl=nextAplNum(annee);
@@ -2298,6 +2300,7 @@ function confirmerEchelleToiture(ivId){
 // ── Inter. SDIS ──
 function demandeEPA(ivId){
   const iv=interventionById(ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La demande EPA'))return;
   document.getElementById('mt').textContent='&#x1F9F0; EPA requis';
   document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
   document.getElementById('mb').innerHTML='<div>'
@@ -2312,6 +2315,7 @@ function demandeEPA(ivId){
 }
 function confirmerEPA(ivId){
   const iv=interventionById(ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La demande EPA'))return;
   const obs=document.getElementById('epa-obs').value.trim();
   const h=getH(N());const annee=new Date().getFullYear();
   const numApl=nextAplNum(annee);
@@ -2327,6 +2331,7 @@ function confirmerEPA(ivId){
 }
 function demandeSDIS(ivId){
   const iv=interventionById(ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'Le passage en intervention SDIS'))return;
   document.getElementById('mt').textContent='&#x1F691; Inter. SDIS';
   document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
   document.getElementById('mb').innerHTML=`<div>
@@ -2346,6 +2351,7 @@ function demandeSDIS(ivId){
 }
 function confirmerSDIS(ivId){
   const iv=interventionById(ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'Le passage en intervention SDIS'))return;
   if(!canUseOperationalStartInterface()){showToast('La mise en cours d’une intervention SDIS est réservée au mobile ou à la tablette.','warn');return;}
   const h=getH(N());const annee=new Date().getFullYear();
   iv.s='terminee';
@@ -2602,6 +2608,9 @@ function hasActiveOutgoingPersonnelReinforcementRequest(iv){
 
 function canCurrentUserStartIntervention(iv){
   if(!iv||!CU)return false;
+  // Une fois sélectionnée, l'intervention appartient à son chef d'agrès :
+  // aucun autre chef ne peut prendre le départ à sa place.
+  if(iv.s==='selectionne'&&iv.agr&&iv.agr!==CU.l&&iv._agr2!==CU.l&&!isAdminModeActive())return false;
   if(isPilpIntervention(iv))return canOperatePilp();
   if(isAdminModeActive())return true;
   if(isAgres())return true;
@@ -3407,6 +3416,7 @@ function saveComplementInfo(id){
 // ────────────────── RELÈVE DE PERSONNEL ──────────────────
 function showReleveModal(id){
   const iv=interventionById(id);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La relève'))return;
   const heure=getHHMM(N());
   // Équipage actuel (dernier équipage actif)
   const releves=(iv._releves||[]).filter(function(releve){return releve&&!releve.isRenfort&&!releve.isRenfortInterne;});
@@ -3453,6 +3463,7 @@ function showReleveModal(id){
 
 function validerReleve(id){
   const iv=interventionById(id);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La relève'))return;
   const heure=getHHMM(N());
   const releves=(iv._releves||[]).filter(function(releve){return releve&&!releve.isRenfort&&!releve.isRenfortInterne;});
   const equipActuel=releves.length?releves[releves.length-1].nouvelEquipage:(iv._equipage1||[]);
@@ -3521,6 +3532,7 @@ function confirmerRetour(ivId,releveIdx,login){
 // ────────────────── DEMANDE DE RENFORT UT ──────────────────
 function showRenfortInterneModal(ivId){
   const iv=interventionById(ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La demande de renfort interne'))return;
   document.getElementById('mt').textContent='Demande de renfort interne';
   document.getElementById('mi').textContent=iv.n+' \u2014 '+iv.com;
   document.getElementById('mb').innerHTML=
@@ -3536,6 +3548,7 @@ function showRenfortInterneModal(ivId){
 
 function confirmerRenfortInterne(ivId){
   const iv=interventionById(ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La demande de renfort interne'))return;
   const h=getH(N()),heure=getHHMM(N());
   const note=((document.getElementById('renfort-int-note')||{}).value||'').trim();
   const childId=iv.id+'-RI-'+Date.now();
@@ -3576,11 +3589,8 @@ function syncInternalReinforcementSource(child){
 
 function showRenfortModal(ivId,forcePersonnel){
   const iv=interventionById(ivId);if(!iv)return;
-  if(!canCurrentUserSelectIntervention(iv)){
-    showToast('Vous n’êtes pas autorisé à demander un renfort pour cette intervention.','warn');return;
-  }
-  // Si l'utilisateur n'est pas chef d'agrès, il ne peut demander qu'un renfort personnel
-  if(forcePersonnel===undefined)forcePersonnel=!(isAgres()||isChef()||hasRight('Administration'));
+  if(!requireCurrentUserOperationalManager(iv,'La demande de renfort'))return;
+  if(forcePersonnel===undefined)forcePersonnel=false;
   const autresCasernes=CASERNES.filter(function(c){return c.id!==CURRENT_CASERNE_ID;});
   if(!autresCasernes.length){showToast('Aucune autre caserne disponible.','warn');return;}
 
@@ -3632,6 +3642,7 @@ function updateRenfortType(){
 
 function envoyerRenfort(ivId){
   const iv=interventionById(ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La demande de renfort'))return;
   const checkedType=document.querySelector('input[name="renfort-type"]:checked')?.value;
   const hiddenType=document.querySelector('input[type="hidden"][name="renfort-type"]')?.value;
   const type=checkedType||hiddenType||'complet';

@@ -19,6 +19,7 @@ function autorisationDataForNid(iv,nidIndex){
 }
 function showAddRecognizedNidModal(ivId){
   const iv=interventionById(ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'L’ajout d’un nid'))return;
   document.getElementById('mt').textContent='Ajouter un nid après reconnaissance';
   document.getElementById('mi').textContent=iv.n+' — '+iv.com;
   document.getElementById('mb').innerHTML='<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Ajoutez chaque nid découvert sur place. Une autorisation et une attestation distinctes seront créées.</div>'
@@ -54,6 +55,7 @@ function renderRecognizedNidLocations(nature){
 }
 function saveRecognizedNid(ivId){
   const iv=interventionById(ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'L’ajout d’un nid'))return;
   const nature=(document.getElementById('reco-nid-nature')||{}).value||'';
   let localisation=(document.getElementById('reco-nid-location')||{}).value||'';
   if(localisation==='Autre')localisation=((document.getElementById('reco-nid-other')||{}).value||'').trim();
@@ -81,6 +83,7 @@ function saveRecognizedNid(ivId){
 }
 function deleteAdditionalInterventionNid(ivId,nidIndex){
   const iv=interventionById(ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La suppression d’un nid'))return;
   const index=Number(nidIndex);
   if(!Number.isInteger(index)||index<=0){showToast('Le nid d’origine de l’appel ne peut pas être supprimé','warn');return;}
   if(!isInterventionReportChef(iv,CU&&CU.l)||!CU){
@@ -119,6 +122,7 @@ function deleteAdditionalInterventionNid(ivId,nidIndex){
 }
 function showAutorisationNidPicker(ivId){
   const iv=interventionById(ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'L’autorisation et l’attestation'))return;
   const nids=interventionNids(iv);
   document.getElementById('mt').textContent='Autorisation & Attestation';
   document.getElementById('mi').textContent='Choisir le nid concerné';
@@ -133,6 +137,7 @@ function showAutorisationNidPicker(ivId){
 function showAutorisationModal(ivId, nidIndex) {
   const iv = interventionById(ivId);
   if (!iv) return;
+  if(!requireCurrentUserOperationalManager(iv,'L’autorisation et l’attestation'))return;
   const nids=interventionNids(iv);
   if(nids.length>1&&!Number.isInteger(nidIndex)){showAutorisationNidPicker(ivId);return;}
   const activeIndex=Number.isInteger(nidIndex)?nidIndex:0;
@@ -215,6 +220,8 @@ function autToggleAutre() {
 }
 
 function saveAutorisationData(ivId) {
+  const iv = interventionById(ivId);
+  if(!iv||!requireCurrentUserOperationalManager(iv,'L’autorisation et l’attestation'))return;
   const travaux = Array.from(document.querySelectorAll('input[name="aut-trav"]:checked')).map(function(cb) { return cb.value; });
   const sig = (_sigCanvas && _sigHasSig) ? _sigCanvas.toDataURL('image/png') : null;
   const d = {
@@ -235,7 +242,6 @@ function saveAutorisationData(ivId) {
     signature: sig
   };
   _autorisationData[ivId] = d;
-  const iv = interventionById(ivId);
   const nidIndex=Number.isInteger(_autorisationActiveNid[ivId])?_autorisationActiveNid[ivId]:0;
   if(iv){
     if(!Array.isArray(iv._autorisationNids))iv._autorisationNids=[];
