@@ -779,6 +779,25 @@ function sameInterventionAddress(first,second){
   const a=normalizeInterventionAddressForMatch(first),b=normalizeInterventionAddressForMatch(second);
   return !!a&&a===b;
 }
+function interventionBaseAddressForDuplicate(interventionOrAddress){
+  if(interventionOrAddress&&typeof interventionOrAddress==='object'){
+    if(interventionOrAddress._addrBase)return String(interventionOrAddress._addrBase).trim();
+    return String(interventionOrAddress.addr||'').split(/\s+—\s+/)[0].trim();
+  }
+  return String(interventionOrAddress||'').split(/\s+—\s+/)[0].trim();
+}
+function interventionNatureForDuplicate(value){
+  return nm(String(value||'').replace(/\s*[—-]\s*PILP\s*$/i,'').trim());
+}
+function findActiveDuplicateIntervention(nature,address,commune,excludeId){
+  const normalizedNature=interventionNatureForDuplicate(nature),normalizedCommune=nm(commune),baseAddress=interventionBaseAddressForDuplicate(address);
+  if(!normalizedNature||!normalizedCommune||!baseAddress)return null;
+  return [].concat(IVS||[],PILP_IVS||[]).filter(function(iv){
+    return iv&&iv.id!==excludeId&&!iv._isRenfort&&!iv._isRenfortInterneMission&&['en-attente','selectionne','en-cours'].includes(iv.s)
+      &&interventionNatureForDuplicate(iv.n)===normalizedNature&&nm(iv.com)===normalizedCommune
+      &&sameInterventionAddress(interventionBaseAddressForDuplicate(iv),baseAddress);
+  }).sort(function(a,b){return String(a.h||'').localeCompare(String(b.h||''));})[0]||null;
+}
 function mkTL(s,h,who){return {s,h,who};}
 function hasFormationRight(){
   if(!CU)return false;

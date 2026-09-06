@@ -932,6 +932,25 @@ function sameInterventionAddress(first,second){
   const a=normalizeInterventionAddressForMatch(first),b=normalizeInterventionAddressForMatch(second);
   return !!a&&a===b;
 }
+function interventionBaseAddressForDuplicate(interventionOrAddress){
+  if(interventionOrAddress&&typeof interventionOrAddress==='object'){
+    if(interventionOrAddress._addrBase)return String(interventionOrAddress._addrBase).trim();
+    return String(interventionOrAddress.addr||'').split(/\s+—\s+/)[0].trim();
+  }
+  return String(interventionOrAddress||'').split(/\s+—\s+/)[0].trim();
+}
+function interventionNatureForDuplicate(value){
+  return nm(String(value||'').replace(/\s*[—-]\s*PILP\s*$/i,'').trim());
+}
+function findActiveDuplicateIntervention(nature,address,commune,excludeId){
+  const normalizedNature=interventionNatureForDuplicate(nature),normalizedCommune=nm(commune),baseAddress=interventionBaseAddressForDuplicate(address);
+  if(!normalizedNature||!normalizedCommune||!baseAddress)return null;
+  return [].concat(IVS||[],PILP_IVS||[]).filter(function(iv){
+    return iv&&iv.id!==excludeId&&!iv._isRenfort&&!iv._isRenfortInterneMission&&['en-attente','selectionne','en-cours'].includes(iv.s)
+      &&interventionNatureForDuplicate(iv.n)===normalizedNature&&nm(iv.com)===normalizedCommune
+      &&sameInterventionAddress(interventionBaseAddressForDuplicate(iv),baseAddress);
+  }).sort(function(a,b){return String(a.h||'').localeCompare(String(b.h||''));})[0]||null;
+}
 function mkTL(s,h,who){return {s,h,who};}
 function hasFormationRight(){
   if(!CU)return false;
@@ -4128,7 +4147,7 @@ function checkDejaIntervenu(){
   if(!selC2||!addr||addr.length<4||!nat){box.innerHTML='';box.style.display='none';return;}
   const nn=nm(nat), nc=nm(selC2);
   const memes=[].concat(IVS||[],PILP_IVS||[]).filter(function(x){
-    return sameInterventionAddress(x.addr,addr) && nm(x.com)===nc && nm(x.n)===nn && x.s!=='annulee';
+    return sameInterventionAddress(interventionBaseAddressForDuplicate(x),addr) && nm(x.com)===nc && interventionNatureForDuplicate(x.n)===interventionNatureForDuplicate(nn) && x.s!=='annulee';
   });
   if(!memes.length){box.innerHTML='';box.style.display='none';return;}
   const avisAttente=memes.filter(function(x){return x._avisEnAttente;});
@@ -4141,6 +4160,17 @@ function checkDejaIntervenu(){
   }
   box.innerHTML=msg+'<div style="max-height:190px;overflow-y:auto;margin-top:6px;padding-right:2px;">'+renderPreviousInterventionDetails(memes)+'</div>';
   box.style.display='block';
+}
+function showActiveDuplicateCallModal(iv){
+  if(!iv)return;
+  const status={'en-attente':'En attente','selectionne':'Sélectionnée','en-cours':'En cours'}[iv.s]||iv.s;
+  document.getElementById('mt').textContent='Intervention déjà enregistrée';
+  document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
+  document.getElementById('mb').innerHTML='<div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:10px;padding:12px;color:#991B1B;font-size:13px;line-height:1.45;">'
+    +'<strong>Le nouvel appel n’a pas été enregistré.</strong><br>Une intervention de même nature est déjà active à cette adresse, même si le requérant ou le numéro de téléphone est différent.</div>'
+    +'<div style="margin-top:10px;background:#fff;border:1px solid var(--brd);border-radius:9px;padding:10px;font-size:12px;"><strong>'+escHtml(iv.n||'')+'</strong> · '+escHtml(status)+'<br>📍 '+escHtml(interventionAddressLabel(iv))+(iv.req?'<br>Requérant enregistré : '+escHtml(iv.req):'')+'</div>'
+    +'<div class="brow"><button class="btn pr sm" onclick="oM(\''+iv.id+'\')">Voir l’intervention existante</button><button class="btn sm" onclick="cM()">Fermer</button></div>';
+  document.getElementById('mo').style.display='flex';
 }
 function cv(){
   const h=parseFloat(document.getElementById('he').value),s=parseFloat(document.getElementById('se').value);
@@ -4808,6 +4838,11 @@ function enr(){
   const _adr=document.getElementById('fa')?document.getElementById('fa').value.trim():'';
   const nidsAppel=getAppelNids();
   const natureAppel=appelNaturePrioritaire(nidsAppel);
+  const activeDuplicate=findActiveDuplicateIntervention(natureAppel,addrBase,com);
+  if(activeDuplicate){
+    showActiveDuplicateCallModal(activeDuplicate);
+    return;
+  }
   const exIv=IVS.filter(iv=>iv._avisEnAttente&&!iv._isPilip&&sameInterventionAddress(iv.addr,_adr)&&nm(iv.n)===nm(natureAppel));
   const exPilp=PILP_IVS.filter(iv=>iv._avisEnAttente&&sameInterventionAddress(iv.addr,_adr)&&nm(iv.n)===nm(natureAppel));
   // Lever l'indicateur "en attente" sur ces interventions (le requérant a rappelé).
@@ -4828,7 +4863,7 @@ function enr(){
     PILP_IVS.unshift({
       id:nextPilpId(annee),ivRef:null,_numApl:numApl,
       // Aucun numéro d'intervention tant que la PILP reste en attente.
-      n:'Nid de frelons asiatiques — PILP',addr,com,h,
+      n:'Nid de frelons asiatiques — PILP',addr,_addrBase:addrBase,com,h,
       req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,reqDispo,_nidsAppel:nidsAppel,_erp:erp,_urgence:erp,
       localisation:null,hauteur:null,reconnaissanceFaite:false,axeTir:null,_axeTirEtat:'a-verifier',_pilpPeriode:'a-determiner',_pilpPeriodePrecision:'',_pilpPlanningUpdatedAt:Date.now(),_pilpPlanningUpdatedBy:CU.l,obs:det,
       // Une PILP en attente reste libre : l'opérateur qui prend l'appel
@@ -4847,7 +4882,7 @@ function enr(){
   }
   // Enregistrement normal — id = numéro APL, numéro INT attribué à la clôture
   const newIv={id:makeInterventionRecordId(numApl),_numApl:numApl,
-    n:natureAppel,_natureAppelInitiale:selNat,addr,com,h,op:CU.l,s:'en-attente',det,eng:null,_sdis:document.getElementById('chk-sdis')?.checked||false,_erp:erp,_urgence:erp,_animauxAppel:animauxAppel,_nidsAppel:nidsAppel,
+    n:natureAppel,_natureAppelInitiale:selNat,addr,_addrBase:addrBase,com,h,op:CU.l,s:'en-attente',det,eng:null,_sdis:document.getElementById('chk-sdis')?.checked||false,_erp:erp,_urgence:erp,_animauxAppel:animauxAppel,_nidsAppel:nidsAppel,
     req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,reqDispo,
     obs:'',agr:null,rappels:exIv.length,avisIds:exIv.map(iv=>iv.id),_appelDetails:appelDetails,
     tl:[mkTL('en-attente',h,CU.l)]};
@@ -14913,7 +14948,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260906-depart-gps-et-cloture-chef-206';
+const APP_VERSION='20260906-blocage-doublons-appels-207';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
