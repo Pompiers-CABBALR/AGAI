@@ -362,6 +362,7 @@ function cSPilp(id,s,confirmed){
 function clotPilp(id){
   const iv=PILP_IVS.find(v=>v.id===id);if(!iv)return;
   if(!canOperatePilp()){showToast('La clôture d’une intervention PILP est réservée aux tireurs PILP, aux administrateurs actifs et au superadmin.','warn');return;}
+  if(!canCurrentUserCloseIntervention(iv)){showToast('Seul le chef d’agrès affecté à cette intervention peut la clôturer.','warn');return;}
   const avis=document.getElementById('chk-pilp-avis')&&document.getElementById('chk-pilp-avis').checked;
   const avisHeure=avis&&document.getElementById('pilp-avis-passage-hour')?document.getElementById('pilp-avis-passage-hour').value:'';
   if(avis&&!/^([01]\d|2[0-3]):[0-5]\d$/.test(avisHeure)){

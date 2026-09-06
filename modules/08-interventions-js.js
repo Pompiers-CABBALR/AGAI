@@ -181,6 +181,14 @@ function isInterventionReportChef(iv,login){
   });
 }
 
+function canCurrentUserCloseIntervention(iv){
+  if(!iv||!CU||iv.s!=='en-cours')return false;
+  if(isAdminModeActive())return true;
+  // Hors pouvoir administrateur, seuls les chefs d'agrès explicitement
+  // affectés à cette intervention peuvent la clôturer.
+  return iv.agr===CU.l||iv._agr2===CU.l;
+}
+
 function interventionRoleKey(role){
   const key=String(role||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z]/g,'');
   if(key==='ca'||key.startsWith('chefdagres'))return 'chefdagres';
@@ -1310,7 +1318,7 @@ function oM(id){
         ⛔ Clôturez d'abord <strong>${enCours.id}</strong>
         <button class="btn sm" style="margin-top:6px;background:var(--red);color:#fff;border-color:var(--red);width:100%;" onclick="cM();oM('${enCours.id}')">&#x1F449; Aller clôturer</button>
       </div>`:''}`;
-    } else if(iv.s==='en-cours'&&(iv.agr===CU.l||iv._agr2===CU.l||chef)){
+    } else if(iv.s==='en-cours'&&canCurrentUserCloseIntervention(iv)){
       const ds=getDS(N()),hh=pad(N().getHours()),mm2=pad(N().getMinutes());
       const pilpBtn=!iv._isRenfort&&iv.n==='Nid de frelons asiatiques'?`<button class="btn pilp-btn sm" onclick="showPilpForm('${iv.id}')">&#x1F3AF; PILP</button>`:'';
       const natsEchelle=['Nid de guêpes et frelons','Nid de frelons asiatiques',"Essaim d'abeilles"];
@@ -1348,7 +1356,7 @@ function oM(id){
           <label for="avis-passage-hour" style="display:block;font-size:11px;font-weight:700;color:#6B21A8;margin-bottom:5px;">Heure de dépôt dans la boîte aux lettres *</label>
           <input class="fi" type="time" id="avis-passage-hour" value="${getHHMM(N())}" style="width:100%;"/>
         </div>`}
-        ${(iv.agr===CU.l||iv._agr2===CU.l||chef||isAdminModeActive())?(canSuperAdminOperateForAnotherChief()?`<div style="background:#EEF2FF;border:1px solid #A5B4FC;border-radius:9px;padding:10px;margin-bottom:10px;">
+        ${canCurrentUserCloseIntervention(iv)?(canSuperAdminOperateForAnotherChief()?`<div style="background:#EEF2FF;border:1px solid #A5B4FC;border-radius:9px;padding:10px;margin-bottom:10px;">
           <label for="superadmin-end-time" style="display:block;font-size:11px;font-weight:700;color:#3730A3;margin-bottom:5px;">Heure de retour saisie manuellement *</label>
           <input class="fi" type="time" id="superadmin-end-time" value="${getHHMM(N())}" style="width:100%;margin-bottom:8px;"/>
           <button class="btn gn" style="width:100%;" onclick="clotSuperAdmin('${iv.id}')">🛡️ Clôturer pour ${escHtml(iv.agr||'le chef d’agrès')}</button>
@@ -1725,6 +1733,11 @@ function operationalDistanceMeters(lat1,lon1,lat2,lon2){
   const a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(lat1*rad)*Math.cos(lat2*rad)*Math.sin(dLon/2)*Math.sin(dLon/2);
   return 6371000*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
+function operationalStartPositionAccepted(distance,accuracy){
+  const measuredDistance=Math.max(0,Number(distance)||0),measuredAccuracy=Math.max(0,Number(accuracy)||0);
+  if(measuredDistance<=OPERATIONAL_START_RADIUS_METERS)return true;
+  return measuredAccuracy<=1000&&Math.max(0,measuredDistance-measuredAccuracy)<=OPERATIONAL_START_RADIUS_METERS;
+}
 function recentFinishedInterventionForChef(login,excludeId){
   const now=N().getTime(),maxDelay=OPERATIONAL_START_GRACE_MINUTES*60*1000;
   return [].concat(IVS||[],PILP_IVS||[]).map(function(item){
@@ -1817,14 +1830,15 @@ function requestOperationalStartAuthorization(iv,onApproved){
     // La précision représente le rayon d’incertitude annoncé par le téléphone.
     // On accepte si cette zone recoupe le rayon autorisé, après une seconde
     // mesure fraîche quand la première semble extérieure ou trop imprécise.
-    const effectiveDistance=Math.max(0,distance-accuracy);
-    const imprecise=accuracy>1000;
-    if((imprecise||effectiveDistance>OPERATIONAL_START_RADIUS_METERS)&&attempt<2){
+    // Une précision médiocre ne doit jamais refuser un téléphone dont le point
+    // central est déjà à l'intérieur des 2 km. En dehors du rayon, la marge
+    // d'incertitude n'est utilisée que si elle reste raisonnable.
+    const accepted=operationalStartPositionAccepted(distance,accuracy);
+    if(!accepted&&attempt<2){
       showToast('Nouvelle vérification du départ…','info');
       window.setTimeout(function(){locateForOperationalStart(2);},600);return;
     }
-    if(imprecise){showToast('Impossible de passer cette intervention « En cours ».','warn');return;}
-    if(effectiveDistance>OPERATIONAL_START_RADIUS_METERS){
+    if(!accepted){
       showToast('Impossible de passer cette intervention « En cours ».','warn');return;
     }
     _operationalStartAuthorizations[iv.id]={at:Date.now(),exempt:false,distanceMeters:Math.round(distance),accuracyMeters:Math.round(accuracy),caserneId:caserne.id};
@@ -1997,6 +2011,9 @@ function clot(id,options){
   }
   const opts=options||{};
   if(opts.superAdminManual&&!canSuperAdminOperateForAnotherChief()){showToast('Le pouvoir superadmin n’est plus actif.','warn');return;}
+  if(!opts.superAdminManual&&!canCurrentUserCloseIntervention(iv)){
+    showToast('Seul le chef d’agrès affecté à cette intervention peut la clôturer.','warn');return;
+  }
   const collection=interventionCollection(iv);
   // Ne pas re-clôturer une intervention déjà liée à une PILP
   if(iv._lienPilp&&iv.s==='terminee'){showToast('Cette intervention est déjà clôturée (liée à une PILP).','warn');cM();return;}
