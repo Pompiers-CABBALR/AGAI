@@ -2018,7 +2018,7 @@ function _rcApplyRealtimeRecord(record){
         if(resolved.keptCurrentData){_rcPendingDirty.add(record.id);_rcDirtyGeneration++;_rcPersistPendingDirty();_rcScheduleRetry(0);}
       }
     }else if(record.type==='config'){
-      const keys=['piquets','planningRotations','disposValidated','piquetsValidated','astrConfig','astrTelData','astrTelParams','statsTaux','adminLogins','adminLogin','_stationLocation'];
+      const keys=['piquets','planningRotations','disposValidated','piquetsValidated','astrConfig','astrTelData','astrTelParams','statsTaux','adminLogins','adminLogin','_stationLocation','_numberingStartOrderVersion','_ut188ChainStartRepairVersion','_pilpUt185ChronologyRepairVersion'];
       keys.forEach(function(key){if(incoming[key]!==undefined)d[key]=incoming[key];});
       if(incoming._operationalStartGeolocationEnabled!==undefined)d._operationalStartGeolocationEnabled=incoming._operationalStartGeolocationEnabled!==false;
       if(incoming._statsPersonnelHoursReal!==undefined)d._statsPersonnelHoursReal=incoming._statsPersonnelHoursReal===true;
@@ -2105,6 +2105,9 @@ function _rcSplitCaserne(cid, d){
     _operationalStartGeolocationEnabled:typeof d._operationalStartGeolocationEnabled==='boolean'?d._operationalStartGeolocationEnabled:undefined,
     _statsPersonnelHoursReal:d._statsPersonnelHoursReal===true,
     _indemnitesAdmins:d._indemnitesAdmins===true,
+    _numberingStartOrderVersion:d._numberingStartOrderVersion||'',
+    _ut188ChainStartRepairVersion:d._ut188ChainStartRepairVersion||'',
+    _pilpUt185ChronologyRepairVersion:d._pilpUt185ChronologyRepairVersion||'',
     adminLogins: Array.isArray(d.adminLogins)?[...d.adminLogins]:(d.adminLogin?[d.adminLogin]:[]),
     adminLogin: d.adminLogin||''
   };
@@ -2116,7 +2119,8 @@ function _rcSplitCaserne(cid, d){
 function _rcAssembleCaserne(rows){
   const out = { users:[], ivs:[], pilpIvs:[], equipes:[], fmpas:[], formStag:[], formForm:[], renforts:[], activites:[],
                 dispos:{}, piquets:{}, planningRotations:{}, disposValidated:{}, piquetsValidated:{}, astrConfig:{},
-                astrTelData:{}, astrTelParams:{}, statsTaux:{}, _stationLocation:null, _operationalStartGeolocationEnabled:undefined, _statsPersonnelHoursReal:false, _indemnitesAdmins:false, adminLogins:[], adminLogin:'' };
+                astrTelData:{}, astrTelParams:{}, statsTaux:{}, _stationLocation:null, _operationalStartGeolocationEnabled:undefined, _statsPersonnelHoursReal:false, _indemnitesAdmins:false,
+                _numberingStartOrderVersion:'', _ut188ChainStartRepairVersion:'', _pilpUt185ChronologyRepairVersion:'', adminLogins:[], adminLogin:'' };
   const listMap = {iv:'ivs', pilp:'pilpIvs', equipe:'equipes', fmpa:'fmpas', formStag:'formStag', formForm:'formForm', renfort:'renforts', activite:'activites'};
   rows.forEach(function(r){
     if(r.deleted) return; // on ignore les enregistrements supprimés à la reconstruction
@@ -2139,6 +2143,9 @@ function _rcAssembleCaserne(rows){
       out._operationalStartGeolocationEnabled=typeof c._operationalStartGeolocationEnabled==='boolean'?c._operationalStartGeolocationEnabled:undefined;
       out._statsPersonnelHoursReal=c._statsPersonnelHoursReal===true;
       out._indemnitesAdmins=c._indemnitesAdmins===true;
+      out._numberingStartOrderVersion=c._numberingStartOrderVersion||'';
+      out._ut188ChainStartRepairVersion=c._ut188ChainStartRepairVersion||'';
+      out._pilpUt185ChronologyRepairVersion=c._pilpUt185ChronologyRepairVersion||'';
       out.adminLogins=Array.isArray(c.adminLogins)?[...c.adminLogins]:(c.adminLogin?[c.adminLogin]:[]);
       out.adminLogin=c.adminLogin||out.adminLogins[0]||'';
     }
@@ -2294,6 +2301,32 @@ async function _rcProtectSensitiveGlobalRow(rows){
   }
 }
 
+async function _rcSendRowsWithIsolation(rows,currentUser){
+  const succeeded=[],failures=[];
+  async function send(group){
+    if(!group.length)return;
+    const payload=group.map(function(r){return {id:r.id,caserne:r.caserne,type:r.type,data:r.data,deleted:r.deleted,updated_by:currentUser};});
+    let resp;
+    try{
+      resp=await fetch(RC_REST,{method:'POST',headers:Object.assign({},_sbHeaders,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify(payload)});
+    }catch(error){
+      resp={ok:false,status:0,_agaiDetail:String(error&&error.message||error||'Erreur réseau')};
+    }
+    if(resp.ok){succeeded.push.apply(succeeded,group);return;}
+    if(group.length>1){
+      const middle=Math.ceil(group.length/2);
+      await send(group.slice(0,middle));
+      await send(group.slice(middle));
+      return;
+    }
+    let detail=resp._agaiDetail||'';
+    if(!detail)try{detail=String(await resp.text()||'').replace(/\s+/g,' ').slice(0,180);}catch(readError){}
+    failures.push({row:group[0],status:resp.status||0,detail:detail});
+  }
+  for(let index=0;index<rows.length;index+=10)await send(rows.slice(index,index+10));
+  return {succeeded:succeeded,failures:failures};
+}
+
 async function _rcPush(fullPush){
   if(_rcSaving){ _rcScheduleRetry(800); return; }
   _rcSaving = true; _jbSetStatus('saving');
@@ -2320,7 +2353,10 @@ async function _rcPush(fullPush){
       if(_rcPendingDirty.size>0){
         rows = candidate.filter(function(r){ return _rcPendingDirty.has(r.id); });
       } else {
-        rows = candidate;
+        // Aucun changement suivi : ne jamais renvoyer toute la caserne. Ce cas
+        // se produisait notamment lors du simple affichage de l'historique et
+        // recréait une file de synchronisation entière sur iPhone.
+        rows = [];
       }
     }
     if(!rows.length){
@@ -2342,22 +2378,25 @@ async function _rcPush(fullPush){
     if(!fullPush)rows=await _rcProtectPersonnelGradeRows(rows);
     if(!rows.length){_jbSetStatus(_rcPendingDirty.size?'pending':'ok');return;}
     const currentUser = (typeof CU!=='undefined' && CU) ? (CU.l||'') : '';
-    const payload = rows.map(function(r){ return { id:r.id, caserne:r.caserne, type:r.type, data:r.data, deleted:r.deleted, updated_by:currentUser }; });
-    const resp = await fetch(RC_REST, {
-      method:'POST',
-      headers:Object.assign({}, _sbHeaders, { 'Prefer':'resolution=merge-duplicates,return=minimal' }),
-      body:JSON.stringify(payload)
-    });
-    if(!resp.ok){
-      let detail='';try{detail=String(await resp.text()||'').replace(/\s+/g,' ').slice(0,180);}catch(readError){}
-      throw new Error('HTTP '+resp.status+(detail?' — '+detail:''));
-    }
+    const sentSignatures={};
+    rows.forEach(function(row){sentSignatures[row.id]=JSON.stringify({data:row.data,deleted:!!row.deleted});});
+    const sendResult=await _rcSendRowsWithIsolation(rows,currentUser);
+    const pushedRows=sendResult.succeeded;
     localStorage.setItem(JB_CACHE_KEY, JSON.stringify(data));
     _rcLastPush = Date.now();
-    if(_rcDirtyGeneration===generationAtStart){
-      rows.forEach(function(row){_rcPendingDirty.delete(row.id);});
-    }
+    // Une modification indépendante pendant l'envoi ne doit plus maintenir
+    // tout le lot en attente. On conserve uniquement les lignes dont le
+    // contenu local a réellement changé depuis leur départ vers Supabase.
+    const freshSignatures={};
+    _rcSplitAll(_buildDataObject()).forEach(function(row){freshSignatures[row.id]=JSON.stringify({data:row.data,deleted:!!row.deleted});});
+    pushedRows.forEach(function(row){
+      if(!Object.prototype.hasOwnProperty.call(freshSignatures,row.id)||freshSignatures[row.id]===sentSignatures[row.id])_rcPendingDirty.delete(row.id);
+    });
     _rcPersistPendingDirty();
+    if(sendResult.failures.length){
+      const first=sendResult.failures[0];
+      throw new Error('HTTP '+first.status+' — '+first.row.id+(first.detail?' — '+first.detail:''));
+    }
     _rcLastSyncError='';
     _rcRetryDelay=2500;
     if(_rcRetryTimer){clearTimeout(_rcRetryTimer);_rcRetryTimer=null;}
