@@ -12,7 +12,7 @@ function loginImportJSON(input){
     try{
       const data=JSON.parse(e.target.result);
       _applyDataObject(data);_postLoadInit();
-      localStorage.setItem(JB_CACHE_KEY,JSON.stringify(data));
+      _writeLocalCache(data);
       _jbPush(data).then(function(){
         showToast('Données importées et synchronisées ✓','success');
         _jbStartPolling();

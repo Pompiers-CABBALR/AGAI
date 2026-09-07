@@ -979,7 +979,7 @@ function saveData(immediate){
       try{const raw=localStorage.getItem(JB_CACHE_KEY);if(raw)previous=JSON.parse(raw);}catch(e){}
       _rcTrackChangedRecords(previous,data);
     }
-    localStorage.setItem(JB_CACHE_KEY,JSON.stringify(data));
+    _writeLocalCache(data);
     if(_jbSaveTimer)clearTimeout(_jbSaveTimer);
     // Push immédiat pour les opérations critiques (changements de statut, etc.)
     if(immediate===true){
@@ -992,7 +992,7 @@ function saveData(immediate){
       // Reconstruire les données fraîches au moment du push (évite d'écraser avec une version périmée si d'autres actions ont eu lieu depuis)
       if(CURRENT_CASERNE_ID&&typeof syncCaserneContext==='function')syncCaserneContext();
       const freshData=_buildDataObject();
-      localStorage.setItem(JB_CACHE_KEY,JSON.stringify(freshData));
+      _writeLocalCache(freshData);
       if(USE_RECORDS){_rcPush(false);}else if(USE_SUPABASE){_sbPush(freshData);}else{_jbPush(freshData);}
     },2000);
   }catch(e){console.warn('[AGAI] saveData error:',e);}
@@ -1070,7 +1070,7 @@ async function _jbPush(data){
     const putResp=await fetch(JSONBIN_URL,{method:'PUT',headers:{'Content-Type':'application/json','X-Master-Key':JSONBIN_KEY,'X-Access-Key':JSONBIN_KEY,'X-Bin-Versioning':'false'},body:JSON.stringify(lite)});
     if(!putResp.ok)throw new Error('PUT HTTP '+putResp.status);
     // Mettre à jour le cache local avec la version mergée COMPLÈTE (avec photos)
-    localStorage.setItem(JB_CACHE_KEY,JSON.stringify(merged));
+    _writeLocalCache(merged);
     _jbLastPush=Date.now();
     _jbSetStatus('ok');
   }catch(e){console.warn('[AGAI] Push error:',e);_jbSetStatus('error');}
@@ -1100,6 +1100,10 @@ function _stripHeavyForPush(src){
           // Cache PDF régénérable
           delete iv._pdfAutorisation;
           delete iv._pdfAttestation;
+          delete iv._pdfAutorisations;
+          delete iv._pdfAttestations;
+          delete iv._pdfCache;
+          delete iv.frelonPhotos;
           // Photo frelon : conserver en localStorage local, retirer du push
           if(iv._frelonData&&iv._frelonData.photo&&iv.id){
             try{localStorage.setItem(_PHOTO_LS_PREFIX+iv.id,iv._frelonData.photo);}catch(e){}
@@ -1111,6 +1115,30 @@ function _stripHeavyForPush(src){
     });
   }
   return out;
+}
+
+// Safari iOS limite fortement localStorage. La copie locale est seulement un
+// cache : elle peut donc exclure les documents régénérables sans retirer leurs
+// données sources. Si Safari exige temporairement la place de l'ancienne et de
+// la nouvelle valeur, retirer uniquement l'ancien cache puis réessayer.
+function _writeLocalCache(data){
+  let compact;
+  try{compact=_stripHeavyForPush(data);}
+  catch(error){console.warn('[AGAI] Allègement du cache impossible :',error);return false;}
+  const serialized=JSON.stringify(compact);
+  try{localStorage.setItem(JB_CACHE_KEY,serialized);return true;}
+  catch(firstError){
+    try{
+      localStorage.removeItem(JB_CACHE_KEY);
+      localStorage.setItem(JB_CACHE_KEY,serialized);
+      return true;
+    }catch(secondError){
+      // La synchronisation distante reste valide même si le cache hors ligne
+      // ne tient pas sur cet appareil. Ne jamais transformer ce cas en Sync KO.
+      console.warn('[AGAI] Cache local saturé, données conservées dans Supabase :',secondError);
+      return false;
+    }
+  }
 }
 
 // Réhydrate une photo depuis localStorage si absente après un pull.
@@ -1182,7 +1210,7 @@ async function _jbPull(silent){
     // Mettre à jour le cache avec la version fusionnée
     const merged=JSON.parse(JSON.stringify(remote));
     if(activeCid&&CASERNE_DATA[activeCid])merged.CASERNE_DATA[activeCid]=CASERNE_DATA[activeCid];
-    localStorage.setItem(JB_CACHE_KEY,JSON.stringify(merged));
+    _writeLocalCache(merged);
     try{rI();}catch(e){}try{rPilp();}catch(e){}try{rAccueil();}catch(e){}try{rHist();}catch(e){}try{rAstrDispo();}catch(e){}try{rAstrEquipes();}catch(e){}
     const isTyping=document.getElementById('admin-add')&&document.getElementById('admin-add').style.display!=='none'
       &&(document.getElementById('nu-prenom')?.value||document.getElementById('nu-nom')?.value||document.getElementById('nu-mdp')?.value);
@@ -1297,7 +1325,7 @@ function agaiImportBackup(input){
       confirmModal('Restaurer cette sauvegarde ? Les données locales actuelles seront remplacées.',function(){
         _applyDataObject(envelope.data);
         _postLoadInit();
-        localStorage.setItem(JB_CACHE_KEY,JSON.stringify(envelope.data));
+        _writeLocalCache(envelope.data);
         saveData(true);
         if(CURRENT_CASERNE_ID)syncCaserneContext();
         showToast('Sauvegarde restaurée ✓','success');
@@ -1423,7 +1451,7 @@ async function _sbPush(data){
     if (!resp.ok) throw new Error('Supabase POST HTTP ' + resp.status);
     // Cache local complet (avec photos)
     if(_rcDirtyGeneration===generationAtStart){
-      localStorage.setItem(JB_CACHE_KEY, JSON.stringify(data));
+      _writeLocalCache(data);
     }
     _jbLastPush = Date.now();
     _jbSetStatus('ok');
@@ -1484,7 +1512,7 @@ async function _sbPull(silent){
     if (activeCid) syncCaserneContext();
     const merged = JSON.parse(JSON.stringify(remote));
     if (activeCid && CASERNE_DATA[activeCid]) merged.CASERNE_DATA[activeCid] = CASERNE_DATA[activeCid];
-    localStorage.setItem(JB_CACHE_KEY, JSON.stringify(merged));
+    _writeLocalCache(merged);
     try{rI();}catch(e){}try{rPilp();}catch(e){}try{rAccueil();}catch(e){}try{rHist();}catch(e){}try{rAstrDispo();}catch(e){}try{rAstrEquipes();}catch(e){}
     const isTyping = document.getElementById('admin-add') && document.getElementById('admin-add').style.display !== 'none'
       && (document.getElementById('nu-prenom')?.value || document.getElementById('nu-nom')?.value || document.getElementById('nu-mdp')?.value);
@@ -1710,6 +1738,14 @@ function _rcTransportRow(row){
     const lite=Object.assign({},row.data);
     delete lite.frelonPhotos;
     delete lite._pdfCache;
+    delete lite._pdfAutorisation;
+    delete lite._pdfAttestation;
+    delete lite._pdfAutorisations;
+    delete lite._pdfAttestations;
+    if(lite._frelonData&&lite._frelonData.photo){
+      lite._frelonData=Object.assign({},lite._frelonData);
+      delete lite._frelonData.photo;
+    }
     return Object.assign({},row,{data:lite});
   }
   return row;
@@ -2048,7 +2084,7 @@ function _rcApplyRealtimeRecord(record){
     }else return false;
   }
   if(record.caserne===CURRENT_CASERNE_ID)syncCaserneContext();
-  try{localStorage.setItem(JB_CACHE_KEY,JSON.stringify(_buildDataObject()));}catch(e){}
+  _writeLocalCache(_buildDataObject());
   _rcRenderRealtimeViews();
   if(record.caserne===CURRENT_CASERNE_ID){
     if(record.type==='dispo'||record.type==='config'){try{rAstrDispo();}catch(e){}}
@@ -2396,7 +2432,7 @@ async function _rcPush(fullPush){
     rows.forEach(function(row){sentSignatures[row.id]=_rcSyncSignature(row);});
     const sendResult=await _rcSendRowsWithIsolation(rows,currentUser);
     const pushedRows=sendResult.succeeded;
-    localStorage.setItem(JB_CACHE_KEY, JSON.stringify(data));
+    _writeLocalCache(data);
     _rcLastPush = Date.now();
     // Une modification indépendante pendant l'envoi ne doit plus maintenir
     // tout le lot en attente. On conserve uniquement les lignes dont le
@@ -2578,12 +2614,13 @@ async function _rcPull(silent){
     }
     _postLoadInit();
     if(activeCid) syncCaserneContext();
-    localStorage.setItem(JB_CACHE_KEY, JSON.stringify(data));
+    _writeLocalCache(data);
     try{rI();}catch(e){}try{rPilp();}catch(e){}try{rAccueil();}catch(e){}try{rHist();}catch(e){}try{rAstrDispo();}catch(e){}try{rAstrEquipes();}catch(e){}
     const isTyping = document.getElementById('admin-add') && document.getElementById('admin-add').style.display!=='none'
       && (document.getElementById('nu-prenom')?.value || document.getElementById('nu-nom')?.value || document.getElementById('nu-mdp')?.value);
     if(!isTyping){ try{rAdm();}catch(e){} }
     if(_rcPendingDirty.size)_rcScheduleRetry(0);
+    _rcLastSyncError='';
     _jbSetStatus(_rcPendingDirty.size?'pending':'ok'); return true;
   } catch(e){
     console.warn('[AGAI][RC] Pull error:', e);

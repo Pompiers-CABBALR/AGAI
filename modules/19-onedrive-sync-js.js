@@ -326,7 +326,7 @@ function _prepareSessionForPageExit(){
     _persistSessionState({backgroundAt:Number(previous.backgroundAt)||_bgHiddenAt||Date.now()});
     try{
       const data=_buildDataObject();
-      localStorage.setItem(JB_CACHE_KEY,JSON.stringify(data));
+      _writeLocalCache(data);
     }catch(e){}
   }
 }
