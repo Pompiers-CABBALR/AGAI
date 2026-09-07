@@ -959,7 +959,7 @@ function _jbSetStatus(state){
   const syncError=typeof _rcLastSyncError!=='undefined'?_rcLastSyncError:'';
   el.title=state==='error'&&syncError?syncError:'Cliquer pour synchroniser maintenant';
   el.onclick=function(){
-    if(state==='error'&&syncError)showToast('Synchronisation : '+syncError,'error');
+    if(state==='error'&&syncError)alert('Diagnostic de synchronisation\n\n'+syncError+'\n\nVersion : '+APP_VERSION);
     jbSyncNow();
   };
 }
@@ -1701,16 +1701,33 @@ function _rcScheduleRetry(delay){
     if(!_rcSaving)_rcPush(false);
   },wait);
 }
+// Les photos originales et les aperçus PDF sont volontairement locaux. Ils ne
+// doivent ni être envoyés à Supabase, ni maintenir une fiche dans la file parce
+// que sa version locale est nécessairement plus lourde que la version envoyée.
+function _rcTransportRow(row){
+  if(!row)return row;
+  if((row.type==='iv'||row.type==='pilp')&&row.data){
+    const lite=Object.assign({},row.data);
+    delete lite.frelonPhotos;
+    delete lite._pdfCache;
+    return Object.assign({},row,{data:lite});
+  }
+  return row;
+}
+function _rcSyncSignature(row){
+  const transport=_rcTransportRow(row);
+  return JSON.stringify({data:transport&&transport.data,deleted:!!(transport&&transport.deleted)});
+}
 function _rcTrackChangedRecords(previousData,nextData){
   if(!USE_RECORDS||!nextData)return;
   const previousRows=previousData?_rcSplitAll(previousData):[];
   const previousMap={};
   previousRows.forEach(function(row){
-    previousMap[row.id]=JSON.stringify({data:row.data,deleted:!!row.deleted});
+    previousMap[row.id]=_rcSyncSignature(row);
   });
   let changed=false;
   _rcSplitAll(nextData).filter(_rcRowWritableHere).forEach(function(row){
-    const serialized=JSON.stringify({data:row.data,deleted:!!row.deleted});
+    const serialized=_rcSyncSignature(row);
     if(previousMap[row.id]!==serialized){_rcPendingDirty.add(row.id);changed=true;}
   });
   if(changed)_rcDirtyGeneration++;
@@ -2365,10 +2382,7 @@ async function _rcPush(fullPush){
       return;
     }
     // Allègement : retirer photos lourdes des interventions (réutilise la logique existante)
-    rows = rows.map(function(r){
-      if(r.type==='iv' && r.data){ const lite=Object.assign({},r.data); delete lite.frelonPhotos; delete lite._pdfCache; return Object.assign({},r,{data:lite}); }
-      return r;
-    });
+    rows = rows.map(_rcTransportRow);
     const hadGlobalRow=rows.some(function(row){return row&&row.type==='global'&&row.caserne==='_GLOBAL';});
     rows=await _rcProtectSensitiveGlobalRow(rows);
     if(hadGlobalRow&&!rows.some(function(row){return row&&row.type==='global'&&row.caserne==='_GLOBAL';}))throw new Error('protection de la ligne globale indisponible');
@@ -2379,7 +2393,7 @@ async function _rcPush(fullPush){
     if(!rows.length){_jbSetStatus(_rcPendingDirty.size?'pending':'ok');return;}
     const currentUser = (typeof CU!=='undefined' && CU) ? (CU.l||'') : '';
     const sentSignatures={};
-    rows.forEach(function(row){sentSignatures[row.id]=JSON.stringify({data:row.data,deleted:!!row.deleted});});
+    rows.forEach(function(row){sentSignatures[row.id]=_rcSyncSignature(row);});
     const sendResult=await _rcSendRowsWithIsolation(rows,currentUser);
     const pushedRows=sendResult.succeeded;
     localStorage.setItem(JB_CACHE_KEY, JSON.stringify(data));
@@ -2388,7 +2402,7 @@ async function _rcPush(fullPush){
     // tout le lot en attente. On conserve uniquement les lignes dont le
     // contenu local a réellement changé depuis leur départ vers Supabase.
     const freshSignatures={};
-    _rcSplitAll(_buildDataObject()).forEach(function(row){freshSignatures[row.id]=JSON.stringify({data:row.data,deleted:!!row.deleted});});
+    _rcSplitAll(_buildDataObject()).forEach(function(row){freshSignatures[row.id]=_rcSyncSignature(row);});
     pushedRows.forEach(function(row){
       if(!Object.prototype.hasOwnProperty.call(freshSignatures,row.id)||freshSignatures[row.id]===sentSignatures[row.id])_rcPendingDirty.delete(row.id);
     });
@@ -2572,7 +2586,9 @@ async function _rcPull(silent){
     if(_rcPendingDirty.size)_rcScheduleRetry(0);
     _jbSetStatus(_rcPendingDirty.size?'pending':'ok'); return true;
   } catch(e){
-    console.warn('[AGAI][RC] Pull error:', e); _jbSetStatus('error'); return false;
+    console.warn('[AGAI][RC] Pull error:', e);
+    _rcLastSyncError='Réception — '+String(e&&e.message||e||'Erreur inconnue');
+    _jbSetStatus('error'); return false;
   } finally {
     _rcPulling=false;
   }
