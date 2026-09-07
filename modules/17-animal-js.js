@@ -957,7 +957,7 @@ function _jbSetStatus(state){
   el.textContent=c.txt+((state==='pending'||state==='error')&&queued?' ('+queued+' en attente)':'');
   el.style.cssText='position:fixed;bottom:8px;right:8px;z-index:9999;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;background:'+c.bg+';color:'+c.color+';box-shadow:0 1px 4px rgba(0,0,0,.15);cursor:pointer;';
   const syncError=typeof _rcLastSyncError!=='undefined'?_rcLastSyncError:'';
-  el.title=state==='error'&&syncError?syncError:'Cliquer pour synchroniser maintenant';
+  el.title=state==='error'&&syncError?syncError:(state==='ok'&&window._agaiLocalCacheLimited?'Supabase synchronisé — cache hors ligne limité sur cet appareil':'Cliquer pour synchroniser maintenant');
   el.onclick=function(){
     if(state==='error'&&syncError)alert('Diagnostic de synchronisation\n\n'+syncError+'\n\nVersion : '+APP_VERSION);
     jbSyncNow();
@@ -1126,19 +1126,25 @@ function _writeLocalCache(data){
   try{compact=_stripHeavyForPush(data);}
   catch(error){console.warn('[AGAI] Allègement du cache impossible :',error);return false;}
   const serialized=JSON.stringify(compact);
-  try{localStorage.setItem(JB_CACHE_KEY,serialized);return true;}
+  try{localStorage.setItem(JB_CACHE_KEY,serialized);window._agaiLocalCacheLimited=false;return true;}
   catch(firstError){
     try{
       localStorage.removeItem(JB_CACHE_KEY);
       localStorage.setItem(JB_CACHE_KEY,serialized);
+      window._agaiLocalCacheLimited=false;
       return true;
     }catch(secondError){
       // La synchronisation distante reste valide même si le cache hors ligne
       // ne tient pas sur cet appareil. Ne jamais transformer ce cas en Sync KO.
       console.warn('[AGAI] Cache local saturé, données conservées dans Supabase :',secondError);
+      window._agaiLocalCacheLimited=true;
       return false;
     }
   }
+}
+function _isLocalStorageQuotaError(error){
+  const name=String(error&&error.name||''),message=String(error&&error.message||error||'');
+  return /quota|storage.*exceed|exceed.*storage/i.test(name+' '+message)||Number(error&&error.code)===22||Number(error&&error.code)===1014;
 }
 
 // Réhydrate une photo depuis localStorage si absente après un pull.
@@ -2624,6 +2630,14 @@ async function _rcPull(silent){
     _jbSetStatus(_rcPendingDirty.size?'pending':'ok'); return true;
   } catch(e){
     console.warn('[AGAI][RC] Pull error:', e);
+    if(_isLocalStorageQuotaError(e)){
+      // Une limite propre au téléphone ne doit jamais annuler une réception
+      // distante ni afficher Sync KO. Supabase reste la source de vérité.
+      window._agaiLocalCacheLimited=true;
+      _rcLastSyncError='';
+      _jbSetStatus(_rcPendingDirty.size?'pending':'ok');
+      return true;
+    }
     _rcLastSyncError='Réception — '+String(e&&e.message||e||'Erreur inconnue');
     _jbSetStatus('error'); return false;
   } finally {
