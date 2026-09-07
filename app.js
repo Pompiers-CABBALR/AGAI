@@ -4207,22 +4207,39 @@ function lancerItinerairePilp(){
 }
 
 // ────────────────── OUTILS MOBILES : GOOGLE MAPS & APPEL MASQUÉ ──────────────────
+// Codes postaux officiels des communes actuellement desservies dans le
+// Pas-de-Calais. Le département et le pays restent présents dans le libellé
+// pour éviter toute confusion avec une rue homonyme d'une autre commune.
+const COMMUNE_POSTAL_CODES={
+  '62113':['Labourse','Sailly-Labourse','Verquigneul'],'62120':['Blessy','Lambres','Linghem','Mazinghem','Norrent-Fontes','Quernes','Rely','Rombly','Saint-Hilaire-Cottes','Witternesse'],'62122':['Labeuvrière','Lapugnoy'],'62131':['Drouvin-le-Marais','Vaudricourt','Verquin'],'62136':['La Couture','Richebourg','Vieille-Chapelle'],'62138':['Auchy-les-Mines','Billy-Berclau','Douvrin','Haisnes','Violaines'],'62145':['Estrée-Blanche','Liettres'],'62149':['Annequin','Cambrin','Cuinchy','Festubert','Givenchy-lès-la-Bassée'],'62150':['Bajus','Beugin','Caucourt','Fresnicourt-le-Dolmen','Gauchin-Légal','Hermin','Houdain','La Comté','Rebreuve-Ranchicourt'],'62151':['Burbure'],'62157':['Allouagne'],'62190':['Ames','Auchy-au-bois','Bourecq','Ecquedecques','Ham-en-Artois','Lespesses','Lillers','Lières'],'62196':['Hesdigneul-lès-Béthune'],'62199':['Gosnay'],'62232':['Annezin','Fouquereuil','Fouquières-lès-Béthune','Hinges','Vendin-lès-Béthune'],'62260':['Amettes','Auchel','Cauchy-à-la-Tour','Ferfay'],'62290':['Noeux-les-Mines'],'62330':['Guarbecque','Isbergues'],'62350':['Busnes','Calonne-sur-la-Lys','Mont-Bernanchon','Robecq','Saint-Floris','Saint-Venant'],'62400':['Béthune','Essars','Locon'],'62460':['Divion','Diéval','Ourton'],'62470':['Calonne-Ricouart','Camblain-Châtelain'],'62530':['Hersin-Coupigny'],'62540':['Lozinghem','Marles-les-Mines'],'62620':['Barlin','Houchin','Maisnil-lès-Ruitz','Ruitz'],'62660':['Beuvry'],'62690':['Estrée-Cauchy'],'62700':['Bruay-la-Buissière'],'62840':['Lorgies','Neuve-Chapelle'],'62920':['Chocques','Gonnehem','Oblinghem'],'62940':['Haillicourt'],'62960':['Ligny-lès-Aire','Westrehem'],'62980':['Noyelles-lès-Vermelles','Vermelles']
+};
+function interventionCommunePostalCode(commune){
+  const expected=addrNorm(commune);
+  const code=Object.keys(COMMUNE_POSTAL_CODES).find(function(postalCode){return COMMUNE_POSTAL_CODES[postalCode].some(function(name){return addrNorm(name)===expected;});});
+  return code||'';
+}
+function mapsDestinationLabel(address,commune,postalCode){
+  const code=String(postalCode||interventionCommunePostalCode(commune)||'').trim();
+  return [String(address||'').trim(),code,String(commune||'').trim(),'Pas-de-Calais','Hauts-de-France','France'].filter(Boolean).join(', ');
+}
+function mapsDirectionsUrl(address,commune,postalCode){
+  return 'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination='+encodeURIComponent(mapsDestinationLabel(address,commune,postalCode));
+}
 // Ouvre une adresse dans Google Maps (navigation vers ce point).
 function openMaps(id){
   const iv=IVS.find(v=>v.id===id)||PILP_IVS.find(v=>v.id===id);
   if(!iv){showToast('Intervention introuvable.','warn');return;}
-  const dest=encodeURIComponent(((iv.addr||'')+', '+(iv.com||'')).trim());
-  if(!dest||dest===', '){showToast('Adresse manquante.','warn');return;}
-  window.open('https://www.google.com/maps/dir/?api=1&destination='+dest,'_blank');
+  if(!iv.addr||!iv.com){showToast('Adresse manquante.','warn');return;}
+  window.open(mapsDirectionsUrl(iv.addr,iv.com,iv.cp||iv.codePostal),'_blank','noopener');
 }
 // Construit un itinéraire multi-points avec les interventions actives sélectionnées.
 function openMapsItineraire(ids){
   const cibles=(ids||[]).map(id=>IVS.find(v=>v.id===id)||PILP_IVS.find(v=>v.id===id)).filter(Boolean);
-  const points=cibles.map(iv=>((iv.addr||'')+', '+(iv.com||'')).trim()).filter(p=>p&&p!==', ');
+  const points=cibles.map(iv=>mapsDestinationLabel(iv.addr,iv.com,iv.cp||iv.codePostal)).filter(Boolean);
   if(!points.length){showToast('Aucune adresse à ajouter à l\u2019itinéraire.','warn');return;}
   // Google Maps : destination = dernier point, waypoints = points intermédiaires.
   const destination=encodeURIComponent(points[points.length-1]);
-  let url='https://www.google.com/maps/dir/?api=1&destination='+destination;
+  let url='https://www.google.com/maps/dir/?api=1&travelmode=driving&destination='+destination;
   if(points.length>1){
     const waypoints=points.slice(0,-1).map(p=>encodeURIComponent(p)).join('%7C'); // %7C = |
     url+='&waypoints='+waypoints;
@@ -6381,7 +6398,7 @@ function oM(id){
     ${iv._avisPassage?'<div style="background:#F3EAF8;border:2px solid #9B59B6;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;color:#6C3483;margin-bottom:10px;text-align:center;">🟣 Un avis de passage a été laissé'+(getAvisPassageDateTimeLabel(iv)?' le '+escHtml(getAvisPassageDateTimeLabel(iv)):'')+(iv._avisPassageClasse?' — classé':'')+' pour cette intervention</div>':''}
     ${iv._echelleToiture?'<div style="background:#FEF3C7;border:2px solid #F59E0B;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:700;color:#92400E;margin-bottom:10px;text-align:center;">&#x26A0;&#xFE0F; INTERVENTION À FAIRE AVEC ÉCHELLE DE TOIT</div>':''}
     ${iv._epa?'<div style="background:#F3EAF8;border:2px solid #8E44AD;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:700;color:#6C3483;margin-bottom:10px;text-align:center;">&#x1F9F0; INTERVENTION À FAIRE AVEC EPA</div>':''}
-    <div class="mr"><div class="ml">Adresse</div><div class="mv2" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">&#x1F4CD; ${escHtml(iv.addr)}, ${escHtml(iv.com)}${iv.addrComp?' · '+escHtml(iv.addrComp):''}${!pilpReadOnly&&(isAgres()||isChef()||hasRight('Administration'))&&iv.s!=='terminee'?`<button class="btn sm" style="font-size:10px;padding:2px 7px;" onclick="editAdresse('${iv.id}')">✏️ Corriger</button>`:''}<button class="btn sm" style="font-size:10px;padding:2px 7px;background:#4285F4;color:#fff;border-color:#4285F4;" onclick="openMaps('${iv.id}')">🗺️ Maps</button></div></div>
+    <div class="mr"><div class="ml">Adresse</div><div class="mv2" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">&#x1F4CD; ${escHtml(iv.addr)}, ${escHtml(iv.com)}${iv.addrComp?' · '+escHtml(iv.addrComp):''}${!pilpReadOnly&&(isAgres()||isChef()||hasRight('Administration'))&&iv.s!=='terminee'?`<button class="btn sm" style="font-size:10px;padding:2px 7px;" onclick="editAdresse('${iv.id}')">✏️ Corriger</button>`:''}<a class="btn sm" style="font-size:10px;padding:2px 7px;background:#4285F4;color:#fff;border-color:#4285F4;text-decoration:none;" href="${escHtml(mapsDirectionsUrl(iv.addr,iv.com,iv.cp||iv.codePostal))}" target="_blank" rel="noopener noreferrer">🗺️ Maps</a></div></div>
     <div class="mr"><div class="ml">Requérant</div><div class="mv2" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
       <span>${escHtml(iv.req||'—')}${getInterventionPhones(iv).length?' · '+getInterventionPhones(iv).map(escHtml).join(' · '):''}</span>
       ${getInterventionPhones(iv).map((phone,index)=>`<button class="btn sm" style="font-size:10px;padding:2px 7px;background:#16A34A;color:#fff;border-color:#16A34A;" onclick="callRequerantMasque('${iv.id}',${index})" title="Appeler ${escHtml(phone)} en numéro masqué (non garanti selon téléphone)">📞 ${escHtml(phone)}</button>`).join('')}
@@ -14990,7 +15007,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260907-safari-cache-quota-212';
+const APP_VERSION='20260907-maps-commune-postal-213';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
