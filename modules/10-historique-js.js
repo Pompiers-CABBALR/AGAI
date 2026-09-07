@@ -229,6 +229,9 @@ function rHist(){
   const pilpMapped=pilpIvsH.map(function(p){return Object.assign({},p,{n:'[PILP] '+p.n,tl:p.tl,_isPilp:true});});
   const countedTotal=function(list){return list.filter(isInterventionComptabilisee).length;};
   const dayKey=historyInterventionDayKey;
+  const historyNow=new Date();
+  const currentHistoryDay=String(historyNow.getFullYear())+String(historyNow.getMonth()+1).padStart(2,'0')+String(historyNow.getDate()).padStart(2,'0');
+  const currentHistoryWeek=historyIsoWeekInfo(currentHistoryDay).key;
   const startTime=function(iv){const hd=String(iv._hDebut||'').replace(/[^0-9]/g,'');return hd?hd.padStart(4,'0').slice(0,4):'0000';};
   const ivs=normalIvs.concat(pilpMapped).sort(function(a,b){
     const daySort=dayKey(b).localeCompare(dayKey(a));
@@ -272,10 +275,12 @@ function rHist(){
           +weekKeys.map(function(weekKey,weekIndex){
             const week=weeks[weekKey],days=Object.keys(week.days).sort().reverse();
             const weekTotal=days.reduce(function(sum,day){return sum+countedTotal(week.days[day]);},0);
-            const weekId='hist-week-'+year+'-'+month+'-'+weekKey,open=historyGroupOpen(weekId,yearIndex===0&&monthIndex===0&&weekIndex===0);
+            // Par défaut, seule la semaine civile en cours est développée.
+            const weekId='hist-week-'+year+'-'+month+'-'+weekKey,open=weekKey===currentHistoryWeek&&historyGroupOpen(weekId,true);
             return '<div class="hist-week-block"><div class="hist-week-header" onclick="tg(\''+weekId+'\',\'arr-'+weekId+'\')"><span>\ud83d\uddd3\ufe0f '+week.info.label+'</span><span class="bdg bgr">'+weekTotal+'</span><span id="arr-'+weekId+'" style="margin-left:auto;">'+(open?'\u25bc':'\u25b6')+'</span></div><div id="'+weekId+'" class="hist-group-content hist-week-content" style="display:'+(open?'':'none')+';">'
               +days.map(function(day){
-                const list=week.days[day],dayId='hist-day-'+day+'-'+weekKey,dayOpen=historyGroupOpen(dayId,true);
+                // Dans la semaine courante, seule la journée d'aujourd'hui est ouverte automatiquement.
+                const list=week.days[day],dayId='hist-day-'+day+'-'+weekKey,dayOpen=day===currentHistoryDay&&historyGroupOpen(dayId,true);
                 const dt=new Date(Number(day.slice(0,4)),Number(day.slice(4,6))-1,Number(day.slice(6,8))),dayName=dt.toLocaleDateString('fr-FR',{weekday:'long'});
                 return '<div class="hist-day-block"><div class="hist-day-header" onclick="tg(\''+dayId+'\',\'arr-'+dayId+'\')"><span>'+dayName.charAt(0).toUpperCase()+dayName.slice(1)+' '+day.slice(6,8)+'/'+day.slice(4,6)+'/'+day.slice(0,4)+'</span><span class="bdg bgr" title="Interventions comptabilisées">'+countedTotal(list)+'</span><span id="arr-'+dayId+'" style="margin-left:auto;">'+(dayOpen?'\u25bc':'\u25b6')+'</span></div><div id="'+dayId+'" class="hist-group-content hist-day-content" style="display:'+(dayOpen?'':'none')+';">'+list.map(historyRowHTML).join('')+'</div></div>';
               }).join('')+'</div></div>';
