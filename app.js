@@ -14990,7 +14990,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260906-gps-fiable-et-actions-chef-208';
+const APP_VERSION='20260907-sync-mobile-paginee-209';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -17780,7 +17780,7 @@ async function _jbPull(silent){
     const merged=JSON.parse(JSON.stringify(remote));
     if(activeCid&&CASERNE_DATA[activeCid])merged.CASERNE_DATA[activeCid]=CASERNE_DATA[activeCid];
     localStorage.setItem(JB_CACHE_KEY,JSON.stringify(merged));
-    try{rI();}catch(e){}try{rAccueil();}catch(e){}try{rHist();}catch(e){}try{rAstrDispo();}catch(e){}try{rAstrEquipes();}catch(e){}
+    try{rI();}catch(e){}try{rPilp();}catch(e){}try{rAccueil();}catch(e){}try{rHist();}catch(e){}try{rAstrDispo();}catch(e){}try{rAstrEquipes();}catch(e){}
     const isTyping=document.getElementById('admin-add')&&document.getElementById('admin-add').style.display!=='none'
       &&(document.getElementById('nu-prenom')?.value||document.getElementById('nu-nom')?.value||document.getElementById('nu-mdp')?.value);
     if(!isTyping){try{rAdm();}catch(e){}}
@@ -17841,8 +17841,11 @@ function _postLoadInit(){
 
 function jbSyncNow(){
   if(USE_RECORDS&&typeof _rcPendingDirty!=='undefined'&&_rcPendingDirty.size){
+    // Après l'envoi de la file locale, relire toutes les pages distantes : un
+    // simple push ne suffisait pas à récupérer les interventions absentes.
+    _rcRequestRealtimePull(0);
     _rcPush(false);
-    showToast('Synchronisation des actions en attente relancÃ©e','info');
+    showToast('Synchronisation des actions en attente relancée','info');
     return;
   }
   const puller = USE_RECORDS ? _rcPull : (USE_SUPABASE ? _sbPull : _jbPull);
@@ -18079,7 +18082,7 @@ async function _sbPull(silent){
     const merged = JSON.parse(JSON.stringify(remote));
     if (activeCid && CASERNE_DATA[activeCid]) merged.CASERNE_DATA[activeCid] = CASERNE_DATA[activeCid];
     localStorage.setItem(JB_CACHE_KEY, JSON.stringify(merged));
-    try{rI();}catch(e){}try{rAccueil();}catch(e){}try{rHist();}catch(e){}try{rAstrDispo();}catch(e){}try{rAstrEquipes();}catch(e){}
+    try{rI();}catch(e){}try{rPilp();}catch(e){}try{rAccueil();}catch(e){}try{rHist();}catch(e){}try{rAstrDispo();}catch(e){}try{rAstrEquipes();}catch(e){}
     const isTyping = document.getElementById('admin-add') && document.getElementById('admin-add').style.display !== 'none'
       && (document.getElementById('nu-prenom')?.value || document.getElementById('nu-nom')?.value || document.getElementById('nu-mdp')?.value);
     if (!isTyping) { try{rAdm();}catch(e){} }
@@ -18185,6 +18188,7 @@ async function _sbMigrateFromJsonbin(){
 const RC_SEP = '__'; // séparateur d'id : CIS02__iv__APL_2026_000009
 const RC_REST = SB_URL + '/rest/v1/records';
 let _rcSaving = false;
+let _rcPulling = false;
 let _rcRealtime = null;
 let _rcPollTimer = null;
 let _rcLastPush = 0;
@@ -18199,6 +18203,7 @@ let _rcRealtimeReconnectTimer = null;
 let _rcRealtimeJoinSequence = 0;
 let _rcNeedsRecoveryPull = false;
 const RC_FALLBACK_POLL_MS = 90000;
+const RC_PULL_PAGE_SIZE = 500;
 const RC_PENDING_DIRTY_KEY = 'agai_rc_pending_dirty';
 function _rcLoadPendingDirty(){
   try{
@@ -18636,15 +18641,23 @@ window.addEventListener('online',function(){
   if(!USE_RECORDS)return;
   if(_rcPendingDirty.size)_rcScheduleRetry(0);
   _rcNeedsRecoveryPull=true;
+  _rcRequestRealtimePull(150);
   if(!_rcRealtime||_rcRealtime.readyState!==WebSocket.OPEN)_rcStartRealtime();
 });
 document.addEventListener('visibilitychange',function(){
   if(!USE_RECORDS||document.visibilityState!=='visible')return;
+  // Safari iOS peut conserver un WebSocket apparemment ouvert après la mise
+  // en veille tout en ayant perdu des événements. Une relecture paginée remet
+  // alors immédiatement l'appareil au même niveau que le PC.
+  _rcNeedsRecoveryPull=true;
+  _rcRequestRealtimePull(150);
   if(!_rcRealtimeReady){
-    _rcNeedsRecoveryPull=true;
     if(!_rcRealtime||_rcRealtime.readyState!==WebSocket.OPEN)_rcStartRealtime();
   }
 });
+window.addEventListener('pageshow',function(){
+  if(USE_RECORDS)_rcRequestRealtimePull(200);
+},{passive:true});
 
 // Construit un id global unique
 function _rcId(caserne, type, key){ return caserne + RC_SEP + type + RC_SEP + key; }
@@ -18959,20 +18972,42 @@ async function _rcPush(fullPush){
   }
 }
 
+// Supabase/PostgREST limite le nombre de lignes renvoyées par une requête.
+// Un appareil neuf (notamment un iPhone sans cache complet) doit donc lire
+// toutes les pages avant de reconstruire les interventions de la caserne.
+function _rcPullScopeFilter(){
+  const privileged=GLOBAL_ROLE==='superadmin'||(CU&&CU.appRole==='chef_corps');
+  if(privileged||!CURRENT_CASERNE_ID)return '';
+  const caserneId=String(CURRENT_CASERNE_ID).replace(/[^A-Za-z0-9_-]/g,'');
+  return caserneId?'&caserne=in.(_GLOBAL,'+caserneId+')':'';
+}
+async function _rcFetchAllActiveRows(){
+  const rows=[];
+  for(let offset=0,page=0;page<200;page++){
+    const query='?deleted=eq.false&select=id,caserne,type,data,deleted&order=id.asc&limit='+RC_PULL_PAGE_SIZE+'&offset='+offset+_rcPullScopeFilter();
+    const resp=await fetch(RC_REST+query,{headers:_sbHeaders});
+    if(!resp.ok)throw new Error('records GET HTTP '+resp.status+' (page '+(page+1)+')');
+    const batch=await resp.json();
+    if(!Array.isArray(batch))throw new Error('Données records invalides (page '+(page+1)+')');
+    rows.push.apply(rows,batch);
+    if(batch.length<RC_PULL_PAGE_SIZE)return _rcUniqueRowsById(rows);
+    offset+=batch.length;
+  }
+  throw new Error('Chargement records incomplet : trop de pages');
+}
+
 // ── PULL : lit tous les enregistrements et reconstruit l'état ──
 async function _rcPull(silent){
-  if(_rcSaving) return true;
+  if(_rcSaving||_rcPulling) return true;
   if(_rcPendingDirty.size){
     _jbSetStatus('pending');
     _rcScheduleRetry(0);
     return true;
   }
+  _rcPulling=true;
   try {
     if(!silent) _jbSetStatus('loading');
-    const resp = await fetch(RC_REST + '?deleted=eq.false&select=id,caserne,type,data,deleted', { headers:_sbHeaders });
-    if(!resp.ok) throw new Error('records GET HTTP '+resp.status);
-    const rows = await resp.json();
-    if(!Array.isArray(rows)) throw new Error('Données records invalides');
+    const rows = await _rcFetchAllActiveRows();
     // Un pull peut avoir commencé juste avant une clôture. Les lignes locales
     // marquées en attente d'envoi restent prioritaires sur ce résultat distant.
     _rcOverlayPendingLocalRows(rows);
@@ -19088,7 +19123,7 @@ async function _rcPull(silent){
     _postLoadInit();
     if(activeCid) syncCaserneContext();
     localStorage.setItem(JB_CACHE_KEY, JSON.stringify(data));
-    try{rI();}catch(e){}try{rAccueil();}catch(e){}try{rHist();}catch(e){}try{rAstrDispo();}catch(e){}try{rAstrEquipes();}catch(e){}
+    try{rI();}catch(e){}try{rPilp();}catch(e){}try{rAccueil();}catch(e){}try{rHist();}catch(e){}try{rAstrDispo();}catch(e){}try{rAstrEquipes();}catch(e){}
     const isTyping = document.getElementById('admin-add') && document.getElementById('admin-add').style.display!=='none'
       && (document.getElementById('nu-prenom')?.value || document.getElementById('nu-nom')?.value || document.getElementById('nu-mdp')?.value);
     if(!isTyping){ try{rAdm();}catch(e){} }
@@ -19096,6 +19131,8 @@ async function _rcPull(silent){
     _jbSetStatus(_rcPendingDirty.size?'pending':'ok'); return true;
   } catch(e){
     console.warn('[AGAI][RC] Pull error:', e); _jbSetStatus('error'); return false;
+  } finally {
+    _rcPulling=false;
   }
 }
 
