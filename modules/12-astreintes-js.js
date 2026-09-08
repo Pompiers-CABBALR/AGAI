@@ -3140,7 +3140,7 @@ function confirmerDepart(id){
   const startAuthorization=takeOperationalStartAuthorization(iv);
   if(!startAuthorization){
     cM();
-    showToast('Le contrôle de départ a expiré. Appuyez de nouveau sur « En cours ».','warn');
+    showToast(OPERATIONAL_START_DENIED_MESSAGE,'warn');
     return;
   }
   prepareInterventionRoute(iv);
@@ -3896,7 +3896,7 @@ function confirmerRenfortEquipage(cid,renfortId,confirmed){
     if(conflict){showOperationalConflict('personnel',login,conflict);return;}
   }
   const startAuthorization=takeOperationalStartAuthorization(startTarget);
-  if(!startAuthorization){cM();showToast('Le contrôle de départ a expiré. Recommencez la confirmation.','warn');return;}
+  if(!startAuthorization){cM();showToast(OPERATIONAL_START_DENIED_MESSAGE,'warn');return;}
   r.equipageRenfort=equip;
   r.enginRenfort=engin;
   r.statut='en-cours';

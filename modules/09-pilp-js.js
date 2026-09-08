@@ -348,7 +348,7 @@ function cSPilp(id,s,confirmed){
     const ec=agresEnCours();
     if(ec&&ec.id!==id){showBlockModal(ec);return;}
     const startAuthorization=takeOperationalStartAuthorization(iv);
-    if(!startAuthorization){showToast('Le contrôle de départ a expiré. Appuyez de nouveau sur « En cours ».','warn');return;}
+    if(!startAuthorization){showToast(OPERATIONAL_START_DENIED_MESSAGE,'warn');return;}
     saveOperationalStartAuthorization(iv,startAuthorization);
   }
   iv.s=s;

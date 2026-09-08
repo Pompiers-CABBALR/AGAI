@@ -6681,6 +6681,8 @@ function showBlockModal(enCours){
 }
 const OPERATIONAL_START_RADIUS_METERS=2000;
 const OPERATIONAL_START_GRACE_MINUTES=15;
+const OPERATIONAL_START_MAX_GPS_UNCERTAINTY_METERS=10000;
+const OPERATIONAL_START_DENIED_MESSAGE='Impossible de passer cette intervention « En cours ».';
 const _operationalStartAuthorizations={};
 function operationalStartGeolocationEnabled(caserneId){
   if((typeof isChefCorps==='function'&&isChefCorps())||(CU&&CU.appRole==='chef_corps'))return false;
@@ -6726,7 +6728,16 @@ function operationalDistanceMeters(lat1,lon1,lat2,lon2){
 function operationalStartPositionAccepted(distance,accuracy){
   const measuredDistance=Math.max(0,Number(distance)||0),measuredAccuracy=Math.max(0,Number(accuracy)||0);
   if(measuredDistance<=OPERATIONAL_START_RADIUS_METERS)return true;
-  return measuredAccuracy<=5000&&Math.max(0,measuredDistance-measuredAccuracy)<=OPERATIONAL_START_RADIUS_METERS;
+  // Sur certains téléphones, notamment lorsque la position précise n'est pas
+  // encore stabilisée, le navigateur fournit un point central éloigné mais un
+  // rayon d'incertitude fiable. La présence est acceptée uniquement lorsque ce
+  // rayon recoupe réellement le périmètre de 2 km de la caserne.
+  return measuredAccuracy>0&&measuredAccuracy<=OPERATIONAL_START_MAX_GPS_UNCERTAINTY_METERS&&Math.max(0,measuredDistance-measuredAccuracy)<=OPERATIONAL_START_RADIUS_METERS;
+}
+function operationalStartMeasurementScore(distance,accuracy){
+  const measuredDistance=Math.max(0,Number(distance)||0),measuredAccuracy=Math.max(0,Number(accuracy)||0);
+  const usableAccuracy=measuredAccuracy>0&&measuredAccuracy<=OPERATIONAL_START_MAX_GPS_UNCERTAINTY_METERS?measuredAccuracy:0;
+  return Math.max(0,measuredDistance-usableAccuracy);
 }
 function recentFinishedInterventionForChef(login,excludeId){
   const now=N().getTime(),maxDelay=OPERATIONAL_START_GRACE_MINUTES*60*1000;
@@ -6810,10 +6821,9 @@ function requestOperationalStartAuthorization(iv,onApproved){
   const caserne=CC(),stationLocation=getCaserneStationLocation(CURRENT_CASERNE_ID);
   const stationLat=stationLocation.latitude,stationLon=stationLocation.longitude;
   if(!caserne||!validCaserneCoordinates(stationLat,stationLon)){
-    showToast('Impossible de passer cette intervention « En cours ».','warn');return;
+    showToast(OPERATIONAL_START_DENIED_MESSAGE,'warn');return;
   }
-  if(!navigator.geolocation){showToast('Impossible de passer cette intervention « En cours ».','warn');return;}
-  showToast('Vérification du départ…','info');
+  if(!navigator.geolocation){showToast(OPERATIONAL_START_DENIED_MESSAGE,'warn');return;}
   let bestMeasurement=null,authorizationCompleted=false;
   const approvePosition=function(distance,accuracy){
     if(authorizationCompleted)return;
@@ -6824,7 +6834,8 @@ function requestOperationalStartAuthorization(iv,onApproved){
   const evaluatePosition=function(position,attempt){
     const accuracy=Math.max(0,Number(position.coords.accuracy)||0);
     const distance=operationalDistanceMeters(position.coords.latitude,position.coords.longitude,stationLat,stationLon);
-    if(!bestMeasurement||distance<bestMeasurement.distance)bestMeasurement={distance:distance,accuracy:accuracy};
+    const score=operationalStartMeasurementScore(distance,accuracy);
+    if(!bestMeasurement||score<bestMeasurement.score)bestMeasurement={distance:distance,accuracy:accuracy,score:score};
     // La précision représente le rayon d’incertitude annoncé par le téléphone.
     // On accepte si cette zone recoupe le rayon autorisé, après une seconde
     // mesure fraîche quand la première semble extérieure ou trop imprécise.
@@ -6833,21 +6844,20 @@ function requestOperationalStartAuthorization(iv,onApproved){
     // d'incertitude n'est utilisée que si elle reste raisonnable.
     const accepted=operationalStartPositionAccepted(distance,accuracy);
     if(accepted){approvePosition(distance,accuracy);return;}
-    if(attempt<3){
-      showToast('Nouvelle vérification du départ…','info');
+    if(attempt<4){
       window.setTimeout(function(){locateForOperationalStart(attempt+1);},600);return;
     }
     if(bestMeasurement&&operationalStartPositionAccepted(bestMeasurement.distance,bestMeasurement.accuracy))approvePosition(bestMeasurement.distance,bestMeasurement.accuracy);
-    else showToast('Impossible de passer cette intervention « En cours ».','warn');
+    else showToast(OPERATIONAL_START_DENIED_MESSAGE,'warn');
   };
   const locateForOperationalStart=function(attempt){
     navigator.geolocation.getCurrentPosition(function(position){evaluatePosition(position,attempt);},function(error){
       const denied=error&&error.code===1;
-      if(!denied&&attempt<3){window.setTimeout(function(){locateForOperationalStart(attempt+1);},600);return;}
-      showToast('Impossible de passer cette intervention « En cours ».','warn');
-    },attempt===1
-      ?{enableHighAccuracy:true,timeout:15000,maximumAge:30000}
-      :{enableHighAccuracy:false,timeout:20000,maximumAge:600000});
+      if(!denied&&attempt<4){window.setTimeout(function(){locateForOperationalStart(attempt+1);},600);return;}
+      showToast(OPERATIONAL_START_DENIED_MESSAGE,'warn');
+    },attempt<=2
+      ?{enableHighAccuracy:true,timeout:18000,maximumAge:0}
+      :{enableHighAccuracy:false,timeout:20000,maximumAge:60000});
   };
   locateForOperationalStart(1);
 }
@@ -7440,7 +7450,7 @@ function cSPilp(id,s,confirmed){
     const ec=agresEnCours();
     if(ec&&ec.id!==id){showBlockModal(ec);return;}
     const startAuthorization=takeOperationalStartAuthorization(iv);
-    if(!startAuthorization){showToast('Le contrôle de départ a expiré. Appuyez de nouveau sur « En cours ».','warn');return;}
+    if(!startAuthorization){showToast(OPERATIONAL_START_DENIED_MESSAGE,'warn');return;}
     saveOperationalStartAuthorization(iv,startAuthorization);
   }
   iv.s=s;
@@ -11693,7 +11703,7 @@ function confirmerDepart(id){
   const startAuthorization=takeOperationalStartAuthorization(iv);
   if(!startAuthorization){
     cM();
-    showToast('Le contrôle de départ a expiré. Appuyez de nouveau sur « En cours ».','warn');
+    showToast(OPERATIONAL_START_DENIED_MESSAGE,'warn');
     return;
   }
   prepareInterventionRoute(iv);
@@ -12449,7 +12459,7 @@ function confirmerRenfortEquipage(cid,renfortId,confirmed){
     if(conflict){showOperationalConflict('personnel',login,conflict);return;}
   }
   const startAuthorization=takeOperationalStartAuthorization(startTarget);
-  if(!startAuthorization){cM();showToast('Le contrôle de départ a expiré. Recommencez la confirmation.','warn');return;}
+  if(!startAuthorization){cM();showToast(OPERATIONAL_START_DENIED_MESSAGE,'warn');return;}
   r.equipageRenfort=equip;
   r.enginRenfort=engin;
   r.statut='en-cours';
@@ -15012,7 +15022,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260907-historique-jour-courant-215';
+const APP_VERSION='20260908-depart-mobile-silencieux-216';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
