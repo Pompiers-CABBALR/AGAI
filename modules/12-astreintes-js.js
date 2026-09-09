@@ -3371,7 +3371,7 @@ function showComplementModal(id){
     +'<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Mettez à jour les informations transmises après l\u2019enregistrement de l\u2019appel. Les changements seront horodatés.</div>'
     +'<div class="fg"><div class="fgl">Téléphone(s)</div><div id="compl-phone-list"></div></div>'
     +'<div class="fg"><div class="fgl">Disponibilité du requérant <span style="font-size:10px;color:var(--t2);">(optionnel)</span></div><div id="compl-dispo-list"></div></div>'
-    +'<label class="appel-erp" style="margin-bottom:10px;"><input type="checkbox" id="compl-erp"'+((iv._erp||iv._urgence)?' checked':'')+'><span><strong>Établissement recevant du public (ERP)</strong><br><span style="font-size:11px;color:var(--t2);">L\u2019intervention sera signalée comme urgente dans les listes et sur sa fiche.</span></span></label>'
+    +'<label class="appel-erp" style="margin-bottom:10px;"><input type="checkbox" id="compl-erp"'+((iv._erp||iv._urgence)?' checked':'')+'><span><strong>Établissement recevant du public (ERP)</strong><br><span style="font-size:11px;color:var(--t2);">L\u2019intervention sera signalée comme prioritaire dans les listes et sur sa fiche.</span></span></label>'
     +'<div class="fg"><div class="fgl">Information complémentaire <span style="font-size:10px;color:var(--t2);">(optionnel)</span></div>'
     +'<textarea class="fi" id="compl-info-val" rows="4" placeholder="ex. Le requérant signale que le nid est en hauteur, prévoir une échelle."></textarea></div>'
     +'<div id="compl-info-err" style="font-size:12px;color:#E24B4A;display:none;margin-bottom:8px;"></div>'
@@ -3400,11 +3400,11 @@ function saveComplementInfo(id){
   if(txt)notes.push(txt);
   if(phonesChanged)notes.push('Téléphone(s) mis à jour : '+phones.join(' · '));
   if(availabilityChanged)notes.push(reqDispo?'Disponibilité du requérant : '+reqDispo.label:'Disponibilité du requérant supprimée');
-  if(erpChanged)notes.push(erp?'Intervention signalée comme ERP — urgence':'Signalement ERP retiré');
+  if(erpChanged)notes.push(erp?'Intervention signalée comme prioritaire — ERP':'Signalement ERP retiré');
   iv.tel=phones[0]||'';iv.tels=phones;iv.reqDispo=reqDispo;iv._erp=erp;iv._urgence=erp;
   if(!iv._appelDetails||typeof iv._appelDetails!=='object')iv._appelDetails={};
   if(reqDispo)iv._appelDetails['Disponibilité du requérant']=reqDispo.label;else delete iv._appelDetails['Disponibilité du requérant'];
-  if(erp)iv._appelDetails['Établissement recevant du public']='Oui — urgence';else delete iv._appelDetails['Établissement recevant du public'];
+  if(erp)iv._appelDetails['Établissement recevant du public']='Oui — prioritaire';else delete iv._appelDetails['Établissement recevant du public'];
   if(!Array.isArray(iv.tl))iv.tl=[];
   iv.tl.push({s:'info-compl',h:getH(N()),who:CU.l,note:notes.join(' ; ')});
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();

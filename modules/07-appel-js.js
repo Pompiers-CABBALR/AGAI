@@ -808,7 +808,7 @@ function _captureAppelDetails(){
   }
   const reqDispo=getReqAvailability();
   if(reqDispo)d['Disponibilité du requérant']=reqDispo.label;
-  if(document.getElementById('chk-erp')?.checked)d['Établissement recevant du public']='Oui — urgence';
+  if(document.getElementById('chk-erp')?.checked)d['Établissement recevant du public']='Oui — prioritaire';
   return Object.keys(d).length?d:null;
 }
 

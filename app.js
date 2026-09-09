@@ -4841,7 +4841,7 @@ function _captureAppelDetails(){
   }
   const reqDispo=getReqAvailability();
   if(reqDispo)d['Disponibilité du requérant']=reqDispo.label;
-  if(document.getElementById('chk-erp')?.checked)d['Établissement recevant du public']='Oui — urgence';
+  if(document.getElementById('chk-erp')?.checked)d['Établissement recevant du public']='Oui — prioritaire';
   return Object.keys(d).length?d:null;
 }
 
@@ -5871,7 +5871,7 @@ function renderInterventionRow(iv, ag, tireur) {
       <span class="bdg ${bc}">${bt}</span>
       ${isPilp ? '<span class="bdg bpilp" style="font-size:10px;">PILP</span>' : ''}
       ${isRenfortUT ? '<span class="bdg" style="background:#7C3AED;color:#fff;font-size:10px;">Renfort UT</span>' : isRenfortInternal ? '<span class="bdg" style="background:#047857;color:#fff;font-size:10px;">Renfort interne</span>' : ''}
-      ${iv._urgence ? '<span class="bdg" style="background:#B91C1C;color:#fff;font-size:10px;font-weight:700;">🚨 URGENCE ERP</span>' : ''}
+      ${iv._urgence ? '<span class="bdg" style="background:#B91C1C;color:#fff;font-size:10px;font-weight:700;">PRIORITAIRE — ERP</span>' : ''}
       ${iv._sdis ? '<span class="bdg" style="background:#1D4ED8;color:#fff;font-size:10px;font-weight:700;">SDIS</span>' : ''}
       ${(iv._heureDebutModifiee&&hasAdministrativeAccount()||iv._heureFinModifiee&&hasAdministrativeAccount())&&!iv._sdis ? '<span class="bdg" title="Horaire corrigé — consulter la traçabilité" style="background:#FFF7ED;color:#9A3412;border:1px solid #FDBA74;font-size:10px;font-weight:700;">&#x23F1; Horaire corrigé</span>' : ''}
       ${iv._echelleToiture ? '<span class="bdg" style="background:#F59E0B;color:#fff;font-size:10px;">Echelle de toit</span>' : ''}
@@ -5896,7 +5896,7 @@ function interventionTerminationSortKey(iv){
 
 function sortedIVS(list){
   return list.sort((a,b)=>{
-    // Une urgence ERP n'est prioritaire que tant qu'elle est active.
+    // Une intervention ERP n'est prioritaire que tant qu'elle est active.
     // Une fois terminée, elle rejoint le groupe des interventions terminées.
     const urgenceActiveA=!!a._urgence&&a.s!=='terminee';
     const urgenceActiveB=!!b._urgence&&b.s!=='terminee';
@@ -6216,6 +6216,9 @@ function autorisationDocumentsHTML(iv){
 // ────────────────── MODAL ──────────────────
 function interventionAppelDetailValue(iv,key,value){
   const text=String(value??'');
+  // Compatibilité avec les interventions ERP enregistrées avant le changement
+  // de vocabulaire : la donnée technique reste intacte, seul l'affichage évolue.
+  if(key==='Établissement recevant du public'&&text==='Oui — urgence')return 'Oui — prioritaire';
   if(key!=='Animaux à prendre en charge')return text;
   const animalCount=Array.isArray(iv&&iv._animauxAppel)?iv._animauxAppel.length:0;
   const isSingleAnimal=animalCount===1||(!animalCount&&!text.includes(' ; '));
@@ -6393,7 +6396,7 @@ function oM(id){
   document.getElementById('mb').innerHTML=`
     <div style="margin-bottom:8px;"><span class="bdg ${bc}">${bt}</span>${pilpScope?' <span class="bdg bpilp">PILP</span>':''}${iv.rappels?` <span class="bdg bp" style="${isAdminModeActive()?'cursor:pointer;':''}"${isAdminModeActive()?` title="Déjà intervenu ici ?" onclick="showInterventionsLiees('${iv.id}')"`:''}>${iv.rappels} rappel(s)</span>`:''}</div>
     ${pilpReadOnly?'<div style="background:#EFF6FF;border:1px solid #93C5FD;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;color:#1D4ED8;margin-bottom:10px;">👁️ Consultation PILP en lecture seule</div>':''}
-    ${iv._urgence?'<div style="background:#FEE2E2;border:2px solid #B91C1C;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:800;color:#991B1B;margin-bottom:10px;text-align:center;">🚨 URGENCE — ÉTABLISSEMENT RECEVANT DU PUBLIC (ERP)</div>':''}
+    ${iv._urgence?'<div style="background:#FEE2E2;border:2px solid #B91C1C;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:800;color:#991B1B;margin-bottom:10px;text-align:center;">PRIORITAIRE — ÉTABLISSEMENT RECEVANT DU PUBLIC (ERP)</div>':''}
     ${iv._sdis?'<div style="background:#DBEAFE;border:1px solid #93C5FD;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;color:#1D4ED8;margin-bottom:10px;text-align:center;">&#x1F691; INTERVENTION SDIS</div>':''}
     ${iv._avisPassage?'<div style="background:#F3EAF8;border:2px solid #9B59B6;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;color:#6C3483;margin-bottom:10px;text-align:center;">🟣 Un avis de passage a été laissé'+(getAvisPassageDateTimeLabel(iv)?' le '+escHtml(getAvisPassageDateTimeLabel(iv)):'')+(iv._avisPassageClasse?' — classé':'')+' pour cette intervention</div>':''}
     ${iv._echelleToiture?'<div style="background:#FEF3C7;border:2px solid #F59E0B;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:700;color:#92400E;margin-bottom:10px;text-align:center;">&#x26A0;&#xFE0F; INTERVENTION À FAIRE AVEC ÉCHELLE DE TOIT</div>':''}
@@ -11934,7 +11937,7 @@ function showComplementModal(id){
     +'<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Mettez à jour les informations transmises après l\u2019enregistrement de l\u2019appel. Les changements seront horodatés.</div>'
     +'<div class="fg"><div class="fgl">Téléphone(s)</div><div id="compl-phone-list"></div></div>'
     +'<div class="fg"><div class="fgl">Disponibilité du requérant <span style="font-size:10px;color:var(--t2);">(optionnel)</span></div><div id="compl-dispo-list"></div></div>'
-    +'<label class="appel-erp" style="margin-bottom:10px;"><input type="checkbox" id="compl-erp"'+((iv._erp||iv._urgence)?' checked':'')+'><span><strong>Établissement recevant du public (ERP)</strong><br><span style="font-size:11px;color:var(--t2);">L\u2019intervention sera signalée comme urgente dans les listes et sur sa fiche.</span></span></label>'
+    +'<label class="appel-erp" style="margin-bottom:10px;"><input type="checkbox" id="compl-erp"'+((iv._erp||iv._urgence)?' checked':'')+'><span><strong>Établissement recevant du public (ERP)</strong><br><span style="font-size:11px;color:var(--t2);">L\u2019intervention sera signalée comme prioritaire dans les listes et sur sa fiche.</span></span></label>'
     +'<div class="fg"><div class="fgl">Information complémentaire <span style="font-size:10px;color:var(--t2);">(optionnel)</span></div>'
     +'<textarea class="fi" id="compl-info-val" rows="4" placeholder="ex. Le requérant signale que le nid est en hauteur, prévoir une échelle."></textarea></div>'
     +'<div id="compl-info-err" style="font-size:12px;color:#E24B4A;display:none;margin-bottom:8px;"></div>'
@@ -11963,11 +11966,11 @@ function saveComplementInfo(id){
   if(txt)notes.push(txt);
   if(phonesChanged)notes.push('Téléphone(s) mis à jour : '+phones.join(' · '));
   if(availabilityChanged)notes.push(reqDispo?'Disponibilité du requérant : '+reqDispo.label:'Disponibilité du requérant supprimée');
-  if(erpChanged)notes.push(erp?'Intervention signalée comme ERP — urgence':'Signalement ERP retiré');
+  if(erpChanged)notes.push(erp?'Intervention signalée comme prioritaire — ERP':'Signalement ERP retiré');
   iv.tel=phones[0]||'';iv.tels=phones;iv.reqDispo=reqDispo;iv._erp=erp;iv._urgence=erp;
   if(!iv._appelDetails||typeof iv._appelDetails!=='object')iv._appelDetails={};
   if(reqDispo)iv._appelDetails['Disponibilité du requérant']=reqDispo.label;else delete iv._appelDetails['Disponibilité du requérant'];
-  if(erp)iv._appelDetails['Établissement recevant du public']='Oui — urgence';else delete iv._appelDetails['Établissement recevant du public'];
+  if(erp)iv._appelDetails['Établissement recevant du public']='Oui — prioritaire';else delete iv._appelDetails['Établissement recevant du public'];
   if(!Array.isArray(iv.tl))iv.tl=[];
   iv.tl.push({s:'info-compl',h:getH(N()),who:CU.l,note:notes.join(' ; ')});
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
@@ -15022,7 +15025,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260908-depart-mobile-silencieux-216';
+const APP_VERSION='20260909-prioritaire-erp-217';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
