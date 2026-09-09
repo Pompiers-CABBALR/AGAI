@@ -1278,11 +1278,22 @@ function oM(id){
   const appelDetailEntries=iv._appelDetails&&typeof iv._appelDetails==='object'
     ?Object.entries(iv._appelDetails).filter(([key])=>(key!=='Nids à traiter'||!Array.isArray(iv._nidsAppel)||iv._nidsAppel.length!==1)&&key!=='Disponibilité du requérant')
     :[];
-  const reclassHtml=(canStart&&iv.s==='en-cours'&&(iv.agr===CU.l||iv._agr2===CU.l||isAdminModeActive()))?`<div class="reclass-box">
-    <div class="reclass-title">Reclasser la nature</div>
+  const canReclassClosed=iv.s==='terminee'&&!pilpScope&&!pilpReadOnly&&isAdminModeActive();
+  const canReclassCurrent=canStart&&iv.s==='en-cours'&&(iv.agr===CU.l||iv._agr2===CU.l||isAdminModeActive());
+  const reclassHtml=(canReclassClosed||canReclassCurrent)?`<div class="reclass-box">
+    <div class="reclass-title">${canReclassClosed?'Corriger la nature après clôture':'Reclasser la nature'}</div>
+    ${canReclassClosed?'<div style="font-size:11px;color:var(--t2);margin-bottom:8px;">Cette correction sera ajoutée à l’historique sans rouvrir l’intervention.</div>':''}
     <select class="fi" id="reclass-sel" style="margin-bottom:8px;">${NAT.map(n=>`<option value="${n.l}"${n.l===iv.n?' selected':''}>${n.l}</option>`).join('')}</select>
     <button class="btn sm" onclick="reclasser('${iv.id}')">✏️ Appliquer</button>
   </div>`:'';
+  const linkedPilp=linkedPilpForSource(iv);
+  const retroPilpHtml=iv.s==='terminee'&&!pilpScope&&!iv._isRenfort&&iv.n==='Nid de frelons asiatiques'&&isAdminModeActive()
+    ?`<div style="background:var(--pilpl);border:1.5px solid var(--pilp);border-radius:10px;padding:10px 12px;margin-bottom:10px;">
+      <div style="font-size:12px;font-weight:700;color:var(--pilp);margin-bottom:6px;">🎯 Intervention PILP après clôture</div>
+      ${linkedPilp||iv._lienPilp
+        ?`<div style="font-size:11px;color:var(--t2);">Une intervention PILP est déjà liée${linkedPilp?' : '+escHtml(interventionDisplayCallNumber(linkedPilp)):''}.</div>`
+        :`<div style="font-size:11px;color:var(--t2);margin-bottom:8px;">Crée une nouvelle intervention PILP en attente, sans modifier la clôture ni le rapport existant.</div><button class="btn pilp-btn sm" onclick="showPilpForm('${iv.id}')">🎯 Créer l’intervention PILP liée</button>`}
+    </div>`:'';
   let actions='';
   if(operationalActor){
     if(iv.s==='en-attente'){
@@ -1542,7 +1553,7 @@ function oM(id){
       </summary>
       <div style="padding:0 12px 10px 12px;">${tlHtml||'<div style="font-size:12px;color:var(--t2);">Aucun historique.</div>'}</div>
     </details>`:''}
-    ${reclassHtml}${actions}`;
+    ${retroPilpHtml}${reclassHtml}${actions}`;
   document.getElementById('mo').style.display='flex';
 }
 function setAgr2(ivId,login){
@@ -2115,11 +2126,19 @@ function clotAvis(id){
 }
 function reclasser(id){
   const iv=interventionById(id);if(!iv)return;
-  if(!requireCurrentUserOperationalManager(iv,'Le reclassement'))return;
+  const correctionApresCloture=iv.s==='terminee';
+  if(correctionApresCloture){
+    if(!isAdminModeActive()){showToast('Activez les pouvoirs administrateur pour corriger la nature après clôture.','warn');return;}
+    if(isPilpIntervention(iv)){showToast('La nature d’une intervention PILP clôturée ne peut pas être modifiée.','warn');return;}
+  }else if(!requireCurrentUserOperationalManager(iv,'Le reclassement'))return;
   const sel=document.getElementById('reclass-sel');if(!sel)return;
-  const oldN=iv.n;iv.n=sel.value;
-  iv.tl.push({s:'reclasse',h:getH(N()),who:CU.l,note:`${oldN} → ${iv.n}`});
+  const oldN=iv.n,newN=sel.value;
+  if(newN===oldN){showToast('La nature sélectionnée est déjà celle de l’intervention.','info');return;}
+  iv.n=newN;
+  if(!Array.isArray(iv.tl))iv.tl=[];
+  iv.tl.push({s:'reclasse',h:getH(N()),who:CU.l,note:`${oldN} → ${iv.n}${correctionApresCloture?' — correction après clôture':''}`});
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  if(typeof markOperationalInterventionDirty==='function')markOperationalInterventionDirty(iv);
   saveData(true); // push immédiat : sinon le changement de nature est écrasé au prochain pull
   cM();refreshOperationalInterventionViews();
   // Reopen modal with fresh data

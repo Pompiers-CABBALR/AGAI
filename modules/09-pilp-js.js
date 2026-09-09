@@ -1,11 +1,21 @@
 // === MODULE: pilp.js ===
 // ────────────────── PILP FORM ──────────────────
+function linkedPilpForSource(iv){
+  if(!iv)return null;
+  return (PILP_IVS||[]).find(function(pilp){return pilp&&(pilp.ivRef===iv.id||(iv._pilpId&&pilp.id===iv._pilpId));})||null;
+}
 function showPilpForm(ivId){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
-  if(!requireCurrentUserOperationalManager(iv,'La création PILP'))return;
+  const creationApresCloture=iv.s==='terminee';
+  if(creationApresCloture){
+    if(!isAdminModeActive()){showToast('Activez les pouvoirs administrateur pour créer une PILP après clôture.','warn');return;}
+  }else if(!requireCurrentUserOperationalManager(iv,'La création PILP'))return;
+  const existing=linkedPilpForSource(iv);
+  if(existing||iv._lienPilp){showToast('Une intervention PILP est déjà liée à cette intervention.','warn');return;}
   document.getElementById('mb').innerHTML+=`
     <div id="pilp-form" style="margin-top:12px;border:1.5px solid var(--pilp);border-radius:12px;padding:14px;background:var(--pilpl);">
-      <div style="font-size:14px;font-weight:700;color:var(--pilp);margin-bottom:12px;">&#x1F3AF; Créer une intervention PILP</div>
+      <div style="font-size:14px;font-weight:700;color:var(--pilp);margin-bottom:6px;">&#x1F3AF; Créer une intervention PILP${creationApresCloture?' après clôture':''}</div>
+      ${creationApresCloture?'<div style="font-size:11px;color:var(--t2);margin-bottom:12px;">L’intervention d’origine restera terminée. La PILP sera créée séparément avec le statut « En attente ».</div>':''}
       <div class="fg"><div class="fgl">Adresse confirmée <span class="req">*</span></div><input class="fi" type="text" id="pf-addr" value="${escHtml(iv.addr)}"/></div>
       <div class="fg"><div class="fgl">Commune</div><input class="fi" type="text" id="pf-com" value="${escHtml(iv.com)}" disabled style="background:#f9f9f9;"/></div>
       <div class="fg"><div class="fgl">Requérant <span class="req">*</span></div><input class="fi" type="text" id="pf-req" value="${iv.req}"/></div>
@@ -28,7 +38,11 @@ function showPilpForm(ivId){
 
 function creerPILP(ivId){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
-  if(!requireCurrentUserOperationalManager(iv,'La création PILP'))return;
+  const creationApresCloture=iv.s==='terminee';
+  if(creationApresCloture){
+    if(!isAdminModeActive()){showToast('Activez les pouvoirs administrateur pour créer une PILP après clôture.','warn');return;}
+  }else if(!requireCurrentUserOperationalManager(iv,'La création PILP'))return;
+  if(linkedPilpForSource(iv)||iv._lienPilp){showToast('Une intervention PILP est déjà liée à cette intervention.','warn');return;}
   const addr=document.getElementById('pf-addr').value.trim(),req=document.getElementById('pf-req').value.trim(),tel=document.getElementById('pf-tel').value.trim();
   const err=document.getElementById('pf-err');
   if(!addr||!req||!tel){err.style.display='block';err.textContent='Adresse, requérant et téléphone obligatoires.';return;}
@@ -46,7 +60,7 @@ function creerPILP(ivId){
   // La PILP créée reçoit un id temporaire PILP-2026-001
   // Elle n'a PAS encore de numéro INT — ce sera attribué à son passage En cours.
   const pilpId=nextPilpId(annee);
-  PILP_IVS.unshift({
+  const nouvellePilp={
     id:pilpId,ivRef:iv.id,_numApl:interventionDisplayCallNumber(iv),
     // Pas de _numCaserne ni _numGlobal ici — attribués au passage En cours
     n:'Nid de frelons asiatiques — PILP',addr,addrComp:iv.addrComp||'',com:iv.com,h,req,tel,tels:Array.isArray(iv.tels)?iv.tels.slice():[tel],
@@ -54,16 +68,20 @@ function creerPILP(ivId){
     localisation:localisation,hauteur:hauteur,reconnaissanceFaite:reconnaissanceFaite,axeTir:axeTir,_axeTirEtat:axeTirEtat,_pilpPeriode:pilpPeriode,_pilpPeriodePrecision:pilpPeriodePrecision,_pilpPlanningUpdatedAt:Date.now(),_pilpPlanningUpdatedBy:CU.l,obs:observations,det:observations,
     _appelDetails:Object.assign({},iv._appelDetails||{},{'Localisation du nid':localisation,'Hauteur':hauteur?hauteur+' m':'Non renseignée','Reconnaissance':reconnaissanceFaite?'Réalisée':'Non réalisée','Axe de tir':axeTirEtat==='disponible'?'Disponible':axeTirEtat==='indisponible'?'Non satisfaisant':'À vérifier','Période PILP':pilpPeriodeLabel({_pilpPeriode:pilpPeriode,_pilpPeriodePrecision:pilpPeriodePrecision})}),
     _nidsAppel:Array.isArray(iv._nidsAppel)?JSON.parse(JSON.stringify(iv._nidsAppel)):undefined,
+    _createdAfterClosure:creationApresCloture,_sourceStatusAtCreation:iv.s,
     s:'en-attente',agr:null,tireur:null,rappels:0,avisIds:[],tl:[mkTL('en-attente',h,CU.l)]
-  });
+  };
+  PILP_IVS.unshift(nouvellePilp);
   if(CD())CD().pilpIvs=PILP_IVS;
-  // Marquer le lien PILP sans clôturer — le chef d'agrès clôture ensuite normalement
+  // Marquer le lien PILP sans modifier le statut de l'intervention d'origine.
   iv._lienPilp=true;iv._pilpId=pilpId;
-  iv.tl.push({s:'en-cours',h,who:CU.l,note:'→ PILP créée: '+pilpId});
+  if(!Array.isArray(iv.tl))iv.tl=[];
+  iv.tl.push({s:'info-compl',h,who:CU.l,note:'Intervention PILP liée créée'+(creationApresCloture?' après clôture':'')+' : '+pilpId});
   if(CD())CD().ivs=IVS;
-  saveData();
+  if(typeof markOperationalInterventionDirty==='function'){markOperationalInterventionDirty(iv);markOperationalInterventionDirty(nouvellePilp);}
+  saveData(true);
   cM();rI();rAccueil();
-  showToast('PILP créée ✓ — Clôturez maintenant votre intervention Frelons','success');
+  showToast(creationApresCloture?'PILP créée ✓ — l’intervention d’origine reste clôturée':'PILP créée ✓ — Clôturez maintenant votre intervention Frelons','success');
 }
 
 function showPilpPlanningModal(ivId){
