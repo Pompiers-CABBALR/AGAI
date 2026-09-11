@@ -97,19 +97,17 @@ function rAdm(){
     // Cellule Fonctions formateur
     const ffList=u.fonctionsFormateur||[];
     const ffGroups=[
-      {label:'🏃 Sport',items:FONCTIONS_FORMATEUR_SPORT},
-      {label:'📚 Formation',items:FONCTIONS_FORMATEUR_FORM},
-      {label:'🚑 Secours à la personne',items:FONCTIONS_FORMATEUR_SAP}
+      {label:'Sport',items:FONCTIONS_FORMATEUR_SPORT},
+      {label:'Formation',items:FONCTIONS_FORMATEUR_FORM},
+      {label:'Secours à personne',items:FONCTIONS_FORMATEUR_SAP}
     ];
-    const colStyle='flex:1;min-width:0;padding:0 4px;';
-    const hdrStyle='font-size:9px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px;white-space:nowrap;';
-    const colsHtml=ffGroups.map(grp=>`<div style="${colStyle}">
-      <div style="${hdrStyle}">${grp.label}</div>
-      ${grp.items.map(ff=>`<label style="display:flex;align-items:center;gap:4px;font-size:10px;cursor:pointer;padding:1px 0;white-space:nowrap;">
+    const colsHtml=ffGroups.map(grp=>`<div class="admin-trainer-group">
+      <div class="admin-trainer-title">${grp.label}</div>
+      <div class="admin-trainer-options">${grp.items.map((ff,index)=>`<label>
         <input type="checkbox" value="${ff.replace(/"/g,'&quot;')}" ${ffList.includes(ff)?'checked':''} onchange="updateFormateurFn('${u.l}',this.value,this.checked)" style="width:12px;height:12px;flex-shrink:0;accent-color:var(--grn);">
-        <span>${ff}</span></label>`).join('')}
+        <span>${ff==='ACCPRO'?'ACC PRO':ff}</span></label>${index<grp.items.length-1?'<span class="admin-trainer-separator">;</span>':''}`).join('')}</div>
     </div>`).join('');
-    const formateurCell=`<td style="padding:4px 6px;"><div style="display:flex;gap:0;min-width:240px;">${colsHtml}</div></td>`;
+    const formateurCell=`<td style="padding:4px 6px;"><div class="admin-trainer-functions">${colsHtml}</div></td>`;
     return `<tr>${matriculeCell}${nomCell}${prenomCell}${gradeCell}${fonctionCell}${fonct2Cell}<td style="font-family:monospace;font-size:11px;color:var(--t2);">${u.l}</td>${pwdCell}${rightsCell}${formateurCell}${delCell}</tr>`;
   }).join('');
   // Dans l'espace État-Major : afficher la ligne du chef de corps (compte global), modifiable via sa modale
