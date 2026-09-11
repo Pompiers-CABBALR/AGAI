@@ -522,6 +522,32 @@ select.fi{min-width:0;width:100%;max-width:100%;}
 @media(min-width:1280px){
   .cnt{padding:24px 80px;}
   .nav{padding:0 80px;}
+  /* La gestion du personnel contient de nombreuses informations modifiables.
+     Sur ordinateur, elle utilise presque toute la largeur de l'écran afin
+     d'éviter un défilement horizontal ou la disparition des dernières colonnes. */
+  #params-admin{
+    width:calc(100vw - 24px);
+    max-width:calc(100vw - 24px);
+    margin-left:0;
+    position:relative;
+    left:50%;
+    transform:translateX(-50%);
+    box-sizing:border-box;
+  }
+  #params-admin>.panel{padding:12px;}
+  #params-admin .admin-scroll-wrap{width:100%;max-width:100%;overflow-x:hidden;}
+  #params-admin .admin-tbl{width:100%;max-width:100%;}
+  #params-admin .admin-tbl th,#params-admin .admin-tbl td{padding:7px 3px;font-size:10px;}
+  #params-admin .admin-tbl th{font-size:10px;}
+  #params-admin .admin-tbl td:nth-child(1) input[type=text]{width:58px!important;}
+  #params-admin .admin-tbl td:nth-child(2) input[type=text]{width:68px!important;}
+  #params-admin .admin-tbl td:nth-child(3) input[type=text]{width:58px!important;}
+  #params-admin .admin-tbl td:nth-child(4) select{width:96px!important;}
+  #params-admin .admin-tbl td:nth-child(5) select,#params-admin .admin-tbl td:nth-child(6) select{width:128px!important;}
+  #params-admin .admin-tbl td:nth-child(7){font-size:9px!important;}
+  #params-admin .admin-tbl td:nth-child(8) button{padding:3px 5px!important;font-size:10px!important;}
+  #params-admin .admin-tbl td:nth-child(n+9):nth-child(-n+15),#params-admin .admin-tbl th:nth-child(n+9):nth-child(-n+15){padding-left:2px;padding-right:2px;}
+  #params-admin .admin-tbl td:nth-child(16)>div{min-width:210px!important;}
 }
 .egrid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;}
 @media(min-width:480px){.egrid{grid-template-columns:repeat(4,1fr);}}
