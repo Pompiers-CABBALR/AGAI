@@ -542,7 +542,7 @@ select.fi{min-width:0;width:100%;max-width:100%;}
   #params-admin .admin-tbl td:nth-child(1) input[type=text]{width:58px!important;}
   #params-admin .admin-tbl td:nth-child(2) input[type=text],#params-admin .admin-tbl td:nth-child(3) input[type=text]{width:20ch!important;min-width:20ch;}
   #params-admin .admin-tbl td:nth-child(4) select{width:132px!important;}
-  #params-admin .admin-tbl td:nth-child(5) select,#params-admin .admin-tbl td:nth-child(6) select{width:128px!important;}
+  #params-admin .admin-tbl td:nth-child(5) select,#params-admin .admin-tbl td:nth-child(6) select{width:170px!important;font-size:10px!important;padding-left:4px!important;padding-right:3px!important;}
   #params-admin .admin-tbl td:nth-child(7){font-size:9px!important;}
   #params-admin .admin-tbl td:nth-child(8) button{padding:3px 5px!important;font-size:10px!important;}
   #params-admin .admin-tbl td:nth-child(n+9):nth-child(-n+15),#params-admin .admin-tbl th:nth-child(n+9):nth-child(-n+15){padding-left:2px;padding-right:2px;}
