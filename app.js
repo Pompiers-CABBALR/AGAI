@@ -15062,7 +15062,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260909-pilp-apres-cloture-218';
+const APP_VERSION='20260911-liste-formateurs-219';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -21299,6 +21299,27 @@ function formLoadAgents(containerId, existingList, accentColor){
     <span style="font-size:11px;color:var(--t3);margin-left:auto;">${u.grade||'—'}</span>
   </label>`).join('');
 }
+function declaredFormateurUsers(){
+  return [...(USERS||[])].filter(function(user){
+    return user&&Array.isArray(user.fonctionsFormateur)&&user.fonctionsFormateur.length>0;
+  }).sort(function(a,b){return a.nom.localeCompare(b.nom,'fr')||a.prenom.localeCompare(b.prenom,'fr');});
+}
+function formLoadFormateurs(containerId,existingList){
+  const el=document.getElementById(containerId);if(!el)return;
+  const formateurs=declaredFormateurUsers();
+  if(!formateurs.length){
+    el.innerHTML='<div style="color:var(--t2);">Aucun formateur déclaré.</div>';
+    return;
+  }
+  el.innerHTML=formateurs.map(function(user){
+    const fonctions=user.fonctionsFormateur.join(', ');
+    return `<label style="display:flex;align-items:flex-start;gap:8px;padding:5px 0;border-bottom:1px solid var(--brd);cursor:pointer;font-size:12px;">
+      <input type="checkbox" value="${user.l}" ${(existingList||[]).includes(user.l)?'checked':''} style="width:15px;height:15px;accent-color:var(--grn);margin-top:2px;flex-shrink:0;">
+      <span style="min-width:0;"><span>${user.nom} ${user.prenom}</span><br><span style="font-size:10px;color:var(--t2);">${fonctions}</span></span>
+      <span style="font-size:11px;color:var(--t3);margin-left:auto;">${user.grade||'—'}</span>
+    </label>`;
+  }).join('');
+}
 
 // ── Toggle formulaire ──
 function formStagToggleForm(){
@@ -21321,7 +21342,7 @@ function formFormToggleForm(){
   if(btn){btn.style.display=open?'none':'';btn.textContent='+ Nouvelle formation';}
   if(open){
     ['fform-titre','fform-ref','fform-lieu','fform-ddebut','fform-dfin','fform-hmatin-d','fform-hmatin-f','fform-haprem-d','fform-haprem-f','fform-hjour','fform-htotal'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-    formLoadAgents('fform-participants',[],'var(--grn)');
+    formLoadFormateurs('fform-participants',[]);
     panel.scrollIntoView({behavior:'smooth',block:'start'});
   }
 }
@@ -21501,7 +21522,13 @@ function _saveFormEntry(pfx,idPrefix,getDataFn,toggleFn,listFn,recapFn){
   err.style.display='none';
   if(!titre||!ddebut||!dfin){err.style.display='block';err.textContent='Intitulé, date début et date fin sont obligatoires.';return;}
   if(dfin<ddebut){err.style.display='block';err.textContent='La date de fin ne peut pas être avant la date de début.';return;}
-  const participants=Array.from(document.querySelectorAll('#'+pfx+'-participants input:checked')).map(cb=>cb.value);
+  let participants=Array.from(document.querySelectorAll('#'+pfx+'-participants input:checked')).map(cb=>cb.value);
+  // Le sous-menu Formateurs ne doit jamais enregistrer une personne qui n'est
+  // plus déclarée formateur, même si une ancienne case subsiste dans la page.
+  if(pfx==='fform'){
+    const allowed=new Set(declaredFormateurUsers().map(function(user){return user.l;}));
+    participants=participants.filter(function(login){return allowed.has(login);});
+  }
   const id=idPrefix+'_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
   getDataFn().push({id,titre,ref,lieu,ddebut,dfin,hmatind,hmatinf,hapremd,hapremf,hjour,htotal,participants,auteur:CU?CU.l:'',ts:Date.now()});
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
