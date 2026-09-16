@@ -771,6 +771,7 @@ function _buildDataObject(){
       fmpas:JSON.parse(JSON.stringify(d.fmpas||[])),
       formStag:JSON.parse(JSON.stringify(d.formStag||[])),
       formForm:JSON.parse(JSON.stringify(d.formForm||[])),
+      astrTelDuties:JSON.parse(JSON.stringify(d.astrTelDuties||[])),
       astrTelData:JSON.parse(JSON.stringify(d.astrTelData||{})),
       astrTelParams:{...(d.astrTelParams||{})},
       statsTaux:{...(d.statsTaux||{})},
@@ -833,6 +834,7 @@ function _applyDataObject(data){
         if(src.fmpas){dst.fmpas=dst.fmpas||[];dst.fmpas.length=0;src.fmpas.forEach(f=>dst.fmpas.push(f));}
         if(src.formStag){dst.formStag=dst.formStag||[];dst.formStag.length=0;src.formStag.forEach(f=>dst.formStag.push(f));}
         if(src.formForm){dst.formForm=dst.formForm||[];dst.formForm.length=0;src.formForm.forEach(f=>dst.formForm.push(f));}
+        if(src.astrTelDuties){dst.astrTelDuties=dst.astrTelDuties||[];dst.astrTelDuties.length=0;src.astrTelDuties.forEach(function(duty){dst.astrTelDuties.push(duty);});}
         if(src.formations){dst.formations=dst.formations||[];dst.formations.length=0;src.formations.forEach(f=>dst.formations.push(f));}
         // Objets : ne pas écraser les dispos/piquets si une édition est en cours
         const dispoLocked = Date.now()-_jbEditLock < 15000;
@@ -2104,7 +2106,7 @@ function _rcApplyRealtimeRecord(record){
     if(record.caserne==='_GLOBAL')return false;
     initCaserneData(record.caserne);
     const d=CASERNE_DATA[record.caserne];
-    const listMap={iv:'ivs',pilp:'pilpIvs',equipe:'equipes',fmpa:'fmpas',formStag:'formStag',formForm:'formForm',renfort:'renforts',activite:'activites'};
+    const listMap={iv:'ivs',pilp:'pilpIvs',equipe:'equipes',fmpa:'fmpas',formStag:'formStag',formForm:'formForm',renfort:'renforts',activite:'activites',astrTelDuty:'astrTelDuties'};
     const listKey=listMap[record.type]||'';
     if(listKey){
       if(!incoming.id)return false;
@@ -2166,6 +2168,13 @@ function _rcApplyRealtimeRecord(record){
   if(record.caserne===CURRENT_CASERNE_ID){
     if(record.type==='dispo'||record.type==='config'){try{rAstrDispo();}catch(e){}}
     if(record.type==='equipe'||record.type==='user'||record.type==='config'){try{rAstrEquipes();}catch(e){}}
+    if(record.type==='astrTelDuty'){
+      try{
+        const tel=document.getElementById('astr-tel'),form=document.getElementById('astrtel-duty-admin');
+        const editing=form&&form.contains(document.activeElement);
+        if(tel&&tel.style.display!=='none'&&!editing)rAstrTel();
+      }catch(e){}
+    }
   }
   _jbSetStatus(_rcPendingDirty.size?'pending':'ok');
   return true;
@@ -2200,7 +2209,7 @@ function _rcId(caserne, type, key){ return caserne + RC_SEP + type + RC_SEP + ke
 function _rcSplitCaserne(cid, d){
   const rows = [];
   if(!d) return rows;
-  const listTypes = {ivs:'iv', pilpIvs:'pilp', equipes:'equipe', fmpas:'fmpa', formStag:'formStag', formForm:'formForm', renforts:'renfort', activites:'activite'};
+  const listTypes = {ivs:'iv', pilpIvs:'pilp', equipes:'equipe', fmpas:'fmpa', formStag:'formStag', formForm:'formForm', renforts:'renfort', activites:'activite', astrTelDuties:'astrTelDuty'};
   Object.keys(listTypes).forEach(function(listKey){
     const type = listTypes[listKey];
     (d[listKey]||[]).forEach(function(item){
@@ -2247,11 +2256,11 @@ function _rcSplitCaserne(cid, d){
 
 // ── Reconstruit l'objet CASERNE_DATA[cid] à partir de lignes records ──
 function _rcAssembleCaserne(rows){
-  const out = { users:[], ivs:[], pilpIvs:[], equipes:[], fmpas:[], formStag:[], formForm:[], renforts:[], activites:[],
+  const out = { users:[], ivs:[], pilpIvs:[], equipes:[], fmpas:[], formStag:[], formForm:[], renforts:[], activites:[], astrTelDuties:[],
                 dispos:{}, piquets:{}, planningRotations:{}, disposValidated:{}, piquetsValidated:{}, astrConfig:{},
                 astrTelData:{}, astrTelParams:{}, statsTaux:{}, _stationLocation:null, _operationalStartGeolocationEnabled:undefined, _statsPersonnelHoursReal:false, _indemnitesAdmins:false,
                 _numberingStartOrderVersion:'', _ut188ChainStartRepairVersion:'', _pilpUt185ChronologyRepairVersion:'', adminLogins:[], adminLogin:'' };
-  const listMap = {iv:'ivs', pilp:'pilpIvs', equipe:'equipes', fmpa:'fmpas', formStag:'formStag', formForm:'formForm', renfort:'renforts', activite:'activites'};
+  const listMap = {iv:'ivs', pilp:'pilpIvs', equipe:'equipes', fmpa:'fmpas', formStag:'formStag', formForm:'formForm', renfort:'renforts', activite:'activites', astrTelDuty:'astrTelDuties'};
   rows.forEach(function(r){
     if(r.deleted) return; // on ignore les enregistrements supprimés à la reconstruction
     if(listMap[r.type]){

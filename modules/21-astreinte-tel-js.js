@@ -121,6 +121,171 @@ function astrTelTotalMois(login,y,m){
 function astrTelTotalAnnee(login,y){
   let t=0;for(let m=0;m<12;m++)t+=astrTelTotalMois(login,y,m);return t;
 }
+function astrTelGetDuties(caserneId){
+  const cid=caserneId||CURRENT_CASERNE_ID;if(!cid)return[];
+  initCaserneData(cid);
+  if(!Array.isArray(CASERNE_DATA[cid].astrTelDuties))CASERNE_DATA[cid].astrTelDuties=[];
+  return CASERNE_DATA[cid].astrTelDuties;
+}
+function astrTelDutyTime(value){const t=new Date(value||0).getTime();return Number.isFinite(t)?t:0;}
+function astrTelActiveDuty(at,caserneId){
+  const stamp=at instanceof Date?at.getTime():Number(at)||Date.now();
+  return astrTelGetDuties(caserneId).filter(function(duty){
+    return duty&&!duty._deleted&&astrTelDutyTime(duty.start)<=stamp&&stamp<astrTelDutyTime(duty.end);
+  }).sort(function(a,b){return (Number(b.updatedAt)||astrTelDutyTime(b.start))-(Number(a.updatedAt)||astrTelDutyTime(a.start));})[0]||null;
+}
+function astrTelDutyUser(duty){return duty&&duty.login?(USERS||[]).find(function(user){return user&&user.l===duty.login;}):null;}
+function astrTelDutyStation(duty){return duty&&duty.targetCaserneId?CASERNES.find(function(station){return station&&station.id===duty.targetCaserneId;}):null;}
+function astrTelDutyDateLabel(value){
+  const date=new Date(value);if(!Number.isFinite(date.getTime()))return'—';
+  return date.toLocaleString('fr-FR',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).replace(',',' à');
+}
+function astrTelDutyInputValue(value){
+  const date=value?new Date(value):new Date();if(!Number.isFinite(date.getTime()))return'';
+  return date.getFullYear()+'-'+pad(date.getMonth()+1)+'-'+pad(date.getDate())+'T'+pad(date.getHours())+':'+pad(date.getMinutes());
+}
+function astrTelDutyNextEight(value){
+  const date=value?new Date(value):new Date(),end=new Date(date);end.setSeconds(0,0);end.setHours(8,0,0,0);
+  if(end<=date)end.setDate(end.getDate()+1);
+  return end;
+}
+function astrTelDutyAllocations(duty){
+  if(!duty||duty.mode!=='person'||!duty.login)return[];
+  const start=astrTelDutyTime(duty.start),end=astrTelDutyTime(duty.end);if(!start||end<=start)return[];
+  const allocations=[];let cursor=start,guard=0;
+  while(cursor<end&&guard++<370){
+    const current=new Date(cursor),next=new Date(current);next.setHours(24,0,0,0);
+    const segmentEnd=Math.min(end,next.getTime()),hours=Math.round(((segmentEnd-cursor)/3600000)*60)/60;
+    if(hours>0)allocations.push({y:current.getFullYear(),m:current.getMonth(),d:current.getDate(),h:hours});
+    cursor=segmentEnd;
+  }
+  return allocations;
+}
+function astrTelRemoveDutyHours(duty){
+  if(!duty||!duty.login||!Array.isArray(duty._hoursApplied))return;
+  const data=astrTelGetData();
+  duty._hoursApplied.forEach(function(part){
+    const key=astrTelKey(duty.login,part.y,part.m),month=data[key];if(!month)return;
+    const next=Math.max(0,Math.round(((Number(month[part.d])||0)-(Number(part.h)||0))*60)/60);
+    if(next>0)month[part.d]=next;else delete month[part.d];
+  });
+  duty._hoursApplied=[];
+}
+function astrTelApplyDutyHours(duty){
+  duty._hoursApplied=[];
+  if(duty.mode!=='person'||!duty.login)return true;
+  const data=astrTelGetData(),parts=astrTelDutyAllocations(duty);
+  for(const part of parts){
+    const total=astrTelTotalJour(part.y,part.m,part.d,'')+part.h;
+    if(total>24.0001)throw new Error('Le total d’astreinte du '+pad(part.d)+'/'+pad(part.m+1)+'/'+part.y+' dépasserait 24 heures.');
+    const key=astrTelKey(duty.login,part.y,part.m);if(!data[key])data[key]={};
+    data[key][part.d]=Math.round(((Number(data[key][part.d])||0)+part.h)*60)/60;
+    duty._hoursApplied.push(part);
+  }
+  return true;
+}
+function astrTelDutyLabel(duty){
+  if(!duty)return'Aucune astreinte téléphonique renseignée.';
+  if(duty.mode==='forward'){
+    const station=astrTelDutyStation(duty);
+    return'Appels renvoyés vers '+(station?station.nom:'une autre UT')+' jusqu’au '+astrTelDutyDateLabel(duty.end)+'.';
+  }
+  const user=astrTelDutyUser(duty),name=user?fullNameAff(user):(duty.login||'Agent non trouvé');
+  if(CU&&duty.login===CU.l)return'Vous avez l’astreinte téléphonique jusqu’au '+astrTelDutyDateLabel(duty.end)+'.';
+  return'Astreinte téléphonique : '+name+' jusqu’au '+astrTelDutyDateLabel(duty.end)+'.';
+}
+function astrTelDutyModeChanged(){
+  const mode=document.getElementById('astrtel-duty-mode')?.value||'person';
+  const person=document.getElementById('astrtel-duty-person-wrap'),forward=document.getElementById('astrtel-duty-forward-wrap');
+  if(person)person.style.display=mode==='person'?'':'none';
+  if(forward)forward.style.display=mode==='forward'?'':'none';
+}
+function astrTelResetDutyForm(){
+  const id=document.getElementById('astrtel-duty-id'),start=document.getElementById('astrtel-duty-start'),end=document.getElementById('astrtel-duty-end'),mode=document.getElementById('astrtel-duty-mode');
+  if(id)id.value='';if(mode)mode.value='person';if(start)start.value=astrTelDutyInputValue(new Date());if(end)end.value=astrTelDutyInputValue(astrTelDutyNextEight(new Date()));
+  astrTelDutyModeChanged();
+  const save=document.getElementById('astrtel-duty-save');if(save)save.textContent='💾 Enregistrer';
+}
+function astrTelEditDuty(id){
+  if(!hasAdministrativeAccount())return;
+  const duty=astrTelGetDuties().find(function(item){return item&&item.id===id;});if(!duty)return;
+  document.getElementById('astrtel-duty-id').value=duty.id;
+  document.getElementById('astrtel-duty-mode').value=duty.mode||'person';
+  document.getElementById('astrtel-duty-login').value=duty.login||'';
+  document.getElementById('astrtel-duty-target').value=duty.targetCaserneId||'';
+  document.getElementById('astrtel-duty-start').value=astrTelDutyInputValue(duty.start);
+  document.getElementById('astrtel-duty-end').value=astrTelDutyInputValue(duty.end);
+  document.getElementById('astrtel-duty-save').textContent='💾 Mettre à jour';
+  astrTelDutyModeChanged();
+  document.getElementById('astrtel-duty-admin')?.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function astrTelSaveDuty(){
+  if(!hasAdministrativeAccount()){showToast('Gestion réservée aux administrateurs.','warn');return;}
+  const list=astrTelGetDuties(),id=document.getElementById('astrtel-duty-id').value||'',mode=document.getElementById('astrtel-duty-mode').value;
+  const startValue=document.getElementById('astrtel-duty-start').value,endValue=document.getElementById('astrtel-duty-end').value;
+  const start=new Date(startValue),end=new Date(endValue),startMs=start.getTime(),endMs=end.getTime();
+  if(!Number.isFinite(startMs)||!Number.isFinite(endMs)||endMs<=startMs){showToast('La date de fin doit être postérieure à la date de début.','warn');return;}
+  const login=mode==='person'?document.getElementById('astrtel-duty-login').value:'',targetCaserneId=mode==='forward'?document.getElementById('astrtel-duty-target').value:'';
+  if(mode==='person'&&!login){showToast('Sélectionnez la personne qui possède le portable.','warn');return;}
+  if(mode==='forward'&&!targetCaserneId){showToast('Sélectionnez l’UT qui reçoit le renvoi.','warn');return;}
+  const existing=id?list.find(function(item){return item&&item.id===id;}):null;
+  const overlaps=list.filter(function(item){return item&&item.id!==id&&astrTelDutyTime(item.start)<endMs&&startMs<astrTelDutyTime(item.end);});
+  const replaceNow=!id&&Math.abs(startMs-Date.now())<=10*60*1000;
+  const shorten=replaceNow?overlaps.filter(function(item){return astrTelDutyTime(item.start)<startMs&&startMs<astrTelDutyTime(item.end);}):[];
+  const blocking=overlaps.filter(function(item){return !shorten.includes(item);});
+  if(blocking.length){showToast('Cette période chevauche une permanence déjà enregistrée. Modifiez d’abord la période existante.','warn');return;}
+  const dataSnapshot=JSON.stringify(astrTelGetData()),listSnapshot=JSON.stringify(list);
+  try{
+    if(existing)astrTelRemoveDutyHours(existing);
+    shorten.forEach(function(item){astrTelRemoveDutyHours(item);item.end=start.toISOString();item.updatedAt=Date.now();item.updatedBy=CU.l;astrTelApplyDutyHours(item);});
+    const duty=existing||{id:'ASTTEL_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),createdAt:Date.now(),createdBy:CU.l};
+    duty.mode=mode;duty.login=login;duty.targetCaserneId=targetCaserneId;duty.start=start.toISOString();duty.end=end.toISOString();duty.updatedAt=Date.now();duty.updatedBy=CU.l;
+    astrTelApplyDutyHours(duty);
+    if(!existing)list.push(duty);
+  }catch(error){
+    CD().astrTelData=JSON.parse(dataSnapshot);CD().astrTelDuties=JSON.parse(listSnapshot);
+    showToast(error.message||'Enregistrement impossible.','warn');return;
+  }
+  _jbEditLock=Date.now();saveData(true);astrTelResetDutyForm();astrTelRenderDutyAdmin();astrTelRenderGrid();rAccueil();
+  showToast(shorten.length?'Ancienne permanence arrêtée et nouvelle astreinte enregistrée ✓':'Astreinte téléphonique enregistrée ✓','success');
+}
+function astrTelDeleteDuty(id){
+  if(!hasAdministrativeAccount())return;
+  const list=astrTelGetDuties();if(!list.some(function(item){return item&&item.id===id;}))return;
+  confirmModal('Supprimer cette période d’astreinte téléphonique ? Les heures créées automatiquement seront retirées.',function(){
+    const currentIndex=list.findIndex(function(item){return item&&item.id===id;});if(currentIndex<0)return;
+    const duty=list[currentIndex];astrTelRemoveDutyHours(duty);list.splice(currentIndex,1);
+    if(typeof _rcMarkDeleted==='function')_rcMarkDeleted(CURRENT_CASERNE_ID,'astrTelDuty',[id]);
+    _jbEditLock=Date.now();saveData(true);astrTelRenderDutyAdmin();astrTelRenderGrid();rAccueil();showToast('Période supprimée ✓','success');
+  });
+}
+function astrTelRenderDutyAdmin(){
+  const el=document.getElementById('astrtel-duty-admin');if(!el)return;
+  const active=astrTelActiveDuty(new Date()),canManage=hasAdministrativeAccount();
+  const activeText=astrTelDutyLabel(active),activeColor=active?(active.mode==='forward'?'#7C3AED':'#047857'):'#9A3412';
+  const users=[...(USERS||[])].sort(function(a,b){return fullNameAff(a).localeCompare(fullNameAff(b),'fr');});
+  const stations=OP_CASERNES().filter(function(station){return station.id!==CURRENT_CASERNE_ID;});
+  const recent=astrTelGetDuties().slice().sort(function(a,b){return astrTelDutyTime(b.start)-astrTelDutyTime(a.start);}).slice(0,12);
+  let html='<div class="panel" style="border-left:4px solid '+activeColor+';"><div class="panel-title" style="margin-bottom:6px;">📞 Portable d’astreinte</div>'
+    +'<div style="font-size:13px;font-weight:700;color:'+activeColor+';margin-bottom:'+(canManage?'12':'0')+';">'+escHtml(activeText)+'</div>';
+  if(canManage){
+    html+='<div style="background:var(--bg);border-radius:10px;padding:10px;margin-bottom:10px;">'
+      +'<input type="hidden" id="astrtel-duty-id" value="">'
+      +'<div style="display:grid;grid-template-columns:repeat(2,minmax(180px,1fr));gap:8px;">'
+      +'<div class="fg" style="margin:0;"><div class="fgl">GESTION *</div><select class="fi" id="astrtel-duty-mode" onchange="astrTelDutyModeChanged()"><option value="person">Personnel de la caserne</option><option value="forward">Renvoi vers une autre UT</option></select></div>'
+      +'<div class="fg" id="astrtel-duty-person-wrap" style="margin:0;"><div class="fgl">PERSONNE *</div><select class="fi" id="astrtel-duty-login"><option value="">— Sélectionner —</option>'+users.map(function(user){return'<option value="'+escHtml(user.l)+'">'+escHtml(fullNameAff(user))+'</option>';}).join('')+'</select></div>'
+      +'<div class="fg" id="astrtel-duty-forward-wrap" style="margin:0;display:none;"><div class="fgl">UT DE RENVOI *</div><select class="fi" id="astrtel-duty-target"><option value="">— Sélectionner —</option>'+stations.map(function(station){return'<option value="'+escHtml(station.id)+'">'+escHtml(station.nom)+'</option>';}).join('')+'</select></div>'
+      +'<div class="fg" style="margin:0;"><div class="fgl">DÉBUT *</div><input class="fi" type="datetime-local" id="astrtel-duty-start"></div>'
+      +'<div class="fg" style="margin:0;"><div class="fgl">FIN *</div><input class="fi" type="datetime-local" id="astrtel-duty-end"></div></div>'
+      +'<div class="brow" style="margin-top:8px;"><button class="btn pr" id="astrtel-duty-save" onclick="astrTelSaveDuty()">💾 Enregistrer</button><button class="btn" onclick="astrTelResetDutyForm()">Effacer</button></div></div>';
+    if(recent.length){
+      html+='<details><summary style="cursor:pointer;font-size:12px;font-weight:700;color:var(--t2);">Historique et périodes prévues ('+recent.length+')</summary><div style="margin-top:7px;display:flex;flex-direction:column;gap:5px;">'
+        +recent.map(function(duty){return'<div style="display:flex;align-items:center;gap:7px;padding:7px 8px;border:1px solid var(--brd);border-radius:8px;font-size:11px;flex-wrap:wrap;"><span style="font-weight:700;">'+escHtml(astrTelDutyLabel(duty).replace(/ jusqu’au .*/,''))+'</span><span style="color:var(--t2);">'+escHtml(astrTelDutyDateLabel(duty.start))+' → '+escHtml(astrTelDutyDateLabel(duty.end))+'</span><span style="margin-left:auto;color:var(--t3);">'+escHtml(duty.updatedBy||'')+'</span><button class="btn sm" onclick="astrTelEditDuty(\''+duty.id+'\')">✏️</button><button class="btn sm danger" onclick="astrTelDeleteDuty(\''+duty.id+'\')">✕</button></div>';}).join('')+'</div></details>';
+    }
+  }
+  el.innerHTML=html+'</div>';
+  if(canManage)astrTelResetDutyForm();
+}
 // Nb de jours dans un mois
 function astrTelNbJours(y,m){return new Date(y,m+1,0).getDate();}
 
@@ -140,6 +305,7 @@ function rAstrTel(){
   const p=astrTelGetParams();
   const qi=document.getElementById('astrtel-quota-input');
   if(qi)qi.value=p.quota||QUOTA_ASTREINTE_TEL_H;
+  astrTelRenderDutyAdmin();
   astrTelShowSub(astrTelSub, document.getElementById('astrtel-btn-'+astrTelSub));
 }
 

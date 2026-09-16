@@ -286,6 +286,14 @@ function rAccueilAstreinte(){
     });
   });
 
+  // ── 3. PORTABLE D'ASTREINTE ───────────────────────────────
+  const telephoneDuty=astrTelActiveDuty(now);
+  msgs.push({
+    type:telephoneDuty?(telephoneDuty.mode==='forward'?'forward':telephoneDuty.login===CU.l?'success':'info'):'warn',
+    scope:'telephone',
+    text:astrTelDutyLabel(telephoneDuty)
+  });
+
   // ── Rendu compact : une carte Disponibilité + une carte Piquet.
   // Le détail reste accessible en touchant la carte, sans repousser les
   // informations d'intervention vers le bas de l'écran d'accueil.
@@ -294,6 +302,7 @@ function rAccueilAstreinte(){
     info:{bg:'#EFF6FF',border:'#3B82F6',icon:'&#x1F4C5;',color:'#1E3A5F'},
     success:{bg:'#F0FDF4',border:'#22C55E',icon:'&#x2705;',color:'#14532D'},
     next:{bg:'#F3EAF8',border:'#A855F7',icon:'&#x1F51C;',color:'#4A1D6D'},
+    forward:{bg:'#FAF5FF',border:'#7C3AED',icon:'&#x21AA;&#xFE0F;',color:'#581C87'},
   };
   function renderAgendaCard(scope,title,emptyText,defaultType){
     const items=msgs.filter(function(m){return m.scope===scope;});
@@ -310,7 +319,8 @@ function rAccueilAstreinte(){
         return '<div class="acc-agenda-detail"><span style="margin-right:4px;">'+mc.icon+'</span>'+escHtml(m.text)+'</div>';
       }).join('')+'</div></details>';
   }
-  el.innerHTML='<div class="acc-agenda-grid">'
+  el.innerHTML='<div style="margin-bottom:8px;">'+renderAgendaCard('telephone','Astreinte téléphonique','Aucune astreinte téléphonique renseignée.','warn')+'</div>'
+    +'<div class="acc-agenda-grid">'
     +renderAgendaCard('dispo','Disponibilité','Aucune prochaine disponibilité renseignée.','warn')
     +renderAgendaCard('piquet','Piquet','Aucun piquet prévu dans les prochaines 48 heures.','next')
     +'</div>';
