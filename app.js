@@ -15061,7 +15061,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260911-administration-texte-formateurs-223';
+const APP_VERSION='20260916-synchronisation-multi-utilisateurs-224';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -18310,6 +18310,74 @@ let _rcNeedsRecoveryPull = false;
 const RC_FALLBACK_POLL_MS = 90000;
 const RC_PULL_PAGE_SIZE = 500;
 const RC_PENDING_DIRTY_KEY = 'agai_rc_pending_dirty';
+const RC_OUTBOX_DB_NAME = 'agai-sync-outbox';
+const RC_OUTBOX_STORE = 'records';
+let _rcOutboxDbPromise = null;
+let _rcOutboxSnapshotTimer = null;
+function _rcOpenOutboxDb(){
+  if(_rcOutboxDbPromise)return _rcOutboxDbPromise;
+  _rcOutboxDbPromise=new Promise(function(resolve,reject){
+    if(!window.indexedDB){reject(new Error('IndexedDB indisponible'));return;}
+    const request=indexedDB.open(RC_OUTBOX_DB_NAME,1);
+    request.onupgradeneeded=function(){
+      const db=request.result;
+      if(!db.objectStoreNames.contains(RC_OUTBOX_STORE))db.createObjectStore(RC_OUTBOX_STORE,{keyPath:'id'});
+    };
+    request.onsuccess=function(){resolve(request.result);};
+    request.onerror=function(){reject(request.error||new Error('Ouverture IndexedDB impossible'));};
+  }).catch(function(error){
+    _rcOutboxDbPromise=null;
+    console.warn('[AGAI][RC] File durable indisponible :',error);
+    return null;
+  });
+  return _rcOutboxDbPromise;
+}
+async function _rcOutboxPutRows(rows){
+  const safeRows=_rcUniqueRowsById((rows||[]).filter(function(row){return row&&row.id;}));
+  if(!safeRows.length)return true;
+  const db=await _rcOpenOutboxDb();if(!db)return false;
+  return new Promise(function(resolve){
+    const tx=db.transaction(RC_OUTBOX_STORE,'readwrite'),store=tx.objectStore(RC_OUTBOX_STORE),queuedAt=Date.now();
+    safeRows.forEach(function(row){store.put({id:row.id,row:_rcTransportRow(row),queuedAt:queuedAt});});
+    tx.oncomplete=function(){resolve(true);};
+    tx.onerror=function(){console.warn('[AGAI][RC] Écriture file durable impossible :',tx.error);resolve(false);};
+    tx.onabort=function(){resolve(false);};
+  });
+}
+async function _rcOutboxGetRows(){
+  const db=await _rcOpenOutboxDb();if(!db)return [];
+  return new Promise(function(resolve){
+    const tx=db.transaction(RC_OUTBOX_STORE,'readonly'),request=tx.objectStore(RC_OUTBOX_STORE).getAll();
+    request.onsuccess=function(){resolve((request.result||[]).map(function(entry){return entry&&entry.row;}).filter(Boolean));};
+    request.onerror=function(){console.warn('[AGAI][RC] Lecture file durable impossible :',request.error);resolve([]);};
+  });
+}
+async function _rcOutboxDelete(ids){
+  const unique=Array.from(new Set((ids||[]).filter(Boolean)));if(!unique.length)return true;
+  const db=await _rcOpenOutboxDb();if(!db)return false;
+  return new Promise(function(resolve){
+    const tx=db.transaction(RC_OUTBOX_STORE,'readwrite'),store=tx.objectStore(RC_OUTBOX_STORE);
+    unique.forEach(function(id){store.delete(id);});
+    tx.oncomplete=function(){resolve(true);};
+    tx.onerror=function(){console.warn('[AGAI][RC] Nettoyage file durable impossible :',tx.error);resolve(false);};
+    tx.onabort=function(){resolve(false);};
+  });
+}
+function _rcScheduleOutboxSnapshot(){
+  if(_rcOutboxSnapshotTimer)clearTimeout(_rcOutboxSnapshotTimer);
+  _rcOutboxSnapshotTimer=window.setTimeout(function(){
+    _rcOutboxSnapshotTimer=null;
+    try{
+      const rows=_rcSplitAll(_buildDataObject()).filter(function(row){return _rcPendingDirty.has(row.id);});
+      if(rows.length)_rcOutboxPutRows(rows);
+    }catch(error){console.warn('[AGAI][RC] Instantané de la file impossible :',error);}
+  },0);
+}
+function _rcRequestPersistentStorage(){
+  try{
+    if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(function(){});
+  }catch(e){}
+}
 function _rcLoadPendingDirty(){
   try{
     const saved=JSON.parse(localStorage.getItem(RC_PENDING_DIRTY_KEY)||'[]');
@@ -18319,6 +18387,7 @@ function _rcLoadPendingDirty(){
 const _rcPendingDirty = new Set(_rcLoadPendingDirty());
 function _rcPersistPendingDirty(){
   try{localStorage.setItem(RC_PENDING_DIRTY_KEY,JSON.stringify(Array.from(_rcPendingDirty)));}catch(e){}
+  if(_rcPendingDirty.size)_rcScheduleOutboxSnapshot();
 }
 function _rcRowWritableHere(row){
   if(!row)return false;
@@ -18436,20 +18505,22 @@ function _rcTrackChangedRecords(previousData,nextData){
     previousMap[row.id]=_rcSyncSignature(row);
   });
   let changed=false;
+  const changedRows=[];
   _rcSplitAll(nextData).filter(_rcRowWritableHere).forEach(function(row){
     const serialized=_rcSyncSignature(row);
-    if(previousMap[row.id]!==serialized){_rcPendingDirty.add(row.id);changed=true;}
+    if(previousMap[row.id]!==serialized){_rcPendingDirty.add(row.id);changedRows.push(row);changed=true;}
   });
   if(changed)_rcDirtyGeneration++;
   _rcPersistPendingDirty();
+  if(changedRows.length)_rcOutboxPutRows(changedRows);
 }
-function _rcOverlayPendingLocalRows(rows){
+function _rcOverlayPendingLocalRows(rows,durableRows){
   if(!Array.isArray(rows)||!_rcPendingDirty.size)return rows;
+  const durable=(durableRows||[]).filter(function(row){return row&&_rcPendingDirty.has(row.id);});
   const localRows=_rcSplitAll(_buildDataObject()).filter(function(row){return row.caserne!=='_GLOBAL'&&_rcPendingDirty.has(row.id);});
-  if(!localRows.length)return rows;
   const indexes={};
   rows.forEach(function(row,index){if(row&&row.id)indexes[row.id]=index;});
-  localRows.forEach(function(localRow){
+  durable.concat(localRows).forEach(function(localRow){
     if(Object.prototype.hasOwnProperty.call(indexes,localRow.id))rows[indexes[localRow.id]]=localRow;
     else{indexes[localRow.id]=rows.length;rows.push(localRow);}
   });
@@ -18659,7 +18730,7 @@ function _rcRequestRealtimePull(delay){
     _rcRealtimePullTimer=null;
     if(!_rcRealtimePullPending)return;
     const lockRemaining=Math.max(0,12000-(Date.now()-_jbEditLock));
-    if(_rcSaving||_rcPendingDirty.size||lockRemaining>0){
+    if(_rcSaving||lockRemaining>0){
       if(_rcPendingDirty.size)_rcScheduleRetry(0);
       const retryIn=lockRemaining>0?Math.min(1200,Math.max(250,lockRemaining+30)):600;
       _rcRealtimePullTimer=window.setTimeout(attemptRealtimePull,retryIn);
@@ -18764,7 +18835,7 @@ function _rcApplyRealtimeRecord(record){
     if(record.type==='dispo'||record.type==='config'){try{rAstrDispo();}catch(e){}}
     if(record.type==='equipe'||record.type==='user'||record.type==='config'){try{rAstrEquipes();}catch(e){}}
   }
-  _jbSetStatus('ok');
+  _jbSetStatus(_rcPendingDirty.size?'pending':'ok');
   return true;
 }
 window.addEventListener('online',function(){
@@ -18914,21 +18985,24 @@ function _rcSplitAll(data){
 async function _rcPushRecords(records){
   if(!USE_RECORDS) return;
   if(!records || !records.length) return;
+  records=_rcUniqueRowsById(records);
+  records.forEach(function(row){_rcPendingDirty.add(row.id);});
+  _rcDirtyGeneration++;
+  _rcPersistPendingDirty();
+  await _rcOutboxPutRows(records);
   try {
-    records=_rcUniqueRowsById(records);
     const currentUser = (typeof CU!=='undefined' && CU) ? (CU.l||'') : '';
-    const payload = records.map(function(r){
-      return { id:r.id, caserne:r.caserne, type:r.type, data:r.data, deleted:!!r.deleted, updated_by:currentUser };
-    });
-    const resp = await fetch(RC_REST, {
-      method:'POST',
-      headers:Object.assign({}, _sbHeaders, { 'Prefer':'resolution=merge-duplicates,return=minimal' }),
-      body:JSON.stringify(payload)
-    });
-    if(!resp.ok) throw new Error('records push HTTP '+resp.status);
+    const result=await _rcSendRowsWithIsolation(records,currentUser);
+    result.succeeded.forEach(function(row){_rcPendingDirty.delete(row.id);});
+    await _rcOutboxDelete(result.succeeded.map(function(row){return row.id;}));
+    _rcPersistPendingDirty();
+    if(result.failures.length)throw new Error('records push HTTP '+result.failures[0].status);
     _rcLastPush = Date.now();
   } catch(e){
     console.warn('[AGAI][RC] PushRecords error:', e);
+    _rcLastSyncError='Envoi ciblé — '+String(e&&e.message||e||'Erreur inconnue');
+    _jbSetStatus('error');
+    _rcScheduleRetry();
     showToast('Erreur d\'envoi (sync)','error');
   }
 }
@@ -18939,20 +19013,29 @@ async function _rcPushRecords(records){
 async function _rcMarkDeleted(caserne, type, recordIds){
   if(!USE_RECORDS) return; // en mode normal, rien à faire
   if(!recordIds || !recordIds.length) return;
+  const rows=recordIds.map(function(rid){
+    return {id:_rcId(caserne,type,rid),caserne:caserne,type:type,data:{id:rid,_deleted:true},deleted:true};
+  });
+  rows.forEach(function(row){_rcPendingDirty.add(row.id);});
+  _rcDirtyGeneration++;
+  // Ne pas fabriquer ici un instantané depuis la liste locale : la fonction
+  // est volontairement appelée avant le retrait visuel de l'élément. La
+  // pierre tombale complète ci-dessous est la seule version à conserver.
+  try{localStorage.setItem(RC_PENDING_DIRTY_KEY,JSON.stringify(Array.from(_rcPendingDirty)));}catch(e){}
+  await _rcOutboxPutRows(rows);
   try {
     const currentUser = (typeof CU!=='undefined' && CU) ? (CU.l||'') : '';
-    const payload = recordIds.map(function(rid){
-      return { id:_rcId(caserne,type,rid), caserne:caserne, type:type, data:{id:rid,_deleted:true}, deleted:true, updated_by:currentUser };
-    });
-    const resp = await fetch(RC_REST, {
-      method:'POST',
-      headers:Object.assign({}, _sbHeaders, { 'Prefer':'resolution=merge-duplicates,return=minimal' }),
-      body:JSON.stringify(payload)
-    });
-    if(!resp.ok) throw new Error('records delete HTTP '+resp.status);
+    const result=await _rcSendRowsWithIsolation(rows,currentUser);
+    result.succeeded.forEach(function(row){_rcPendingDirty.delete(row.id);});
+    await _rcOutboxDelete(result.succeeded.map(function(row){return row.id;}));
+    _rcPersistPendingDirty();
+    if(result.failures.length)throw new Error('records delete HTTP '+result.failures[0].status);
     _rcLastPush = Date.now();
   } catch(e){
     console.warn('[AGAI][RC] MarkDeleted error:', e);
+    _rcLastSyncError='Suppression — '+String(e&&e.message||e||'Erreur inconnue');
+    _jbSetStatus('error');
+    _rcScheduleRetry();
     showToast('Erreur lors de la suppression (sync)','error');
   }
 }
@@ -19061,12 +19144,22 @@ async function _rcPush(fullPush){
   try {
     _rcRepairDuplicateLocalRecordIds();
     generationAtStart=_rcDirtyGeneration;
+    const durableRows=await _rcOutboxGetRows();
+    durableRows.forEach(function(row){if(row&&row.id)_rcPendingDirty.add(row.id);});
+    _rcPersistPendingDirty();
     const data = _buildDataObject();
     let rows;
     const allRows=_rcSplitAll(data);
-    const candidate=fullPush?allRows:allRows.filter(_rcRowWritableHere);
+    // Les lignes durables sont ajoutées avant l'état courant : si la fiche a
+    // encore évolué depuis sa mise en file, sa version actuelle reste prioritaire.
+    const availableRows=_rcUniqueRowsById(durableRows.concat(allRows));
+    const durableIds=new Set(durableRows.map(function(row){return row&&row.id;}).filter(Boolean));
+    const candidate=fullPush?availableRows:availableRows.filter(function(row){return _rcRowWritableHere(row)||durableIds.has(row.id);});
     const pendingBeforePrune=_rcPendingDirty.size;
-    _rcPrunePendingDirty(candidate);
+    // Ne pas supprimer la file d'une autre caserne lors d'un changement de
+    // contexte : seules les lignes réellement absentes de l'état ET de la
+    // file durable sont considérées comme obsolètes.
+    _rcPrunePendingDirty(availableRows);
     if(!fullPush&&pendingBeforePrune>0&&!_rcPendingDirty.size){
       _jbSetStatus('ok');
       return;
@@ -19113,9 +19206,13 @@ async function _rcPush(fullPush){
     // contenu local a réellement changé depuis leur départ vers Supabase.
     const freshSignatures={};
     _rcSplitAll(_buildDataObject()).forEach(function(row){freshSignatures[row.id]=_rcSyncSignature(row);});
+    const acknowledgedIds=[];
     pushedRows.forEach(function(row){
-      if(!Object.prototype.hasOwnProperty.call(freshSignatures,row.id)||freshSignatures[row.id]===sentSignatures[row.id])_rcPendingDirty.delete(row.id);
+      if(!Object.prototype.hasOwnProperty.call(freshSignatures,row.id)||freshSignatures[row.id]===sentSignatures[row.id]){
+        _rcPendingDirty.delete(row.id);acknowledgedIds.push(row.id);
+      }
     });
+    await _rcOutboxDelete(acknowledgedIds);
     _rcPersistPendingDirty();
     if(sendResult.failures.length){
       const first=sendResult.failures[0];
@@ -19165,18 +19262,19 @@ async function _rcFetchAllActiveRows(){
 // ── PULL : lit tous les enregistrements et reconstruit l'état ──
 async function _rcPull(silent){
   if(_rcSaving||_rcPulling) return true;
-  if(_rcPendingDirty.size){
-    _jbSetStatus('pending');
-    _rcScheduleRetry(0);
-    return true;
-  }
   _rcPulling=true;
   try {
+    _rcRequestPersistentStorage();
+    // Restaurer la file complète avant la réception. Un envoi bloqué ne doit
+    // jamais empêcher l'iPhone de recevoir les nouvelles interventions.
+    const durableRows=await _rcOutboxGetRows();
+    durableRows.forEach(function(row){if(row&&row.id)_rcPendingDirty.add(row.id);});
+    _rcPersistPendingDirty();
     if(!silent) _jbSetStatus('loading');
     const rows = await _rcFetchAllActiveRows();
     // Un pull peut avoir commencé juste avant une clôture. Les lignes locales
     // marquées en attente d'envoi restent prioritaires sur ce résultat distant.
-    _rcOverlayPendingLocalRows(rows);
+    _rcOverlayPendingLocalRows(rows,durableRows);
     // Reconstruire l'objet complet
     const data = { CASERNE_DATA:{} };
     const byCaserne = {};
@@ -19367,7 +19465,6 @@ function _rcStartRealtime(){
             try{ws.close();}catch(e){}
             return;
           }
-          if(Date.now()-_rcLastPush < 2000) return; // ignorer notre propre écho
           const applied=_rcApplyRealtimeRecord(_rcRealtimeRecordFromMessage(m));
           if(!applied)_rcRequestRealtimePull(0);
         }else if(m.event==='system'&&m.payload&&m.payload.status==='error'){
