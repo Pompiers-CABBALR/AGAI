@@ -4661,11 +4661,13 @@ function selectPrimaryNidRain(button,value){
   const box=button&&button.closest('.appel-primary-rain');if(!box)return;
   box.dataset.primaryNidRain=value||'inconnu';
   box.querySelectorAll('[data-rain-value]').forEach(function(choice){choice.classList.toggle('sel',choice===button);});
+  const err=box.querySelector('[data-primary-nid-error]');if(err)err.style.display='none';
 }
 function setPrimaryNidRainDefault(groupId){
   const group=document.getElementById(groupId),box=group&&group.closest('.smbox')&&group.closest('.smbox').querySelector('.appel-primary-rain');if(!box)return;
   box.dataset.primaryNidRain='impossible';
   box.querySelectorAll('[data-rain-value]').forEach(function(choice){choice.classList.toggle('sel',choice.dataset.rainValue==='impossible');});
+  const err=box.querySelector('[data-primary-nid-error]');if(err)err.style.display='none';
 }
 function selectExtraNidRain(button,value){
   const row=button&&button.closest('.appel-extra-nid-row');if(!row)return;
@@ -4758,13 +4760,28 @@ function getAppelNids(){
 }
 function validateAppelNids(){
   let valid=true;
+  const host=document.getElementById('sm-g')&&document.getElementById('sm-g').offsetParent!==null?'g':document.getElementById('sm-f')&&document.getElementById('sm-f').offsetParent!==null?'f':document.getElementById('sm-a')&&document.getElementById('sm-a').offsetParent!==null?'a':'';
+  if(host){
+    const group=document.getElementById(host==='g'?'lg':host==='f'?'lf':'la');
+    const selected=group&&group.querySelector('.smopt.sel');
+    const rainBox=document.querySelector('#sm-'+host+' .appel-primary-rain');
+    const rain=rainBox&&rainBox.dataset.primaryNidRain||'';
+    const rainValid=['possible','impossible','inconnu'].includes(rain);
+    if(rainBox){
+      let err=rainBox.querySelector('[data-primary-nid-error]');
+      if(!err){err=document.createElement('div');err.className='ferr';err.setAttribute('data-primary-nid-error','');err.textContent='Choisissez la localisation et indiquez obligatoirement la compatibilité avec la pluie.';rainBox.appendChild(err);}
+      err.style.display=selected&&rainValid?'none':'block';
+    }
+    if(!selected||!rainValid)valid=false;
+  }
   document.querySelectorAll('.appel-extra-nid-row').forEach(function(row){
     const nature=row.dataset.nature||'';
     let location=row.dataset.location||'';
     if(location==='Autre')location=((row.querySelector('[data-extra-nid-other]')||{}).value||'').trim();
+    const rain=row.dataset.rain||'';
     const err=row.querySelector('[data-extra-nid-error]');
-    if(err)err.style.display=nature&&location?'none':'block';
-    if(!nature||!location)valid=false;
+    if(err){err.textContent='Choisissez la nature, la localisation et la compatibilité avec la pluie de ce nid.';err.style.display=nature&&location&&['possible','impossible','inconnu'].includes(rain)?'none':'block';}
+    if(!nature||!location||!['possible','impossible','inconnu'].includes(rain))valid=false;
   });
   return valid;
 }
@@ -15240,7 +15257,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260916-compatibilite-pluie-226';
+const APP_VERSION='20260916-compatibilite-pluie-obligatoire-227';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
