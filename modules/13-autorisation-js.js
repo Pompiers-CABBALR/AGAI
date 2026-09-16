@@ -23,13 +23,14 @@ function showAddRecognizedNidModal(ivId){
   document.getElementById('mt').textContent='Ajouter un nid après reconnaissance';
   document.getElementById('mi').textContent=iv.n+' — '+iv.com;
   document.getElementById('mb').innerHTML='<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Ajoutez chaque nid découvert sur place. Une autorisation et une attestation distinctes seront créées.</div>'
-    +'<input type="hidden" id="reco-nid-nature"><input type="hidden" id="reco-nid-location"><input type="hidden" id="reco-nid-size">'
+    +'<input type="hidden" id="reco-nid-nature"><input type="hidden" id="reco-nid-location"><input type="hidden" id="reco-nid-size"><input type="hidden" id="reco-nid-rain" value="inconnu">'
     +'<div class="fgl">Nature *</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">'
     +'<button type="button" class="smopt" data-reco-nid-nature onclick="selectRecognizedNidOption(this,\'nature\',\'Guêpes\')">🐝 Guêpes</button><button type="button" class="smopt" data-reco-nid-nature onclick="selectRecognizedNidOption(this,\'nature\',\'Frelons européens\')">🐝 Frelons européens</button><button type="button" class="smopt" data-reco-nid-nature onclick="selectRecognizedNidOption(this,\'nature\',\'Frelons asiatiques\')">🐝 Frelons asiatiques</button><button type="button" class="smopt" data-reco-nid-nature onclick="selectRecognizedNidOption(this,\'nature\',\'Abeilles\')">🐝 Abeilles</button></div>'
     +'<div class="fgl">Localisation *</div><div id="reco-nid-location-options" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;"><span style="font-size:11px;color:var(--t2);">Choisissez d’abord la nature.</span></div>'
     +'<div id="reco-nid-other-wrap" class="fg" style="display:none;"><div class="fgl">Précision</div><input class="fi" id="reco-nid-other" placeholder="Préciser la localisation…"></div>'
     +'<div id="reco-nid-height-wrap" class="fg" style="display:none;"><div class="fgl">Hauteur estimée</div><div class="urow"><input type="number" min="0" id="reco-nid-height" placeholder="ex. 5"><span class="ul2">m</span></div></div>'
     +'<div id="reco-nid-size-wrap" class="fg" style="display:none;"><div class="fgl">Taille du nid</div><div style="display:flex;flex-wrap:wrap;gap:6px;"><button type="button" class="smopt" data-reco-nid-size onclick="selectRecognizedNidOption(this,\'size\',\'Petit\')">Petit</button><button type="button" class="smopt" data-reco-nid-size onclick="selectRecognizedNidOption(this,\'size\',\'Moyen\')">Moyen</button><button type="button" class="smopt" data-reco-nid-size onclick="selectRecognizedNidOption(this,\'size\',\'Gros\')">Gros</button><button type="button" class="smopt" data-reco-nid-size onclick="selectRecognizedNidOption(this,\'size\',\'Inconnu\')">Inconnu</button></div></div>'
+    +'<div class="fg"><div class="fgl">Compatibilité avec la pluie</div><div style="display:flex;flex-wrap:wrap;gap:6px;"><button type="button" class="smopt" data-reco-nid-rain="possible" onclick="selectRecognizedNidOption(this,\'rain\',\'possible\')">☔ Possible</button><button type="button" class="smopt" data-reco-nid-rain="impossible" onclick="selectRecognizedNidOption(this,\'rain\',\'impossible\')">🌧️ Impossible</button><button type="button" class="smopt sel" data-reco-nid-rain="inconnu" onclick="selectRecognizedNidOption(this,\'rain\',\'inconnu\')">❔ À confirmer</button></div></div>'
     +'<div class="ferr" id="reco-nid-error">Choisissez la nature et la localisation.</div>'
     +'<div class="brow" style="margin-top:12px;"><button class="btn pr" onclick="saveRecognizedNid(\''+ivId+'\')">➕ Ajouter le nid</button><button class="btn" onclick="showAutorisationNidPicker(\''+ivId+'\')">Annuler</button></div>';
   document.getElementById('mo').style.display='flex';
@@ -42,6 +43,8 @@ function selectRecognizedNidOption(button,field,value){
     const other=document.getElementById('reco-nid-other-wrap');if(other)other.style.display=value==='Autre'?'':'none';
     const nature=(document.getElementById('reco-nid-nature')||{}).value||'';
     const height=document.getElementById('reco-nid-height-wrap');if(height)height.style.display=extraNidNeedsHeight(nature,value)?'':'none';
+    const rain=document.getElementById('reco-nid-rain');if(rain)rain.value='impossible';
+    document.querySelectorAll('[data-reco-nid-rain]').forEach(function(choice){choice.classList.toggle('sel',choice.dataset.recoNidRain==='impossible');});
   }
   const err=document.getElementById('reco-nid-error');if(err)err.style.display='none';
 }
@@ -63,7 +66,8 @@ function saveRecognizedNid(ivId){
   if(!Array.isArray(iv._nidsAppel)||!iv._nidsAppel.length)iv._nidsAppel=interventionNids(iv).slice();
   const height=((document.getElementById('reco-nid-height')||{}).value||'').trim();
   const size=(document.getElementById('reco-nid-size')||{}).value||'';
-  iv._nidsAppel.push({id:'nid-'+(iv._nidsAppel.length+1),nature:nature,localisation:localisation,hauteur:height?height+' m':'',taille:size,ajouteApresReconnaissance:true});
+  const pluie=rainCompatibilityState((document.getElementById('reco-nid-rain')||{}).value||'inconnu');
+  iv._nidsAppel.push({id:'nid-'+(iv._nidsAppel.length+1),nature:nature,localisation:localisation,hauteur:height?height+' m':'',taille:size,pluie:pluie,ajouteApresReconnaissance:true});
   if(!iv._appelDetails||typeof iv._appelDetails!=='object')iv._appelDetails={};
   iv._appelDetails['Nids à traiter']=iv._nidsAppel.map(function(nid,index){return nidAppelLabel(nid,index);}).join(' ; ');
   if(/frelons? asiatiques?/i.test(nature)){iv._natureAppelInitiale=iv._natureAppelInitiale||iv.n;iv.n='Nid de frelons asiatiques';iv._prioriteFrelonAsiatique=true;}

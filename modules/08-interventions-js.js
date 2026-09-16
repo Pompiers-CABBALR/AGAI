@@ -887,6 +887,7 @@ function renderInterventionRow(iv, ag, tireur) {
         <span style="padding:2px 6px;border-radius:6px;background:${pilpAxeEtat(iv)==='disponible'?'#DCFCE7':pilpAxeEtat(iv)==='indisponible'?'#FEE2E2':'#FEF3C7'};color:${pilpAxeEtat(iv)==='disponible'?'#166534':pilpAxeEtat(iv)==='indisponible'?'#991B1B':'#92400E'};font-weight:600;">${pilpAxeEtat(iv)==='disponible'?'🎯':'⚠️'} ${escHtml(pilpAxeLabel(iv))}</span>
         <span style="padding:2px 6px;border-radius:6px;background:#EEF2FF;color:#3730A3;font-weight:600;">🗓️ ${escHtml(pilpPeriodeLabel(iv))}</span>
       </div>`:''}
+      ${interventionRainSummary(iv)?`<div class="ivrc" style="display:flex;gap:5px;flex-wrap:wrap;margin-top:3px;">${interventionRainBadgeHTML(iv)}</div>`:''}
       ${iv.s==='en-attente'?reqAvailabilityBadgeHTML(iv):''}
     </div>
     <div class="ivrr" onclick="${onclick}">
@@ -949,6 +950,53 @@ function updateRenfortBadge(){
   const badge=document.getElementById('renfort-badge');
   if(badge){badge.textContent=nb;badge.style.display=nb>0?'inline-flex':'none';}
 }
+function rainModeConfig(){
+  const data=CD();if(!data)return{active:false,until:null,history:[]};
+  if(!data.rainMode||typeof data.rainMode!=='object')data.rainMode={active:false,until:null,history:[]};
+  if(!Array.isArray(data.rainMode.history))data.rainMode.history=[];
+  return data.rainMode;
+}
+function rainModeIsActive(){
+  const data=CD(),mode=rainModeConfig();
+  if(!data||data._rainModeAllowed!==true||mode.active!==true)return false;
+  if(mode.until&&Date.now()>=Number(mode.until)){mode.active=false;return false;}
+  return true;
+}
+function canManageRainMode(){
+  const data=CD();return !!(data&&data._rainModeAllowed===true&&(isAgres()||isAdminModeActive()));
+}
+function rainModeUntilLabel(mode){
+  if(!mode||!mode.until)return'à désactivation manuelle';
+  try{return'jusqu’à '+new Date(Number(mode.until)).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});}catch(e){return'';}
+}
+function renderRainModeZone(){
+  const zone=document.getElementById('rain-mode-zone'),data=CD();if(!zone||!data)return;
+  const allowed=data._rainModeAllowed===true,active=rainModeIsActive(),mode=rainModeConfig();
+  if(!allowed){zone.innerHTML='';return;}
+  zone.innerHTML='<div style="background:'+(active?'#E0F2FE':'#F8FAFC')+';border:1px solid '+(active?'#38BDF8':'#CBD5E1')+';border-radius:10px;padding:9px 11px;margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><div style="flex:1;min-width:210px;font-size:12px;color:'+(active?'#075985':'#475569')+';"><strong>'+(active?'🌧️ Mode pluie actif':'☔ Mode pluie inactif')+'</strong>'+(active?' '+rainModeUntilLabel(mode)+(mode.activatedBy?' — activé par '+escHtml(mode.activatedBy):''):' — la compatibilité reste visible sur chaque intervention')+'</div>'+(canManageRainMode()?'<button class="btn sm" style="background:'+(active?'#fff':'#0369A1')+';color:'+(active?'#B42318':'#fff')+';border-color:'+(active?'#FCA5A5':'#0369A1')+';" onclick="'+(active?'deactivateRainMode()':'showActivateRainModeModal()')+'">'+(active?'Désactiver':'🌧️ Activer')+'</button>':'')+'</div>';
+}
+function showActivateRainModeModal(){
+  if(!canManageRainMode()){showToast('Activation réservée aux chefs d’agrès et aux administrateurs autorisés.','warn');return;}
+  document.getElementById('mt').textContent='Activer le mode pluie';
+  document.getElementById('mi').textContent=(CC()&&CC().nom)||'';
+  document.getElementById('mb').innerHTML='<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Le mode pluie ne masque aucune intervention. Il signale celles qui ne sont pas réalisables sous la pluie tout en conservant leur ancienneté.</div><div class="fg"><div class="fgl">Durée</div><select class="fi" id="rain-mode-duration"><option value="1">1 heure</option><option value="3" selected>3 heures</option><option value="6">6 heures</option><option value="manual">Jusqu’à désactivation manuelle</option></select></div><div class="brow"><button class="btn pr" onclick="activateRainMode()">🌧️ Activer</button><button class="btn" onclick="cM()">Annuler</button></div>';
+  document.getElementById('mo').style.display='flex';
+}
+function activateRainMode(){
+  if(!canManageRainMode()){showToast('Activation non autorisée.','warn');return;}
+  const value=(document.getElementById('rain-mode-duration')||{}).value||'3',mode=rainModeConfig();
+  mode.active=true;mode.activatedAt=Date.now();mode.activatedBy=CU.l;mode.until=value==='manual'?null:Date.now()+Number(value)*3600000;
+  mode.history.unshift({action:'activation',at:mode.activatedAt,by:CU.l,until:mode.until});mode.history=mode.history.slice(0,20);
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  cM();saveData(true);renderRainModeZone();showToast('Mode pluie activé '+rainModeUntilLabel(mode)+'.','success');
+}
+function deactivateRainMode(){
+  if(!canManageRainMode()){showToast('Désactivation non autorisée.','warn');return;}
+  const mode=rainModeConfig();mode.active=false;mode.deactivatedAt=Date.now();mode.deactivatedBy=CU.l;
+  mode.history.unshift({action:'désactivation',at:mode.deactivatedAt,by:CU.l});mode.history=mode.history.slice(0,20);
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);renderRainModeZone();showToast('Mode pluie désactivé.','success');
+}
 function rI(){
   const pendingAssignmentRepairs=agaiRepairPendingOperationalAssignments();
   const pendingPilpAssignmentRepairs=agaiRepairPendingPilpAssignments();
@@ -974,6 +1022,7 @@ function rI(){
     if(ut185Repair.changed)showToast('Intervention UT 185 : horaires replacés entre les UT 184 et 186.','success');
   }
   updateRenfortBadge();
+  renderRainModeZone();
   // Afficher les renforts reçus en attente
   const renforts=getRenfortsEnAttente();
   const rz=document.getElementById('renfort-zone');
@@ -1085,8 +1134,14 @@ function rI(){
   cont.innerHTML=combined.map(iv=>renderInterventionRow(iv,ag,tireur)).join('');
 }
 
-function toggleChk(id,el){
+function toggleChk(id,el,rainConfirmed){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
+  const rainSummary=interventionRainSummary(iv);
+  if(el.checked&&rainModeIsActive()&&rainSummary&&rainSummary.state==='impossible'&&rainConfirmed!==true){
+    el.checked=false;
+    confirmModal('Cette intervention est indiquée comme impossible sous la pluie. Elle reste prioritaire selon son ancienneté, mais son traitement peut être inefficace. Confirmer malgré tout sa sélection ?',function(){el.checked=true;toggleChk(id,el,true);});
+    return;
+  }
   if(el.checked){
     iv.s='selectionne';iv.agr=CU.l;
     parcConfirmed.delete(iv.id);
@@ -1462,6 +1517,7 @@ function oM(id){
       return `<div${onclick} style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#92400E;${cliquable?'cursor:pointer;':''}">&#x26A0;&#xFE0F; <strong>${autres.length}</strong> autre${autres.length>1?'s':''} intervention${autres.length>1?'s':''} à cette adresse pour ce type${detail}${lien}</div>`;
     })()}
     ${appelDetailEntries.length?`<div class="mr"><div class="ml">Informations de l'appel</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:3px;">${appelDetailEntries.map(([key,value])=>`<span style="font-size:13px;"><span style="color:var(--t2);">${escHtml(key)} :</span> <strong>${escHtml(interventionAppelDetailValue(iv,key,value))}</strong></span>`).join('')}</div></div></div>`:''}
+    ${interventionRainCardHTML(iv)}
     ${(()=>{const compls=(iv.tl||[]).filter(t=>t.s==='info-compl');return compls.length?`<div class="mr"><div class="ml" style="color:#0369A1;">&#x2139;&#xFE0F; Compléments d'information</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:6px;">${compls.map(t=>`<div style="background:#EFF6FF;border-left:3px solid #0369A1;border-radius:6px;padding:6px 10px;font-size:13px;"><div>${escHtml(t.note||'')}</div><div style="font-size:10px;color:var(--t2);margin-top:2px;">&#x1F4C5; ${escHtml(t.h||'')} · ${escHtml(t.who||'')}</div></div>`).join('')}</div></div></div>`:'';})()}
     ${pilpScope?`<div class="mr"><div class="ml">Programmation PILP</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:4px;"><strong>${pilpAxeEtat(iv)==='disponible'?'🎯':'⚠️'} ${escHtml(pilpAxeLabel(iv))}</strong><span>🗓️ ${escHtml(pilpPeriodeLabel(iv))}</span>${canOperatePilp()&&iv.s!=='terminee'?`<button class="btn sm" style="margin-top:4px;align-self:flex-start;background:#4C1D95;color:#fff;border-color:#4C1D95;" onclick="showPilpPlanningModal('${iv.id}')">✏️ Modifier la période et l’axe de tir</button>`:''}</div></div></div>`:''}
     ${iv._transfertDe?`<div class="mr"><div class="ml">Transfert reçu de</div><div class="mv2" style="color:var(--amb);font-weight:500;">&#x1F500; ${CASERNES.find(c=>c.id===iv._transfertDe)?.nom||iv._transfertDe}</div></div>`:''}
@@ -1919,6 +1975,11 @@ function cS(id,s,confirmed){
     return;
   }
   const previousStatus=iv.s;
+  const rainSummary=interventionRainSummary(iv);
+  if(s==='selectionne'&&previousStatus==='en-attente'&&rainModeIsActive()&&rainSummary&&rainSummary.state==='impossible'&&confirmed!=='rain-confirmed'){
+    confirmModal('Cette intervention est indiquée comme impossible sous la pluie. Elle reste prioritaire selon son ancienneté, mais son traitement peut être inefficace. Confirmer malgré tout sa sélection ?',function(){cS(id,s,'rain-confirmed');});
+    return;
+  }
   if(s==='selectionne'&&!canCurrentUserSelectIntervention(iv)){
     showToast('Vous n’êtes pas autorisé à sélectionner cette intervention.','warn');
     return;

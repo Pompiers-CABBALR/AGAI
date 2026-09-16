@@ -326,7 +326,7 @@ function initCaserneData(cid){
     users:defaultUsers,adminLogins:[],adminLogin:'',
     ivs:[],pilpIvs:[],equipes:[],dispos:{},piquets:{},planningRotations:{},disposValidated:{},piquetsValidated:{},renforts:[],astrTelDuties:[],
     astrConfig:{granularity:60,engins:['VTU-01','VTU-02','VTU-03','VPI'],deadline:{dayOfWeek:5,hour:23,minute:59},deadlinePiquet:{dayOfWeek:0,hour:18,minute:0},weekStartDay:1,weekStartHour:0},
-    _stationLocation:null,_operationalStartGeolocationEnabled:undefined,
+    _stationLocation:null,_operationalStartGeolocationEnabled:undefined,_rainModeAllowed:false,rainMode:{active:false,until:null,history:[]},
   };
 }
 CASERNES.forEach(c=>initCaserneData(c.id));
@@ -1783,6 +1783,13 @@ function renderSuperAdmin(){
         </label>
       </div>
       <div style="margin-top:10px;border-top:1px solid #f0f0f0;padding-top:10px;">
+        <div style="font-size:11px;font-weight:600;color:#666;margin-bottom:6px;">🌧️ MODE PLUIE</div>
+        <label style="display:flex;align-items:flex-start;gap:7px;font-size:11px;cursor:pointer;line-height:1.35;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:8px;">
+          <input type="checkbox" style="margin-top:2px;accent-color:${c.couleur};" ${d._rainModeAllowed===true?'checked':''} onchange="saSetRainModeAllowed('${c.id}',this.checked)">
+          <span><strong>Autoriser le mode pluie</strong><br><span style="font-size:10px;color:#64748B;">Les chefs d’agrès et les administrateurs de ${c.nom} pourront l’activer. La compatibilité pluie reste visible même si cette option est désactivée.</span></span>
+        </label>
+      </div>
+      <div style="margin-top:10px;border-top:1px solid #f0f0f0;padding-top:10px;">
         <div style="font-size:11px;font-weight:600;color:#666;margin-bottom:6px;">&#x23F1; STATISTIQUES PERSONNEL / HEURES</div>
         <label style="display:flex;align-items:flex-start;gap:7px;font-size:11px;cursor:pointer;line-height:1.35;">
           <input type="checkbox" style="margin-top:2px;accent-color:${c.couleur};" ${d._statsPersonnelHoursReal===true?'checked':''} onchange="saSetPersonnelHoursMode('${c.id}',this.checked)">
@@ -2165,6 +2172,17 @@ function saSetPersonnelHoursMode(cid,showReal){
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);
   showToast(showReal?'Statistiques : heures réelles affichées':'Statistiques : heures utilisées pour l’export affichées','success');
+}
+
+function saSetRainModeAllowed(cid,allowed){
+  if(!isSuperAdmin()){showToast('Réglage réservé au super-administrateur','warn');return;}
+  if(!CASERNE_DATA[cid])return;
+  CASERNE_DATA[cid]._rainModeAllowed=allowed===true;
+  if(!allowed&&CASERNE_DATA[cid].rainMode)CASERNE_DATA[cid].rainMode.active=false;
+  if(CURRENT_CASERNE_ID===cid)syncCaserneContext();
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);
+  showToast(allowed?'Mode pluie autorisé pour cette caserne':'Mode pluie désactivé pour cette caserne','success');
 }
 
 function saSetIndemnitesAdmins(cid,allowed){
@@ -4083,6 +4101,7 @@ function sr(g,el,v){
   if(g==='lf'){document.getElementById('lfab').style.display=v==='Autre'?'':'none';document.getElementById('hfb').style.display='';}
   if(g==='la'){document.getElementById('laab').style.display=v==='Autre'?'':'none';document.getElementById('hab').style.display=(v==='Arbre'||v==='Haie'||v==='Mur'||v==='Toiture')?'':'none';}
   if(g==='ta'){document.getElementById('tapb').style.display=(v==='NAC'||v==='Autre')?'':'none';}
+  if(g==='lg'||g==='lf'||g==='la')setPrimaryNidRainDefault(g);
 }
 function sz(el,v){document.querySelectorAll('.szo').forEach(o=>o.classList.remove('sel'));el.classList.add('sel');nidSize=v;}
 
@@ -4638,6 +4657,21 @@ function resetAppelAnimals(){
   if(row){delete row.dataset.animalType;delete row.dataset.animalSituation;row.querySelectorAll('.appel-animal-choice.sel').forEach(el=>el.classList.remove('sel'));const precision=row.querySelector('[data-appel-animal-precision]');if(precision){precision.value='';precision.style.display='none';}}
   clearAppelAnimalsError();renumberAppelAnimals();
 }
+function selectPrimaryNidRain(button,value){
+  const box=button&&button.closest('.appel-primary-rain');if(!box)return;
+  box.dataset.primaryNidRain=value||'inconnu';
+  box.querySelectorAll('[data-rain-value]').forEach(function(choice){choice.classList.toggle('sel',choice===button);});
+}
+function setPrimaryNidRainDefault(groupId){
+  const group=document.getElementById(groupId),box=group&&group.closest('.smbox')&&group.closest('.smbox').querySelector('.appel-primary-rain');if(!box)return;
+  box.dataset.primaryNidRain='impossible';
+  box.querySelectorAll('[data-rain-value]').forEach(function(choice){choice.classList.toggle('sel',choice.dataset.rainValue==='impossible');});
+}
+function selectExtraNidRain(button,value){
+  const row=button&&button.closest('.appel-extra-nid-row');if(!row)return;
+  row.dataset.rain=value||'inconnu';
+  row.querySelectorAll('[data-extra-nid-rain-choice]').forEach(function(choice){choice.classList.toggle('sel',choice===button);});
+}
 function addAppelExtraNid(host){
   const box=document.getElementById('extra-nids-'+host);if(!box)return;
   const row=document.createElement('div');row.className='appel-extra-nid-row';
@@ -4653,7 +4687,9 @@ function addAppelExtraNid(host){
     +'<div data-extra-nid-height-wrap style="display:none;margin-bottom:8px;"><div class="fgl">Hauteur estimée</div><div class="urow"><input type="number" min="0" data-extra-nid-height placeholder="ex. 5"><span class="ul2">m</span></div></div>'
     +'<div data-extra-nid-size-wrap style="display:none;"><div class="fgl">Taille du nid (facultatif)</div><div style="display:flex;flex-wrap:wrap;gap:6px;">'
     +'<button type="button" class="smopt" data-extra-nid-size-choice onclick="selectExtraNidOption(this,\'size\',\'Petit\')">Petit</button><button type="button" class="smopt" data-extra-nid-size-choice onclick="selectExtraNidOption(this,\'size\',\'Moyen\')">Moyen</button><button type="button" class="smopt" data-extra-nid-size-choice onclick="selectExtraNidOption(this,\'size\',\'Gros\')">Gros</button><button type="button" class="smopt" data-extra-nid-size-choice onclick="selectExtraNidOption(this,\'size\',\'Inconnu\')">Inconnu</button></div>'
-    +'</div><div class="ferr" data-extra-nid-error style="margin-top:5px;">Choisissez la nature et la localisation de ce nid.</div>';
+    +'</div><div style="margin-top:8px;"><div class="fgl">Compatibilité avec la pluie</div><div style="display:flex;flex-wrap:wrap;gap:6px;"><button type="button" class="smopt" data-extra-nid-rain-choice="possible" onclick="selectExtraNidRain(this,\'possible\')">☔ Possible</button><button type="button" class="smopt" data-extra-nid-rain-choice="impossible" onclick="selectExtraNidRain(this,\'impossible\')">🌧️ Impossible</button><button type="button" class="smopt sel" data-extra-nid-rain-choice="inconnu" onclick="selectExtraNidRain(this,\'inconnu\')">❔ À confirmer</button></div></div>'
+    +'<div class="ferr" data-extra-nid-error style="margin-top:5px;">Choisissez la nature et la localisation de ce nid.</div>';
+  row.dataset.rain='inconnu';
   row.querySelector('button').onclick=function(){row.remove();};
   box.appendChild(row);
 }
@@ -4665,6 +4701,8 @@ function selectExtraNidOption(button,field,value){
   if(field==='location'){
     const other=row.querySelector('[data-extra-nid-other-wrap]');if(other)other.style.display=value==='Autre'?'':'none';
     const height=row.querySelector('[data-extra-nid-height-wrap]');if(height)height.style.display=extraNidNeedsHeight(row.dataset.nature,value)?'':'none';
+    row.dataset.rain='impossible';
+    row.querySelectorAll('[data-extra-nid-rain-choice]').forEach(function(choice){choice.classList.toggle('sel',choice.dataset.extraNidRainChoice==='impossible');});
   }
   const err=row.querySelector('[data-extra-nid-error]');if(err)err.style.display='none';
 }
@@ -4689,6 +4727,10 @@ function renderExtraNidLocationOptions(row,nature){
 }
 function resetAppelNids(){
   ['g','f','a'].forEach(function(host){const box=document.getElementById('extra-nids-'+host);if(box)box.innerHTML='';});
+  document.querySelectorAll('.appel-primary-rain').forEach(function(box){
+    box.dataset.primaryNidRain='inconnu';
+    box.querySelectorAll('[data-rain-value]').forEach(function(choice){choice.classList.toggle('sel',choice.dataset.rainValue==='inconnu');});
+  });
 }
 function getAppelNids(){
   const result=[];
@@ -4701,7 +4743,8 @@ function getAppelNids(){
     if(localisation==='Autre')localisation=((document.getElementById(host==='g'?'lg-autre-txt':host==='f'?'lf-autre-txt':'la-autre-txt')||{}).value||'Autre').trim();
     const nature=((document.getElementById('primary-nid-type-'+host)||{}).dataset||{}).nidNature||selNat||'Nature inconnue';
     const hauteur=((document.getElementById(host==='g'?'hg-val':host==='f'?'hf-val':'ha-val')||{}).value||'').trim();
-    result.push({id:'nid-1',nature,localisation,hauteur:hauteur?hauteur+' m':'',taille:host==='f'?(nidSize||''):''});
+    const rainBox=document.querySelector('#sm-'+host+' .appel-primary-rain');
+    result.push({id:'nid-1',nature,localisation,hauteur:hauteur?hauteur+' m':'',taille:host==='f'?(nidSize||''):'',pluie:rainBox&&rainBox.dataset.primaryNidRain||'inconnu'});
   }
   document.querySelectorAll('#extra-nids-'+host+' .appel-extra-nid-row').forEach(function(row){
     const nature=row.dataset.nature||'';
@@ -4709,7 +4752,7 @@ function getAppelNids(){
     if(localisation==='Autre')localisation=((row.querySelector('[data-extra-nid-other]')||{}).value||'Autre').trim();
     const hauteur=((row.querySelector('[data-extra-nid-height]')||{}).value||'').trim();
     const taille=row.dataset.size||'';
-    result.push({id:'nid-'+(result.length+1),nature,localisation,hauteur:hauteur?hauteur+' m':'',taille});
+    result.push({id:'nid-'+(result.length+1),nature,localisation,hauteur:hauteur?hauteur+' m':'',taille,pluie:row.dataset.rain||'inconnu'});
   });
   return result;
 }
@@ -4730,7 +4773,68 @@ function appelNaturePrioritaire(nids){
 }
 function nidAppelLabel(nid,index){
   if(!nid)return'Nid '+(index+1);
-  return 'Nid '+(index+1)+' — '+[nid.nature,nid.localisation,nid.hauteur,nid.taille].filter(Boolean).join(' · ');
+  return 'Nid '+(index+1)+' — '+[nid.nature,nid.localisation,nid.hauteur,nid.taille,rainCompatibilityText(nid.pluie)].filter(Boolean).join(' · ');
+}
+function rainCompatibilityState(value){
+  const state=String(value||'').toLowerCase();
+  return state==='possible'||state==='impossible'?state:'inconnu';
+}
+function rainCompatibilityText(value){
+  const state=rainCompatibilityState(value);
+  return state==='possible'?'Possible sous la pluie':state==='impossible'?'Impossible sous la pluie':'À confirmer sur place';
+}
+function interventionRainSummary(iv){
+  const nids=interventionNids(iv);
+  if(!nids.length)return null;
+  const states=nids.map(function(nid){return rainCompatibilityState(nid&&nid.pluie);});
+  const possible=states.filter(function(state){return state==='possible';}).length;
+  const impossible=states.filter(function(state){return state==='impossible';}).length;
+  const unknown=states.length-possible-impossible;
+  if(unknown)return{state:'inconnu',label:states.length>1?'Protection de certains nids à confirmer':'À confirmer sur place',icon:'❔'};
+  if(possible===states.length)return{state:'possible',label:'Possible sous la pluie',icon:'☔'};
+  if(impossible===states.length)return{state:'impossible',label:'Impossible sous la pluie',icon:'🌧️'};
+  return{state:'partiel',label:'Partiellement réalisable sous la pluie',icon:'🌦️'};
+}
+function interventionRainBadgeHTML(iv){
+  const summary=interventionRainSummary(iv);if(!summary)return'';
+  const palette={possible:['#DCFCE7','#166534'],impossible:['#FEE2E2','#991B1B'],partiel:['#E0F2FE','#075985'],inconnu:['#FEF3C7','#92400E']}[summary.state];
+  const weatherAdvice=summary.state==='impossible'&&typeof rainModeIsActive==='function'&&rainModeIsActive()?' — report météo conseillé':'';
+  return '<span style="padding:2px 6px;border-radius:6px;background:'+palette[0]+';color:'+palette[1]+';font-weight:600;">'+summary.icon+' '+escHtml(summary.label+weatherAdvice)+'</span>';
+}
+function canEditRainCompatibility(iv){
+  if(!iv||iv.s==='terminee')return isAdminModeActive();
+  return isAdminModeActive()||(typeof canCurrentUserManageOperationalOptions==='function'&&canCurrentUserManageOperationalOptions(iv));
+}
+function interventionRainCardHTML(iv){
+  const summary=interventionRainSummary(iv);if(!summary)return'';
+  const nids=interventionNids(iv);
+  const details=nids.length>1?nids.map(function(nid,index){return '<div style="font-size:11px;margin-top:4px;"><strong>Nid '+(index+1)+'</strong> · '+escHtml(nid.nature||iv.n||'Nid')+' : '+escHtml(rainCompatibilityText(nid.pluie))+'</div>';}).join(''):'';
+  return '<div class="mr"><div class="ml">Compatibilité avec la pluie</div><div class="mv2">'+interventionRainBadgeHTML(iv)+details+(canEditRainCompatibility(iv)?'<div><button class="btn sm" style="font-size:10px;padding:3px 8px;margin-top:7px;" onclick="showRainCompatibilityModal(\''+iv.id+'\')">✏️ Corriger après reconnaissance</button></div>':'')+'</div></div>';
+}
+function selectRainCompatibilityEdit(button,value){
+  const row=button&&button.closest('[data-rain-edit-row]');if(!row)return;
+  row.dataset.rainEditValue=rainCompatibilityState(value);
+  row.querySelectorAll('[data-rain-edit-choice]').forEach(function(choice){choice.classList.toggle('sel',choice===button);});
+}
+function showRainCompatibilityModal(ivId){
+  const iv=interventionById(ivId);if(!iv||!canEditRainCompatibility(iv)){showToast('Modification réservée au chef d’agrès responsable et aux administrateurs.','warn');return;}
+  const nids=interventionNids(iv);
+  document.getElementById('mt').textContent='Compatibilité avec la pluie';
+  document.getElementById('mi').textContent=iv.n+' — '+iv.com;
+  document.getElementById('mb').innerHTML='<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Indiquez si le nid et la zone de traitement sont réellement protégés de la pluie. Cette information ne décrit pas la difficulté de l’intervention.</div>'
+    +nids.map(function(nid,index){const state=rainCompatibilityState(nid.pluie);return '<div data-rain-edit-row data-rain-edit-value="'+state+'" style="background:var(--bg);border:1px solid var(--brd);border-radius:9px;padding:10px;margin-bottom:8px;"><div style="font-size:12px;font-weight:700;margin-bottom:7px;">'+(nids.length>1?'Nid '+(index+1)+' — ':'')+escHtml([nid.nature,nid.localisation].filter(Boolean).join(' · ')||iv.n)+'</div><div style="display:flex;gap:6px;flex-wrap:wrap;"><button type="button" class="smopt '+(state==='possible'?'sel':'')+'" data-rain-edit-choice onclick="selectRainCompatibilityEdit(this,\'possible\')">☔ Possible</button><button type="button" class="smopt '+(state==='impossible'?'sel':'')+'" data-rain-edit-choice onclick="selectRainCompatibilityEdit(this,\'impossible\')">🌧️ Impossible</button><button type="button" class="smopt '+(state==='inconnu'?'sel':'')+'" data-rain-edit-choice onclick="selectRainCompatibilityEdit(this,\'inconnu\')">❔ À confirmer</button></div></div>';}).join('')
+    +'<div class="brow"><button class="btn pr" onclick="saveRainCompatibility(\''+ivId+'\')">💾 Enregistrer</button><button class="btn" onclick="oM(\''+ivId+'\')">Annuler</button></div>';
+  document.getElementById('mo').style.display='flex';
+}
+function saveRainCompatibility(ivId){
+  const iv=interventionById(ivId);if(!iv||!canEditRainCompatibility(iv)){showToast('Modification non autorisée.','warn');return;}
+  if(!Array.isArray(iv._nidsAppel)||!iv._nidsAppel.length)iv._nidsAppel=interventionNids(iv).map(function(nid,index){return Object.assign({},nid,{id:nid.id||'nid-'+(index+1)});});
+  const rows=[...document.querySelectorAll('[data-rain-edit-row]')];
+  iv._nidsAppel.forEach(function(nid,index){nid.pluie=rainCompatibilityState(rows[index]&&rows[index].dataset.rainEditValue);});
+  if(!Array.isArray(iv.tl))iv.tl=[];
+  iv.tl.push({s:'information',h:getH(N()),who:CU&&CU.l||'',note:'Compatibilité avec la pluie mise à jour : '+interventionRainSummary(iv).label});
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);refreshOperationalInterventionViews();rAccueil();oM(ivId);showToast('Compatibilité avec la pluie enregistrée.','success');
 }
 function clearReqAvailabilityError(){const err=document.getElementById('req-dispo-error');if(err)err.style.display='none';}
 function reqAvailabilityPeriodRows(){return[...document.querySelectorAll('#req-dispo-periods [data-req-dispo-period]')];}
@@ -5874,6 +5978,7 @@ function renderInterventionRow(iv, ag, tireur) {
         <span style="padding:2px 6px;border-radius:6px;background:${pilpAxeEtat(iv)==='disponible'?'#DCFCE7':pilpAxeEtat(iv)==='indisponible'?'#FEE2E2':'#FEF3C7'};color:${pilpAxeEtat(iv)==='disponible'?'#166534':pilpAxeEtat(iv)==='indisponible'?'#991B1B':'#92400E'};font-weight:600;">${pilpAxeEtat(iv)==='disponible'?'🎯':'⚠️'} ${escHtml(pilpAxeLabel(iv))}</span>
         <span style="padding:2px 6px;border-radius:6px;background:#EEF2FF;color:#3730A3;font-weight:600;">🗓️ ${escHtml(pilpPeriodeLabel(iv))}</span>
       </div>`:''}
+      ${interventionRainSummary(iv)?`<div class="ivrc" style="display:flex;gap:5px;flex-wrap:wrap;margin-top:3px;">${interventionRainBadgeHTML(iv)}</div>`:''}
       ${iv.s==='en-attente'?reqAvailabilityBadgeHTML(iv):''}
     </div>
     <div class="ivrr" onclick="${onclick}">
@@ -5936,6 +6041,53 @@ function updateRenfortBadge(){
   const badge=document.getElementById('renfort-badge');
   if(badge){badge.textContent=nb;badge.style.display=nb>0?'inline-flex':'none';}
 }
+function rainModeConfig(){
+  const data=CD();if(!data)return{active:false,until:null,history:[]};
+  if(!data.rainMode||typeof data.rainMode!=='object')data.rainMode={active:false,until:null,history:[]};
+  if(!Array.isArray(data.rainMode.history))data.rainMode.history=[];
+  return data.rainMode;
+}
+function rainModeIsActive(){
+  const data=CD(),mode=rainModeConfig();
+  if(!data||data._rainModeAllowed!==true||mode.active!==true)return false;
+  if(mode.until&&Date.now()>=Number(mode.until)){mode.active=false;return false;}
+  return true;
+}
+function canManageRainMode(){
+  const data=CD();return !!(data&&data._rainModeAllowed===true&&(isAgres()||isAdminModeActive()));
+}
+function rainModeUntilLabel(mode){
+  if(!mode||!mode.until)return'à désactivation manuelle';
+  try{return'jusqu’à '+new Date(Number(mode.until)).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});}catch(e){return'';}
+}
+function renderRainModeZone(){
+  const zone=document.getElementById('rain-mode-zone'),data=CD();if(!zone||!data)return;
+  const allowed=data._rainModeAllowed===true,active=rainModeIsActive(),mode=rainModeConfig();
+  if(!allowed){zone.innerHTML='';return;}
+  zone.innerHTML='<div style="background:'+(active?'#E0F2FE':'#F8FAFC')+';border:1px solid '+(active?'#38BDF8':'#CBD5E1')+';border-radius:10px;padding:9px 11px;margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><div style="flex:1;min-width:210px;font-size:12px;color:'+(active?'#075985':'#475569')+';"><strong>'+(active?'🌧️ Mode pluie actif':'☔ Mode pluie inactif')+'</strong>'+(active?' '+rainModeUntilLabel(mode)+(mode.activatedBy?' — activé par '+escHtml(mode.activatedBy):''):' — la compatibilité reste visible sur chaque intervention')+'</div>'+(canManageRainMode()?'<button class="btn sm" style="background:'+(active?'#fff':'#0369A1')+';color:'+(active?'#B42318':'#fff')+';border-color:'+(active?'#FCA5A5':'#0369A1')+';" onclick="'+(active?'deactivateRainMode()':'showActivateRainModeModal()')+'">'+(active?'Désactiver':'🌧️ Activer')+'</button>':'')+'</div>';
+}
+function showActivateRainModeModal(){
+  if(!canManageRainMode()){showToast('Activation réservée aux chefs d’agrès et aux administrateurs autorisés.','warn');return;}
+  document.getElementById('mt').textContent='Activer le mode pluie';
+  document.getElementById('mi').textContent=(CC()&&CC().nom)||'';
+  document.getElementById('mb').innerHTML='<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Le mode pluie ne masque aucune intervention. Il signale celles qui ne sont pas réalisables sous la pluie tout en conservant leur ancienneté.</div><div class="fg"><div class="fgl">Durée</div><select class="fi" id="rain-mode-duration"><option value="1">1 heure</option><option value="3" selected>3 heures</option><option value="6">6 heures</option><option value="manual">Jusqu’à désactivation manuelle</option></select></div><div class="brow"><button class="btn pr" onclick="activateRainMode()">🌧️ Activer</button><button class="btn" onclick="cM()">Annuler</button></div>';
+  document.getElementById('mo').style.display='flex';
+}
+function activateRainMode(){
+  if(!canManageRainMode()){showToast('Activation non autorisée.','warn');return;}
+  const value=(document.getElementById('rain-mode-duration')||{}).value||'3',mode=rainModeConfig();
+  mode.active=true;mode.activatedAt=Date.now();mode.activatedBy=CU.l;mode.until=value==='manual'?null:Date.now()+Number(value)*3600000;
+  mode.history.unshift({action:'activation',at:mode.activatedAt,by:CU.l,until:mode.until});mode.history=mode.history.slice(0,20);
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  cM();saveData(true);renderRainModeZone();showToast('Mode pluie activé '+rainModeUntilLabel(mode)+'.','success');
+}
+function deactivateRainMode(){
+  if(!canManageRainMode()){showToast('Désactivation non autorisée.','warn');return;}
+  const mode=rainModeConfig();mode.active=false;mode.deactivatedAt=Date.now();mode.deactivatedBy=CU.l;
+  mode.history.unshift({action:'désactivation',at:mode.deactivatedAt,by:CU.l});mode.history=mode.history.slice(0,20);
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);renderRainModeZone();showToast('Mode pluie désactivé.','success');
+}
 function rI(){
   const pendingAssignmentRepairs=agaiRepairPendingOperationalAssignments();
   const pendingPilpAssignmentRepairs=agaiRepairPendingPilpAssignments();
@@ -5961,6 +6113,7 @@ function rI(){
     if(ut185Repair.changed)showToast('Intervention UT 185 : horaires replacés entre les UT 184 et 186.','success');
   }
   updateRenfortBadge();
+  renderRainModeZone();
   // Afficher les renforts reçus en attente
   const renforts=getRenfortsEnAttente();
   const rz=document.getElementById('renfort-zone');
@@ -6072,8 +6225,14 @@ function rI(){
   cont.innerHTML=combined.map(iv=>renderInterventionRow(iv,ag,tireur)).join('');
 }
 
-function toggleChk(id,el){
+function toggleChk(id,el,rainConfirmed){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
+  const rainSummary=interventionRainSummary(iv);
+  if(el.checked&&rainModeIsActive()&&rainSummary&&rainSummary.state==='impossible'&&rainConfirmed!==true){
+    el.checked=false;
+    confirmModal('Cette intervention est indiquée comme impossible sous la pluie. Elle reste prioritaire selon son ancienneté, mais son traitement peut être inefficace. Confirmer malgré tout sa sélection ?',function(){el.checked=true;toggleChk(id,el,true);});
+    return;
+  }
   if(el.checked){
     iv.s='selectionne';iv.agr=CU.l;
     parcConfirmed.delete(iv.id);
@@ -6449,6 +6608,7 @@ function oM(id){
       return `<div${onclick} style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#92400E;${cliquable?'cursor:pointer;':''}">&#x26A0;&#xFE0F; <strong>${autres.length}</strong> autre${autres.length>1?'s':''} intervention${autres.length>1?'s':''} à cette adresse pour ce type${detail}${lien}</div>`;
     })()}
     ${appelDetailEntries.length?`<div class="mr"><div class="ml">Informations de l'appel</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:3px;">${appelDetailEntries.map(([key,value])=>`<span style="font-size:13px;"><span style="color:var(--t2);">${escHtml(key)} :</span> <strong>${escHtml(interventionAppelDetailValue(iv,key,value))}</strong></span>`).join('')}</div></div></div>`:''}
+    ${interventionRainCardHTML(iv)}
     ${(()=>{const compls=(iv.tl||[]).filter(t=>t.s==='info-compl');return compls.length?`<div class="mr"><div class="ml" style="color:#0369A1;">&#x2139;&#xFE0F; Compléments d'information</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:6px;">${compls.map(t=>`<div style="background:#EFF6FF;border-left:3px solid #0369A1;border-radius:6px;padding:6px 10px;font-size:13px;"><div>${escHtml(t.note||'')}</div><div style="font-size:10px;color:var(--t2);margin-top:2px;">&#x1F4C5; ${escHtml(t.h||'')} · ${escHtml(t.who||'')}</div></div>`).join('')}</div></div></div>`:'';})()}
     ${pilpScope?`<div class="mr"><div class="ml">Programmation PILP</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:4px;"><strong>${pilpAxeEtat(iv)==='disponible'?'🎯':'⚠️'} ${escHtml(pilpAxeLabel(iv))}</strong><span>🗓️ ${escHtml(pilpPeriodeLabel(iv))}</span>${canOperatePilp()&&iv.s!=='terminee'?`<button class="btn sm" style="margin-top:4px;align-self:flex-start;background:#4C1D95;color:#fff;border-color:#4C1D95;" onclick="showPilpPlanningModal('${iv.id}')">✏️ Modifier la période et l’axe de tir</button>`:''}</div></div></div>`:''}
     ${iv._transfertDe?`<div class="mr"><div class="ml">Transfert reçu de</div><div class="mv2" style="color:var(--amb);font-weight:500;">&#x1F500; ${CASERNES.find(c=>c.id===iv._transfertDe)?.nom||iv._transfertDe}</div></div>`:''}
@@ -6906,6 +7066,11 @@ function cS(id,s,confirmed){
     return;
   }
   const previousStatus=iv.s;
+  const rainSummary=interventionRainSummary(iv);
+  if(s==='selectionne'&&previousStatus==='en-attente'&&rainModeIsActive()&&rainSummary&&rainSummary.state==='impossible'&&confirmed!=='rain-confirmed'){
+    confirmModal('Cette intervention est indiquée comme impossible sous la pluie. Elle reste prioritaire selon son ancienneté, mais son traitement peut être inefficace. Confirmer malgré tout sa sélection ?',function(){cS(id,s,'rain-confirmed');});
+    return;
+  }
   if(s==='selectionne'&&!canCurrentUserSelectIntervention(iv)){
     showToast('Vous n’êtes pas autorisé à sélectionner cette intervention.','warn');
     return;
@@ -12645,13 +12810,14 @@ function showAddRecognizedNidModal(ivId){
   document.getElementById('mt').textContent='Ajouter un nid après reconnaissance';
   document.getElementById('mi').textContent=iv.n+' — '+iv.com;
   document.getElementById('mb').innerHTML='<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Ajoutez chaque nid découvert sur place. Une autorisation et une attestation distinctes seront créées.</div>'
-    +'<input type="hidden" id="reco-nid-nature"><input type="hidden" id="reco-nid-location"><input type="hidden" id="reco-nid-size">'
+    +'<input type="hidden" id="reco-nid-nature"><input type="hidden" id="reco-nid-location"><input type="hidden" id="reco-nid-size"><input type="hidden" id="reco-nid-rain" value="inconnu">'
     +'<div class="fgl">Nature *</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">'
     +'<button type="button" class="smopt" data-reco-nid-nature onclick="selectRecognizedNidOption(this,\'nature\',\'Guêpes\')">🐝 Guêpes</button><button type="button" class="smopt" data-reco-nid-nature onclick="selectRecognizedNidOption(this,\'nature\',\'Frelons européens\')">🐝 Frelons européens</button><button type="button" class="smopt" data-reco-nid-nature onclick="selectRecognizedNidOption(this,\'nature\',\'Frelons asiatiques\')">🐝 Frelons asiatiques</button><button type="button" class="smopt" data-reco-nid-nature onclick="selectRecognizedNidOption(this,\'nature\',\'Abeilles\')">🐝 Abeilles</button></div>'
     +'<div class="fgl">Localisation *</div><div id="reco-nid-location-options" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;"><span style="font-size:11px;color:var(--t2);">Choisissez d’abord la nature.</span></div>'
     +'<div id="reco-nid-other-wrap" class="fg" style="display:none;"><div class="fgl">Précision</div><input class="fi" id="reco-nid-other" placeholder="Préciser la localisation…"></div>'
     +'<div id="reco-nid-height-wrap" class="fg" style="display:none;"><div class="fgl">Hauteur estimée</div><div class="urow"><input type="number" min="0" id="reco-nid-height" placeholder="ex. 5"><span class="ul2">m</span></div></div>'
     +'<div id="reco-nid-size-wrap" class="fg" style="display:none;"><div class="fgl">Taille du nid</div><div style="display:flex;flex-wrap:wrap;gap:6px;"><button type="button" class="smopt" data-reco-nid-size onclick="selectRecognizedNidOption(this,\'size\',\'Petit\')">Petit</button><button type="button" class="smopt" data-reco-nid-size onclick="selectRecognizedNidOption(this,\'size\',\'Moyen\')">Moyen</button><button type="button" class="smopt" data-reco-nid-size onclick="selectRecognizedNidOption(this,\'size\',\'Gros\')">Gros</button><button type="button" class="smopt" data-reco-nid-size onclick="selectRecognizedNidOption(this,\'size\',\'Inconnu\')">Inconnu</button></div></div>'
+    +'<div class="fg"><div class="fgl">Compatibilité avec la pluie</div><div style="display:flex;flex-wrap:wrap;gap:6px;"><button type="button" class="smopt" data-reco-nid-rain="possible" onclick="selectRecognizedNidOption(this,\'rain\',\'possible\')">☔ Possible</button><button type="button" class="smopt" data-reco-nid-rain="impossible" onclick="selectRecognizedNidOption(this,\'rain\',\'impossible\')">🌧️ Impossible</button><button type="button" class="smopt sel" data-reco-nid-rain="inconnu" onclick="selectRecognizedNidOption(this,\'rain\',\'inconnu\')">❔ À confirmer</button></div></div>'
     +'<div class="ferr" id="reco-nid-error">Choisissez la nature et la localisation.</div>'
     +'<div class="brow" style="margin-top:12px;"><button class="btn pr" onclick="saveRecognizedNid(\''+ivId+'\')">➕ Ajouter le nid</button><button class="btn" onclick="showAutorisationNidPicker(\''+ivId+'\')">Annuler</button></div>';
   document.getElementById('mo').style.display='flex';
@@ -12664,6 +12830,8 @@ function selectRecognizedNidOption(button,field,value){
     const other=document.getElementById('reco-nid-other-wrap');if(other)other.style.display=value==='Autre'?'':'none';
     const nature=(document.getElementById('reco-nid-nature')||{}).value||'';
     const height=document.getElementById('reco-nid-height-wrap');if(height)height.style.display=extraNidNeedsHeight(nature,value)?'':'none';
+    const rain=document.getElementById('reco-nid-rain');if(rain)rain.value='impossible';
+    document.querySelectorAll('[data-reco-nid-rain]').forEach(function(choice){choice.classList.toggle('sel',choice.dataset.recoNidRain==='impossible');});
   }
   const err=document.getElementById('reco-nid-error');if(err)err.style.display='none';
 }
@@ -12685,7 +12853,8 @@ function saveRecognizedNid(ivId){
   if(!Array.isArray(iv._nidsAppel)||!iv._nidsAppel.length)iv._nidsAppel=interventionNids(iv).slice();
   const height=((document.getElementById('reco-nid-height')||{}).value||'').trim();
   const size=(document.getElementById('reco-nid-size')||{}).value||'';
-  iv._nidsAppel.push({id:'nid-'+(iv._nidsAppel.length+1),nature:nature,localisation:localisation,hauteur:height?height+' m':'',taille:size,ajouteApresReconnaissance:true});
+  const pluie=rainCompatibilityState((document.getElementById('reco-nid-rain')||{}).value||'inconnu');
+  iv._nidsAppel.push({id:'nid-'+(iv._nidsAppel.length+1),nature:nature,localisation:localisation,hauteur:height?height+' m':'',taille:size,pluie:pluie,ajouteApresReconnaissance:true});
   if(!iv._appelDetails||typeof iv._appelDetails!=='object')iv._appelDetails={};
   iv._appelDetails['Nids à traiter']=iv._nidsAppel.map(function(nid,index){return nidAppelLabel(nid,index);}).join(' ; ');
   if(/frelons? asiatiques?/i.test(nature)){iv._natureAppelInitiale=iv._natureAppelInitiale||iv.n;iv.n='Nid de frelons asiatiques';iv._prioriteFrelonAsiatique=true;}
@@ -15071,7 +15240,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260916-astreinte-telephone-accueil-225';
+const APP_VERSION='20260916-compatibilite-pluie-226';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -17455,6 +17624,8 @@ function _buildDataObject(){
       statsTaux:{...(d.statsTaux||{})},
       _stationLocation:d._stationLocation?JSON.parse(JSON.stringify(d._stationLocation)):null,
       _operationalStartGeolocationEnabled:typeof d._operationalStartGeolocationEnabled==='boolean'?d._operationalStartGeolocationEnabled:undefined,
+      _rainModeAllowed:d._rainModeAllowed===true,
+      rainMode:JSON.parse(JSON.stringify(d.rainMode||{active:false,until:null,history:[]})),
       _statsPersonnelHoursReal:d._statsPersonnelHoursReal===true,
       _indemnitesAdmins:d._indemnitesAdmins===true,
       adminLogins:Array.isArray(d.adminLogins)?[...d.adminLogins]:(d.adminLogin?[d.adminLogin]:[]),
@@ -17531,6 +17702,8 @@ function _applyDataObject(data){
         if(src.statsTaux)dst.statsTaux=src.statsTaux;
         if(src._stationLocation!==undefined)dst._stationLocation=src._stationLocation;
         if(src._operationalStartGeolocationEnabled!==undefined)dst._operationalStartGeolocationEnabled=src._operationalStartGeolocationEnabled!==false;
+        if(src._rainModeAllowed!==undefined)dst._rainModeAllowed=src._rainModeAllowed===true;
+        if(src.rainMode!==undefined)dst.rainMode=JSON.parse(JSON.stringify(src.rainMode||{active:false,until:null,history:[]}));
         if(src._statsPersonnelHoursReal!==undefined)dst._statsPersonnelHoursReal=src._statsPersonnelHoursReal===true;
         if(src._indemnitesAdmins!==undefined)dst._indemnitesAdmins=src._indemnitesAdmins===true;
         if(src.adminLogins!==undefined)dst.adminLogins=Array.isArray(src.adminLogins)?[...src.adminLogins]:[];
@@ -18828,9 +19001,10 @@ function _rcApplyRealtimeRecord(record){
         if(resolved.keptCurrentData){_rcPendingDirty.add(record.id);_rcDirtyGeneration++;_rcPersistPendingDirty();_rcScheduleRetry(0);}
       }
     }else if(record.type==='config'){
-      const keys=['piquets','planningRotations','disposValidated','piquetsValidated','astrConfig','astrTelData','astrTelParams','statsTaux','adminLogins','adminLogin','_stationLocation','_numberingStartOrderVersion','_ut188ChainStartRepairVersion','_pilpUt185ChronologyRepairVersion'];
+      const keys=['piquets','planningRotations','disposValidated','piquetsValidated','astrConfig','astrTelData','astrTelParams','statsTaux','rainMode','adminLogins','adminLogin','_stationLocation','_numberingStartOrderVersion','_ut188ChainStartRepairVersion','_pilpUt185ChronologyRepairVersion'];
       keys.forEach(function(key){if(incoming[key]!==undefined)d[key]=incoming[key];});
       if(incoming._operationalStartGeolocationEnabled!==undefined)d._operationalStartGeolocationEnabled=incoming._operationalStartGeolocationEnabled!==false;
+      if(incoming._rainModeAllowed!==undefined)d._rainModeAllowed=incoming._rainModeAllowed===true;
       if(incoming._statsPersonnelHoursReal!==undefined)d._statsPersonnelHoursReal=incoming._statsPersonnelHoursReal===true;
       if(incoming._indemnitesAdmins!==undefined)d._indemnitesAdmins=incoming._indemnitesAdmins===true;
       if(d._stationLocation){
@@ -18920,6 +19094,8 @@ function _rcSplitCaserne(cid, d){
     statsTaux: Object.assign({},d.statsTaux||{}),
     _stationLocation:d._stationLocation?JSON.parse(JSON.stringify(d._stationLocation)):null,
     _operationalStartGeolocationEnabled:typeof d._operationalStartGeolocationEnabled==='boolean'?d._operationalStartGeolocationEnabled:undefined,
+    _rainModeAllowed:d._rainModeAllowed===true,
+    rainMode:JSON.parse(JSON.stringify(d.rainMode||{active:false,until:null,history:[]})),
     _statsPersonnelHoursReal:d._statsPersonnelHoursReal===true,
     _indemnitesAdmins:d._indemnitesAdmins===true,
     _numberingStartOrderVersion:d._numberingStartOrderVersion||'',
@@ -18936,7 +19112,7 @@ function _rcSplitCaserne(cid, d){
 function _rcAssembleCaserne(rows){
   const out = { users:[], ivs:[], pilpIvs:[], equipes:[], fmpas:[], formStag:[], formForm:[], renforts:[], activites:[], astrTelDuties:[],
                 dispos:{}, piquets:{}, planningRotations:{}, disposValidated:{}, piquetsValidated:{}, astrConfig:{},
-                astrTelData:{}, astrTelParams:{}, statsTaux:{}, _stationLocation:null, _operationalStartGeolocationEnabled:undefined, _statsPersonnelHoursReal:false, _indemnitesAdmins:false,
+                astrTelData:{}, astrTelParams:{}, statsTaux:{}, _stationLocation:null, _operationalStartGeolocationEnabled:undefined, _rainModeAllowed:false, rainMode:{active:false,until:null,history:[]}, _statsPersonnelHoursReal:false, _indemnitesAdmins:false,
                 _numberingStartOrderVersion:'', _ut188ChainStartRepairVersion:'', _pilpUt185ChronologyRepairVersion:'', adminLogins:[], adminLogin:'' };
   const listMap = {iv:'ivs', pilp:'pilpIvs', equipe:'equipes', fmpa:'fmpas', formStag:'formStag', formForm:'formForm', renfort:'renforts', activite:'activites', astrTelDuty:'astrTelDuties'};
   rows.forEach(function(r){
@@ -18958,6 +19134,8 @@ function _rcAssembleCaserne(rows){
       out.statsTaux=c.statsTaux||{};
       out._stationLocation=c._stationLocation||null;
       out._operationalStartGeolocationEnabled=typeof c._operationalStartGeolocationEnabled==='boolean'?c._operationalStartGeolocationEnabled:undefined;
+      out._rainModeAllowed=c._rainModeAllowed===true;
+      out.rainMode=c.rainMode||{active:false,until:null,history:[]};
       out._statsPersonnelHoursReal=c._statsPersonnelHoursReal===true;
       out._indemnitesAdmins=c._indemnitesAdmins===true;
       out._numberingStartOrderVersion=c._numberingStartOrderVersion||'';

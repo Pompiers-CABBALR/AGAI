@@ -777,6 +777,8 @@ function _buildDataObject(){
       statsTaux:{...(d.statsTaux||{})},
       _stationLocation:d._stationLocation?JSON.parse(JSON.stringify(d._stationLocation)):null,
       _operationalStartGeolocationEnabled:typeof d._operationalStartGeolocationEnabled==='boolean'?d._operationalStartGeolocationEnabled:undefined,
+      _rainModeAllowed:d._rainModeAllowed===true,
+      rainMode:JSON.parse(JSON.stringify(d.rainMode||{active:false,until:null,history:[]})),
       _statsPersonnelHoursReal:d._statsPersonnelHoursReal===true,
       _indemnitesAdmins:d._indemnitesAdmins===true,
       adminLogins:Array.isArray(d.adminLogins)?[...d.adminLogins]:(d.adminLogin?[d.adminLogin]:[]),
@@ -853,6 +855,8 @@ function _applyDataObject(data){
         if(src.statsTaux)dst.statsTaux=src.statsTaux;
         if(src._stationLocation!==undefined)dst._stationLocation=src._stationLocation;
         if(src._operationalStartGeolocationEnabled!==undefined)dst._operationalStartGeolocationEnabled=src._operationalStartGeolocationEnabled!==false;
+        if(src._rainModeAllowed!==undefined)dst._rainModeAllowed=src._rainModeAllowed===true;
+        if(src.rainMode!==undefined)dst.rainMode=JSON.parse(JSON.stringify(src.rainMode||{active:false,until:null,history:[]}));
         if(src._statsPersonnelHoursReal!==undefined)dst._statsPersonnelHoursReal=src._statsPersonnelHoursReal===true;
         if(src._indemnitesAdmins!==undefined)dst._indemnitesAdmins=src._indemnitesAdmins===true;
         if(src.adminLogins!==undefined)dst.adminLogins=Array.isArray(src.adminLogins)?[...src.adminLogins]:[];
@@ -2150,9 +2154,10 @@ function _rcApplyRealtimeRecord(record){
         if(resolved.keptCurrentData){_rcPendingDirty.add(record.id);_rcDirtyGeneration++;_rcPersistPendingDirty();_rcScheduleRetry(0);}
       }
     }else if(record.type==='config'){
-      const keys=['piquets','planningRotations','disposValidated','piquetsValidated','astrConfig','astrTelData','astrTelParams','statsTaux','adminLogins','adminLogin','_stationLocation','_numberingStartOrderVersion','_ut188ChainStartRepairVersion','_pilpUt185ChronologyRepairVersion'];
+      const keys=['piquets','planningRotations','disposValidated','piquetsValidated','astrConfig','astrTelData','astrTelParams','statsTaux','rainMode','adminLogins','adminLogin','_stationLocation','_numberingStartOrderVersion','_ut188ChainStartRepairVersion','_pilpUt185ChronologyRepairVersion'];
       keys.forEach(function(key){if(incoming[key]!==undefined)d[key]=incoming[key];});
       if(incoming._operationalStartGeolocationEnabled!==undefined)d._operationalStartGeolocationEnabled=incoming._operationalStartGeolocationEnabled!==false;
+      if(incoming._rainModeAllowed!==undefined)d._rainModeAllowed=incoming._rainModeAllowed===true;
       if(incoming._statsPersonnelHoursReal!==undefined)d._statsPersonnelHoursReal=incoming._statsPersonnelHoursReal===true;
       if(incoming._indemnitesAdmins!==undefined)d._indemnitesAdmins=incoming._indemnitesAdmins===true;
       if(d._stationLocation){
@@ -2242,6 +2247,8 @@ function _rcSplitCaserne(cid, d){
     statsTaux: Object.assign({},d.statsTaux||{}),
     _stationLocation:d._stationLocation?JSON.parse(JSON.stringify(d._stationLocation)):null,
     _operationalStartGeolocationEnabled:typeof d._operationalStartGeolocationEnabled==='boolean'?d._operationalStartGeolocationEnabled:undefined,
+    _rainModeAllowed:d._rainModeAllowed===true,
+    rainMode:JSON.parse(JSON.stringify(d.rainMode||{active:false,until:null,history:[]})),
     _statsPersonnelHoursReal:d._statsPersonnelHoursReal===true,
     _indemnitesAdmins:d._indemnitesAdmins===true,
     _numberingStartOrderVersion:d._numberingStartOrderVersion||'',
@@ -2258,7 +2265,7 @@ function _rcSplitCaserne(cid, d){
 function _rcAssembleCaserne(rows){
   const out = { users:[], ivs:[], pilpIvs:[], equipes:[], fmpas:[], formStag:[], formForm:[], renforts:[], activites:[], astrTelDuties:[],
                 dispos:{}, piquets:{}, planningRotations:{}, disposValidated:{}, piquetsValidated:{}, astrConfig:{},
-                astrTelData:{}, astrTelParams:{}, statsTaux:{}, _stationLocation:null, _operationalStartGeolocationEnabled:undefined, _statsPersonnelHoursReal:false, _indemnitesAdmins:false,
+                astrTelData:{}, astrTelParams:{}, statsTaux:{}, _stationLocation:null, _operationalStartGeolocationEnabled:undefined, _rainModeAllowed:false, rainMode:{active:false,until:null,history:[]}, _statsPersonnelHoursReal:false, _indemnitesAdmins:false,
                 _numberingStartOrderVersion:'', _ut188ChainStartRepairVersion:'', _pilpUt185ChronologyRepairVersion:'', adminLogins:[], adminLogin:'' };
   const listMap = {iv:'ivs', pilp:'pilpIvs', equipe:'equipes', fmpa:'fmpas', formStag:'formStag', formForm:'formForm', renfort:'renforts', activite:'activites', astrTelDuty:'astrTelDuties'};
   rows.forEach(function(r){
@@ -2280,6 +2287,8 @@ function _rcAssembleCaserne(rows){
       out.statsTaux=c.statsTaux||{};
       out._stationLocation=c._stationLocation||null;
       out._operationalStartGeolocationEnabled=typeof c._operationalStartGeolocationEnabled==='boolean'?c._operationalStartGeolocationEnabled:undefined;
+      out._rainModeAllowed=c._rainModeAllowed===true;
+      out.rainMode=c.rainMode||{active:false,until:null,history:[]};
       out._statsPersonnelHoursReal=c._statsPersonnelHoursReal===true;
       out._indemnitesAdmins=c._indemnitesAdmins===true;
       out._numberingStartOrderVersion=c._numberingStartOrderVersion||'';

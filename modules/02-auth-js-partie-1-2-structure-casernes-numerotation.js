@@ -173,7 +173,7 @@ function initCaserneData(cid){
     users:defaultUsers,adminLogins:[],adminLogin:'',
     ivs:[],pilpIvs:[],equipes:[],dispos:{},piquets:{},planningRotations:{},disposValidated:{},piquetsValidated:{},renforts:[],astrTelDuties:[],
     astrConfig:{granularity:60,engins:['VTU-01','VTU-02','VTU-03','VPI'],deadline:{dayOfWeek:5,hour:23,minute:59},deadlinePiquet:{dayOfWeek:0,hour:18,minute:0},weekStartDay:1,weekStartHour:0},
-    _stationLocation:null,_operationalStartGeolocationEnabled:undefined,
+    _stationLocation:null,_operationalStartGeolocationEnabled:undefined,_rainModeAllowed:false,rainMode:{active:false,until:null,history:[]},
   };
 }
 CASERNES.forEach(c=>initCaserneData(c.id));
