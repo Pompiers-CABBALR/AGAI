@@ -76,7 +76,7 @@ function interventionRouteBadgeHTML(iv){
   const label='Tourn\u00e9e '+order+' \u00b7 '+chef;
   const canEdit=iv.s==='selectionne'&&CU&&iv.agr===CU.l;
   if(canEdit){
-    return `<button type="button" class="bdg route-order-badge" title="Modifier l'ordre de cette tourn\u00e9e" onclick="event.stopPropagation();editInterventionRoute('${escHtml(iv.agr)}','${escHtml(iv._routeBatchId||'')}')"><span class="route-order-number">n\u00b0${order}</span><span class="route-order-chef">${escHtml(chef)}</span></button>`;
+    return `<button type="button" class="bdg route-order-badge" title="Modifier l'ordre de cette tourn\u00e9e" onclick="event.stopPropagation();editInterventionRoute('${escHtml(iv.agr)}','${escHtml(iv._routeBatchId||'')}')"><span class="route-order-number">&#x270F;&#xFE0F; n\u00b0${order}</span><span class="route-order-chef">${escHtml(chef)}</span></button>`;
   }
   return `<span class="bdg route-order-badge" title="${escHtml(label)}"><span class="route-order-number">n\u00b0${order}</span><span class="route-order-chef">${escHtml(chef)}</span></span>`;
 }
@@ -1125,10 +1125,19 @@ function rI(){
       </div>`;
   }else if(acs){acs.style.display='none';if(acl)acl.innerHTML='';}
   // Panneau tournée
-  const selNonConf=IVS.filter(iv=>isTdy(iv)&&iv.s==='selectionne'&&iv.agr===CU.l&&!parcConfirmed.has(iv.id)&&!iv._isPilip);
+  // Une tournée peut contenir des appels des jours précédents. Leur date de
+  // création ne doit jamais empêcher le chef d'agrès d'en choisir l'ordre.
+  const selNonConf=IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l&&!parcConfirmed.has(iv.id)&&!iv._isPilip);
   const pp=document.getElementById('pap');
   if(ag&&selNonConf.length>0){pp.style.display='block';document.getElementById('pagl').textContent=interventionRouteChefName({agr:CU.l});document.getElementById('pac').textContent=selNonConf.length;rPL(selNonConf);}
   else{pp.style.display='none';rEgrid();}
+  const routeReopen=document.getElementById('route-reopen-zone');
+  const selectedMine=IVS.filter(function(iv){return iv.s==='selectionne'&&iv.agr===CU.l&&!iv._isPilip;});
+  if(routeReopen&&ag&&selectedMine.length&&selNonConf.length===0){
+    const batch=selectedMine.map(function(iv){return iv._routeBatchId;}).find(Boolean)||'';
+    routeReopen.style.display='block';
+    routeReopen.innerHTML='<button type="button" class="btn" style="width:100%;border-color:var(--sel);color:var(--sel);font-weight:700;" onclick="editInterventionRoute(\''+escHtml(CU.l)+'\',\''+escHtml(batch)+'\')">&#x270F;&#xFE0F; Modifier l\'ordre de ma tournée ('+selectedMine.length+')</button>';
+  }else if(routeReopen){routeReopen.style.display='none';routeReopen.innerHTML='';}
   // Liste
   const tireur=isTireurPILP();
   // Une intervention est visible si : créée aujourd'hui OU statut actif (quelle que soit la date) OU clôturée aujourd'hui

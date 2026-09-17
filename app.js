@@ -5191,7 +5191,7 @@ function interventionRouteBadgeHTML(iv){
   const label='Tourn\u00e9e '+order+' \u00b7 '+chef;
   const canEdit=iv.s==='selectionne'&&CU&&iv.agr===CU.l;
   if(canEdit){
-    return `<button type="button" class="bdg route-order-badge" title="Modifier l'ordre de cette tourn\u00e9e" onclick="event.stopPropagation();editInterventionRoute('${escHtml(iv.agr)}','${escHtml(iv._routeBatchId||'')}')"><span class="route-order-number">n\u00b0${order}</span><span class="route-order-chef">${escHtml(chef)}</span></button>`;
+    return `<button type="button" class="bdg route-order-badge" title="Modifier l'ordre de cette tourn\u00e9e" onclick="event.stopPropagation();editInterventionRoute('${escHtml(iv.agr)}','${escHtml(iv._routeBatchId||'')}')"><span class="route-order-number">&#x270F;&#xFE0F; n\u00b0${order}</span><span class="route-order-chef">${escHtml(chef)}</span></button>`;
   }
   return `<span class="bdg route-order-badge" title="${escHtml(label)}"><span class="route-order-number">n\u00b0${order}</span><span class="route-order-chef">${escHtml(chef)}</span></span>`;
 }
@@ -6240,10 +6240,19 @@ function rI(){
       </div>`;
   }else if(acs){acs.style.display='none';if(acl)acl.innerHTML='';}
   // Panneau tournée
-  const selNonConf=IVS.filter(iv=>isTdy(iv)&&iv.s==='selectionne'&&iv.agr===CU.l&&!parcConfirmed.has(iv.id)&&!iv._isPilip);
+  // Une tournée peut contenir des appels des jours précédents. Leur date de
+  // création ne doit jamais empêcher le chef d'agrès d'en choisir l'ordre.
+  const selNonConf=IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l&&!parcConfirmed.has(iv.id)&&!iv._isPilip);
   const pp=document.getElementById('pap');
   if(ag&&selNonConf.length>0){pp.style.display='block';document.getElementById('pagl').textContent=interventionRouteChefName({agr:CU.l});document.getElementById('pac').textContent=selNonConf.length;rPL(selNonConf);}
   else{pp.style.display='none';rEgrid();}
+  const routeReopen=document.getElementById('route-reopen-zone');
+  const selectedMine=IVS.filter(function(iv){return iv.s==='selectionne'&&iv.agr===CU.l&&!iv._isPilip;});
+  if(routeReopen&&ag&&selectedMine.length&&selNonConf.length===0){
+    const batch=selectedMine.map(function(iv){return iv._routeBatchId;}).find(Boolean)||'';
+    routeReopen.style.display='block';
+    routeReopen.innerHTML='<button type="button" class="btn" style="width:100%;border-color:var(--sel);color:var(--sel);font-weight:700;" onclick="editInterventionRoute(\''+escHtml(CU.l)+'\',\''+escHtml(batch)+'\')">&#x270F;&#xFE0F; Modifier l\'ordre de ma tournée ('+selectedMine.length+')</button>';
+  }else if(routeReopen){routeReopen.style.display='none';routeReopen.innerHTML='';}
   // Liste
   const tireur=isTireurPILP();
   // Une intervention est visible si : créée aujourd'hui OU statut actif (quelle que soit la date) OU clôturée aujourd'hui
@@ -7952,7 +7961,7 @@ function rPL(sel,position){
   restoreRouteViewPosition(viewPosition);
 }
 function getSelMixte(){
-  const norm=IVS.filter(iv=>isTdy(iv)&&iv.s==='selectionne'&&iv.agr===CU.l&&!parcConfirmed.has(iv.id)&&!iv._isPilip);
+  const norm=IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l&&!parcConfirmed.has(iv.id)&&!iv._isPilip);
   const pilp=isTireurPILP()?PILP_IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l&&!parcConfirmed.has(iv.id)):[];
   return sortRouteSelection([...norm,...pilp]);
 }
@@ -8222,7 +8231,7 @@ function sE(el,e){
   selEng=e;
 }
 function vp(){
-  IVS.filter(iv=>isTdy(iv)&&iv.s==='selectionne'&&iv.agr===CU.l).forEach(iv=>{iv.s='en-attente';iv.agr=null;delete iv._routeBatchId;delete iv._routeOrder;pushTL(iv,'en-attente',CU.l);});
+  IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l).forEach(iv=>{iv.s='en-attente';iv.agr=null;delete iv._routeBatchId;delete iv._routeOrder;pushTL(iv,'en-attente',CU.l);});
   if(isTireurPILP())PILP_IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l).forEach(iv=>{iv.s='en-attente';iv.agr=null;delete iv._routeBatchId;delete iv._routeOrder;pushTL(iv,'en-attente',CU.l);});
   selEng=null;parcConfirmed.clear();document.querySelectorAll('#eg .ec').forEach(c=>c.classList.remove('sel'));saveData(true);rI();
 }
@@ -15359,7 +15368,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260917-sync-tournees-stables-228';
+const APP_VERSION='20260917-ordre-tournee-modifiable-229';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
