@@ -1284,6 +1284,7 @@ function _postLoadInit(){
   if(CASERNE_DATA._global&&CASERNE_DATA._global.logoB64){
     window._LOGO_OVERRIDE='data:'+(CASERNE_DATA._global.logoMime||'image/jpeg')+';base64,'+CASERNE_DATA._global.logoB64;
   }
+  try{agaiMigrateOperationalStatusMetadata();}catch(error){console.warn('[AGAI] Mise à niveau des statuts historiques impossible:',error);}
   if(!CU)try{_restoreSessionAfterLoad();}catch(e){console.warn('[AGAI] Restauration de session impossible:',e);}
 }
 
@@ -2011,6 +2012,8 @@ function _rcOperationalStatusSource(current,incoming){
   return (rank[current.s]||0)>(rank[incoming.s]||0)?'current':'incoming';
 }
 function _rcMergeOperationalInterventionVersions(current,incoming){
+  if(current)ensureOperationalStatusMetadata(current);
+  if(incoming)ensureOperationalStatusMetadata(incoming);
   if(!current)return {value:incoming,keptCurrentStatus:false};
   if(!incoming)return {value:current,keptCurrentStatus:true};
   if(_rcOperationalStatusSource(current,incoming)!=='current'){
@@ -2214,6 +2217,7 @@ function _rcApplyRealtimeRecord(record){
       }else{
         const current=index>=0?list[index]:null;
         let next=Object.assign({},incoming);
+        if(record.type==='iv'||record.type==='pilp')ensureOperationalStatusMetadata(next);
         const statusResolution=(record.type==='iv'||record.type==='pilp')&&current?_rcMergeOperationalInterventionVersions(current,next):null;
         if(statusResolution)next=statusResolution.value;
         if(current&&current.frelonPhotos&&!next.frelonPhotos)next.frelonPhotos=current.frelonPhotos;

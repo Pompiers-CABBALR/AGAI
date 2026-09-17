@@ -2,9 +2,45 @@
 // ────────────────── INTERVENTIONS ──────────────────
 function rIPostUpdate(){rStatsHeader();}
 function sf(f,btn){flt=f;document.querySelectorAll('#tab-interv .fb').forEach(b=>b.classList.remove('active'));btn.classList.add('active');rI();}
+const OPERATIONAL_STATUS_VALUES=['en-attente','selectionne','en-cours','terminee','annulee','avis-passage'];
+function agaiStableStatusHash(value){
+  let hash=2166136261,text=String(value||'');
+  for(let index=0;index<text.length;index++){hash^=text.charCodeAt(index);hash=Math.imul(hash,16777619);}
+  return (hash>>>0).toString(36);
+}
+function ensureOperationalStatusMetadata(iv){
+  if(!iv||!OPERATIONAL_STATUS_VALUES.includes(iv.s))return false;
+  const timeline=Array.isArray(iv.tl)?iv.tl:[];
+  const operational=timeline.filter(function(entry){return entry&&OPERATIONAL_STATUS_VALUES.includes(entry.s);});
+  const last=operational.length?operational[operational.length-1]:null;
+  const entryRevision=operational.reduce(function(max,entry){return Math.max(max,Number(entry.statusRevision)||0);},0);
+  const revision=Math.max(1,Number(iv._statusRevision)||0,entryRevision,operational.length);
+  const stableSignature=[iv.id||'',iv.s,last&&last.s||'',last&&last.h||'',last&&last.who||'',revision].join('|');
+  const changeId=String(iv._statusChangeId||last&&last.statusChangeId||('legacy-'+agaiStableStatusHash(stableSignature)+'-'+revision));
+  const updatedAt=Math.max(Number(iv._statusUpdatedAt)||0,interventionStampMillis(last&&last.h||''));
+  let changed=false;
+  if(Number(iv._statusRevision)!==revision){iv._statusRevision=revision;changed=true;}
+  if(iv._statusChangeId!==changeId){iv._statusChangeId=changeId;changed=true;}
+  if(updatedAt&&Number(iv._statusUpdatedAt)!==updatedAt){iv._statusUpdatedAt=updatedAt;changed=true;}
+  if(last){
+    if(Number(last.statusRevision)!==revision){last.statusRevision=revision;changed=true;}
+    if(last.statusChangeId!==changeId){last.statusChangeId=changeId;changed=true;}
+  }
+  return changed;
+}
+function agaiMigrateOperationalStatusMetadata(){
+  let migrated=0;
+  Object.keys(CASERNE_DATA||{}).forEach(function(caserneId){
+    if(caserneId.startsWith('_'))return;
+    const data=CASERNE_DATA[caserneId]||{};
+    [].concat(data.ivs||[],data.pilpIvs||[]).forEach(function(iv){if(ensureOperationalStatusMetadata(iv))migrated++;});
+  });
+  window._agaiLegacyStatusMetadataCount=migrated;
+  return migrated;
+}
 function pushTL(iv,s,who,note,timelineStamp){
   if(!iv.tl)iv.tl=[];
-  const operationalStatuses=['en-attente','selectionne','en-cours','terminee','annulee','avis-passage'];
+  const operationalStatuses=OPERATIONAL_STATUS_VALUES;
   const previous=[...iv.tl].reverse().find(function(item){return item&&operationalStatuses.includes(item.s);});
   const entry=mkTL(s,timelineStamp||getH(N()),who);
   entry.from=previous&&previous.s||null;

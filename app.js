@@ -1653,7 +1653,7 @@ function operationalHealthReport(){
   Object.values(personnelUse).filter(function(list){return list.length>1;}).forEach(function(list){list.forEach(function(item){add('error',item.station,item.iv,'Agent '+item.value+' engagé simultanément sur plusieurs interventions.');});});
   const pending=typeof _rcPendingDirty!=='undefined'?_rcPendingDirty.size:0;
   const online=(LOGIN_HISTORY||[]).filter(isLoginHistorySessionActive);
-  return {issues:issues,pending:pending,online:online,lastOkAt:window._agaiSyncHealth&&window._agaiSyncHealth.lastOkAt||null,lastErrorAt:window._agaiSyncHealth&&window._agaiSyncHealth.lastErrorAt||null,lastError:window._agaiSyncHealth&&window._agaiSyncHealth.lastError||''};
+  return {issues:issues,pending:pending,online:online,legacyProtected:Number(window._agaiLegacyStatusMetadataCount)||0,lastOkAt:window._agaiSyncHealth&&window._agaiSyncHealth.lastOkAt||null,lastErrorAt:window._agaiSyncHealth&&window._agaiSyncHealth.lastErrorAt||null,lastError:window._agaiSyncHealth&&window._agaiSyncHealth.lastError||''};
 }
 function renderOperationalHealthPanel(){
   const report=operationalHealthReport(),errors=report.issues.filter(function(issue){return issue.severity==='error';}).length,warnings=report.issues.length-errors;
@@ -1666,6 +1666,7 @@ function renderOperationalHealthPanel(){
     +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-bottom:12px;">'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">ACTIONS EN ATTENTE</div><strong style="font-size:18px;color:'+(report.pending?'#B45309':'#047857')+';">'+report.pending+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">UTILISATEURS EN LIGNE</div><strong style="font-size:18px;">'+report.online.length+'</strong></div>'
+    +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">FICHES ANCIENNES PROTÉGÉES</div><strong style="font-size:18px;color:#047857;">'+report.legacyProtected+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">DERNIÈRE SYNC RÉUSSIE</div><strong style="font-size:11px;">'+escHtml(fmt(report.lastOkAt))+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">VERSIONS ACTIVES</div><strong style="font-size:10px;overflow-wrap:anywhere;">'+escHtml(deviceVersions.join(' · ')||APP_VERSION)+'</strong></div></div>'
     +(report.lastError?'<div style="background:#FEF2F2;color:#991B1B;border-radius:8px;padding:8px 10px;font-size:11px;margin-bottom:10px;"><strong>Dernière erreur :</strong> '+escHtml(report.lastError)+' · '+escHtml(fmt(report.lastErrorAt))+'</div>':'')
@@ -5194,9 +5195,45 @@ function cpH(){const v=document.getElementById('hv').textContent;if(navigator.cl
 // ────────────────── INTERVENTIONS ──────────────────
 function rIPostUpdate(){rStatsHeader();}
 function sf(f,btn){flt=f;document.querySelectorAll('#tab-interv .fb').forEach(b=>b.classList.remove('active'));btn.classList.add('active');rI();}
+const OPERATIONAL_STATUS_VALUES=['en-attente','selectionne','en-cours','terminee','annulee','avis-passage'];
+function agaiStableStatusHash(value){
+  let hash=2166136261,text=String(value||'');
+  for(let index=0;index<text.length;index++){hash^=text.charCodeAt(index);hash=Math.imul(hash,16777619);}
+  return (hash>>>0).toString(36);
+}
+function ensureOperationalStatusMetadata(iv){
+  if(!iv||!OPERATIONAL_STATUS_VALUES.includes(iv.s))return false;
+  const timeline=Array.isArray(iv.tl)?iv.tl:[];
+  const operational=timeline.filter(function(entry){return entry&&OPERATIONAL_STATUS_VALUES.includes(entry.s);});
+  const last=operational.length?operational[operational.length-1]:null;
+  const entryRevision=operational.reduce(function(max,entry){return Math.max(max,Number(entry.statusRevision)||0);},0);
+  const revision=Math.max(1,Number(iv._statusRevision)||0,entryRevision,operational.length);
+  const stableSignature=[iv.id||'',iv.s,last&&last.s||'',last&&last.h||'',last&&last.who||'',revision].join('|');
+  const changeId=String(iv._statusChangeId||last&&last.statusChangeId||('legacy-'+agaiStableStatusHash(stableSignature)+'-'+revision));
+  const updatedAt=Math.max(Number(iv._statusUpdatedAt)||0,interventionStampMillis(last&&last.h||''));
+  let changed=false;
+  if(Number(iv._statusRevision)!==revision){iv._statusRevision=revision;changed=true;}
+  if(iv._statusChangeId!==changeId){iv._statusChangeId=changeId;changed=true;}
+  if(updatedAt&&Number(iv._statusUpdatedAt)!==updatedAt){iv._statusUpdatedAt=updatedAt;changed=true;}
+  if(last){
+    if(Number(last.statusRevision)!==revision){last.statusRevision=revision;changed=true;}
+    if(last.statusChangeId!==changeId){last.statusChangeId=changeId;changed=true;}
+  }
+  return changed;
+}
+function agaiMigrateOperationalStatusMetadata(){
+  let migrated=0;
+  Object.keys(CASERNE_DATA||{}).forEach(function(caserneId){
+    if(caserneId.startsWith('_'))return;
+    const data=CASERNE_DATA[caserneId]||{};
+    [].concat(data.ivs||[],data.pilpIvs||[]).forEach(function(iv){if(ensureOperationalStatusMetadata(iv))migrated++;});
+  });
+  window._agaiLegacyStatusMetadataCount=migrated;
+  return migrated;
+}
 function pushTL(iv,s,who,note,timelineStamp){
   if(!iv.tl)iv.tl=[];
-  const operationalStatuses=['en-attente','selectionne','en-cours','terminee','annulee','avis-passage'];
+  const operationalStatuses=OPERATIONAL_STATUS_VALUES;
   const previous=[...iv.tl].reverse().find(function(item){return item&&operationalStatuses.includes(item.s);});
   const entry=mkTL(s,timelineStamp||getH(N()),who);
   entry.from=previous&&previous.s||null;
@@ -15499,7 +15536,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260917-concurrence-operationnelle-235';
+const APP_VERSION='20260917-migration-historique-236';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -18390,6 +18427,7 @@ function _postLoadInit(){
   if(CASERNE_DATA._global&&CASERNE_DATA._global.logoB64){
     window._LOGO_OVERRIDE='data:'+(CASERNE_DATA._global.logoMime||'image/jpeg')+';base64,'+CASERNE_DATA._global.logoB64;
   }
+  try{agaiMigrateOperationalStatusMetadata();}catch(error){console.warn('[AGAI] Mise à niveau des statuts historiques impossible:',error);}
   if(!CU)try{_restoreSessionAfterLoad();}catch(e){console.warn('[AGAI] Restauration de session impossible:',e);}
 }
 
@@ -19117,6 +19155,8 @@ function _rcOperationalStatusSource(current,incoming){
   return (rank[current.s]||0)>(rank[incoming.s]||0)?'current':'incoming';
 }
 function _rcMergeOperationalInterventionVersions(current,incoming){
+  if(current)ensureOperationalStatusMetadata(current);
+  if(incoming)ensureOperationalStatusMetadata(incoming);
   if(!current)return {value:incoming,keptCurrentStatus:false};
   if(!incoming)return {value:current,keptCurrentStatus:true};
   if(_rcOperationalStatusSource(current,incoming)!=='current'){
@@ -19320,6 +19360,7 @@ function _rcApplyRealtimeRecord(record){
       }else{
         const current=index>=0?list[index]:null;
         let next=Object.assign({},incoming);
+        if(record.type==='iv'||record.type==='pilp')ensureOperationalStatusMetadata(next);
         const statusResolution=(record.type==='iv'||record.type==='pilp')&&current?_rcMergeOperationalInterventionVersions(current,next):null;
         if(statusResolution)next=statusResolution.value;
         if(current&&current.frelonPhotos&&!next.frelonPhotos)next.frelonPhotos=current.frelonPhotos;
