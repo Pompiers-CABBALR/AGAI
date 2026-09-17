@@ -1124,6 +1124,15 @@ let _sessionLastPersist=0;
 let _loginPresenceLastPush=0;
 // SESSION_DURATION_MS est défini dans config.js
 
+function agaiDeviceId(){
+  const key='agai_device_id';
+  try{
+    let value=localStorage.getItem(key);
+    if(!value){value=(typeof crypto!=='undefined'&&crypto.randomUUID?crypto.randomUUID():'device-'+Date.now()+'-'+Math.random().toString(36).slice(2));localStorage.setItem(key,value);}
+    return value;
+  }catch(e){return'SESSION-'+String(SESSION_TOKEN||'temp');}
+}
+
 function _readStoredSession(){
   try{return JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY)||'null');}catch(e){return null;}
 }
@@ -1186,7 +1195,9 @@ function _createSession(){
       actif:true,
       lastSeenAt:nowIso,
       support:support,
-      navigateur:navigateur
+      navigateur:navigateur,
+      appVersion:APP_VERSION,
+      deviceId:agaiDeviceId()
     };
     LOGIN_HISTORY.unshift(entry);
     _loginPresenceLastPush=Date.now();
@@ -1545,7 +1556,7 @@ function renderLoginHistoryAccount(group,colour){
       const online=isLoginHistorySessionActive(entry);
       const closure=entry.fermetureAuto?' title="'+escHtml(entry.fermetureAuto)+'"':'';
       return '<tr style="border-top:1px solid #f0f0f0;"><td style="padding:6px;text-align:center;"><input type="checkbox" class="login-history-check" data-session-id="'+escHtml(entry.id)+'" onchange="updateLoginHistorySelectionCount()" aria-label="Sélectionner cette connexion"/></td>'
-        +'<td style="padding:6px 12px;color:#444;">'+fmt(entry.hConnexion)+'</td><td style="padding:6px 12px;color:#444;">'+fmt(entry.lastSeenAt||entry.hConnexion)+'</td><td style="padding:6px 12px;color:#444;"'+closure+'>'+(entry.hDeconnexion?fmt(entry.hDeconnexion):'—')+'</td><td style="padding:6px 12px;color:#64748B;">'+escHtml([entry.support,entry.navigateur].filter(Boolean).join(' · ')||'Non renseigné')+'</td>'
+        +'<td style="padding:6px 12px;color:#444;">'+fmt(entry.hConnexion)+'</td><td style="padding:6px 12px;color:#444;">'+fmt(entry.lastSeenAt||entry.hConnexion)+'</td><td style="padding:6px 12px;color:#444;"'+closure+'>'+(entry.hDeconnexion?fmt(entry.hDeconnexion):'—')+'</td><td style="padding:6px 12px;color:#64748B;">'+escHtml([entry.support,entry.navigateur,entry.appVersion].filter(Boolean).join(' · ')||'Non renseigné')+'</td>'
         +'<td style="padding:6px 12px;">'+(online?'<span style="color:#065F46;font-weight:600;">🟢 En ligne</span>':'<span style="color:#9CA3AF;">Déconnecté</span>')+'</td></tr>';
     }).join('')
     +'</tbody></table></div></div>';
@@ -1606,6 +1617,62 @@ window.setInterval(function(){
   const globalView=document.getElementById('global-view');
   if(globalView&&globalView.style.display!=='none'&&GLOBAL_ROLE==='superadmin')refreshLoginHistoryPanel();
 },30000);
+
+function operationalHealthReport(){
+  const issues=[],vehicleUse={},personnelUse={},seenIds={};
+  const add=function(severity,station,iv,message){issues.push({severity:severity,station:station,iv:iv&&iv.id||'',message:message});};
+  OP_CASERNES().forEach(function(caserne){
+    const data=CASERNE_DATA[caserne.id]||{},all=[].concat(data.ivs||[],data.pilpIvs||[]);
+    all.forEach(function(iv){
+      if(!iv||!iv.id)return;
+      const idKey=caserne.id+'|'+iv.id;
+      if(seenIds[idKey])add('error',caserne.nom,iv,'Identifiant d’intervention présent plusieurs fois.');
+      seenIds[idKey]=true;
+      if(iv.s==='selectionne'&&!iv.agr)add('error',caserne.nom,iv,'Intervention sélectionnée sans chef d’agrès.');
+      if(iv.s!=='en-cours')return;
+      if(!iv.agr)add('error',caserne.nom,iv,'Intervention en cours sans chef d’agrès.');
+      const vehicles=interventionVehicleNames(iv),personnel=interventionActivePersonnelLogins(iv);
+      if(!vehicles.length)add('error',caserne.nom,iv,'Intervention en cours sans véhicule enregistré.');
+      if(!personnel.length)add('error',caserne.nom,iv,'Intervention en cours sans équipage enregistré.');
+      if(iv.agr&&personnel.length&&!personnel.includes(iv.agr))add('error',caserne.nom,iv,'Le chef d’agrès responsable n’apparaît pas dans l’équipage engagé.');
+      const structuredCrew=[].concat(iv._equipage1||[],iv._equipage2||[]);
+      if(structuredCrew.length&&!structuredCrew.some(function(member){return /conduct/i.test(String(member&&member.role||''));}))add('error',caserne.nom,iv,'Aucun conducteur identifié dans l’équipage engagé.');
+      vehicles.forEach(function(vehicle){const key=caserne.id+'|'+vehicle;(vehicleUse[key]||(vehicleUse[key]=[])).push({iv:iv,station:caserne.nom,value:vehicle});});
+      personnel.forEach(function(login){const key=caserne.id+'|'+login;(personnelUse[key]||(personnelUse[key]=[])).push({iv:iv,station:caserne.nom,value:login});});
+    });
+    const routeGroups={};
+    all.filter(function(iv){return iv&&iv.agr&&['selectionne','en-cours'].includes(iv.s);}).forEach(function(iv){
+      const key=iv.agr,order=Number(iv._routeOrder)||0;
+      if(!order)return;
+      const orderKey=key+'|'+order;
+      if(routeGroups[orderKey])add('warn',caserne.nom,iv,'Numéro de tournée '+order+' déjà utilisé par '+iv.agr+'.');
+      routeGroups[orderKey]=iv.id;
+    });
+  });
+  Object.values(vehicleUse).filter(function(list){return list.length>1;}).forEach(function(list){list.forEach(function(item){add('error',item.station,item.iv,'Véhicule '+item.value+' engagé simultanément sur plusieurs interventions.');});});
+  Object.values(personnelUse).filter(function(list){return list.length>1;}).forEach(function(list){list.forEach(function(item){add('error',item.station,item.iv,'Agent '+item.value+' engagé simultanément sur plusieurs interventions.');});});
+  const pending=typeof _rcPendingDirty!=='undefined'?_rcPendingDirty.size:0;
+  const online=(LOGIN_HISTORY||[]).filter(isLoginHistorySessionActive);
+  return {issues:issues,pending:pending,online:online,lastOkAt:window._agaiSyncHealth&&window._agaiSyncHealth.lastOkAt||null,lastErrorAt:window._agaiSyncHealth&&window._agaiSyncHealth.lastErrorAt||null,lastError:window._agaiSyncHealth&&window._agaiSyncHealth.lastError||''};
+}
+function renderOperationalHealthPanel(){
+  const report=operationalHealthReport(),errors=report.issues.filter(function(issue){return issue.severity==='error';}).length,warnings=report.issues.length-errors;
+  const colour=errors?'#B91C1C':warnings||report.pending?'#B45309':'#047857';
+  const background=errors?'#FEF2F2':warnings||report.pending?'#FFFBEB':'#ECFDF5';
+  const fmt=function(value){if(!value)return'Jamais sur cet appareil';const date=new Date(value);return Number.isNaN(date.getTime())?'—':date.toLocaleDateString('fr-FR')+' '+date.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});};
+  const deviceVersions=[...new Set(report.online.map(function(entry){return entry.appVersion||'Version non renseignée';}))];
+  return '<div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;border:1px solid #E2E8F0;">'
+    +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;"><h3 style="font-size:15px;font-weight:700;margin:0;">🩺 Santé opérationnelle</h3><span style="background:'+background+';color:'+colour+';border-radius:12px;padding:3px 9px;font-size:11px;font-weight:700;">'+(errors?errors+' anomalie(s)':warnings?warnings+' vigilance(s)':'Aucune anomalie détectée')+'</span><button class="btn sm" style="margin-left:auto;" onclick="refreshOperationalHealthPanel()">↻ Actualiser</button></div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-bottom:12px;">'
+    +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">ACTIONS EN ATTENTE</div><strong style="font-size:18px;color:'+(report.pending?'#B45309':'#047857')+';">'+report.pending+'</strong></div>'
+    +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">UTILISATEURS EN LIGNE</div><strong style="font-size:18px;">'+report.online.length+'</strong></div>'
+    +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">DERNIÈRE SYNC RÉUSSIE</div><strong style="font-size:11px;">'+escHtml(fmt(report.lastOkAt))+'</strong></div>'
+    +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">VERSIONS ACTIVES</div><strong style="font-size:10px;overflow-wrap:anywhere;">'+escHtml(deviceVersions.join(' · ')||APP_VERSION)+'</strong></div></div>'
+    +(report.lastError?'<div style="background:#FEF2F2;color:#991B1B;border-radius:8px;padding:8px 10px;font-size:11px;margin-bottom:10px;"><strong>Dernière erreur :</strong> '+escHtml(report.lastError)+' · '+escHtml(fmt(report.lastErrorAt))+'</div>':'')
+    +(report.issues.length?'<div style="max-height:260px;overflow:auto;border:1px solid #E5E7EB;border-radius:9px;">'+report.issues.slice(0,100).map(function(issue){return '<div style="padding:7px 9px;border-bottom:1px solid #F1F5F9;font-size:11px;display:flex;gap:8px;"><span>'+(issue.severity==='error'?'🔴':'🟠')+'</span><span><strong>'+escHtml(issue.station)+'</strong>'+(issue.iv?' · '+escHtml(issue.iv):'')+' — '+escHtml(issue.message)+'</span></div>';}).join('')+'</div>':'<div style="font-size:12px;color:#047857;">Les statuts actifs, véhicules, personnels et numéros de tournée sont cohérents.</div>')
+    +'</div>';
+}
+function refreshOperationalHealthPanel(){const panel=document.getElementById('sa-health-panel');if(panel)panel.innerHTML=renderOperationalHealthPanel();}
 
 const SUPERADMIN_SECTIONS=[
   {id:'casernes',icon:'🏠',label:'Casernes'},
@@ -2022,6 +2089,7 @@ function renderSuperAdmin(){
     </div>
     </section>
     <section class="sa-section" data-sa-section="maintenance">
+    <div id="sa-health-panel">${renderOperationalHealthPanel()}</div>
     <div style="margin-top:20px;background:#FEF2F2;border-radius:14px;padding:16px;border:1px solid #FECACA;">
       <h3 style="font-size:15px;font-weight:700;margin-bottom:4px;color:#C0392B;">⚠️ Zone dangereuse — Gestion des interventions</h3>
       <div style="font-size:12px;color:#666;margin-bottom:12px;">Ces actions sont irr\u00e9versibles. \u00c0 utiliser avec pr\u00e9caution.</div>
@@ -3556,10 +3624,10 @@ function _restoreSessionAfterLoad(){
       caserneId:CURRENT_CASERNE_ID||CU.caserneId||(GLOBAL_ROLE?'EMAJ':''),caserne:(CC()&&CC().nom)||(GLOBAL_ROLE?'État-Major':'Global'),
       hConnexion:new Date(Number(stored.lastSeenAt)||Date.now()).toISOString(),hDeconnexion:null,actif:true,lastSeenAt:restoredNow,
       support:/iPad|Tablet|Android(?!.*Mobile)/i.test(ua)?'Tablette':/iPhone|Android.*Mobile|Mobile/i.test(ua)?'Smartphone':'Ordinateur',
-      navigateur:/Edg\//.test(ua)?'Edge':/Firefox\//.test(ua)?'Firefox':/CriOS|Chrome\//.test(ua)?'Chrome':/Safari\//.test(ua)?'Safari':'Navigateur'};
+      navigateur:/Edg\//.test(ua)?'Edge':/Firefox\//.test(ua)?'Firefox':/CriOS|Chrome\//.test(ua)?'Chrome':/Safari\//.test(ua)?'Safari':'Navigateur',appVersion:APP_VERSION,deviceId:agaiDeviceId()};
     LOGIN_HISTORY.unshift(restoredHistoryEntry);
   }else{
-    restoredHistoryEntry.lastSeenAt=restoredNow;restoredHistoryEntry.actif=true;restoredHistoryEntry.hDeconnexion=null;
+    restoredHistoryEntry.lastSeenAt=restoredNow;restoredHistoryEntry.actif=true;restoredHistoryEntry.hDeconnexion=null;restoredHistoryEntry.appVersion=APP_VERSION;restoredHistoryEntry.deviceId=restoredHistoryEntry.deviceId||agaiDeviceId();
   }
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   window.setTimeout(function(){saveData(true);},0);
@@ -5124,7 +5192,11 @@ function rIPostUpdate(){rStatsHeader();}
 function sf(f,btn){flt=f;document.querySelectorAll('#tab-interv .fb').forEach(b=>b.classList.remove('active'));btn.classList.add('active');rI();}
 function pushTL(iv,s,who,note){
   if(!iv.tl)iv.tl=[];
+  const previous=[...iv.tl].reverse().find(function(item){return item&&['en-attente','selectionne','en-cours','terminee','annulee','avis-passage'].includes(item.s);});
   const entry=mkTL(s,getH(N()),who);
+  entry.from=previous&&previous.s||null;
+  entry.appVersion=APP_VERSION;
+  entry.deviceId=agaiDeviceId();
   if(note)entry.note=note;
   iv.tl.push(entry);
   if(['en-attente','selectionne','en-cours','terminee','annulee','avis-passage'].includes(s))iv._statusUpdatedAt=Date.now();
@@ -15385,7 +15457,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260917-exposition-precipitations-232';
+const APP_VERSION='20260917-stabilite-operationnelle-233';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -17945,6 +18017,7 @@ let _jbSaving     = false;
 let _jbPollTimer  = null;
 let _jbLastPush   = 0;
 let _jbEditLock   = 0; // timestamp de la dernière modification — bloque le pull pendant 15s
+window._agaiSyncHealth=window._agaiSyncHealth||{lastOkAt:null,lastErrorAt:null,lastError:'',state:'loading'};
 
 function _jbSetStatus(state){
   let el=document.getElementById('jb-status');
@@ -17952,10 +18025,14 @@ function _jbSetStatus(state){
   const cfg={ok:{txt:'☁️ Sync OK',bg:'#ECFDF5',color:'#065F46'},saving:{txt:'⏳ Sync...',bg:'#FFF7ED',color:'#92400E'},pending:{txt:'⏳ Sync en attente',bg:'#FFF7ED',color:'#92400E'},error:{txt:'⚠️ Sync KO',bg:'#FEF2F2',color:'#991B1B'},loading:{txt:'⏳ Chargement',bg:'#EFF6FF',color:'#1D4ED8'}};
   const c=cfg[state]||cfg.ok;
   const queued=typeof _rcPendingDirty!=='undefined'?_rcPendingDirty.size:0;
-  el.textContent=c.txt+((state==='pending'||state==='error')&&queued?' ('+queued+' en attente)':'');
-  el.style.cssText='position:fixed;bottom:8px;right:8px;z-index:9999;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;background:'+c.bg+';color:'+c.color+';box-shadow:0 1px 4px rgba(0,0,0,.15);cursor:pointer;';
   const syncError=typeof _rcLastSyncError!=='undefined'?_rcLastSyncError:'';
-  el.title=state==='error'&&syncError?syncError:(state==='ok'&&window._agaiLocalCacheLimited?'Supabase synchronisé — cache hors ligne limité sur cet appareil':'Cliquer pour synchroniser maintenant');
+  window._agaiSyncHealth.state=state;
+  if(state==='ok'&&!queued){window._agaiSyncHealth.lastOkAt=Date.now();window._agaiSyncHealth.lastError='';}
+  if(state==='error'){window._agaiSyncHealth.lastErrorAt=Date.now();window._agaiSyncHealth.lastError=syncError||'Erreur de synchronisation';}
+  const lastOkLabel=state==='ok'&&window._agaiSyncHealth.lastOkAt?' · '+new Date(window._agaiSyncHealth.lastOkAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):'';
+  el.textContent=c.txt+lastOkLabel+((state==='pending'||state==='error')&&queued?' ('+queued+' en attente)':'');
+  el.style.cssText='position:fixed;bottom:8px;right:8px;z-index:9999;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;background:'+c.bg+';color:'+c.color+';box-shadow:0 1px 4px rgba(0,0,0,.15);cursor:pointer;';
+  el.title=state==='error'&&syncError?syncError:(state==='ok'&&window._agaiLocalCacheLimited?'Supabase synchronisé — cache hors ligne limité sur cet appareil':'Dernière synchronisation réussie : '+(window._agaiSyncHealth.lastOkAt?new Date(window._agaiSyncHealth.lastOkAt).toLocaleString('fr-FR'):'—')+' — cliquer pour synchroniser maintenant');
   el.onclick=function(){
     if(state==='error'&&syncError)alert('Diagnostic de synchronisation\n\n'+syncError+'\n\nVersion : '+APP_VERSION);
     jbSyncNow();
