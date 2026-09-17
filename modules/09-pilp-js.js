@@ -610,9 +610,12 @@ function persistRouteOrder(ordered,position){
   if(!ordered||!ordered.length)return;
   const batch=ordered.map(function(iv){return iv._routeBatchId;}).find(Boolean)||('ROUTE_'+String(Date.now())+'_'+(CU&&CU.l||''));
   const stamp=getH(N());
+  const inProgress=[].concat(IVS||[],PILP_IVS||[]).filter(function(iv){return iv.s==='en-cours'&&iv.agr===(CU&&CU.l);});
+  const prefix=sortRouteSelection(inProgress);
+  prefix.forEach(function(iv,index){iv._routeBatchId=batch;iv._routeOrder=index+1;});
   ordered.forEach(function(iv,index){
     iv._routeBatchId=batch;
-    iv._routeOrder=index+1;
+    iv._routeOrder=prefix.length+index+1;
     iv._routeOrderUpdatedAt=stamp;
   });
   if(CD()){
@@ -641,7 +644,10 @@ function persistPilpRouteOrder(ordered){
   if(!ordered.length)return;
   const batch=ordered.map(function(iv){return iv._routeBatchId;}).find(Boolean)||('PILP_ROUTE_'+Date.now()+'_'+(CU&&CU.l||''));
   const stamp=getH(N());
-  ordered.forEach(function(iv,index){iv._routeBatchId=batch;iv._routeOrder=index+1;iv._routeOrderUpdatedAt=stamp;});
+  const inProgress=[].concat(IVS||[],PILP_IVS||[]).filter(function(iv){return iv.s==='en-cours'&&iv.agr===(CU&&CU.l);});
+  const prefix=sortRouteSelection(inProgress);
+  prefix.forEach(function(iv,index){iv._routeBatchId=batch;iv._routeOrder=index+1;});
+  ordered.forEach(function(iv,index){iv._routeBatchId=batch;iv._routeOrder=prefix.length+index+1;iv._routeOrderUpdatedAt=stamp;});
   if(CD())CD().pilpIvs=PILP_IVS;
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);rPLPilp(ordered);rPilp();
@@ -665,12 +671,11 @@ function confirmerSelPilp(){
   persistPilpRouteOrder(selected);selected.forEach(function(iv){parcConfirmed.add(iv.id);});rPilp();
   showToast('Tournée PILP confirmée : l’ordre reste visible sur chaque intervention.','success');
 }
-function optPilp(){
+async function optPilp(){
   if(!canOperatePilp()){showToast('La tournée PILP est réservée aux tireurs PILP, aux administrateurs actifs et au superadmin.','warn');return;}
-  const selected=getSelPilp();if(selected.length<=2)return;
-  const base=[50.508,2.548];let remaining=selected.slice(),result=[],current=base;
-  while(remaining.length){let best=null,distance=Infinity;remaining.forEach(function(iv){const coords=gc(iv.com),value=dst(current,coords);if(value<distance){distance=value;best=iv;}});result.push(best);remaining=remaining.filter(function(iv){return iv.id!==best.id;});current=gc(best.com);}
-  persistPilpRouteOrder(result);
+  const selected=getSelPilp();if(selected.length<=1)return;
+  await hydrateInterventionRouteCoordinates(selected);
+  persistPilpRouteOrder(optimizeInterventionRoute(selected));
 }
 function vpPilp(){
   if(!canOperatePilp()){showToast('La sélection PILP est réservée aux tireurs PILP, aux administrateurs actifs et au superadmin.','warn');return;}
@@ -779,12 +784,74 @@ document.addEventListener('pointermove',routePointerMove,{passive:false});
 document.addEventListener('pointerup',routePointerEnd);
 document.addEventListener('pointercancel',routePointerEnd);
 
-function opt(){
+function interventionRouteCoordinates(iv){
+  const stored=iv&&iv._addressCoordinates;
+  if(Array.isArray(stored)&&stored.length>=2&&Number.isFinite(Number(stored[0]))&&Number.isFinite(Number(stored[1])))return [Number(stored[0]),Number(stored[1])];
+  return gc(iv&&iv.com);
+}
+async function hydrateInterventionRouteCoordinates(selected){
+  const missing=(selected||[]).filter(function(iv){return !Array.isArray(iv&&iv._addressCoordinates)&&iv&&iv.com&&(iv._addrBase||iv.addr);});
+  if(!missing.length)return;
+  await Promise.all(missing.map(async function(iv){
+    try{
+      const query=String(iv._addrBase||iv.addr||'').split(' — ')[0].trim();
+      const controller=new AbortController();
+      const timeout=setTimeout(function(){controller.abort();},4500);
+      const results=await addressSuggestions(query,iv.com,controller.signal);
+      clearTimeout(timeout);
+      const match=results.find(function(item){return Number.isFinite(Number(item.latitude))&&Number.isFinite(Number(item.longitude));});
+      if(match)iv._addressCoordinates=[Number(match.latitude),Number(match.longitude)];
+    }catch(e){}
+  }));
+}
+function interventionRouteStart(){
+  try{
+    const station=getCaserneStationLocation(CURRENT_CASERNE_ID);
+    if(station&&validCaserneCoordinates(Number(station.latitude),Number(station.longitude)))return [Number(station.latitude),Number(station.longitude)];
+  }catch(e){}
+  return [50.508,2.548];
+}
+function interventionRouteDistance(a,b){
+  const lat1=Number(a[0])*Math.PI/180,lat2=Number(b[0])*Math.PI/180;
+  const dLat=lat2-lat1,dLon=(Number(b[1])-Number(a[1]))*Math.PI/180;
+  const value=Math.sin(dLat/2)**2+Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2;
+  return 6371*2*Math.atan2(Math.sqrt(value),Math.sqrt(Math.max(0,1-value)));
+}
+function interventionRouteTotal(route,start){
+  let total=0,current=start;
+  (route||[]).forEach(function(iv){const next=interventionRouteCoordinates(iv);total+=interventionRouteDistance(current,next);current=next;});
+  return total;
+}
+function optimizeInterventionRoute(selected){
+  const unique=[],seen=new Set();
+  (selected||[]).forEach(function(iv){if(iv&&iv.id&&!seen.has(iv.id)){seen.add(iv.id);unique.push(iv);}});
+  if(unique.length<2)return unique;
+  const start=interventionRouteStart();
+  let remaining=unique.slice(),route=[],current=start;
+  while(remaining.length){
+    let bestIndex=0,bestDistance=Infinity;
+    remaining.forEach(function(iv,index){const value=interventionRouteDistance(current,interventionRouteCoordinates(iv));if(value<bestDistance){bestDistance=value;bestIndex=index;}});
+    const next=remaining.splice(bestIndex,1)[0];route.push(next);current=interventionRouteCoordinates(next);
+  }
+  // Amélioration 2-opt : supprime les croisements et retours inutiles tout en
+  // conservant chaque intervention exactement une fois.
+  let improved=true,passes=0;
+  while(improved&&passes++<12){
+    improved=false;
+    const before=interventionRouteTotal(route,start);
+    for(let i=0;i<route.length-1&&!improved;i++)for(let j=i+1;j<route.length&&!improved;j++){
+      const candidate=route.slice();candidate.splice(i,j-i+1,...candidate.slice(i,j+1).reverse());
+      if(interventionRouteTotal(candidate,start)+0.00001<before){route=candidate;improved=true;}
+    }
+  }
+  return route;
+}
+
+async function opt(){
   const s=getSelMixte();
-  if(s.length<=2)return;
-  const base=[50.508,2.548];let rem=[...s],res=[],cur=base;
-  while(rem.length){let best=null,bd=Infinity;rem.forEach(iv=>{const c=gc(iv.com),d=dst(cur,c);if(d<bd){bd=d;best=iv;}});res.push(best);rem=rem.filter(v=>v.id!==best.id);cur=gc(best.com);}
-  persistRouteOrder(res,captureRouteViewPosition());
+  if(s.length<=1)return;
+  await hydrateInterventionRouteCoordinates(s);
+  persistRouteOrder(optimizeInterventionRoute(s),captureRouteViewPosition());
 }
 function confirmerSel(){
   const selected=getSelMixte();

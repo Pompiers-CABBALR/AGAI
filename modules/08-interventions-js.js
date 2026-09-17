@@ -19,6 +19,34 @@ function hasAdministrativeAccount(){
     (Array.isArray(CU.rights)&&CU.rights.includes('Administration'));
 }
 
+function interventionRouteSelectionKey(iv,index){
+  if(iv&&Number.isFinite(Number(iv._routeSelectedAt)))return Number(iv._routeSelectedAt);
+  const entries=(iv&&iv.tl||[]).filter(function(entry){return entry&&entry.s==='selectionne';});
+  const last=entries[entries.length-1];
+  const parsed=last&&Date.parse(String(last.h||'').replace('_','T'));
+  return Number.isFinite(parsed)?parsed:(Number.MAX_SAFE_INTEGER-100000+(index||0));
+}
+
+function normalizeInterventionRoute(login,preferredBatch){
+  if(!login)return [];
+  const active=[].concat(IVS||[],PILP_IVS||[]).filter(function(iv){
+    return iv&&iv.agr===login&&['selectionne','en-cours'].includes(iv.s);
+  });
+  if(!active.length)return [];
+  const batch=preferredBatch||active.map(function(iv){return iv._routeBatchId;}).find(Boolean)||('ROUTE_'+String(Date.now())+'_'+login);
+  const ordered=active.map(function(iv,index){return {iv:iv,index:index};}).sort(function(a,b){
+    const ao=Number(a.iv._routeOrder),bo=Number(b.iv._routeOrder);
+    const av=Number.isFinite(ao)&&ao>0?ao:Number.MAX_SAFE_INTEGER;
+    const bv=Number.isFinite(bo)&&bo>0?bo:Number.MAX_SAFE_INTEGER;
+    if(av!==bv)return av-bv;
+    const at=interventionRouteSelectionKey(a.iv,a.index),bt=interventionRouteSelectionKey(b.iv,b.index);
+    if(at!==bt)return at-bt;
+    return String(a.iv.id||'').localeCompare(String(b.iv.id||''));
+  }).map(function(item){return item.iv;});
+  ordered.forEach(function(iv,index){iv._routeBatchId=batch;iv._routeOrder=index+1;});
+  return ordered;
+}
+
 function assignInterventionRoute(iv,login){
   if(!iv||!login)return;
   const allInterventions=[].concat(IVS||[],PILP_IVS||[]);
@@ -27,10 +55,11 @@ function assignInterventionRoute(iv,login){
   });
   let batch=active.map(function(x){return x._routeBatchId;}).find(Boolean);
   if(!batch)batch='ROUTE_'+String(Date.now())+'_'+login;
-  const sameBatch=allInterventions.filter(function(x){return x._routeBatchId===batch;});
-  const maxOrder=sameBatch.reduce(function(max,x){return Math.max(max,Number(x._routeOrder)||0);},0);
+  const maxOrder=active.reduce(function(max,x){return Math.max(max,Number(x._routeOrder)||0);},0);
+  if(iv._routeBatchId!==batch||!(Number(iv._routeOrder)>0))iv._routeOrder=maxOrder+1;
   iv._routeBatchId=batch;
-  if(!iv._routeOrder)iv._routeOrder=maxOrder+1;
+  if(!iv._routeSelectedAt)iv._routeSelectedAt=Date.now();
+  normalizeInterventionRoute(login,batch);
 }
 
 function interventionRouteChefName(iv){
@@ -55,10 +84,12 @@ function interventionRouteBadgeHTML(iv){
 function editInterventionRoute(chefLogin,batchId){
   if(!CU||chefLogin!==CU.l){showToast('Seul le chef d\u2019agr\u00e8s concern\u00e9 peut modifier cette tourn\u00e9e.','warn');return;}
   const route=[].concat(IVS||[],PILP_IVS||[]).filter(function(iv){
-    return iv.s==='selectionne'&&iv.agr===chefLogin&&(!batchId||iv._routeBatchId===batchId);
+    return iv.s==='selectionne'&&iv.agr===chefLogin;
   });
   if(!route.length){showToast('Aucune intervention s\u00e9lectionn\u00e9e \u00e0 r\u00e9organiser.','info');return;}
-  route.forEach(function(iv){parcConfirmed.delete(iv.id);});
+  const normalized=normalizeInterventionRoute(chefLogin,batchId||route.map(function(iv){return iv._routeBatchId;}).find(Boolean));
+  normalized.forEach(function(iv){if(iv.s==='selectionne')parcConfirmed.delete(iv.id);});
+  saveData(true);
   rI();
   requestAnimationFrame(function(){
     const panel=document.getElementById('pap');
@@ -71,15 +102,12 @@ function prepareInterventionRoute(iv){
   if(!iv)return;
   assignInterventionRoute(iv,iv.agr||CU.l);
   const login=iv.agr||CU.l;
-  const active=IVS.filter(function(x){
-    return x.agr===login&&['selectionne','en-cours'].includes(x.s);
-  });
-  active.forEach(function(x){assignInterventionRoute(x,login);});
+  normalizeInterventionRoute(login,iv._routeBatchId);
 }
 
 function isFirstInterventionOfRoute(iv){
   if(!iv||!iv._routeBatchId)return true;
-  const route=IVS.filter(function(x){return x._routeBatchId===iv._routeBatchId;});
+  const route=[].concat(IVS||[],PILP_IVS||[]).filter(function(x){return x._routeBatchId===iv._routeBatchId;});
   if(route.length<2)return true;
   const first=route.slice().sort(function(a,b){
     return (Number(a._routeOrder)||9999)-(Number(b._routeOrder)||9999);

@@ -1286,8 +1286,7 @@ function jbSyncNow(){
   if(USE_RECORDS&&typeof _rcPendingDirty!=='undefined'&&_rcPendingDirty.size){
     // Après l'envoi de la file locale, relire toutes les pages distantes : un
     // simple push ne suffisait pas à récupérer les interventions absentes.
-    _rcRequestRealtimePull(0);
-    _rcPush(false);
+    Promise.resolve(_rcPush(false)).finally(function(){_rcRequestRealtimePull(150);});
     showToast('Synchronisation des actions en attente relancée','info');
     return;
   }
@@ -1652,6 +1651,10 @@ const RC_OUTBOX_DB_NAME = 'agai-sync-outbox';
 const RC_OUTBOX_STORE = 'records';
 let _rcOutboxDbPromise = null;
 let _rcOutboxSnapshotTimer = null;
+function _rcResetOutboxDb(db){
+  try{if(db)db.close();}catch(e){}
+  _rcOutboxDbPromise=null;
+}
 function _rcOpenOutboxDb(){
   if(_rcOutboxDbPromise)return _rcOutboxDbPromise;
   _rcOutboxDbPromise=new Promise(function(resolve,reject){
@@ -1661,7 +1664,12 @@ function _rcOpenOutboxDb(){
       const db=request.result;
       if(!db.objectStoreNames.contains(RC_OUTBOX_STORE))db.createObjectStore(RC_OUTBOX_STORE,{keyPath:'id'});
     };
-    request.onsuccess=function(){resolve(request.result);};
+    request.onsuccess=function(){
+      const db=request.result;
+      db.onversionchange=function(){_rcResetOutboxDb(db);};
+      if('onclose' in db)db.onclose=function(){_rcOutboxDbPromise=null;};
+      resolve(db);
+    };
     request.onerror=function(){reject(request.error||new Error('Ouverture IndexedDB impossible'));};
   }).catch(function(error){
     _rcOutboxDbPromise=null;
@@ -1675,7 +1683,9 @@ async function _rcOutboxPutRows(rows){
   if(!safeRows.length)return true;
   const db=await _rcOpenOutboxDb();if(!db)return false;
   return new Promise(function(resolve){
-    const tx=db.transaction(RC_OUTBOX_STORE,'readwrite'),store=tx.objectStore(RC_OUTBOX_STORE),queuedAt=Date.now();
+    let tx,store;
+    try{tx=db.transaction(RC_OUTBOX_STORE,'readwrite');store=tx.objectStore(RC_OUTBOX_STORE);}catch(error){_rcResetOutboxDb(db);resolve(false);return;}
+    const queuedAt=Date.now();
     safeRows.forEach(function(row){store.put({id:row.id,row:_rcTransportRow(row),queuedAt:queuedAt});});
     tx.oncomplete=function(){resolve(true);};
     tx.onerror=function(){console.warn('[AGAI][RC] Écriture file durable impossible :',tx.error);resolve(false);};
@@ -1685,7 +1695,8 @@ async function _rcOutboxPutRows(rows){
 async function _rcOutboxGetRows(){
   const db=await _rcOpenOutboxDb();if(!db)return [];
   return new Promise(function(resolve){
-    const tx=db.transaction(RC_OUTBOX_STORE,'readonly'),request=tx.objectStore(RC_OUTBOX_STORE).getAll();
+    let tx,request;
+    try{tx=db.transaction(RC_OUTBOX_STORE,'readonly');request=tx.objectStore(RC_OUTBOX_STORE).getAll();}catch(error){_rcResetOutboxDb(db);resolve([]);return;}
     request.onsuccess=function(){resolve((request.result||[]).map(function(entry){return entry&&entry.row;}).filter(Boolean));};
     request.onerror=function(){console.warn('[AGAI][RC] Lecture file durable impossible :',request.error);resolve([]);};
   });
@@ -1694,7 +1705,8 @@ async function _rcOutboxDelete(ids){
   const unique=Array.from(new Set((ids||[]).filter(Boolean)));if(!unique.length)return true;
   const db=await _rcOpenOutboxDb();if(!db)return false;
   return new Promise(function(resolve){
-    const tx=db.transaction(RC_OUTBOX_STORE,'readwrite'),store=tx.objectStore(RC_OUTBOX_STORE);
+    let tx,store;
+    try{tx=db.transaction(RC_OUTBOX_STORE,'readwrite');store=tx.objectStore(RC_OUTBOX_STORE);}catch(error){_rcResetOutboxDb(db);resolve(false);return;}
     unique.forEach(function(id){store.delete(id);});
     tx.oncomplete=function(){resolve(true);};
     tx.onerror=function(){console.warn('[AGAI][RC] Nettoyage file durable impossible :',tx.error);resolve(false);};
@@ -2196,6 +2208,10 @@ document.addEventListener('visibilitychange',function(){
   // Safari iOS peut conserver un WebSocket apparemment ouvert après la mise
   // en veille tout en ayant perdu des événements. Une relecture paginée remet
   // alors immédiatement l'appareil au même niveau que le PC.
+  // Après une mise à jour iOS/Android, l'ancienne connexion IndexedDB peut
+  // sembler ouverte mais refuser toute transaction. La rouvrir évite de
+  // demander à l'utilisateur de vider l'historique du navigateur.
+  _rcResetOutboxDb();
   _rcNeedsRecoveryPull=true;
   _rcRequestRealtimePull(150);
   if(!_rcRealtimeReady){
@@ -2203,7 +2219,7 @@ document.addEventListener('visibilitychange',function(){
   }
 });
 window.addEventListener('pageshow',function(){
-  if(USE_RECORDS)_rcRequestRealtimePull(200);
+  if(USE_RECORDS){_rcResetOutboxDb();_rcRequestRealtimePull(200);}
 },{passive:true});
 
 // Construit un id global unique

@@ -229,7 +229,7 @@ function callRequerantMasque(id,index){
 
 // ────────────────── AUTOCOMPLÉTION ADRESSE (Nominatim) ──────────────────
 let addrTimer=null,addrRequest=null;
-let addrSelected=false,addrSelectedValue='';
+let addrSelected=false,addrSelectedValue='',addrSelectedCoords=null;
 function extractNumero(q){const m=q.match(/^(\d+\s*(?:bis|ter|quater)?\s*)/i);return m?m[1]:'';}
 const ADDRESS_COMPLETION_URL='https://data.geopf.fr/geocodage/completion/';
 const ADDRESS_SEARCH_URL='https://data.geopf.fr/geocodage/search';
@@ -243,25 +243,29 @@ function addrCityMatches(city,fulltext,commune){
   return addrNorm(fulltext).includes(expected);
 }
 function addrCandidate(raw,kind,commune,numero){
-  let street='',city='',fulltext='';
+  let street='',city='',fulltext='',latitude=null,longitude=null;
   if(kind==='completion'){
     street=raw.street||((raw.names||[])[0])||'';
     city=raw.city||raw.municipality||'';
     fulltext=raw.fulltext||raw.label||'';
+    latitude=Number(raw.y);longitude=Number(raw.x);
   }else if(kind==='search'){
     const p=(raw&&raw.properties)||{};
     street=p.street||((p.type==='street'||p.type==='locality')?p.name:'')||'';
     city=p.city||p.municipality||'';
     fulltext=p.label||p.name||'';
+    const coordinates=raw&&raw.geometry&&raw.geometry.coordinates||[];
+    latitude=Number(coordinates[1]);longitude=Number(coordinates[0]);
   }else{
     const a=(raw&&raw.address)||{};
     street=a.road||a.pedestrian||a.footway||a.street||a.place||'';
     city=a.city||a.town||a.village||a.municipality||'';
     fulltext=raw.display_name||'';
+    latitude=Number(raw.lat);longitude=Number(raw.lon);
   }
   street=String(street||'').replace(/^\d+\s*(?:bis|ter|quater)?\s*/i,'').trim();
   if(!street||!addrCityMatches(city,fulltext,commune))return null;
-  return {address:(numero+street).trim(),detail:fulltext||((numero+street).trim()+', '+commune)};
+  return {address:(numero+street).trim(),detail:fulltext||((numero+street).trim()+', '+commune),latitude:Number.isFinite(latitude)?latitude:null,longitude:Number.isFinite(longitude)?longitude:null};
 }
 function addrCollect(target,seen,items,kind,commune,numero){
   (items||[]).forEach(function(raw){
@@ -300,7 +304,7 @@ async function addressSuggestions(q,commune,signal){
 function addrOptionsHtml(results,commune,attribute){
   if(!results.length)return '<div class="addr-opt"><div class="addr-sub">Aucune rue trouvée — vous pouvez conserver une saisie manuelle</div></div>';
   const attr=attribute||'data-addr';
-  const rows=results.map(function(r){return `<div class="addr-opt" ${attr}="${addrEsc(r.address)}" style="cursor:pointer;padding:10px 12px;border-bottom:1px solid var(--brd);"><div style="font-weight:500;font-size:13px;">${addrEsc(r.address)}</div><div style="font-size:10px;color:var(--t2);margin-top:2px;">${addrEsc(r.detail)}</div></div>`;});
+  const rows=results.map(function(r){return `<div class="addr-opt" ${attr}="${addrEsc(r.address)}" data-lat="${r.latitude==null?'':r.latitude}" data-lon="${r.longitude==null?'':r.longitude}" style="cursor:pointer;padding:10px 12px;border-bottom:1px solid var(--brd);"><div style="font-weight:500;font-size:13px;">${addrEsc(r.address)}</div><div style="font-size:10px;color:var(--t2);margin-top:2px;">${addrEsc(r.detail)}</div></div>`;});
   rows.push(`<div class="addr-sub" style="padding:8px 12px;">${results.length} proposition${results.length>1?'s':''} dans ${addrEsc(commune)} — continuez à saisir pour affiner</div>`);
   return rows.join('');
 }
@@ -345,7 +349,7 @@ function addrAutocomplete(q){
   if(!selC2){fa.placeholder='Sélectionnez d’abord une commune…';dd.style.display='none';return;}
   fa.placeholder='ex. 12 rue des Lilas';
   if(addrSelected&&q.trim()===addrSelectedValue)return;
-  addrSelected=false;addrSelectedValue='';
+  addrSelected=false;addrSelectedValue='';addrSelectedCoords=null;
   if(!q||q.trim().length<2){dd.style.display='none';return;}
   clearTimeout(addrTimer);
   if(addrRequest)addrRequest.abort();
@@ -368,12 +372,15 @@ function addrAutocomplete(q){
     }
   },350);
 }
-function selectAddr(addr){
+function selectAddr(addr,latitude,longitude){
   const fa=document.getElementById('fa');
   fa.value=addr;
   document.getElementById('fa-dd').style.display='none';
   addrSelected=true;
   addrSelectedValue=addr;
+  const hasCoordinates=latitude!==''&&longitude!==''&&latitude!=null&&longitude!=null;
+  const lat=Number(latitude),lon=Number(longitude);
+  addrSelectedCoords=hasCoordinates&&Number.isFinite(lat)&&Number.isFinite(lon)?[lat,lon]:null;
   ce('a');
   // Placer le curseur en fin de texte pour pouvoir compléter
   setTimeout(()=>{fa.focus();fa.setSelectionRange(fa.value.length,fa.value.length);},50);
@@ -388,7 +395,7 @@ document.addEventListener('DOMContentLoaded',function(){
       if(opt){
         e.preventDefault();
         e.stopPropagation();
-        selectAddr(opt.dataset.addr);
+        selectAddr(opt.dataset.addr,opt.dataset.lat,opt.dataset.lon);
       }
     }
     dd.addEventListener('pointerdown',pickAddr);
@@ -488,7 +495,7 @@ function chkR(c){
   else b.style.display='none';
 }
 function rc(){
-  selC2=null;addrSelected=false;addrSelectedValue='';
+  selC2=null;addrSelected=false;addrSelectedValue='';addrSelectedCoords=null;
   document.getElementById('ci').value='';
   document.getElementById('ciw').style.display='';
   document.getElementById('cs').style.display='none';
@@ -950,7 +957,7 @@ function enr(){
     PILP_IVS.unshift({
       id:nextPilpId(annee),ivRef:null,_numApl:numApl,
       // Aucun numéro d'intervention tant que la PILP reste en attente.
-      n:'Nid de frelons asiatiques — PILP',addr,_addrBase:addrBase,com,h,
+      n:'Nid de frelons asiatiques — PILP',addr,_addrBase:addrBase,_addressCoordinates:addrSelectedCoords?addrSelectedCoords.slice():null,com,h,
       req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,reqDispo,_nidsAppel:nidsAppel,_erp:erp,_urgence:erp,
       localisation:null,hauteur:null,reconnaissanceFaite:false,axeTir:null,_axeTirEtat:'a-verifier',_pilpPeriode:'a-determiner',_pilpPeriodePrecision:'',_pilpPlanningUpdatedAt:Date.now(),_pilpPlanningUpdatedBy:CU.l,obs:det,
       // Une PILP en attente reste libre : l'opérateur qui prend l'appel
@@ -969,7 +976,7 @@ function enr(){
   }
   // Enregistrement normal — id = numéro APL, numéro INT attribué à la clôture
   const newIv={id:makeInterventionRecordId(numApl),_numApl:numApl,
-    n:natureAppel,_natureAppelInitiale:selNat,addr,_addrBase:addrBase,com,h,op:CU.l,s:'en-attente',det,eng:null,_sdis:document.getElementById('chk-sdis')?.checked||false,_erp:erp,_urgence:erp,_animauxAppel:animauxAppel,_nidsAppel:nidsAppel,
+    n:natureAppel,_natureAppelInitiale:selNat,addr,_addrBase:addrBase,_addressCoordinates:addrSelectedCoords?addrSelectedCoords.slice():null,com,h,op:CU.l,s:'en-attente',det,eng:null,_sdis:document.getElementById('chk-sdis')?.checked||false,_erp:erp,_urgence:erp,_animauxAppel:animauxAppel,_nidsAppel:nidsAppel,
     req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,reqDispo,
     obs:'',agr:null,rappels:exIv.length,avisIds:exIv.map(iv=>iv.id),_appelDetails:appelDetails,
     tl:[mkTL('en-attente',h,CU.l)]};
@@ -1018,7 +1025,7 @@ function confirmerAnnulationAppel(ivId){
   cM();rF();gS(1);rI();rAccueil();
 }
 function rF(){
-  selNat=null;selC2=null;hoA=null;nidSize=null;addrSelected=false;addrSelectedValue='';
+  selNat=null;selC2=null;hoA=null;nidSize=null;addrSelected=false;addrSelectedValue='';addrSelectedCoords=null;
   _natureLastTapLabel='';_natureLastTapAt=0;
   document.getElementById('bn').disabled=true;
   document.getElementById('sn').value='';

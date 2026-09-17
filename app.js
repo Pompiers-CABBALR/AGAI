@@ -4290,7 +4290,7 @@ function callRequerantMasque(id,index){
 
 // ────────────────── AUTOCOMPLÉTION ADRESSE (Nominatim) ──────────────────
 let addrTimer=null,addrRequest=null;
-let addrSelected=false,addrSelectedValue='';
+let addrSelected=false,addrSelectedValue='',addrSelectedCoords=null;
 function extractNumero(q){const m=q.match(/^(\d+\s*(?:bis|ter|quater)?\s*)/i);return m?m[1]:'';}
 const ADDRESS_COMPLETION_URL='https://data.geopf.fr/geocodage/completion/';
 const ADDRESS_SEARCH_URL='https://data.geopf.fr/geocodage/search';
@@ -4304,25 +4304,29 @@ function addrCityMatches(city,fulltext,commune){
   return addrNorm(fulltext).includes(expected);
 }
 function addrCandidate(raw,kind,commune,numero){
-  let street='',city='',fulltext='';
+  let street='',city='',fulltext='',latitude=null,longitude=null;
   if(kind==='completion'){
     street=raw.street||((raw.names||[])[0])||'';
     city=raw.city||raw.municipality||'';
     fulltext=raw.fulltext||raw.label||'';
+    latitude=Number(raw.y);longitude=Number(raw.x);
   }else if(kind==='search'){
     const p=(raw&&raw.properties)||{};
     street=p.street||((p.type==='street'||p.type==='locality')?p.name:'')||'';
     city=p.city||p.municipality||'';
     fulltext=p.label||p.name||'';
+    const coordinates=raw&&raw.geometry&&raw.geometry.coordinates||[];
+    latitude=Number(coordinates[1]);longitude=Number(coordinates[0]);
   }else{
     const a=(raw&&raw.address)||{};
     street=a.road||a.pedestrian||a.footway||a.street||a.place||'';
     city=a.city||a.town||a.village||a.municipality||'';
     fulltext=raw.display_name||'';
+    latitude=Number(raw.lat);longitude=Number(raw.lon);
   }
   street=String(street||'').replace(/^\d+\s*(?:bis|ter|quater)?\s*/i,'').trim();
   if(!street||!addrCityMatches(city,fulltext,commune))return null;
-  return {address:(numero+street).trim(),detail:fulltext||((numero+street).trim()+', '+commune)};
+  return {address:(numero+street).trim(),detail:fulltext||((numero+street).trim()+', '+commune),latitude:Number.isFinite(latitude)?latitude:null,longitude:Number.isFinite(longitude)?longitude:null};
 }
 function addrCollect(target,seen,items,kind,commune,numero){
   (items||[]).forEach(function(raw){
@@ -4361,7 +4365,7 @@ async function addressSuggestions(q,commune,signal){
 function addrOptionsHtml(results,commune,attribute){
   if(!results.length)return '<div class="addr-opt"><div class="addr-sub">Aucune rue trouvée — vous pouvez conserver une saisie manuelle</div></div>';
   const attr=attribute||'data-addr';
-  const rows=results.map(function(r){return `<div class="addr-opt" ${attr}="${addrEsc(r.address)}" style="cursor:pointer;padding:10px 12px;border-bottom:1px solid var(--brd);"><div style="font-weight:500;font-size:13px;">${addrEsc(r.address)}</div><div style="font-size:10px;color:var(--t2);margin-top:2px;">${addrEsc(r.detail)}</div></div>`;});
+  const rows=results.map(function(r){return `<div class="addr-opt" ${attr}="${addrEsc(r.address)}" data-lat="${r.latitude==null?'':r.latitude}" data-lon="${r.longitude==null?'':r.longitude}" style="cursor:pointer;padding:10px 12px;border-bottom:1px solid var(--brd);"><div style="font-weight:500;font-size:13px;">${addrEsc(r.address)}</div><div style="font-size:10px;color:var(--t2);margin-top:2px;">${addrEsc(r.detail)}</div></div>`;});
   rows.push(`<div class="addr-sub" style="padding:8px 12px;">${results.length} proposition${results.length>1?'s':''} dans ${addrEsc(commune)} — continuez à saisir pour affiner</div>`);
   return rows.join('');
 }
@@ -4406,7 +4410,7 @@ function addrAutocomplete(q){
   if(!selC2){fa.placeholder='Sélectionnez d’abord une commune…';dd.style.display='none';return;}
   fa.placeholder='ex. 12 rue des Lilas';
   if(addrSelected&&q.trim()===addrSelectedValue)return;
-  addrSelected=false;addrSelectedValue='';
+  addrSelected=false;addrSelectedValue='';addrSelectedCoords=null;
   if(!q||q.trim().length<2){dd.style.display='none';return;}
   clearTimeout(addrTimer);
   if(addrRequest)addrRequest.abort();
@@ -4429,12 +4433,15 @@ function addrAutocomplete(q){
     }
   },350);
 }
-function selectAddr(addr){
+function selectAddr(addr,latitude,longitude){
   const fa=document.getElementById('fa');
   fa.value=addr;
   document.getElementById('fa-dd').style.display='none';
   addrSelected=true;
   addrSelectedValue=addr;
+  const hasCoordinates=latitude!==''&&longitude!==''&&latitude!=null&&longitude!=null;
+  const lat=Number(latitude),lon=Number(longitude);
+  addrSelectedCoords=hasCoordinates&&Number.isFinite(lat)&&Number.isFinite(lon)?[lat,lon]:null;
   ce('a');
   // Placer le curseur en fin de texte pour pouvoir compléter
   setTimeout(()=>{fa.focus();fa.setSelectionRange(fa.value.length,fa.value.length);},50);
@@ -4449,7 +4456,7 @@ document.addEventListener('DOMContentLoaded',function(){
       if(opt){
         e.preventDefault();
         e.stopPropagation();
-        selectAddr(opt.dataset.addr);
+        selectAddr(opt.dataset.addr,opt.dataset.lat,opt.dataset.lon);
       }
     }
     dd.addEventListener('pointerdown',pickAddr);
@@ -4549,7 +4556,7 @@ function chkR(c){
   else b.style.display='none';
 }
 function rc(){
-  selC2=null;addrSelected=false;addrSelectedValue='';
+  selC2=null;addrSelected=false;addrSelectedValue='';addrSelectedCoords=null;
   document.getElementById('ci').value='';
   document.getElementById('ciw').style.display='';
   document.getElementById('cs').style.display='none';
@@ -5011,7 +5018,7 @@ function enr(){
     PILP_IVS.unshift({
       id:nextPilpId(annee),ivRef:null,_numApl:numApl,
       // Aucun numéro d'intervention tant que la PILP reste en attente.
-      n:'Nid de frelons asiatiques — PILP',addr,_addrBase:addrBase,com,h,
+      n:'Nid de frelons asiatiques — PILP',addr,_addrBase:addrBase,_addressCoordinates:addrSelectedCoords?addrSelectedCoords.slice():null,com,h,
       req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,reqDispo,_nidsAppel:nidsAppel,_erp:erp,_urgence:erp,
       localisation:null,hauteur:null,reconnaissanceFaite:false,axeTir:null,_axeTirEtat:'a-verifier',_pilpPeriode:'a-determiner',_pilpPeriodePrecision:'',_pilpPlanningUpdatedAt:Date.now(),_pilpPlanningUpdatedBy:CU.l,obs:det,
       // Une PILP en attente reste libre : l'opérateur qui prend l'appel
@@ -5030,7 +5037,7 @@ function enr(){
   }
   // Enregistrement normal — id = numéro APL, numéro INT attribué à la clôture
   const newIv={id:makeInterventionRecordId(numApl),_numApl:numApl,
-    n:natureAppel,_natureAppelInitiale:selNat,addr,_addrBase:addrBase,com,h,op:CU.l,s:'en-attente',det,eng:null,_sdis:document.getElementById('chk-sdis')?.checked||false,_erp:erp,_urgence:erp,_animauxAppel:animauxAppel,_nidsAppel:nidsAppel,
+    n:natureAppel,_natureAppelInitiale:selNat,addr,_addrBase:addrBase,_addressCoordinates:addrSelectedCoords?addrSelectedCoords.slice():null,com,h,op:CU.l,s:'en-attente',det,eng:null,_sdis:document.getElementById('chk-sdis')?.checked||false,_erp:erp,_urgence:erp,_animauxAppel:animauxAppel,_nidsAppel:nidsAppel,
     req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,reqDispo,
     obs:'',agr:null,rappels:exIv.length,avisIds:exIv.map(iv=>iv.id),_appelDetails:appelDetails,
     tl:[mkTL('en-attente',h,CU.l)]};
@@ -5079,7 +5086,7 @@ function confirmerAnnulationAppel(ivId){
   cM();rF();gS(1);rI();rAccueil();
 }
 function rF(){
-  selNat=null;selC2=null;hoA=null;nidSize=null;addrSelected=false;addrSelectedValue='';
+  selNat=null;selC2=null;hoA=null;nidSize=null;addrSelected=false;addrSelectedValue='';addrSelectedCoords=null;
   _natureLastTapLabel='';_natureLastTapAt=0;
   document.getElementById('bn').disabled=true;
   document.getElementById('sn').value='';
@@ -5127,6 +5134,34 @@ function hasAdministrativeAccount(){
     (Array.isArray(CU.rights)&&CU.rights.includes('Administration'));
 }
 
+function interventionRouteSelectionKey(iv,index){
+  if(iv&&Number.isFinite(Number(iv._routeSelectedAt)))return Number(iv._routeSelectedAt);
+  const entries=(iv&&iv.tl||[]).filter(function(entry){return entry&&entry.s==='selectionne';});
+  const last=entries[entries.length-1];
+  const parsed=last&&Date.parse(String(last.h||'').replace('_','T'));
+  return Number.isFinite(parsed)?parsed:(Number.MAX_SAFE_INTEGER-100000+(index||0));
+}
+
+function normalizeInterventionRoute(login,preferredBatch){
+  if(!login)return [];
+  const active=[].concat(IVS||[],PILP_IVS||[]).filter(function(iv){
+    return iv&&iv.agr===login&&['selectionne','en-cours'].includes(iv.s);
+  });
+  if(!active.length)return [];
+  const batch=preferredBatch||active.map(function(iv){return iv._routeBatchId;}).find(Boolean)||('ROUTE_'+String(Date.now())+'_'+login);
+  const ordered=active.map(function(iv,index){return {iv:iv,index:index};}).sort(function(a,b){
+    const ao=Number(a.iv._routeOrder),bo=Number(b.iv._routeOrder);
+    const av=Number.isFinite(ao)&&ao>0?ao:Number.MAX_SAFE_INTEGER;
+    const bv=Number.isFinite(bo)&&bo>0?bo:Number.MAX_SAFE_INTEGER;
+    if(av!==bv)return av-bv;
+    const at=interventionRouteSelectionKey(a.iv,a.index),bt=interventionRouteSelectionKey(b.iv,b.index);
+    if(at!==bt)return at-bt;
+    return String(a.iv.id||'').localeCompare(String(b.iv.id||''));
+  }).map(function(item){return item.iv;});
+  ordered.forEach(function(iv,index){iv._routeBatchId=batch;iv._routeOrder=index+1;});
+  return ordered;
+}
+
 function assignInterventionRoute(iv,login){
   if(!iv||!login)return;
   const allInterventions=[].concat(IVS||[],PILP_IVS||[]);
@@ -5135,10 +5170,11 @@ function assignInterventionRoute(iv,login){
   });
   let batch=active.map(function(x){return x._routeBatchId;}).find(Boolean);
   if(!batch)batch='ROUTE_'+String(Date.now())+'_'+login;
-  const sameBatch=allInterventions.filter(function(x){return x._routeBatchId===batch;});
-  const maxOrder=sameBatch.reduce(function(max,x){return Math.max(max,Number(x._routeOrder)||0);},0);
+  const maxOrder=active.reduce(function(max,x){return Math.max(max,Number(x._routeOrder)||0);},0);
+  if(iv._routeBatchId!==batch||!(Number(iv._routeOrder)>0))iv._routeOrder=maxOrder+1;
   iv._routeBatchId=batch;
-  if(!iv._routeOrder)iv._routeOrder=maxOrder+1;
+  if(!iv._routeSelectedAt)iv._routeSelectedAt=Date.now();
+  normalizeInterventionRoute(login,batch);
 }
 
 function interventionRouteChefName(iv){
@@ -5163,10 +5199,12 @@ function interventionRouteBadgeHTML(iv){
 function editInterventionRoute(chefLogin,batchId){
   if(!CU||chefLogin!==CU.l){showToast('Seul le chef d\u2019agr\u00e8s concern\u00e9 peut modifier cette tourn\u00e9e.','warn');return;}
   const route=[].concat(IVS||[],PILP_IVS||[]).filter(function(iv){
-    return iv.s==='selectionne'&&iv.agr===chefLogin&&(!batchId||iv._routeBatchId===batchId);
+    return iv.s==='selectionne'&&iv.agr===chefLogin;
   });
   if(!route.length){showToast('Aucune intervention s\u00e9lectionn\u00e9e \u00e0 r\u00e9organiser.','info');return;}
-  route.forEach(function(iv){parcConfirmed.delete(iv.id);});
+  const normalized=normalizeInterventionRoute(chefLogin,batchId||route.map(function(iv){return iv._routeBatchId;}).find(Boolean));
+  normalized.forEach(function(iv){if(iv.s==='selectionne')parcConfirmed.delete(iv.id);});
+  saveData(true);
   rI();
   requestAnimationFrame(function(){
     const panel=document.getElementById('pap');
@@ -5179,15 +5217,12 @@ function prepareInterventionRoute(iv){
   if(!iv)return;
   assignInterventionRoute(iv,iv.agr||CU.l);
   const login=iv.agr||CU.l;
-  const active=IVS.filter(function(x){
-    return x.agr===login&&['selectionne','en-cours'].includes(x.s);
-  });
-  active.forEach(function(x){assignInterventionRoute(x,login);});
+  normalizeInterventionRoute(login,iv._routeBatchId);
 }
 
 function isFirstInterventionOfRoute(iv){
   if(!iv||!iv._routeBatchId)return true;
-  const route=IVS.filter(function(x){return x._routeBatchId===iv._routeBatchId;});
+  const route=[].concat(IVS||[],PILP_IVS||[]).filter(function(x){return x._routeBatchId===iv._routeBatchId;});
   if(route.length<2)return true;
   const first=route.slice().sort(function(a,b){
     return (Number(a._routeOrder)||9999)-(Number(b._routeOrder)||9999);
@@ -7926,9 +7961,12 @@ function persistRouteOrder(ordered,position){
   if(!ordered||!ordered.length)return;
   const batch=ordered.map(function(iv){return iv._routeBatchId;}).find(Boolean)||('ROUTE_'+String(Date.now())+'_'+(CU&&CU.l||''));
   const stamp=getH(N());
+  const inProgress=[].concat(IVS||[],PILP_IVS||[]).filter(function(iv){return iv.s==='en-cours'&&iv.agr===(CU&&CU.l);});
+  const prefix=sortRouteSelection(inProgress);
+  prefix.forEach(function(iv,index){iv._routeBatchId=batch;iv._routeOrder=index+1;});
   ordered.forEach(function(iv,index){
     iv._routeBatchId=batch;
-    iv._routeOrder=index+1;
+    iv._routeOrder=prefix.length+index+1;
     iv._routeOrderUpdatedAt=stamp;
   });
   if(CD()){
@@ -7957,7 +7995,10 @@ function persistPilpRouteOrder(ordered){
   if(!ordered.length)return;
   const batch=ordered.map(function(iv){return iv._routeBatchId;}).find(Boolean)||('PILP_ROUTE_'+Date.now()+'_'+(CU&&CU.l||''));
   const stamp=getH(N());
-  ordered.forEach(function(iv,index){iv._routeBatchId=batch;iv._routeOrder=index+1;iv._routeOrderUpdatedAt=stamp;});
+  const inProgress=[].concat(IVS||[],PILP_IVS||[]).filter(function(iv){return iv.s==='en-cours'&&iv.agr===(CU&&CU.l);});
+  const prefix=sortRouteSelection(inProgress);
+  prefix.forEach(function(iv,index){iv._routeBatchId=batch;iv._routeOrder=index+1;});
+  ordered.forEach(function(iv,index){iv._routeBatchId=batch;iv._routeOrder=prefix.length+index+1;iv._routeOrderUpdatedAt=stamp;});
   if(CD())CD().pilpIvs=PILP_IVS;
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);rPLPilp(ordered);rPilp();
@@ -7981,12 +8022,11 @@ function confirmerSelPilp(){
   persistPilpRouteOrder(selected);selected.forEach(function(iv){parcConfirmed.add(iv.id);});rPilp();
   showToast('Tournée PILP confirmée : l’ordre reste visible sur chaque intervention.','success');
 }
-function optPilp(){
+async function optPilp(){
   if(!canOperatePilp()){showToast('La tournée PILP est réservée aux tireurs PILP, aux administrateurs actifs et au superadmin.','warn');return;}
-  const selected=getSelPilp();if(selected.length<=2)return;
-  const base=[50.508,2.548];let remaining=selected.slice(),result=[],current=base;
-  while(remaining.length){let best=null,distance=Infinity;remaining.forEach(function(iv){const coords=gc(iv.com),value=dst(current,coords);if(value<distance){distance=value;best=iv;}});result.push(best);remaining=remaining.filter(function(iv){return iv.id!==best.id;});current=gc(best.com);}
-  persistPilpRouteOrder(result);
+  const selected=getSelPilp();if(selected.length<=1)return;
+  await hydrateInterventionRouteCoordinates(selected);
+  persistPilpRouteOrder(optimizeInterventionRoute(selected));
 }
 function vpPilp(){
   if(!canOperatePilp()){showToast('La sélection PILP est réservée aux tireurs PILP, aux administrateurs actifs et au superadmin.','warn');return;}
@@ -8095,12 +8135,74 @@ document.addEventListener('pointermove',routePointerMove,{passive:false});
 document.addEventListener('pointerup',routePointerEnd);
 document.addEventListener('pointercancel',routePointerEnd);
 
-function opt(){
+function interventionRouteCoordinates(iv){
+  const stored=iv&&iv._addressCoordinates;
+  if(Array.isArray(stored)&&stored.length>=2&&Number.isFinite(Number(stored[0]))&&Number.isFinite(Number(stored[1])))return [Number(stored[0]),Number(stored[1])];
+  return gc(iv&&iv.com);
+}
+async function hydrateInterventionRouteCoordinates(selected){
+  const missing=(selected||[]).filter(function(iv){return !Array.isArray(iv&&iv._addressCoordinates)&&iv&&iv.com&&(iv._addrBase||iv.addr);});
+  if(!missing.length)return;
+  await Promise.all(missing.map(async function(iv){
+    try{
+      const query=String(iv._addrBase||iv.addr||'').split(' — ')[0].trim();
+      const controller=new AbortController();
+      const timeout=setTimeout(function(){controller.abort();},4500);
+      const results=await addressSuggestions(query,iv.com,controller.signal);
+      clearTimeout(timeout);
+      const match=results.find(function(item){return Number.isFinite(Number(item.latitude))&&Number.isFinite(Number(item.longitude));});
+      if(match)iv._addressCoordinates=[Number(match.latitude),Number(match.longitude)];
+    }catch(e){}
+  }));
+}
+function interventionRouteStart(){
+  try{
+    const station=getCaserneStationLocation(CURRENT_CASERNE_ID);
+    if(station&&validCaserneCoordinates(Number(station.latitude),Number(station.longitude)))return [Number(station.latitude),Number(station.longitude)];
+  }catch(e){}
+  return [50.508,2.548];
+}
+function interventionRouteDistance(a,b){
+  const lat1=Number(a[0])*Math.PI/180,lat2=Number(b[0])*Math.PI/180;
+  const dLat=lat2-lat1,dLon=(Number(b[1])-Number(a[1]))*Math.PI/180;
+  const value=Math.sin(dLat/2)**2+Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2;
+  return 6371*2*Math.atan2(Math.sqrt(value),Math.sqrt(Math.max(0,1-value)));
+}
+function interventionRouteTotal(route,start){
+  let total=0,current=start;
+  (route||[]).forEach(function(iv){const next=interventionRouteCoordinates(iv);total+=interventionRouteDistance(current,next);current=next;});
+  return total;
+}
+function optimizeInterventionRoute(selected){
+  const unique=[],seen=new Set();
+  (selected||[]).forEach(function(iv){if(iv&&iv.id&&!seen.has(iv.id)){seen.add(iv.id);unique.push(iv);}});
+  if(unique.length<2)return unique;
+  const start=interventionRouteStart();
+  let remaining=unique.slice(),route=[],current=start;
+  while(remaining.length){
+    let bestIndex=0,bestDistance=Infinity;
+    remaining.forEach(function(iv,index){const value=interventionRouteDistance(current,interventionRouteCoordinates(iv));if(value<bestDistance){bestDistance=value;bestIndex=index;}});
+    const next=remaining.splice(bestIndex,1)[0];route.push(next);current=interventionRouteCoordinates(next);
+  }
+  // Amélioration 2-opt : supprime les croisements et retours inutiles tout en
+  // conservant chaque intervention exactement une fois.
+  let improved=true,passes=0;
+  while(improved&&passes++<12){
+    improved=false;
+    const before=interventionRouteTotal(route,start);
+    for(let i=0;i<route.length-1&&!improved;i++)for(let j=i+1;j<route.length&&!improved;j++){
+      const candidate=route.slice();candidate.splice(i,j-i+1,...candidate.slice(i,j+1).reverse());
+      if(interventionRouteTotal(candidate,start)+0.00001<before){route=candidate;improved=true;}
+    }
+  }
+  return route;
+}
+
+async function opt(){
   const s=getSelMixte();
-  if(s.length<=2)return;
-  const base=[50.508,2.548];let rem=[...s],res=[],cur=base;
-  while(rem.length){let best=null,bd=Infinity;rem.forEach(iv=>{const c=gc(iv.com),d=dst(cur,c);if(d<bd){bd=d;best=iv;}});res.push(best);rem=rem.filter(v=>v.id!==best.id);cur=gc(best.com);}
-  persistRouteOrder(res,captureRouteViewPosition());
+  if(s.length<=1)return;
+  await hydrateInterventionRouteCoordinates(s);
+  persistRouteOrder(optimizeInterventionRoute(s),captureRouteViewPosition());
 }
 function confirmerSel(){
   const selected=getSelMixte();
@@ -15257,7 +15359,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260916-compatibilite-pluie-obligatoire-227';
+const APP_VERSION='20260917-sync-tournees-stables-228';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -18150,8 +18252,7 @@ function jbSyncNow(){
   if(USE_RECORDS&&typeof _rcPendingDirty!=='undefined'&&_rcPendingDirty.size){
     // Après l'envoi de la file locale, relire toutes les pages distantes : un
     // simple push ne suffisait pas à récupérer les interventions absentes.
-    _rcRequestRealtimePull(0);
-    _rcPush(false);
+    Promise.resolve(_rcPush(false)).finally(function(){_rcRequestRealtimePull(150);});
     showToast('Synchronisation des actions en attente relancée','info');
     return;
   }
@@ -18516,6 +18617,10 @@ const RC_OUTBOX_DB_NAME = 'agai-sync-outbox';
 const RC_OUTBOX_STORE = 'records';
 let _rcOutboxDbPromise = null;
 let _rcOutboxSnapshotTimer = null;
+function _rcResetOutboxDb(db){
+  try{if(db)db.close();}catch(e){}
+  _rcOutboxDbPromise=null;
+}
 function _rcOpenOutboxDb(){
   if(_rcOutboxDbPromise)return _rcOutboxDbPromise;
   _rcOutboxDbPromise=new Promise(function(resolve,reject){
@@ -18525,7 +18630,12 @@ function _rcOpenOutboxDb(){
       const db=request.result;
       if(!db.objectStoreNames.contains(RC_OUTBOX_STORE))db.createObjectStore(RC_OUTBOX_STORE,{keyPath:'id'});
     };
-    request.onsuccess=function(){resolve(request.result);};
+    request.onsuccess=function(){
+      const db=request.result;
+      db.onversionchange=function(){_rcResetOutboxDb(db);};
+      if('onclose' in db)db.onclose=function(){_rcOutboxDbPromise=null;};
+      resolve(db);
+    };
     request.onerror=function(){reject(request.error||new Error('Ouverture IndexedDB impossible'));};
   }).catch(function(error){
     _rcOutboxDbPromise=null;
@@ -18539,7 +18649,9 @@ async function _rcOutboxPutRows(rows){
   if(!safeRows.length)return true;
   const db=await _rcOpenOutboxDb();if(!db)return false;
   return new Promise(function(resolve){
-    const tx=db.transaction(RC_OUTBOX_STORE,'readwrite'),store=tx.objectStore(RC_OUTBOX_STORE),queuedAt=Date.now();
+    let tx,store;
+    try{tx=db.transaction(RC_OUTBOX_STORE,'readwrite');store=tx.objectStore(RC_OUTBOX_STORE);}catch(error){_rcResetOutboxDb(db);resolve(false);return;}
+    const queuedAt=Date.now();
     safeRows.forEach(function(row){store.put({id:row.id,row:_rcTransportRow(row),queuedAt:queuedAt});});
     tx.oncomplete=function(){resolve(true);};
     tx.onerror=function(){console.warn('[AGAI][RC] Écriture file durable impossible :',tx.error);resolve(false);};
@@ -18549,7 +18661,8 @@ async function _rcOutboxPutRows(rows){
 async function _rcOutboxGetRows(){
   const db=await _rcOpenOutboxDb();if(!db)return [];
   return new Promise(function(resolve){
-    const tx=db.transaction(RC_OUTBOX_STORE,'readonly'),request=tx.objectStore(RC_OUTBOX_STORE).getAll();
+    let tx,request;
+    try{tx=db.transaction(RC_OUTBOX_STORE,'readonly');request=tx.objectStore(RC_OUTBOX_STORE).getAll();}catch(error){_rcResetOutboxDb(db);resolve([]);return;}
     request.onsuccess=function(){resolve((request.result||[]).map(function(entry){return entry&&entry.row;}).filter(Boolean));};
     request.onerror=function(){console.warn('[AGAI][RC] Lecture file durable impossible :',request.error);resolve([]);};
   });
@@ -18558,7 +18671,8 @@ async function _rcOutboxDelete(ids){
   const unique=Array.from(new Set((ids||[]).filter(Boolean)));if(!unique.length)return true;
   const db=await _rcOpenOutboxDb();if(!db)return false;
   return new Promise(function(resolve){
-    const tx=db.transaction(RC_OUTBOX_STORE,'readwrite'),store=tx.objectStore(RC_OUTBOX_STORE);
+    let tx,store;
+    try{tx=db.transaction(RC_OUTBOX_STORE,'readwrite');store=tx.objectStore(RC_OUTBOX_STORE);}catch(error){_rcResetOutboxDb(db);resolve(false);return;}
     unique.forEach(function(id){store.delete(id);});
     tx.oncomplete=function(){resolve(true);};
     tx.onerror=function(){console.warn('[AGAI][RC] Nettoyage file durable impossible :',tx.error);resolve(false);};
@@ -19060,6 +19174,10 @@ document.addEventListener('visibilitychange',function(){
   // Safari iOS peut conserver un WebSocket apparemment ouvert après la mise
   // en veille tout en ayant perdu des événements. Une relecture paginée remet
   // alors immédiatement l'appareil au même niveau que le PC.
+  // Après une mise à jour iOS/Android, l'ancienne connexion IndexedDB peut
+  // sembler ouverte mais refuser toute transaction. La rouvrir évite de
+  // demander à l'utilisateur de vider l'historique du navigateur.
+  _rcResetOutboxDb();
   _rcNeedsRecoveryPull=true;
   _rcRequestRealtimePull(150);
   if(!_rcRealtimeReady){
@@ -19067,7 +19185,7 @@ document.addEventListener('visibilitychange',function(){
   }
 });
 window.addEventListener('pageshow',function(){
-  if(USE_RECORDS)_rcRequestRealtimePull(200);
+  if(USE_RECORDS){_rcResetOutboxDb();_rcRequestRealtimePull(200);}
 },{passive:true});
 
 // Construit un id global unique
