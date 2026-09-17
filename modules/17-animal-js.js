@@ -953,6 +953,7 @@ let _jbSaving     = false;
 let _jbPollTimer  = null;
 let _jbLastPush   = 0;
 let _jbEditLock   = 0; // timestamp de la dernière modification — bloque le pull pendant 15s
+window._agaiSyncHealth=window._agaiSyncHealth||{lastOkAt:null,lastErrorAt:null,lastError:'',state:'loading'};
 
 function _jbSetStatus(state){
   let el=document.getElementById('jb-status');
@@ -960,10 +961,14 @@ function _jbSetStatus(state){
   const cfg={ok:{txt:'☁️ Sync OK',bg:'#ECFDF5',color:'#065F46'},saving:{txt:'⏳ Sync...',bg:'#FFF7ED',color:'#92400E'},pending:{txt:'⏳ Sync en attente',bg:'#FFF7ED',color:'#92400E'},error:{txt:'⚠️ Sync KO',bg:'#FEF2F2',color:'#991B1B'},loading:{txt:'⏳ Chargement',bg:'#EFF6FF',color:'#1D4ED8'}};
   const c=cfg[state]||cfg.ok;
   const queued=typeof _rcPendingDirty!=='undefined'?_rcPendingDirty.size:0;
-  el.textContent=c.txt+((state==='pending'||state==='error')&&queued?' ('+queued+' en attente)':'');
-  el.style.cssText='position:fixed;bottom:8px;right:8px;z-index:9999;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;background:'+c.bg+';color:'+c.color+';box-shadow:0 1px 4px rgba(0,0,0,.15);cursor:pointer;';
   const syncError=typeof _rcLastSyncError!=='undefined'?_rcLastSyncError:'';
-  el.title=state==='error'&&syncError?syncError:(state==='ok'&&window._agaiLocalCacheLimited?'Supabase synchronisé — cache hors ligne limité sur cet appareil':'Cliquer pour synchroniser maintenant');
+  window._agaiSyncHealth.state=state;
+  if(state==='ok'&&!queued){window._agaiSyncHealth.lastOkAt=Date.now();window._agaiSyncHealth.lastError='';}
+  if(state==='error'){window._agaiSyncHealth.lastErrorAt=Date.now();window._agaiSyncHealth.lastError=syncError||'Erreur de synchronisation';}
+  const lastOkLabel=state==='ok'&&window._agaiSyncHealth.lastOkAt?' · '+new Date(window._agaiSyncHealth.lastOkAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):'';
+  el.textContent=c.txt+lastOkLabel+((state==='pending'||state==='error')&&queued?' ('+queued+' en attente)':'');
+  el.style.cssText='position:fixed;bottom:8px;right:8px;z-index:9999;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;background:'+c.bg+';color:'+c.color+';box-shadow:0 1px 4px rgba(0,0,0,.15);cursor:pointer;';
+  el.title=state==='error'&&syncError?syncError:(state==='ok'&&window._agaiLocalCacheLimited?'Supabase synchronisé — cache hors ligne limité sur cet appareil':'Dernière synchronisation réussie : '+(window._agaiSyncHealth.lastOkAt?new Date(window._agaiSyncHealth.lastOkAt).toLocaleString('fr-FR'):'—')+' — cliquer pour synchroniser maintenant');
   el.onclick=function(){
     if(state==='error'&&syncError)alert('Diagnostic de synchronisation\n\n'+syncError+'\n\nVersion : '+APP_VERSION);
     jbSyncNow();

@@ -4,7 +4,11 @@ function rIPostUpdate(){rStatsHeader();}
 function sf(f,btn){flt=f;document.querySelectorAll('#tab-interv .fb').forEach(b=>b.classList.remove('active'));btn.classList.add('active');rI();}
 function pushTL(iv,s,who,note){
   if(!iv.tl)iv.tl=[];
+  const previous=[...iv.tl].reverse().find(function(item){return item&&['en-attente','selectionne','en-cours','terminee','annulee','avis-passage'].includes(item.s);});
   const entry=mkTL(s,getH(N()),who);
+  entry.from=previous&&previous.s||null;
+  entry.appVersion=APP_VERSION;
+  entry.deviceId=agaiDeviceId();
   if(note)entry.note=note;
   iv.tl.push(entry);
   if(['en-attente','selectionne','en-cours','terminee','annulee','avis-passage'].includes(s))iv._statusUpdatedAt=Date.now();

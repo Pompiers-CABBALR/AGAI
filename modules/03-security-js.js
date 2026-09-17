@@ -40,6 +40,15 @@ let _sessionLastPersist=0;
 let _loginPresenceLastPush=0;
 // SESSION_DURATION_MS est défini dans config.js
 
+function agaiDeviceId(){
+  const key='agai_device_id';
+  try{
+    let value=localStorage.getItem(key);
+    if(!value){value=(typeof crypto!=='undefined'&&crypto.randomUUID?crypto.randomUUID():'device-'+Date.now()+'-'+Math.random().toString(36).slice(2));localStorage.setItem(key,value);}
+    return value;
+  }catch(e){return'SESSION-'+String(SESSION_TOKEN||'temp');}
+}
+
 function _readStoredSession(){
   try{return JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY)||'null');}catch(e){return null;}
 }
@@ -102,7 +111,9 @@ function _createSession(){
       actif:true,
       lastSeenAt:nowIso,
       support:support,
-      navigateur:navigateur
+      navigateur:navigateur,
+      appVersion:APP_VERSION,
+      deviceId:agaiDeviceId()
     };
     LOGIN_HISTORY.unshift(entry);
     _loginPresenceLastPush=Date.now();
