@@ -2090,6 +2090,7 @@ function renderSuperAdmin(){
     </section>
     <section class="sa-section" data-sa-section="maintenance">
     <div id="sa-health-panel">${renderOperationalHealthPanel()}</div>
+    ${renderRecoveryCheckpointsPanel()}
     <div style="margin-top:20px;background:#FEF2F2;border-radius:14px;padding:16px;border:1px solid #FECACA;">
       <h3 style="font-size:15px;font-weight:700;margin-bottom:4px;color:#C0392B;">⚠️ Zone dangereuse — Gestion des interventions</h3>
       <div style="font-size:12px;color:#666;margin-bottom:12px;">Ces actions sont irr\u00e9versibles. \u00c0 utiliser avec pr\u00e9caution.</div>
@@ -2114,6 +2115,7 @@ function renderSuperAdmin(){
   if(_lprev){_lprev.src=_getLogoSrc();_lprev.style.display='block';}
   // Rendu de la configuration des types d'engins
   try{renderEnginTypes();}catch(e){}
+  try{refreshRecoveryCheckpointsPanel();}catch(e){}
   try{
     const _bg=document.getElementById('sa-bglogout');
     if(_bg)_bg.value=(ASTR_CONFIG&&typeof ASTR_CONFIG.bgLogoutMin==='number')?ASTR_CONFIG.bgLogoutMin:15;
@@ -2389,9 +2391,10 @@ function saSaveFourriereEmail(){
   showToast('Email fourrière sauvegardé','success');
 }
 
-function saResetIvs(cid){
+async function saResetIvs(cid){
   if(!window.confirm('⚠️ Supprimer TOUTES les interventions de cette caserne ? Cette action est irréversible.')){return;}
   const d=CASERNE_DATA[cid];if(!d)return;
+  if(!await agaiRequireRecoveryCheckpoint('Avant remise à zéro des interventions de '+((CASERNES.find(function(item){return item.id===cid;})||{}).nom||cid)))return;
   const allIvIds=(d.ivs||[]).map(function(iv){return iv.id;});
   const allPilpIds=(d.pilpIvs||[]).map(function(iv){return iv.id;});
   d.ivs=[];d.pilpIvs=[];
@@ -2460,11 +2463,12 @@ function saFilterDeleteIvs(value){
   if(count)count.textContent=visible+' résultat'+(visible>1?'s':'');
 }
 
-function saConfirmDeleteIvs(cid){
+async function saConfirmDeleteIvs(cid){
   const checked=Array.from(document.querySelectorAll('.sa-iv-chk:checked')).map(function(c){return c.value;});
   if(!checked.length){showToast('Aucune intervention sélectionnée.','warn');return;}
   const d=CASERNE_DATA[cid];if(!d)return;
   if(!window.confirm('Supprimer '+checked.length+' intervention(s) ? Cette action est irréversible.')){return;}
+  if(!await agaiRequireRecoveryCheckpoint('Avant suppression de '+checked.length+' intervention(s)'))return;
   // Séparer ivs et pilpIvs supprimées pour marquer deleted dans records
   const delIvs=(d.ivs||[]).filter(function(iv){return checked.includes(iv.id);}).map(function(iv){return iv.id;});
   const delPilp=(d.pilpIvs||[]).filter(function(iv){return checked.includes(iv.id);}).map(function(iv){return iv.id;});
@@ -5192,14 +5196,22 @@ function rIPostUpdate(){rStatsHeader();}
 function sf(f,btn){flt=f;document.querySelectorAll('#tab-interv .fb').forEach(b=>b.classList.remove('active'));btn.classList.add('active');rI();}
 function pushTL(iv,s,who,note){
   if(!iv.tl)iv.tl=[];
-  const previous=[...iv.tl].reverse().find(function(item){return item&&['en-attente','selectionne','en-cours','terminee','annulee','avis-passage'].includes(item.s);});
+  const operationalStatuses=['en-attente','selectionne','en-cours','terminee','annulee','avis-passage'];
+  const previous=[...iv.tl].reverse().find(function(item){return item&&operationalStatuses.includes(item.s);});
   const entry=mkTL(s,getH(N()),who);
   entry.from=previous&&previous.s||null;
   entry.appVersion=APP_VERSION;
   entry.deviceId=agaiDeviceId();
   if(note)entry.note=note;
+  if(operationalStatuses.includes(s)){
+    const knownRevision=Math.max(Number(iv._statusRevision)||0,iv.tl.filter(function(item){return item&&operationalStatuses.includes(item.s);}).length);
+    iv._statusRevision=knownRevision+1;
+    iv._statusUpdatedAt=Date.now();
+    iv._statusChangeId=agaiDeviceId()+'-'+iv._statusUpdatedAt+'-'+iv._statusRevision;
+    entry.statusRevision=iv._statusRevision;
+    entry.statusChangeId=iv._statusChangeId;
+  }
   iv.tl.push(entry);
-  if(['en-attente','selectionne','en-cours','terminee','annulee','avis-passage'].includes(s))iv._statusUpdatedAt=Date.now();
 }
 
 // Les administrateurs doivent voir les corrections horaires même lorsque leur
@@ -15457,7 +15469,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260917-stabilite-operationnelle-233';
+const APP_VERSION='20260917-revisions-restauration-234';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -18370,6 +18382,69 @@ function _agaiCanManageBackups(){
   return isSuperAdmin()||hasRight('Administration');
 }
 
+const AGAI_RECOVERY_DB='agai-recovery';
+const AGAI_RECOVERY_STORE='snapshots';
+const AGAI_RECOVERY_LIMIT=5;
+function _agaiRecoveryOpen(){
+  return new Promise(function(resolve,reject){
+    if(!window.indexedDB){reject(new Error('Stockage de récupération indisponible'));return;}
+    const request=indexedDB.open(AGAI_RECOVERY_DB,1);
+    request.onupgradeneeded=function(){const db=request.result;if(!db.objectStoreNames.contains(AGAI_RECOVERY_STORE))db.createObjectStore(AGAI_RECOVERY_STORE,{keyPath:'id'});};
+    request.onsuccess=function(){resolve(request.result);};
+    request.onerror=function(){reject(request.error||new Error('Ouverture impossible'));};
+  });
+}
+async function agaiListRecoveryCheckpoints(){
+  const db=await _agaiRecoveryOpen();
+  try{return await new Promise(function(resolve,reject){const request=db.transaction(AGAI_RECOVERY_STORE,'readonly').objectStore(AGAI_RECOVERY_STORE).getAll();request.onsuccess=function(){resolve((request.result||[]).sort(function(a,b){return Number(b.createdAt)-Number(a.createdAt);}));};request.onerror=function(){reject(request.error);};});}
+  finally{db.close();}
+}
+async function _agaiDeleteRecoveryCheckpoint(id){
+  const db=await _agaiRecoveryOpen();
+  try{await new Promise(function(resolve,reject){const request=db.transaction(AGAI_RECOVERY_STORE,'readwrite').objectStore(AGAI_RECOVERY_STORE).delete(id);request.onsuccess=function(){resolve();};request.onerror=function(){reject(request.error);};});}
+  finally{db.close();}
+}
+async function agaiCreateRecoveryCheckpoint(reason,quiet){
+  if(!_agaiCanManageBackups())return false;
+  try{
+    const previous=await agaiListRecoveryCheckpoints();
+    for(const extra of previous.slice(AGAI_RECOVERY_LIMIT-1))await _agaiDeleteRecoveryCheckpoint(extra.id);
+    const now=Date.now(),record={id:'recovery-'+now+'-'+Math.random().toString(36).slice(2,8),createdAt:now,reason:String(reason||'Sauvegarde manuelle'),createdBy:CU&&CU.l||'',appVersion:APP_VERSION,data:_buildDataObject()};
+    const db=await _agaiRecoveryOpen();
+    try{await new Promise(function(resolve,reject){const request=db.transaction(AGAI_RECOVERY_STORE,'readwrite').objectStore(AGAI_RECOVERY_STORE).put(record);request.onsuccess=function(){resolve();};request.onerror=function(){reject(request.error);};});}
+    finally{db.close();}
+    if(!quiet)showToast('Point de restauration créé','success');
+    refreshRecoveryCheckpointsPanel();
+    return true;
+  }catch(error){console.warn('[AGAI] Point de restauration impossible',error);if(!quiet)showToast('Point de restauration impossible sur cet appareil','warn');return false;}
+}
+async function agaiRequireRecoveryCheckpoint(reason){
+  const created=await agaiCreateRecoveryCheckpoint(reason,true);
+  if(created)return true;
+  return window.confirm('Le point de restauration n’a pas pu être créé sur cet appareil. Continuer malgré tout ?');
+}
+async function agaiRestoreRecoveryCheckpoint(id){
+  if(!isSuperAdmin()){showToast('Accès réservé au super-administrateur','warn');return;}
+  const entries=await agaiListRecoveryCheckpoints(),entry=entries.find(function(item){return item.id===id;});
+  if(!entry||!entry.data){showToast('Point de restauration introuvable','error');return;}
+  if(!window.confirm('Restaurer ce point ? Un point de sécurité de la situation actuelle sera créé avant la restauration.'))return;
+  if(!await agaiRequireRecoveryCheckpoint('Avant restauration du '+new Date(entry.createdAt).toLocaleString('fr-FR')))return;
+  _applyDataObject(entry.data);_postLoadInit();_writeLocalCache(entry.data);saveData(true);if(CURRENT_CASERNE_ID)syncCaserneContext();
+  showToast('Données restaurées et synchronisation lancée','success');renderSuperAdmin();
+}
+async function agaiRemoveRecoveryCheckpoint(id){
+  if(!isSuperAdmin())return;
+  if(!window.confirm('Supprimer ce point de restauration local ?'))return;
+  await _agaiDeleteRecoveryCheckpoint(id);refreshRecoveryCheckpointsPanel();
+}
+function renderRecoveryCheckpointsPanel(){
+  return '<div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;border:1px solid #E2E8F0;"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><h3 style="font-size:15px;font-weight:700;margin:0;">🛟 Points de restauration</h3><button class="btn sm" style="margin-left:auto;" onclick="agaiCreateRecoveryCheckpoint(\'Sauvegarde manuelle\')">＋ Créer maintenant</button></div><div style="font-size:11px;color:#64748B;margin:6px 0 10px;">Les 5 derniers points sont conservés uniquement sur cet appareil. Un point est créé avant une suppression ou une restauration.</div><div id="sa-recovery-list" style="font-size:11px;color:#64748B;">Chargement…</div></div>';
+}
+async function refreshRecoveryCheckpointsPanel(){
+  const target=document.getElementById('sa-recovery-list');if(!target)return;
+  try{const entries=await agaiListRecoveryCheckpoints();target.innerHTML=entries.length?entries.map(function(entry){return '<div style="display:flex;align-items:center;gap:8px;border-top:1px solid #F1F5F9;padding:8px 0;"><span style="flex:1;"><strong>'+escHtml(new Date(entry.createdAt).toLocaleString('fr-FR'))+'</strong><br>'+escHtml(entry.reason||'Sauvegarde')+(entry.createdBy?' · '+escHtml(entry.createdBy):'')+'</span><button class="btn sm" onclick="agaiRestoreRecoveryCheckpoint(\''+entry.id+'\')">Restaurer</button><button class="btn sm" style="color:#B42318;" onclick="agaiRemoveRecoveryCheckpoint(\''+entry.id+'\')">Supprimer</button></div>';}).join(''):'Aucun point de restauration sur cet appareil.';}catch(error){target.textContent='Stockage de récupération indisponible sur cet appareil.';}
+}
+
 function agaiExportBackup(){
   if(!_agaiCanManageBackups()){showToast('Accès refusé','error');return;}
   const envelope={
@@ -18402,7 +18477,8 @@ function agaiImportBackup(input){
       const envelope=JSON.parse(String(reader.result||''));
       if(!envelope||envelope.format!=='AGAI_BACKUP'||envelope.version!==1||!envelope.data)throw new Error('Format de sauvegarde non reconnu');
       if(!Array.isArray(envelope.data.CASERNES)||!envelope.data.CASERNE_DATA||typeof envelope.data.CASERNE_DATA!=='object')throw new Error('Contenu incomplet');
-      confirmModal('Restaurer cette sauvegarde ? Les données locales actuelles seront remplacées.',function(){
+      confirmModal('Restaurer cette sauvegarde ? Les données locales actuelles seront remplacées.',async function(){
+        if(!await agaiRequireRecoveryCheckpoint('Avant import d’une sauvegarde'))return;
         _applyDataObject(envelope.data);
         _postLoadInit();
         _writeLocalCache(envelope.data);
@@ -18953,7 +19029,7 @@ const RC_OPERATIONAL_PROTECTED_FIELDS=[
   '_routeBatchId','_routeOrder','_routeConfirmedAt','_routeConfirmedBy',
   '_retourAttenteDepuis','_hDebutAvantRetourAttente','_dateDebutAvantRetourAttente','_retourAttenteAt','_retourAttentePar',
   '_startLockedByChain','_chainedFromInterventionId','_chainPreviousInterventionId','_departGeoControle',
-  '_statusUpdatedAt'
+  '_statusUpdatedAt','_statusRevision','_statusChangeId'
 ];
 const RC_PILP_PLANNING_FIELDS=['axeTir','_axeTirEtat','_pilpPeriode','_pilpPeriodePrecision','_pilpPlanningUpdatedAt','_pilpPlanningUpdatedBy'];
 function _rcMergePilpPlanningFields(current,incoming,target){
@@ -18985,6 +19061,12 @@ function _rcStatusSequencePrefix(shorter,longer){
 function _rcOperationalStatusSource(current,incoming){
   if(!current)return'incoming';
   if(!incoming)return'current';
+  // Chaque vraie transition reçoit désormais une révision croissante. Cette
+  // valeur ne dépend pas de l'heure de l'appareil et empêche une ancienne
+  // copie hors ligne de remettre une intervention dans son état précédent.
+  const currentStatusRevision=Number(current._statusRevision)||0;
+  const incomingStatusRevision=Number(incoming._statusRevision)||0;
+  if(currentStatusRevision!==incomingStatusRevision&&(currentStatusRevision||incomingStatusRevision))return currentStatusRevision>incomingStatusRevision?'current':'incoming';
   if(current.s===incoming.s)return'incoming';
   const currentSeq=_rcOperationalStatusSequence(current),incomingSeq=_rcOperationalStatusSequence(incoming);
   if(_rcStatusSequencePrefix(currentSeq,incomingSeq))return'incoming';

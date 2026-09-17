@@ -699,6 +699,7 @@ function renderSuperAdmin(){
     </section>
     <section class="sa-section" data-sa-section="maintenance">
     <div id="sa-health-panel">${renderOperationalHealthPanel()}</div>
+    ${renderRecoveryCheckpointsPanel()}
     <div style="margin-top:20px;background:#FEF2F2;border-radius:14px;padding:16px;border:1px solid #FECACA;">
       <h3 style="font-size:15px;font-weight:700;margin-bottom:4px;color:#C0392B;">⚠️ Zone dangereuse — Gestion des interventions</h3>
       <div style="font-size:12px;color:#666;margin-bottom:12px;">Ces actions sont irr\u00e9versibles. \u00c0 utiliser avec pr\u00e9caution.</div>
@@ -723,6 +724,7 @@ function renderSuperAdmin(){
   if(_lprev){_lprev.src=_getLogoSrc();_lprev.style.display='block';}
   // Rendu de la configuration des types d'engins
   try{renderEnginTypes();}catch(e){}
+  try{refreshRecoveryCheckpointsPanel();}catch(e){}
   try{
     const _bg=document.getElementById('sa-bglogout');
     if(_bg)_bg.value=(ASTR_CONFIG&&typeof ASTR_CONFIG.bgLogoutMin==='number')?ASTR_CONFIG.bgLogoutMin:15;
@@ -998,9 +1000,10 @@ function saSaveFourriereEmail(){
   showToast('Email fourrière sauvegardé','success');
 }
 
-function saResetIvs(cid){
+async function saResetIvs(cid){
   if(!window.confirm('⚠️ Supprimer TOUTES les interventions de cette caserne ? Cette action est irréversible.')){return;}
   const d=CASERNE_DATA[cid];if(!d)return;
+  if(!await agaiRequireRecoveryCheckpoint('Avant remise à zéro des interventions de '+((CASERNES.find(function(item){return item.id===cid;})||{}).nom||cid)))return;
   const allIvIds=(d.ivs||[]).map(function(iv){return iv.id;});
   const allPilpIds=(d.pilpIvs||[]).map(function(iv){return iv.id;});
   d.ivs=[];d.pilpIvs=[];
@@ -1069,11 +1072,12 @@ function saFilterDeleteIvs(value){
   if(count)count.textContent=visible+' résultat'+(visible>1?'s':'');
 }
 
-function saConfirmDeleteIvs(cid){
+async function saConfirmDeleteIvs(cid){
   const checked=Array.from(document.querySelectorAll('.sa-iv-chk:checked')).map(function(c){return c.value;});
   if(!checked.length){showToast('Aucune intervention sélectionnée.','warn');return;}
   const d=CASERNE_DATA[cid];if(!d)return;
   if(!window.confirm('Supprimer '+checked.length+' intervention(s) ? Cette action est irréversible.')){return;}
+  if(!await agaiRequireRecoveryCheckpoint('Avant suppression de '+checked.length+' intervention(s)'))return;
   // Séparer ivs et pilpIvs supprimées pour marquer deleted dans records
   const delIvs=(d.ivs||[]).filter(function(iv){return checked.includes(iv.id);}).map(function(iv){return iv.id;});
   const delPilp=(d.pilpIvs||[]).filter(function(iv){return checked.includes(iv.id);}).map(function(iv){return iv.id;});
