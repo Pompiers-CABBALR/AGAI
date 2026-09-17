@@ -561,7 +561,7 @@ function agaiRepairPendingPilpAssignments(){
     iv.agr=null;iv.tireur=null;
     delete iv._routeBatchId;delete iv._routeOrder;
     if(!Array.isArray(iv.tl))iv.tl=[];
-    iv.tl.push({s:'en-attente',h:getH(N()),who:'Correction automatique AGAI',note:'Affectation PILP retirée : intervention disponible pour un tireur PILP'});
+    pushTL(iv,'en-attente','Correction automatique AGAI','Affectation PILP retirée : intervention disponible pour un tireur PILP');
     repaired.push(iv.id);
   });
   return repaired;

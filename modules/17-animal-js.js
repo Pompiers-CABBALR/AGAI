@@ -1991,6 +1991,11 @@ function _rcOperationalStatusSource(current,incoming){
   const currentStatusRevision=Number(current._statusRevision)||0;
   const incomingStatusRevision=Number(incoming._statusRevision)||0;
   if(currentStatusRevision!==incomingStatusRevision&&(currentStatusRevision||incomingStatusRevision))return currentStatusRevision>incomingStatusRevision?'current':'incoming';
+  // Deux appareils peuvent partir de la même révision et agir au même instant.
+  // L'identifiant de changement fournit alors un départage stable sur tous les
+  // appareils, ce qui évite les oscillations entre deux versions concurrentes.
+  const currentChangeId=String(current._statusChangeId||''),incomingChangeId=String(incoming._statusChangeId||'');
+  if(currentChangeId&&incomingChangeId&&currentChangeId!==incomingChangeId)return currentChangeId>incomingChangeId?'current':'incoming';
   if(current.s===incoming.s)return'incoming';
   const currentSeq=_rcOperationalStatusSequence(current),incomingSeq=_rcOperationalStatusSequence(incoming);
   if(_rcStatusSequencePrefix(currentSeq,incomingSeq))return'incoming';

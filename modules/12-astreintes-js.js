@@ -2376,18 +2376,21 @@ function confirmerSDIS(ivId){
   const iv=interventionById(ivId);if(!iv)return;
   if(!requireCurrentUserOperationalManager(iv,'Le passage en intervention SDIS'))return;
   if(!canUseOperationalStartInterface()){showToast('La mise en cours d’une intervention SDIS est réservée au mobile ou à la tablette.','warn');return;}
+  if(!beginOperationalAction(iv,'conversion-sdis',[iv.s]))return;
   const h=getH(N());const annee=new Date().getFullYear();
   iv.s='terminee';
   supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
-  iv.tl.push({s:'terminee',h,who:CU.l,note:'Recréée en inter. SDIS'});
+  pushTL(iv,'terminee',CU.l,'Recréée en inter. SDIS',h);
   const numApl=nextAplNum(annee);
   incCallCounter();
   const newIv={
     id:makeInterventionRecordId(numApl),_numApl:numApl,n:iv.n,addr:iv.addr,addrComp:iv.addrComp||'',com:iv.com,
     h,op:CU.l,s:'en-cours',det:iv.det,eng:iv.eng,req:iv.req,tel:iv.tel,obs:'',
     agr:iv.agr||CU.l,rappels:0,avisIds:[],_sdis:true,_refOrig:iv.id,
-    tl:[mkTL('en-attente',h,CU.l),mkTL('en-cours',h,CU.l+' (SDIS)')]
+    tl:[]
   };
+  pushTL(newIv,'en-attente',CU.l,'',h);
+  pushTL(newIv,'en-cours',CU.l+' (SDIS)','',h);
   IVS.unshift(newIv);
   assignInterventionNumbersAtStart(newIv);
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
@@ -3077,6 +3080,7 @@ function findManualOperationalIntervalConflict(iv,startTime,endTime,vehicles,per
 }
 function confirmerClotureSuperAdminDirecte(id){
   const iv=interventionById(id);if(!iv)return;
+  if(operationalActionInProgress(iv,'cloture-directe')){showToast('Cette clôture est déjà en cours d’enregistrement.','warn');return;}
   if(!canSuperAdminOperateForAnotherChief()){cM();showToast('Le pouvoir superadmin n’est plus actif.','warn');return;}
   const chief=document.getElementById('superadmin-depart-chief')?.value||'';
   const time=document.getElementById('superadmin-depart-time')?.value||'';
@@ -3098,6 +3102,7 @@ function confirmerClotureSuperAdminDirecte(id){
     else showStartCorrectionOperationalConflict(intervalConflict);
     return;
   }
+  if(!beginOperationalAction(iv,'cloture-directe',['en-attente','selectionne']))return;
   if(!iv.tl)iv.tl=[];
   iv.s='en-cours';iv.agr=chief;iv._agr2=null;
   iv._hDebut=time;iv._hDebutReelle=time;if(!iv._hDebutInitiale)iv._hDebutInitiale=time;
@@ -3106,8 +3111,7 @@ function confirmerClotureSuperAdminDirecte(id){
   iv._equipage2=null;iv._engin2=null;iv._engin2RoleConfig=null;
   delete iv._retourAttenteDepuis;delete iv._chainPreviousInterventionId;
   const who=chief+' (départ saisi par le superadmin '+CU.l+')';
-  iv.tl.push({s:'en-cours',h:manualOperationalTimelineStamp(iv,time,false),who:who,note:'Départ manuel à '+time+' — '+vehicle});
-  iv._statusUpdatedAt=Date.now();
+  pushTL(iv,'en-cours',who,'Départ manuel à '+time+' — '+vehicle,manualOperationalTimelineStamp(iv,time,false));
   iv._superAdminOperationalEdits=Array.isArray(iv._superAdminOperationalEdits)?iv._superAdminOperationalEdits:[];
   iv._superAdminOperationalEdits.push({action:'saisie-directe',at:getH(N()),by:CU.l,chef:chief,heureDepart:time,heureRetour:endTime,engin:vehicle,equipage:crew.map(function(member){return {role:member.role,login:member.login};})});
   assignInterventionNumbersAtStart(iv);syncInternalReinforcementSource(iv);markOperationalInterventionDirty(iv);
@@ -3116,6 +3120,7 @@ function confirmerClotureSuperAdminDirecte(id){
 
 function confirmerDepart(id){
   const iv=interventionById(id);if(!iv)return;
+  if(operationalActionInProgress(iv,'depart')){showToast('Ce départ est déjà en cours d’enregistrement.','warn');return;}
   if(!canCurrentUserStartIntervention(iv)){
     cM();
     showToast('Départ refusé : cette action est réservée aux chefs d’agrès, sauf demande active de renfort de personnel vers une autre caserne.','warn');
@@ -3166,6 +3171,7 @@ function confirmerDepart(id){
     showToast(OPERATIONAL_START_DENIED_MESSAGE,'warn');
     return;
   }
+  if(!beginOperationalAction(iv,'depart',['selectionne','en-attente']))return;
   prepareInterventionRoute(iv);
   delete _pendingNextInterventionStarts[id];
   if(!iv.tl)iv.tl=[];
@@ -3997,7 +4003,7 @@ function cloturerRenfort(cid,renfortId){
     ivLocale.s='terminee';
     ivLocale._hFin=r.hFin;
     if(!ivLocale.tl)ivLocale.tl=[];
-    ivLocale.tl.push({s:'terminee',h:getH(N()),who:CU?CU.l:'',note:'Clôture renfort'});
+    pushTL(ivLocale,'terminee',CU?CU.l:'','Clôture renfort');
   }
   saveData(true);cM();rI(); // push immédiat : changement de statut partagé ; fermeture du modal
   showToast('Renfort cl\u00f4tur\u00e9 \u00e0 '+r.hFin,'success');

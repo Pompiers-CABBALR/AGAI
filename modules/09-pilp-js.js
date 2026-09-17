@@ -390,19 +390,20 @@ function clotPilp(id){
     const field=document.getElementById('pilp-avis-passage-hour');if(field){field.focus();field.scrollIntoView({behavior:'smooth',block:'center'});}
     return;
   }
+  if(!beginOperationalAction(iv,'cloture-pilp',['en-cours']))return;
   const h=getH(N());
   if(avis){
     iv.s='avis-passage';iv.rappels=(iv.rappels||0)+1;
     iv._avisPassage=true;iv._avisEnAttente=true;
     iv._avisPassageHeure=avisHeure;iv._avisPassageDate=getDS(N());iv._avisPassageAt=h;
     if(!iv.avisIds)iv.avisIds=[];if(!iv.avisIds.includes(iv.id))iv.avisIds.push(iv.id);
-    iv.tl.push({s:'avis-passage',h,who:CU.l,note:'Avis déposé à '+avisHeure});
+    pushTL(iv,'avis-passage',CU.l,'Avis déposé à '+avisHeure,h);
     if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
     saveData(true);
     rPilp();oPilp(id);
   } else {
-    iv.s='terminee';iv._hFin=getHHMM(N());iv.tl.push({s:'terminee',h,who:CU.l});
-    (iv.avisIds||[]).forEach(aid=>{const av=PILP_IVS.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';av.tl.push({s:'terminee',h,who:CU.l+' (fusion)'});}});
+    iv.s='terminee';iv._hFin=getHHMM(N());pushTL(iv,'terminee',CU.l,'',h);
+    (iv.avisIds||[]).forEach(aid=>{const av=PILP_IVS.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';pushTL(av,'terminee',CU.l+' (fusion)','',h);}});
     if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
     saveData(true);
     cM();rPilp();rI();rAccueil();
@@ -411,7 +412,8 @@ function clotPilp(id){
 function clotAvisPilp(id){
   const iv=PILP_IVS.find(v=>v.id===id);if(!iv)return;
   if(!canOperatePilp()){showToast('La clôture d’une intervention PILP est réservée aux tireurs PILP, aux administrateurs actifs et au superadmin.','warn');return;}
-  const h=getH(N());iv.s='terminee';iv.tl.push({s:'terminee',h,who:CU.l});
+  if(!beginOperationalAction(iv,'cloture-avis-pilp',['avis-passage']))return;
+  const h=getH(N());iv.s='terminee';pushTL(iv,'terminee',CU.l,'',h);
   if(iv._numCaserne&&!IVS.some(function(item){return item&&item._lienPilpSourceId===iv.id;})){
     IVS.unshift({id:String(iv.id)+'_historique',_numApl:interventionDisplayCallNumber(iv),_numCaserne:iv._numCaserne,_numGlobal:iv._numGlobal,_numMois:iv._numMois,
       n:iv.n.replace(' — PILP',''),addr:iv.addr,com:iv.com,h:iv.h,op:iv.agr||CU.l,
@@ -421,7 +423,7 @@ function clotAvisPilp(id){
       _avisPassageHeure:iv._avisPassageHeure||'',_avisPassageDate:iv._avisPassageDate||'',_avisPassageAt:iv._avisPassageAt||'',
       _avisPassageClasse:iv._avisPassageClasse===true,_avisPassageClasseAt:iv._avisPassageClasseAt||'',_avisPassageClassePar:iv._avisPassageClassePar||''});
   }
-  (iv.avisIds||[]).forEach(aid=>{const av=PILP_IVS.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';av.tl.push({s:'terminee',h,who:CU.l+' (fusion)'});}});
+  (iv.avisIds||[]).forEach(aid=>{const av=PILP_IVS.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';pushTL(av,'terminee',CU.l+' (fusion)','',h);}});
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);
   cM();rPilp();rI();rAccueil();
