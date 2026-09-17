@@ -406,7 +406,7 @@ function renderSuperAdmin(){
         <div style="font-size:11px;font-weight:600;color:#666;margin-bottom:6px;">🌧️ MODE PLUIE</div>
         <label style="display:flex;align-items:flex-start;gap:7px;font-size:11px;cursor:pointer;line-height:1.35;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:8px;">
           <input type="checkbox" style="margin-top:2px;accent-color:${c.couleur};" ${d._rainModeAllowed===true?'checked':''} onchange="saSetRainModeAllowed('${c.id}',this.checked)">
-          <span><strong>Autoriser le mode pluie</strong><br><span style="font-size:10px;color:#64748B;">Les chefs d’agrès et les administrateurs de ${c.nom} pourront l’activer. La compatibilité pluie reste visible même si cette option est désactivée.</span></span>
+          <span><strong>Autoriser le mode pluie</strong><br><span style="font-size:10px;color:#64748B;">Les chefs d’agrès et les administrateurs de ${c.nom} pourront l’activer. L’exposition aux précipitations reste visible même si cette option est désactivée.</span></span>
         </label>
       </div>
       <div style="margin-top:10px;border-top:1px solid #f0f0f0;padding-top:10px;">

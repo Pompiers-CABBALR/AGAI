@@ -1001,13 +1001,13 @@ function renderRainModeZone(){
   const zone=document.getElementById('rain-mode-zone'),data=CD();if(!zone||!data)return;
   const allowed=data._rainModeAllowed===true,active=rainModeIsActive(),mode=rainModeConfig();
   if(!allowed){zone.innerHTML='';return;}
-  zone.innerHTML='<div style="background:'+(active?'#E0F2FE':'#F8FAFC')+';border:1px solid '+(active?'#38BDF8':'#CBD5E1')+';border-radius:10px;padding:9px 11px;margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><div style="flex:1;min-width:210px;font-size:12px;color:'+(active?'#075985':'#475569')+';"><strong>'+(active?'🌧️ Mode pluie actif':'☔ Mode pluie inactif')+'</strong>'+(active?' '+rainModeUntilLabel(mode)+(mode.activatedBy?' — activé par '+escHtml(mode.activatedBy):''):' — la compatibilité reste visible sur chaque intervention')+'</div>'+(canManageRainMode()?'<button class="btn sm" style="background:'+(active?'#fff':'#0369A1')+';color:'+(active?'#B42318':'#fff')+';border-color:'+(active?'#FCA5A5':'#0369A1')+';" onclick="'+(active?'deactivateRainMode()':'showActivateRainModeModal()')+'">'+(active?'Désactiver':'🌧️ Activer')+'</button>':'')+'</div>';
+  zone.innerHTML='<div style="background:'+(active?'#E0F2FE':'#F8FAFC')+';border:1px solid '+(active?'#38BDF8':'#CBD5E1')+';border-radius:10px;padding:9px 11px;margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><div style="flex:1;min-width:210px;font-size:12px;color:'+(active?'#075985':'#475569')+';"><strong>'+(active?'🌧️ Mode pluie actif':'☔ Mode pluie inactif')+'</strong>'+(active?' '+rainModeUntilLabel(mode)+(mode.activatedBy?' — activé par '+escHtml(mode.activatedBy):''):' — l’exposition reste visible sur chaque intervention')+'</div>'+(canManageRainMode()?'<button class="btn sm" style="background:'+(active?'#fff':'#0369A1')+';color:'+(active?'#B42318':'#fff')+';border-color:'+(active?'#FCA5A5':'#0369A1')+';" onclick="'+(active?'deactivateRainMode()':'showActivateRainModeModal()')+'">'+(active?'Désactiver':'🌧️ Activer')+'</button>':'')+'</div>';
 }
 function showActivateRainModeModal(){
   if(!canManageRainMode()){showToast('Activation réservée aux chefs d’agrès et aux administrateurs autorisés.','warn');return;}
   document.getElementById('mt').textContent='Activer le mode pluie';
   document.getElementById('mi').textContent=(CC()&&CC().nom)||'';
-  document.getElementById('mb').innerHTML='<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Le mode pluie ne masque aucune intervention. Il signale celles qui ne sont pas réalisables sous la pluie tout en conservant leur ancienneté.</div><div class="fg"><div class="fgl">Durée</div><select class="fi" id="rain-mode-duration"><option value="1">1 heure</option><option value="3" selected>3 heures</option><option value="6">6 heures</option><option value="manual">Jusqu’à désactivation manuelle</option></select></div><div class="brow"><button class="btn pr" onclick="activateRainMode()">🌧️ Activer</button><button class="btn" onclick="cM()">Annuler</button></div>';
+  document.getElementById('mb').innerHTML='<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Le mode pluie ne masque et ne bloque aucune intervention. Il attire uniquement l’attention sur les nids exposés en cas de pluie soutenue. La brume, la bruine ou une pluie légère ne déclenchent aucune restriction.</div><div class="fg"><div class="fgl">Durée</div><select class="fi" id="rain-mode-duration"><option value="1">1 heure</option><option value="3" selected>3 heures</option><option value="6">6 heures</option><option value="manual">Jusqu’à désactivation manuelle</option></select></div><div class="brow"><button class="btn pr" onclick="activateRainMode()">🌧️ Activer</button><button class="btn" onclick="cM()">Annuler</button></div>';
   document.getElementById('mo').style.display='flex';
 }
 function activateRainMode(){
@@ -1173,12 +1173,6 @@ function rI(){
 
 function toggleChk(id,el,rainConfirmed){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
-  const rainSummary=interventionRainSummary(iv);
-  if(el.checked&&rainModeIsActive()&&rainSummary&&rainSummary.state==='impossible'&&rainConfirmed!==true){
-    el.checked=false;
-    confirmModal('Cette intervention est indiquée comme impossible sous la pluie. Elle reste prioritaire selon son ancienneté, mais son traitement peut être inefficace. Confirmer malgré tout sa sélection ?',function(){el.checked=true;toggleChk(id,el,true);});
-    return;
-  }
   if(el.checked){
     iv.s='selectionne';iv.agr=CU.l;
     parcConfirmed.delete(iv.id);
@@ -2012,11 +2006,6 @@ function cS(id,s,confirmed){
     return;
   }
   const previousStatus=iv.s;
-  const rainSummary=interventionRainSummary(iv);
-  if(s==='selectionne'&&previousStatus==='en-attente'&&rainModeIsActive()&&rainSummary&&rainSummary.state==='impossible'&&confirmed!=='rain-confirmed'){
-    confirmModal('Cette intervention est indiquée comme impossible sous la pluie. Elle reste prioritaire selon son ancienneté, mais son traitement peut être inefficace. Confirmer malgré tout sa sélection ?',function(){cS(id,s,'rain-confirmed');});
-    return;
-  }
   if(s==='selectionne'&&!canCurrentUserSelectIntervention(iv)){
     showToast('Vous n’êtes pas autorisé à sélectionner cette intervention.','warn');
     return;

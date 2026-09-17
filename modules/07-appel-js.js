@@ -611,8 +611,8 @@ function selectPrimaryNidRain(button,value){
 }
 function setPrimaryNidRainDefault(groupId){
   const group=document.getElementById(groupId),box=group&&group.closest('.smbox')&&group.closest('.smbox').querySelector('.appel-primary-rain');if(!box)return;
-  box.dataset.primaryNidRain='impossible';
-  box.querySelectorAll('[data-rain-value]').forEach(function(choice){choice.classList.toggle('sel',choice.dataset.rainValue==='impossible');});
+  box.dataset.primaryNidRain='inconnu';
+  box.querySelectorAll('[data-rain-value]').forEach(function(choice){choice.classList.toggle('sel',choice.dataset.rainValue==='inconnu');});
   const err=box.querySelector('[data-primary-nid-error]');if(err)err.style.display='none';
 }
 function selectExtraNidRain(button,value){
@@ -635,7 +635,7 @@ function addAppelExtraNid(host){
     +'<div data-extra-nid-height-wrap style="display:none;margin-bottom:8px;"><div class="fgl">Hauteur estimée</div><div class="urow"><input type="number" min="0" data-extra-nid-height placeholder="ex. 5"><span class="ul2">m</span></div></div>'
     +'<div data-extra-nid-size-wrap style="display:none;"><div class="fgl">Taille du nid (facultatif)</div><div style="display:flex;flex-wrap:wrap;gap:6px;">'
     +'<button type="button" class="smopt" data-extra-nid-size-choice onclick="selectExtraNidOption(this,\'size\',\'Petit\')">Petit</button><button type="button" class="smopt" data-extra-nid-size-choice onclick="selectExtraNidOption(this,\'size\',\'Moyen\')">Moyen</button><button type="button" class="smopt" data-extra-nid-size-choice onclick="selectExtraNidOption(this,\'size\',\'Gros\')">Gros</button><button type="button" class="smopt" data-extra-nid-size-choice onclick="selectExtraNidOption(this,\'size\',\'Inconnu\')">Inconnu</button></div>'
-    +'</div><div style="margin-top:8px;"><div class="fgl">Compatibilité avec la pluie</div><div style="display:flex;flex-wrap:wrap;gap:6px;"><button type="button" class="smopt" data-extra-nid-rain-choice="possible" onclick="selectExtraNidRain(this,\'possible\')">☔ Possible</button><button type="button" class="smopt" data-extra-nid-rain-choice="impossible" onclick="selectExtraNidRain(this,\'impossible\')">🌧️ Impossible</button><button type="button" class="smopt sel" data-extra-nid-rain-choice="inconnu" onclick="selectExtraNidRain(this,\'inconnu\')">❔ À confirmer</button></div></div>'
+    +'</div><div style="margin-top:8px;"><div class="fgl">Exposition du nid aux précipitations</div><div style="display:flex;flex-wrap:wrap;gap:6px;"><button type="button" class="smopt" data-extra-nid-rain-choice="protege" onclick="selectExtraNidRain(this,\'protege\')">🏠 Protégé</button><button type="button" class="smopt" data-extra-nid-rain-choice="partiel" onclick="selectExtraNidRain(this,\'partiel\')">🌦️ Partiellement protégé</button><button type="button" class="smopt" data-extra-nid-rain-choice="expose" onclick="selectExtraNidRain(this,\'expose\')">🌧️ Exposé</button><button type="button" class="smopt sel" data-extra-nid-rain-choice="inconnu" onclick="selectExtraNidRain(this,\'inconnu\')">🔎 À confirmer</button></div></div>'
     +'<div class="ferr" data-extra-nid-error style="margin-top:5px;">Choisissez la nature et la localisation de ce nid.</div>';
   row.dataset.rain='inconnu';
   row.querySelector('button').onclick=function(){row.remove();};
@@ -649,8 +649,8 @@ function selectExtraNidOption(button,field,value){
   if(field==='location'){
     const other=row.querySelector('[data-extra-nid-other-wrap]');if(other)other.style.display=value==='Autre'?'':'none';
     const height=row.querySelector('[data-extra-nid-height-wrap]');if(height)height.style.display=extraNidNeedsHeight(row.dataset.nature,value)?'':'none';
-    row.dataset.rain='impossible';
-    row.querySelectorAll('[data-extra-nid-rain-choice]').forEach(function(choice){choice.classList.toggle('sel',choice.dataset.extraNidRainChoice==='impossible');});
+    row.dataset.rain='inconnu';
+    row.querySelectorAll('[data-extra-nid-rain-choice]').forEach(function(choice){choice.classList.toggle('sel',choice.dataset.extraNidRainChoice==='inconnu');});
   }
   const err=row.querySelector('[data-extra-nid-error]');if(err)err.style.display='none';
 }
@@ -712,10 +712,10 @@ function validateAppelNids(){
     const selected=group&&group.querySelector('.smopt.sel');
     const rainBox=document.querySelector('#sm-'+host+' .appel-primary-rain');
     const rain=rainBox&&rainBox.dataset.primaryNidRain||'';
-    const rainValid=['possible','impossible','inconnu'].includes(rain);
+    const rainValid=['protege','partiel','expose','inconnu'].includes(rainCompatibilityState(rain));
     if(rainBox){
       let err=rainBox.querySelector('[data-primary-nid-error]');
-      if(!err){err=document.createElement('div');err.className='ferr';err.setAttribute('data-primary-nid-error','');err.textContent='Choisissez la localisation et indiquez obligatoirement la compatibilité avec la pluie.';rainBox.appendChild(err);}
+      if(!err){err=document.createElement('div');err.className='ferr';err.setAttribute('data-primary-nid-error','');err.textContent='Choisissez la localisation et indiquez obligatoirement l’exposition du nid aux précipitations.';rainBox.appendChild(err);}
       err.style.display=selected&&rainValid?'none':'block';
     }
     if(!selected||!rainValid)valid=false;
@@ -726,8 +726,9 @@ function validateAppelNids(){
     if(location==='Autre')location=((row.querySelector('[data-extra-nid-other]')||{}).value||'').trim();
     const rain=row.dataset.rain||'';
     const err=row.querySelector('[data-extra-nid-error]');
-    if(err){err.textContent='Choisissez la nature, la localisation et la compatibilité avec la pluie de ce nid.';err.style.display=nature&&location&&['possible','impossible','inconnu'].includes(rain)?'none':'block';}
-    if(!nature||!location||!['possible','impossible','inconnu'].includes(rain))valid=false;
+    const rainValid=['protege','partiel','expose','inconnu'].includes(rainCompatibilityState(rain));
+    if(err){err.textContent='Choisissez la nature, la localisation et l’exposition aux précipitations de ce nid.';err.style.display=nature&&location&&rainValid?'none':'block';}
+    if(!nature||!location||!rainValid)valid=false;
   });
   return valid;
 }
@@ -740,28 +741,32 @@ function nidAppelLabel(nid,index){
 }
 function rainCompatibilityState(value){
   const state=String(value||'').toLowerCase();
-  return state==='possible'||state==='impossible'?state:'inconnu';
+  if(state==='possible')return'protege';
+  if(state==='impossible')return'expose';
+  return ['protege','partiel','expose'].includes(state)?state:'inconnu';
 }
 function rainCompatibilityText(value){
   const state=rainCompatibilityState(value);
-  return state==='possible'?'Possible sous la pluie':state==='impossible'?'Impossible sous la pluie':'À confirmer sur place';
+  return state==='protege'?'Nid protégé':state==='partiel'?'Nid partiellement protégé':state==='expose'?'Nid exposé':'À confirmer sur place';
 }
 function interventionRainSummary(iv){
   const nids=interventionNids(iv);
   if(!nids.length)return null;
   const states=nids.map(function(nid){return rainCompatibilityState(nid&&nid.pluie);});
-  const possible=states.filter(function(state){return state==='possible';}).length;
-  const impossible=states.filter(function(state){return state==='impossible';}).length;
-  const unknown=states.length-possible-impossible;
+  const protectedCount=states.filter(function(state){return state==='protege';}).length;
+  const partialCount=states.filter(function(state){return state==='partiel';}).length;
+  const exposedCount=states.filter(function(state){return state==='expose';}).length;
+  const unknown=states.length-protectedCount-partialCount-exposedCount;
   if(unknown)return{state:'inconnu',label:states.length>1?'Protection de certains nids à confirmer':'À confirmer sur place',icon:'❔'};
-  if(possible===states.length)return{state:'possible',label:'Possible sous la pluie',icon:'☔'};
-  if(impossible===states.length)return{state:'impossible',label:'Impossible sous la pluie',icon:'🌧️'};
-  return{state:'partiel',label:'Partiellement réalisable sous la pluie',icon:'🌦️'};
+  if(protectedCount===states.length)return{state:'protege',label:'Nid protégé',icon:'🏠'};
+  if(partialCount===states.length)return{state:'partiel',label:'Nid partiellement protégé',icon:'🌦️'};
+  if(exposedCount===states.length)return{state:'expose',label:'Nid exposé',icon:'🌧️'};
+  return{state:'mixte',label:'Exposition variable selon les nids',icon:'🌦️'};
 }
 function interventionRainBadgeHTML(iv){
   const summary=interventionRainSummary(iv);if(!summary)return'';
-  const palette={possible:['#DCFCE7','#166534'],impossible:['#FEE2E2','#991B1B'],partiel:['#E0F2FE','#075985'],inconnu:['#FEF3C7','#92400E']}[summary.state];
-  const weatherAdvice=summary.state==='impossible'&&typeof rainModeIsActive==='function'&&rainModeIsActive()?' — report météo conseillé':'';
+  const palette={protege:['#DCFCE7','#166534'],expose:['#FEE2E2','#991B1B'],partiel:['#E0F2FE','#075985'],mixte:['#E0F2FE','#075985'],inconnu:['#FEF3C7','#92400E']}[summary.state];
+  const weatherAdvice=summary.state==='expose'&&typeof rainModeIsActive==='function'&&rainModeIsActive()?' — vigilance si pluie soutenue':'';
   return '<span style="padding:2px 6px;border-radius:6px;background:'+palette[0]+';color:'+palette[1]+';font-weight:600;">'+summary.icon+' '+escHtml(summary.label+weatherAdvice)+'</span>';
 }
 function canEditRainCompatibility(iv){
@@ -772,7 +777,7 @@ function interventionRainCardHTML(iv){
   const summary=interventionRainSummary(iv);if(!summary)return'';
   const nids=interventionNids(iv);
   const details=nids.length>1?nids.map(function(nid,index){return '<div style="font-size:11px;margin-top:4px;"><strong>Nid '+(index+1)+'</strong> · '+escHtml(nid.nature||iv.n||'Nid')+' : '+escHtml(rainCompatibilityText(nid.pluie))+'</div>';}).join(''):'';
-  return '<div class="mr"><div class="ml">Compatibilité avec la pluie</div><div class="mv2">'+interventionRainBadgeHTML(iv)+details+(canEditRainCompatibility(iv)?'<div><button class="btn sm" style="font-size:10px;padding:3px 8px;margin-top:7px;" onclick="showRainCompatibilityModal(\''+iv.id+'\')">✏️ Corriger après reconnaissance</button></div>':'')+'</div></div>';
+  return '<div class="mr"><div class="ml">Exposition aux précipitations</div><div class="mv2">'+interventionRainBadgeHTML(iv)+details+(canEditRainCompatibility(iv)?'<div><button class="btn sm" style="font-size:10px;padding:3px 8px;margin-top:7px;" onclick="showRainCompatibilityModal(\''+iv.id+'\')">✏️ Corriger après reconnaissance</button></div>':'')+'</div></div>';
 }
 function selectRainCompatibilityEdit(button,value){
   const row=button&&button.closest('[data-rain-edit-row]');if(!row)return;
@@ -782,10 +787,10 @@ function selectRainCompatibilityEdit(button,value){
 function showRainCompatibilityModal(ivId){
   const iv=interventionById(ivId);if(!iv||!canEditRainCompatibility(iv)){showToast('Modification réservée au chef d’agrès responsable et aux administrateurs.','warn');return;}
   const nids=interventionNids(iv);
-  document.getElementById('mt').textContent='Compatibilité avec la pluie';
+  document.getElementById('mt').textContent='Exposition du nid aux précipitations';
   document.getElementById('mi').textContent=iv.n+' — '+iv.com;
   document.getElementById('mb').innerHTML='<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Indiquez si le nid et la zone de traitement sont réellement protégés de la pluie. Cette information ne décrit pas la difficulté de l’intervention.</div>'
-    +nids.map(function(nid,index){const state=rainCompatibilityState(nid.pluie);return '<div data-rain-edit-row data-rain-edit-value="'+state+'" style="background:var(--bg);border:1px solid var(--brd);border-radius:9px;padding:10px;margin-bottom:8px;"><div style="font-size:12px;font-weight:700;margin-bottom:7px;">'+(nids.length>1?'Nid '+(index+1)+' — ':'')+escHtml([nid.nature,nid.localisation].filter(Boolean).join(' · ')||iv.n)+'</div><div style="display:flex;gap:6px;flex-wrap:wrap;"><button type="button" class="smopt '+(state==='possible'?'sel':'')+'" data-rain-edit-choice onclick="selectRainCompatibilityEdit(this,\'possible\')">☔ Possible</button><button type="button" class="smopt '+(state==='impossible'?'sel':'')+'" data-rain-edit-choice onclick="selectRainCompatibilityEdit(this,\'impossible\')">🌧️ Impossible</button><button type="button" class="smopt '+(state==='inconnu'?'sel':'')+'" data-rain-edit-choice onclick="selectRainCompatibilityEdit(this,\'inconnu\')">❔ À confirmer</button></div></div>';}).join('')
+    +nids.map(function(nid,index){const state=rainCompatibilityState(nid.pluie);return '<div data-rain-edit-row data-rain-edit-value="'+state+'" style="background:var(--bg);border:1px solid var(--brd);border-radius:9px;padding:10px;margin-bottom:8px;"><div style="font-size:12px;font-weight:700;margin-bottom:7px;">'+(nids.length>1?'Nid '+(index+1)+' — ':'')+escHtml([nid.nature,nid.localisation].filter(Boolean).join(' · ')||iv.n)+'</div><div style="display:flex;gap:6px;flex-wrap:wrap;"><button type="button" class="smopt '+(state==='protege'?'sel':'')+'" data-rain-edit-choice onclick="selectRainCompatibilityEdit(this,\'protege\')">🏠 Protégé</button><button type="button" class="smopt '+(state==='partiel'?'sel':'')+'" data-rain-edit-choice onclick="selectRainCompatibilityEdit(this,\'partiel\')">🌦️ Partiellement protégé</button><button type="button" class="smopt '+(state==='expose'?'sel':'')+'" data-rain-edit-choice onclick="selectRainCompatibilityEdit(this,\'expose\')">🌧️ Exposé</button><button type="button" class="smopt '+(state==='inconnu'?'sel':'')+'" data-rain-edit-choice onclick="selectRainCompatibilityEdit(this,\'inconnu\')">🔎 À confirmer</button></div></div>';}).join('')
     +'<div class="brow"><button class="btn pr" onclick="saveRainCompatibility(\''+ivId+'\')">💾 Enregistrer</button><button class="btn" onclick="oM(\''+ivId+'\')">Annuler</button></div>';
   document.getElementById('mo').style.display='flex';
 }
@@ -795,9 +800,9 @@ function saveRainCompatibility(ivId){
   const rows=[...document.querySelectorAll('[data-rain-edit-row]')];
   iv._nidsAppel.forEach(function(nid,index){nid.pluie=rainCompatibilityState(rows[index]&&rows[index].dataset.rainEditValue);});
   if(!Array.isArray(iv.tl))iv.tl=[];
-  iv.tl.push({s:'information',h:getH(N()),who:CU&&CU.l||'',note:'Compatibilité avec la pluie mise à jour : '+interventionRainSummary(iv).label});
+  iv.tl.push({s:'information',h:getH(N()),who:CU&&CU.l||'',note:'Exposition aux précipitations mise à jour : '+interventionRainSummary(iv).label});
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-  saveData(true);refreshOperationalInterventionViews();rAccueil();oM(ivId);showToast('Compatibilité avec la pluie enregistrée.','success');
+  saveData(true);refreshOperationalInterventionViews();rAccueil();oM(ivId);showToast('Exposition aux précipitations enregistrée.','success');
 }
 function clearReqAvailabilityError(){const err=document.getElementById('req-dispo-error');if(err)err.style.display='none';}
 function reqAvailabilityPeriodRows(){return[...document.querySelectorAll('#req-dispo-periods [data-req-dispo-period]')];}

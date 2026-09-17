@@ -30,7 +30,7 @@ function showAddRecognizedNidModal(ivId){
     +'<div id="reco-nid-other-wrap" class="fg" style="display:none;"><div class="fgl">Précision</div><input class="fi" id="reco-nid-other" placeholder="Préciser la localisation…"></div>'
     +'<div id="reco-nid-height-wrap" class="fg" style="display:none;"><div class="fgl">Hauteur estimée</div><div class="urow"><input type="number" min="0" id="reco-nid-height" placeholder="ex. 5"><span class="ul2">m</span></div></div>'
     +'<div id="reco-nid-size-wrap" class="fg" style="display:none;"><div class="fgl">Taille du nid</div><div style="display:flex;flex-wrap:wrap;gap:6px;"><button type="button" class="smopt" data-reco-nid-size onclick="selectRecognizedNidOption(this,\'size\',\'Petit\')">Petit</button><button type="button" class="smopt" data-reco-nid-size onclick="selectRecognizedNidOption(this,\'size\',\'Moyen\')">Moyen</button><button type="button" class="smopt" data-reco-nid-size onclick="selectRecognizedNidOption(this,\'size\',\'Gros\')">Gros</button><button type="button" class="smopt" data-reco-nid-size onclick="selectRecognizedNidOption(this,\'size\',\'Inconnu\')">Inconnu</button></div></div>'
-    +'<div class="fg"><div class="fgl">Compatibilité avec la pluie</div><div style="display:flex;flex-wrap:wrap;gap:6px;"><button type="button" class="smopt" data-reco-nid-rain="possible" onclick="selectRecognizedNidOption(this,\'rain\',\'possible\')">☔ Possible</button><button type="button" class="smopt" data-reco-nid-rain="impossible" onclick="selectRecognizedNidOption(this,\'rain\',\'impossible\')">🌧️ Impossible</button><button type="button" class="smopt sel" data-reco-nid-rain="inconnu" onclick="selectRecognizedNidOption(this,\'rain\',\'inconnu\')">❔ À confirmer</button></div></div>'
+    +'<div class="fg"><div class="fgl">Exposition du nid aux précipitations</div><div style="display:flex;flex-wrap:wrap;gap:6px;"><button type="button" class="smopt" data-reco-nid-rain="protege" onclick="selectRecognizedNidOption(this,\'rain\',\'protege\')">🏠 Protégé</button><button type="button" class="smopt" data-reco-nid-rain="partiel" onclick="selectRecognizedNidOption(this,\'rain\',\'partiel\')">🌦️ Partiellement protégé</button><button type="button" class="smopt" data-reco-nid-rain="expose" onclick="selectRecognizedNidOption(this,\'rain\',\'expose\')">🌧️ Exposé</button><button type="button" class="smopt sel" data-reco-nid-rain="inconnu" onclick="selectRecognizedNidOption(this,\'rain\',\'inconnu\')">🔎 À confirmer</button></div></div>'
     +'<div class="ferr" id="reco-nid-error">Choisissez la nature et la localisation.</div>'
     +'<div class="brow" style="margin-top:12px;"><button class="btn pr" onclick="saveRecognizedNid(\''+ivId+'\')">➕ Ajouter le nid</button><button class="btn" onclick="showAutorisationNidPicker(\''+ivId+'\')">Annuler</button></div>';
   document.getElementById('mo').style.display='flex';
@@ -43,8 +43,8 @@ function selectRecognizedNidOption(button,field,value){
     const other=document.getElementById('reco-nid-other-wrap');if(other)other.style.display=value==='Autre'?'':'none';
     const nature=(document.getElementById('reco-nid-nature')||{}).value||'';
     const height=document.getElementById('reco-nid-height-wrap');if(height)height.style.display=extraNidNeedsHeight(nature,value)?'':'none';
-    const rain=document.getElementById('reco-nid-rain');if(rain)rain.value='impossible';
-    document.querySelectorAll('[data-reco-nid-rain]').forEach(function(choice){choice.classList.toggle('sel',choice.dataset.recoNidRain==='impossible');});
+    const rain=document.getElementById('reco-nid-rain');if(rain)rain.value='inconnu';
+    document.querySelectorAll('[data-reco-nid-rain]').forEach(function(choice){choice.classList.toggle('sel',choice.dataset.recoNidRain==='inconnu');});
   }
   const err=document.getElementById('reco-nid-error');if(err)err.style.display='none';
 }
