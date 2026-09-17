@@ -2239,9 +2239,10 @@ function annulerIV(id){
   document.getElementById('mb').innerHTML=`
     <div>
       <div style="font-size:13px;color:var(--t);margin-bottom:12px;">
-        Motif de l'annulation (optionnel)
+        Justificatif de l'annulation <span style="color:#B91C1C;">*</span>
       </div>
-      <textarea class="fta" id="cancel-motif" placeholder="ex. Faux appel, requérant a rappelé pour annuler…" style="height:70px;"></textarea>
+      <textarea class="fta" id="cancel-motif" required placeholder="ex. Faux appel, requérant a rappelé pour annuler…" style="height:70px;" oninput="clearCancellationJustificationError('cancel-motif','cancel-motif-error')"></textarea>
+      <div id="cancel-motif-error" style="display:none;color:#B91C1C;font-size:11px;font-weight:700;margin-top:6px;">Saisissez un justificatif précis. Les espaces ou la ponctuation seuls ne sont pas acceptés.</div>
       <div style="font-size:11px;color:var(--t2);margin:8px 0 12px;">
         ℹ️ L’intervention sera marquée comme annulée et ne sera plus comptabilisée dans les statistiques. Elle restera dans l’historique.
       </div>
@@ -2252,13 +2253,35 @@ function annulerIV(id){
     </div>`;
   openModalAtTop('cancel-motif');
 }
+function cancellationJustificationIsValid(value){
+  const text=String(value||'').trim();
+  if(!text)return false;
+  const meaningful=text.replace(/[^0-9A-Za-zÀ-ÖØ-öø-ÿŒœÆæ]/g,'');
+  const letters=(meaningful.match(/[A-Za-zÀ-ÖØ-öø-ÿŒœÆæ]/g)||[]).length;
+  return meaningful.length>=5&&letters>=3;
+}
+function clearCancellationJustificationError(inputId,errorId){
+  const input=document.getElementById(inputId),error=document.getElementById(errorId);
+  if(input)input.style.borderColor='';
+  if(error)error.style.display='none';
+}
+function validateCancellationJustification(value,inputId,errorId){
+  const valid=cancellationJustificationIsValid(value);
+  const input=document.getElementById(inputId),error=document.getElementById(errorId);
+  if(input)input.style.borderColor=valid?'':'#B91C1C';
+  if(error)error.style.display=valid?'none':'block';
+  if(!valid&&input){input.focus();showToast('Un justificatif précis est obligatoire pour annuler l’intervention.','warn');}
+  return valid;
+}
 function confirmerAnnulation(id){
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
   const motif=document.getElementById('cancel-motif')?.value.trim()||'';
+  if(!validateCancellationJustification(motif,'cancel-motif','cancel-motif-error'))return;
   iv.s='annulee';
+  iv._annulationJustification=motif;
   supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
   pushTL(iv,'annulee',CU.l);
-  if(motif)iv.tl[iv.tl.length-1].note=motif;
+  iv.tl[iv.tl.length-1].note=motif;
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true); // push immédiat : sinon l'annulation est écrasée au prochain pull
   cM();rI();rAccueil();
