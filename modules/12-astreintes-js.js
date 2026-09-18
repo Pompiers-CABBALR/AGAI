@@ -2875,6 +2875,12 @@ function showPersonnelModal(id){
     showToast('Vous n’êtes pas autorisé à passer cette intervention en cours.','warn');
     return;
   }
+  const departureVehicleCatalog=availableCaserneVehicleNames('');
+  if(!departureVehicleCatalog.length){
+    showToast('Départ impossible : aucun véhicule n’est chargé pour cette caserne. Un administrateur doit vérifier la configuration des engins.','warn');
+    try{refreshOperationalHealthPanel();}catch(e){}
+    return;
+  }
   const interruptedHandoff=findInterruptedDepartureHandoff(CU.l,id);
   const heure=interruptedHandoff?interruptedHandoff.handoff.heure:(_pendingNextInterventionStarts[id]||getHHMM(N()));
   const chained=!interruptedHandoff&&!!_pendingNextInterventionStarts[id];
@@ -2898,7 +2904,9 @@ function showPersonnelModal(id){
   const eq2Sugg=_eq2.equipier;
 
   const enginOpts=function(sugg){
-    return [''].concat(availableCaserneVehicleNames(sugg)).map(function(e){
+    const vehicles=departureVehicleCatalog.slice();
+    if(sugg&&!vehicles.some(function(vehicle){return nm(vehicle)===nm(sugg);}))vehicles.push(sugg);
+    return [''].concat(vehicles).map(function(e){
       const conflict=e?findActiveVehicleConflict(e,id):null;
       return '<option value="'+escHtml(e)+'"'+(e===sugg?' selected':'')+(conflict?' disabled':'')+'>'+(e?escHtml(e):'\u2014 Sélectionner un véhicule \u2014')+(conflict?' \u2014 D\u00e9j\u00e0 en intervention':'')+'</option>';
     }).join('');
@@ -2991,24 +2999,28 @@ function superAdminChiefOptions(selected){
     return '<option value="'+escHtml(user.l)+'"'+(user.l===selected?' selected':'')+'>'+escHtml(fullName(user))+' ('+escHtml(gradeAbbr(user.grade)) +')</option>';
   }).join('');
 }
-function availableCaserneVehicleNames(selected){
+function caserneVehicleCatalog(caserneId,selected){
   const vehicles=[];
   const add=function(value){
     const vehicle=String(value||'').trim();
     if(vehicle&&!vehicles.some(function(existing){return nm(existing)===nm(vehicle);}))vehicles.push(vehicle);
   };
   add(selected);
-  const localConfig=typeof CD==='function'&&CD()&&CD().astrConfig;
-  [ASTR_CONFIG&&ASTR_CONFIG.engins,localConfig&&localConfig.engins].forEach(function(list){
+  const data=CASERNE_DATA&&CASERNE_DATA[caserneId]||{};
+  const activeConfig=caserneId===CURRENT_CASERNE_ID?ASTR_CONFIG:null;
+  [activeConfig&&activeConfig.engins,data.astrConfig&&data.astrConfig.engins].forEach(function(list){
     (Array.isArray(list)?list:[]).forEach(add);
   });
-  Object.values(PIQUETS||{}).forEach(function(list){
+  Object.values(data.piquets||{}).forEach(function(list){
     (Array.isArray(list)?list:[]).forEach(function(piquet){add(piquet&&piquet.engin);});
   });
-  [].concat(IVS||[],PILP_IVS||[]).forEach(function(iv){
+  [].concat(data.ivs||[],data.pilpIvs||[]).forEach(function(iv){
     interventionVehicleNames(iv).forEach(add);
   });
   return vehicles.sort(function(a,b){return a.localeCompare(b,'fr',{numeric:true,sensitivity:'base'});});
+}
+function availableCaserneVehicleNames(selected){
+  return caserneVehicleCatalog(CURRENT_CASERNE_ID,selected);
 }
 function superAdminVehicleOptions(selected){
   return [''].concat(availableCaserneVehicleNames(selected)).map(function(engin){

@@ -278,3 +278,12 @@ La liste des véhicules du passage « En cours » ne dépend plus uniquement de 
 copie momentanée de la configuration chargée en mémoire. Elle est reconstruite
 depuis la configuration de la caserne, les piquets et les véhicules déjà connus
 dans les interventions. Le même secours est appliqué aux renforts complets.
+
+## Protection V202609_0003 — contrôle permanent des véhicules
+
+Avant d’ouvrir la composition de l’équipage, l’application vérifie qu’au moins un
+véhicule peut être reconstruit pour la caserne. Si toutes les sources sont vides,
+le départ est bloqué avec un message explicite au lieu d’afficher une liste vide.
+Le panneau « Santé opérationnelle » contrôle également chaque caserne et signale
+immédiatement l’absence totale de véhicules. Ce contrôle fait partie des tests
+obligatoires exécutés avant chaque livraison.

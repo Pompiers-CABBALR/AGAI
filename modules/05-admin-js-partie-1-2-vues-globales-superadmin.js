@@ -252,6 +252,7 @@ function operationalHealthReport(){
   const add=function(severity,station,iv,message){issues.push({severity:severity,station:station,iv:iv&&iv.id||'',message:message});};
   OP_CASERNES().forEach(function(caserne){
     const data=CASERNE_DATA[caserne.id]||{},all=[].concat(data.ivs||[],data.pilpIvs||[]);
+    if(!caserneVehicleCatalog(caserne.id,'').length)add('error',caserne.nom,null,'Aucun véhicule détecté : le passage d’une intervention en cours est impossible.');
     all.forEach(function(iv){
       if(!iv||!iv.id)return;
       const idKey=caserne.id+'|'+iv.id;
