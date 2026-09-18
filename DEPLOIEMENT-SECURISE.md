@@ -251,3 +251,11 @@ la page publiée sans utiliser le cache. Si une version plus récente est confir
 le bouton de connexion reste bloqué jusqu’au rechargement. Une indisponibilité du
 réseau n’interdit toutefois pas l’accès local : la continuité opérationnelle reste
 prioritaire et le contrôle sera repris dès le retour de la connexion.
+
+## Stabilisation v247 — diagnostic et reprise ciblée
+
+Le panneau de santé distingue désormais le dernier envoi du dernier chargement,
+l’ancienneté de la file, les actions temporairement isolées et les versions encore
+actives. Une erreur de synchronisation empêche l’affichage trompeur « Aucune
+anomalie détectée ». Le superadministrateur peut relancer une seule fiche sans
+vider ni réexpédier toute la file locale.

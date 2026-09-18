@@ -260,29 +260,49 @@ function operationalHealthReport(){
   });
   Object.values(vehicleUse).filter(function(list){return list.length>1;}).forEach(function(list){list.forEach(function(item){add('error',item.station,item.iv,'Véhicule '+item.value+' engagé simultanément sur plusieurs interventions.');});});
   Object.values(personnelUse).filter(function(list){return list.length>1;}).forEach(function(list){list.forEach(function(item){add('error',item.station,item.iv,'Agent '+item.value+' engagé simultanément sur plusieurs interventions.');});});
-  const pending=typeof _rcPendingDirty!=='undefined'?_rcPendingDirty.size:0;
+  const pendingIds=typeof _rcPendingDirty!=='undefined'?Array.from(_rcPendingDirty):[];
+  const pending=pendingIds.length,now=Date.now();
+  const deferredDetails=pendingIds.filter(function(id){return typeof _rcDeferredDirty!=='undefined'&&Number(_rcDeferredDirty[id]&&_rcDeferredDirty[id].until||0)>now;}).map(function(id){return {id:id,until:Number(_rcDeferredDirty[id].until||0),reason:String(_rcDeferredDirty[id].reason||'')};});
+  const pendingDetails=pendingIds.map(function(id){return {id:id,since:typeof _rcPendingSince!=='undefined'?Number(_rcPendingSince[id]||0):0,deferred:deferredDetails.some(function(item){return item.id===id;}),reason:typeof _rcDeferredDirty!=='undefined'&&_rcDeferredDirty[id]?String(_rcDeferredDirty[id].reason||''):''};}).sort(function(a,b){return (a.since||now)-(b.since||now);});
+  const oldestPendingAt=pendingDetails.length?Number(pendingDetails[0].since||0):0;
   const online=(LOGIN_HISTORY||[]).filter(isLoginHistorySessionActive);
-  return {issues:issues,pending:pending,online:online,legacyProtected:Number(window._agaiLegacyStatusMetadataCount)||0,atomicState:typeof _rcAtomicServerState==='string'?_rcAtomicServerState:'unknown',authBridgeState:_agaiAuthBridgeState,authBridgeHealth:_agaiAuthBridgeHealth,lastOkAt:window._agaiSyncHealth&&window._agaiSyncHealth.lastOkAt||null,lastErrorAt:window._agaiSyncHealth&&window._agaiSyncHealth.lastErrorAt||null,lastError:window._agaiSyncHealth&&window._agaiSyncHealth.lastError||''};
+  const health=window._agaiSyncHealth||{};
+  return {issues:issues,pending:pending,pendingDetails:pendingDetails,deferred:deferredDetails.length,oldestPendingAt:oldestPendingAt,online:online,legacyProtected:Number(window._agaiLegacyStatusMetadataCount)||0,atomicState:typeof _rcAtomicServerState==='string'?_rcAtomicServerState:'unknown',authBridgeState:_agaiAuthBridgeState,authBridgeHealth:_agaiAuthBridgeHealth,syncState:health.state||'loading',lastOkAt:health.lastOkAt||null,lastPushOkAt:health.lastPushOkAt||null,lastPullOkAt:health.lastPullOkAt||null,lastErrorAt:health.lastErrorAt||null,lastError:health.lastError||'',lastPushError:health.lastPushError||'',lastPullError:health.lastPullError||''};
 }
 function renderOperationalHealthPanel(){
   const report=operationalHealthReport(),errors=report.issues.filter(function(issue){return issue.severity==='error';}).length,warnings=report.issues.length-errors;
-  const colour=errors?'#B91C1C':warnings||report.pending?'#B45309':'#047857';
-  const background=errors?'#FEF2F2':warnings||report.pending?'#FFFBEB':'#ECFDF5';
+  const syncFailed=report.syncState==='error'||!!report.lastError;
+  const colour=errors||syncFailed?'#B91C1C':warnings||report.pending?'#B45309':'#047857';
+  const background=errors||syncFailed?'#FEF2F2':warnings||report.pending?'#FFFBEB':'#ECFDF5';
   const fmt=function(value){if(!value)return'Jamais sur cet appareil';const date=new Date(value);return Number.isNaN(date.getTime())?'—':date.toLocaleDateString('fr-FR')+' '+date.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});};
+  const age=function(value){if(!value)return'Âge inconnu';const minutes=Math.max(0,Math.floor((Date.now()-value)/60000));return minutes<1?'moins d’une minute':minutes<60?minutes+' min':Math.floor(minutes/60)+' h '+(minutes%60)+' min';};
   const deviceVersions=[...new Set(report.online.map(function(entry){return entry.appVersion||'Version non renseignée';}))];
+  const outdated=report.online.filter(function(entry){return entry.appVersion&&entry.appVersion!==APP_VERSION;}).length;
+  const healthLabel=errors?errors+' anomalie(s)':syncFailed?'Synchronisation en erreur':report.deferred?report.deferred+' action(s) isolée(s)':report.pending?report.pending+' action(s) en attente':warnings?warnings+' vigilance(s)':'Aucune anomalie détectée';
   return '<div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;border:1px solid #E2E8F0;">'
-    +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;"><h3 style="font-size:15px;font-weight:700;margin:0;">🩺 Santé opérationnelle</h3><span style="background:'+background+';color:'+colour+';border-radius:12px;padding:3px 9px;font-size:11px;font-weight:700;">'+(errors?errors+' anomalie(s)':warnings?warnings+' vigilance(s)':'Aucune anomalie détectée')+'</span><button class="btn sm" style="margin-left:auto;" onclick="refreshOperationalHealthPanel()">↻ Actualiser</button></div>'
+    +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;"><h3 style="font-size:15px;font-weight:700;margin:0;">🩺 Santé opérationnelle</h3><span style="background:'+background+';color:'+colour+';border-radius:12px;padding:3px 9px;font-size:11px;font-weight:700;">'+healthLabel+'</span><button class="btn sm" style="margin-left:auto;" onclick="refreshOperationalHealthPanel()">↻ Actualiser</button></div>'
     +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-bottom:12px;">'
-    +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">ACTIONS EN ATTENTE</div><strong style="font-size:18px;color:'+(report.pending?'#B45309':'#047857')+';">'+report.pending+'</strong></div>'
+    +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">ACTIONS EN ATTENTE</div><strong style="font-size:18px;color:'+(report.pending?'#B45309':'#047857')+';">'+report.pending+'</strong><div style="font-size:10px;color:#64748B;">'+(report.pending?escHtml(age(report.oldestPendingAt)):'File vide')+(report.deferred?' · '+report.deferred+' isolée(s)':'')+'</div></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">UTILISATEURS EN LIGNE</div><strong style="font-size:18px;">'+report.online.length+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">FICHES ANCIENNES PROTÉGÉES</div><strong style="font-size:18px;color:#047857;">'+report.legacyProtected+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">PROTECTION SERVEUR V238</div><strong id="sa-atomic-state" style="font-size:11px;color:'+(report.atomicState==='active'?'#047857':report.atomicState==='missing'?'#B45309':'#64748B')+';">'+(report.atomicState==='active'?'Active':report.atomicState==='missing'?'Script v238 à installer':report.atomicState==='error'?'Vérification impossible':'Vérification…')+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">LIAISON DES COMPTES V239</div><strong id="sa-auth-link-state" style="font-size:11px;color:#B45309;">'+(report.authBridgeState==='disabled'?'Suspendue pour stabilité':report.authBridgeState==='missing'?'Script v239 à installer':report.authBridgeState==='error'?'Vérification impossible':'Vérification…')+'</strong></div>'
-    +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">DERNIÈRE SYNC RÉUSSIE</div><strong style="font-size:11px;">'+escHtml(fmt(report.lastOkAt))+'</strong></div>'
-    +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">VERSIONS ACTIVES</div><strong style="font-size:10px;overflow-wrap:anywhere;">'+escHtml(deviceVersions.join(' · ')||APP_VERSION)+'</strong></div></div>'
+    +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">DERNIER ENVOI RÉUSSI</div><strong style="font-size:11px;">'+escHtml(fmt(report.lastPushOkAt))+'</strong></div>'
+    +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">DERNIÈRE RÉCEPTION RÉUSSIE</div><strong style="font-size:11px;">'+escHtml(fmt(report.lastPullOkAt))+'</strong></div>'
+    +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">VERSIONS ACTIVES</div><strong style="font-size:10px;overflow-wrap:anywhere;color:'+(outdated?'#B45309':'inherit')+';">'+escHtml(deviceVersions.join(' · ')||APP_VERSION)+'</strong>'+(outdated?'<div style="font-size:10px;color:#B45309;">'+outdated+' appareil(s) à actualiser</div>':'')+'</div></div>'
     +(report.lastError?'<div style="background:#FEF2F2;color:#991B1B;border-radius:8px;padding:8px 10px;font-size:11px;margin-bottom:10px;"><strong>Dernière erreur :</strong> '+escHtml(report.lastError)+' · '+escHtml(fmt(report.lastErrorAt))+'</div>':'')
+    +(report.pendingDetails.length?'<div style="margin-bottom:10px;border:1px solid #FDE68A;border-radius:9px;overflow:hidden;">'+report.pendingDetails.slice(0,10).map(function(item){return '<div style="padding:7px 9px;border-bottom:1px solid #FEF3C7;font-size:10px;display:flex;align-items:center;gap:7px;"><span style="flex:1;overflow-wrap:anywhere;"><strong>'+escHtml(item.id)+'</strong> · '+escHtml(age(item.since))+(item.deferred?' · isolée'+(item.reason?' : '+escHtml(item.reason):''):'')+'</span><button class="btn sm" style="font-size:10px;padding:3px 7px;" onclick="retrySinglePendingRecord(\''+encodeURIComponent(item.id)+'\')">Réessayer</button></div>';}).join('')+'</div>':'')
     +(report.issues.length?'<div style="max-height:260px;overflow:auto;border:1px solid #E5E7EB;border-radius:9px;">'+report.issues.slice(0,100).map(function(issue){return '<div style="padding:7px 9px;border-bottom:1px solid #F1F5F9;font-size:11px;display:flex;gap:8px;"><span>'+(issue.severity==='error'?'🔴':'🟠')+'</span><span><strong>'+escHtml(issue.station)+'</strong>'+(issue.iv?' · '+escHtml(issue.iv):'')+' — '+escHtml(issue.message)+'</span></div>';}).join('')+'</div>':'<div style="font-size:12px;color:#047857;">Les statuts actifs, véhicules, personnels et numéros de tournée sont cohérents.</div>')
     +'</div>';
+}
+function retrySinglePendingRecord(encodedId){
+  if(!isSuperAdmin()){showToast('Action réservée au superadministrateur.','warn');return;}
+  const id=decodeURIComponent(String(encodedId||''));
+  if(!id||typeof _rcPendingDirty==='undefined'||!_rcPendingDirty.has(id)){showToast('Cette action n’est plus en attente.','info');refreshOperationalHealthPanel();return;}
+  if(typeof _rcClearDeferred==='function')_rcClearDeferred([id]);
+  if(typeof _rcScheduleRetry==='function')_rcScheduleRetry(0);
+  showToast('Nouvelle tentative lancée uniquement pour cette action.','info');
+  window.setTimeout(refreshOperationalHealthPanel,800);
 }
 function refreshOperationalHealthPanel(){const panel=document.getElementById('sa-health-panel');if(panel)panel.innerHTML=renderOperationalHealthPanel();if(typeof _rcCheckAtomicServer==='function')_rcCheckAtomicServer(true);if(typeof _agaiCheckAccountLinkServer==='function')_agaiCheckAccountLinkServer(true);}
 
