@@ -51,6 +51,11 @@ ne peuvent plus lancer une réception globale tant qu’une action locale reste 
 attente. La progression et les éventuelles erreurs de la file ne sont donc plus
 masquées par un chargement général de toutes les casernes.
 
+**Récupération isolée v239.7 :** l’application utilise une nouvelle clé publique
+Supabase. Après validation de cette version sur l’appareil de récupération,
+l’ancienne clé publique doit être révoquée afin d’arrêter immédiatement les requêtes
+des versions antérieures. Ne jamais placer une clé `sb_secret_` dans le navigateur.
+
 **Correctif v239.2 :** cette version répare la reprise de synchronisation après une
 mise à jour. Elle rapproche automatiquement la file locale avec les données déjà
 confirmées par Supabase, au lieu de recompter toute la base comme de nouvelles

@@ -195,7 +195,7 @@ const USE_SUPABASE = true;
 const USE_RECORDS = true;
 const AGAI_RUNTIME_CONFIG=Object.freeze(window.AGAI_CONFIG||{});
 const SB_URL  = AGAI_RUNTIME_CONFIG.supabaseUrl||'https://lpzblzqxmoiwghvkhqnt.supabase.co';
-const SB_KEY  = AGAI_RUNTIME_CONFIG.supabasePublishableKey||'sb_publishable_PehrBg34OLpPTmv9GtuIQg_KMFtUcQX';
+const SB_KEY  = AGAI_RUNTIME_CONFIG.supabasePublishableKey||'sb_publishable_dkzyaOmA-FeBhL4c1z_KZw_nOdOTWuL';
 const SB_REST = SB_URL + '/rest/v1';
 const SB_GLOBAL_ROW = '_GLOBAL';
 const AUTH_LINK_ENABLED = AGAI_RUNTIME_CONFIG.accountLinkEnabled===true;
