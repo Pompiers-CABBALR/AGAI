@@ -144,6 +144,22 @@ function isLoginHistorySessionActive(entry){
   return Number.isFinite(lastSeen)&&Date.now()-lastSeen<LOGIN_PRESENCE_TIMEOUT_MS;
 }
 
+const LOGIN_HISTORY_PANEL_STATE=new Map();
+function loginHistoryPanelKey(type,id){return type+':'+String(id||'inconnu');}
+function toggleLoginHistoryPanel(header){
+  const content=header&&header.nextElementSibling;
+  if(!content)return;
+  const key=header.getAttribute('data-login-panel-key')||'';
+  const open=content.style.display==='none';
+  content.style.display=open?'block':'none';
+  if(key)LOGIN_HISTORY_PANEL_STATE.set(key,open);
+  const arrow=header.querySelector('[data-login-panel-arrow]');
+  if(arrow)arrow.textContent=open?'▲':'▼';
+}
+function loginHistoryPanelDisplay(key,defaultOpen){
+  return LOGIN_HISTORY_PANEL_STATE.has(key)?LOGIN_HISTORY_PANEL_STATE.get(key):defaultOpen;
+}
+
 function renderLoginHistoryAccount(group,colour){
   group.entries.sort(function(a,b){return String(b.hConnexion||'').localeCompare(String(a.hConnexion||''));});
   const fmt=function(value){
@@ -152,13 +168,15 @@ function renderLoginHistoryAccount(group,colour){
   };
   const latest=group.entries[0];
   const active=isLoginHistorySessionActive(latest);
+  const panelKey=loginHistoryPanelKey('compte',group.login);
+  const panelOpen=loginHistoryPanelDisplay(panelKey,false);
   return '<div style="border:1px solid #eee;border-radius:10px;margin:8px 10px;overflow:hidden;background:#fff;">'
-    +'<div style="background:#fafafa;padding:9px 12px;display:flex;align-items:center;gap:10px;cursor:pointer;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'block\':\'none\'">'
+    +'<div data-login-panel-key="'+escHtml(panelKey)+'" style="background:#fafafa;padding:9px 12px;display:flex;align-items:center;gap:10px;cursor:pointer;" onclick="toggleLoginHistoryPanel(this)">'
     +'<div style="flex:1;"><span style="font-weight:600;font-size:13px;">'+escHtml(group.prenom||'')+' '+escHtml(group.nom||'')+'</span>'
     +'<span style="font-family:monospace;font-size:11px;color:#999;margin-left:8px;">'+escHtml(group.login||'')+'</span></div>'
     +(active?'<span style="background:#ECFDF5;color:#065F46;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">🟢 Connecté</span>':'<span style="background:#F3F4F6;color:#6B7280;padding:2px 8px;border-radius:10px;font-size:11px;">Déconnecté</span>')
-    +'<span style="font-size:11px;color:#999;">'+group.entries.length+' connexion(s)</span><span style="color:#aaa;">▼</span></div>'
-    +'<div style="display:none;overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:11px;">'
+    +'<span style="font-size:11px;color:#999;">'+group.entries.length+' connexion(s)</span><span data-login-panel-arrow style="color:#aaa;">'+(panelOpen?'▲':'▼')+'</span></div>'
+    +'<div style="display:'+(panelOpen?'block':'none')+';overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:11px;">'
     +'<thead><tr style="background:#f5f5f7;"><th style="padding:6px;width:34px;text-align:center;"><input type="checkbox" class="login-history-group-all" onchange="toggleLoginHistoryGroupSelection(this)" aria-label="Sélectionner toutes les connexions de ce compte"/></th>'
     +'<th style="padding:6px 12px;font-weight:600;text-align:left;">Connexion</th><th style="padding:6px 12px;font-weight:600;text-align:left;">Dernière activité</th><th style="padding:6px 12px;font-weight:600;text-align:left;">Déconnexion</th><th style="padding:6px 12px;font-weight:600;text-align:left;">Support</th><th style="padding:6px 12px;font-weight:600;text-align:left;">Statut</th></tr></thead><tbody>'
     +group.entries.map(function(entry){
@@ -202,12 +220,14 @@ function renderLoginHistoryByCaserne(){
       account.entries.sort(function(a,b){return String(b.hConnexion||'').localeCompare(String(a.hConnexion||''));});
       return isLoginHistorySessionActive(account.entries[0]);
     }).length;
+    const panelKey=loginHistoryPanelKey('caserne',caserne.id);
+    const panelOpen=loginHistoryPanelDisplay(panelKey,true);
     return '<div style="border:1px solid '+caserne.colour+'55;border-radius:12px;margin-bottom:12px;overflow:hidden;">'
-      +'<div style="background:'+caserne.colour+'12;padding:11px 14px;display:flex;align-items:center;gap:10px;cursor:pointer;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'block\':\'none\'">'
+      +'<div data-login-panel-key="'+escHtml(panelKey)+'" style="background:'+caserne.colour+'12;padding:11px 14px;display:flex;align-items:center;gap:10px;cursor:pointer;" onclick="toggleLoginHistoryPanel(this)">'
       +'<span style="width:10px;height:10px;border-radius:50%;background:'+caserne.colour+';"></span><strong style="font-size:13px;color:'+caserne.colour+';">'+escHtml(caserne.name)+'</strong>'
       +'<span style="font-size:11px;color:#64748B;">'+accounts.length+' compte(s) · '+caserne.entries.length+' connexion(s)</span>'
       +(activeCount?'<span style="margin-left:auto;background:#ECFDF5;color:#065F46;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">🟢 '+activeCount+' en ligne</span>':'<span style="margin-left:auto;font-size:11px;color:#94A3B8;">Aucune session en ligne</span>')
-      +'<span style="color:#94A3B8;">▼</span></div><div>'
+      +'<span data-login-panel-arrow style="color:#94A3B8;">'+(panelOpen?'▲':'▼')+'</span></div><div style="display:'+(panelOpen?'block':'none')+';">'
       +accounts.map(function(account){return renderLoginHistoryAccount(account,caserne.colour);}).join('')
       +'</div></div>';
   }).join('');

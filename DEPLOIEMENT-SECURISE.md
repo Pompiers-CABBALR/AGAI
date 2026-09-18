@@ -259,3 +259,15 @@ l’ancienneté de la file, les actions temporairement isolées et les versions 
 actives. Une erreur de synchronisation empêche l’affichage trompeur « Aucune
 anomalie détectée ». Le superadministrateur peut relancer une seule fiche sans
 vider ni réexpédier toute la file locale.
+
+## Version V202609_0001 — affichage et numérotation mensuelle
+
+La version est maintenant visible sous le bouton de connexion et dans le bandeau
+supérieur, après la caserne. La numérotation suit le format `VAAAAMM_NNNN` : le
+compteur comporte quatre chiffres et repart à `0001` au début de chaque mois.
+Pendant la transition, l’application continue de reconnaître les anciennes
+versions afin d’imposer correctement l’actualisation avant connexion.
+
+Dans le menu Superadministration > Connexions, les casernes et les comptes qui
+ont été ouverts ou refermés conservent leur état pendant les actualisations
+automatiques. La liste ne se replie donc plus toutes les trente secondes.

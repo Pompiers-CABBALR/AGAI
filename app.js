@@ -1662,6 +1662,22 @@ function isLoginHistorySessionActive(entry){
   return Number.isFinite(lastSeen)&&Date.now()-lastSeen<LOGIN_PRESENCE_TIMEOUT_MS;
 }
 
+const LOGIN_HISTORY_PANEL_STATE=new Map();
+function loginHistoryPanelKey(type,id){return type+':'+String(id||'inconnu');}
+function toggleLoginHistoryPanel(header){
+  const content=header&&header.nextElementSibling;
+  if(!content)return;
+  const key=header.getAttribute('data-login-panel-key')||'';
+  const open=content.style.display==='none';
+  content.style.display=open?'block':'none';
+  if(key)LOGIN_HISTORY_PANEL_STATE.set(key,open);
+  const arrow=header.querySelector('[data-login-panel-arrow]');
+  if(arrow)arrow.textContent=open?'▲':'▼';
+}
+function loginHistoryPanelDisplay(key,defaultOpen){
+  return LOGIN_HISTORY_PANEL_STATE.has(key)?LOGIN_HISTORY_PANEL_STATE.get(key):defaultOpen;
+}
+
 function renderLoginHistoryAccount(group,colour){
   group.entries.sort(function(a,b){return String(b.hConnexion||'').localeCompare(String(a.hConnexion||''));});
   const fmt=function(value){
@@ -1670,13 +1686,15 @@ function renderLoginHistoryAccount(group,colour){
   };
   const latest=group.entries[0];
   const active=isLoginHistorySessionActive(latest);
+  const panelKey=loginHistoryPanelKey('compte',group.login);
+  const panelOpen=loginHistoryPanelDisplay(panelKey,false);
   return '<div style="border:1px solid #eee;border-radius:10px;margin:8px 10px;overflow:hidden;background:#fff;">'
-    +'<div style="background:#fafafa;padding:9px 12px;display:flex;align-items:center;gap:10px;cursor:pointer;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'block\':\'none\'">'
+    +'<div data-login-panel-key="'+escHtml(panelKey)+'" style="background:#fafafa;padding:9px 12px;display:flex;align-items:center;gap:10px;cursor:pointer;" onclick="toggleLoginHistoryPanel(this)">'
     +'<div style="flex:1;"><span style="font-weight:600;font-size:13px;">'+escHtml(group.prenom||'')+' '+escHtml(group.nom||'')+'</span>'
     +'<span style="font-family:monospace;font-size:11px;color:#999;margin-left:8px;">'+escHtml(group.login||'')+'</span></div>'
     +(active?'<span style="background:#ECFDF5;color:#065F46;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">🟢 Connecté</span>':'<span style="background:#F3F4F6;color:#6B7280;padding:2px 8px;border-radius:10px;font-size:11px;">Déconnecté</span>')
-    +'<span style="font-size:11px;color:#999;">'+group.entries.length+' connexion(s)</span><span style="color:#aaa;">▼</span></div>'
-    +'<div style="display:none;overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:11px;">'
+    +'<span style="font-size:11px;color:#999;">'+group.entries.length+' connexion(s)</span><span data-login-panel-arrow style="color:#aaa;">'+(panelOpen?'▲':'▼')+'</span></div>'
+    +'<div style="display:'+(panelOpen?'block':'none')+';overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:11px;">'
     +'<thead><tr style="background:#f5f5f7;"><th style="padding:6px;width:34px;text-align:center;"><input type="checkbox" class="login-history-group-all" onchange="toggleLoginHistoryGroupSelection(this)" aria-label="Sélectionner toutes les connexions de ce compte"/></th>'
     +'<th style="padding:6px 12px;font-weight:600;text-align:left;">Connexion</th><th style="padding:6px 12px;font-weight:600;text-align:left;">Dernière activité</th><th style="padding:6px 12px;font-weight:600;text-align:left;">Déconnexion</th><th style="padding:6px 12px;font-weight:600;text-align:left;">Support</th><th style="padding:6px 12px;font-weight:600;text-align:left;">Statut</th></tr></thead><tbody>'
     +group.entries.map(function(entry){
@@ -1720,12 +1738,14 @@ function renderLoginHistoryByCaserne(){
       account.entries.sort(function(a,b){return String(b.hConnexion||'').localeCompare(String(a.hConnexion||''));});
       return isLoginHistorySessionActive(account.entries[0]);
     }).length;
+    const panelKey=loginHistoryPanelKey('caserne',caserne.id);
+    const panelOpen=loginHistoryPanelDisplay(panelKey,true);
     return '<div style="border:1px solid '+caserne.colour+'55;border-radius:12px;margin-bottom:12px;overflow:hidden;">'
-      +'<div style="background:'+caserne.colour+'12;padding:11px 14px;display:flex;align-items:center;gap:10px;cursor:pointer;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'block\':\'none\'">'
+      +'<div data-login-panel-key="'+escHtml(panelKey)+'" style="background:'+caserne.colour+'12;padding:11px 14px;display:flex;align-items:center;gap:10px;cursor:pointer;" onclick="toggleLoginHistoryPanel(this)">'
       +'<span style="width:10px;height:10px;border-radius:50%;background:'+caserne.colour+';"></span><strong style="font-size:13px;color:'+caserne.colour+';">'+escHtml(caserne.name)+'</strong>'
       +'<span style="font-size:11px;color:#64748B;">'+accounts.length+' compte(s) · '+caserne.entries.length+' connexion(s)</span>'
       +(activeCount?'<span style="margin-left:auto;background:#ECFDF5;color:#065F46;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">🟢 '+activeCount+' en ligne</span>':'<span style="margin-left:auto;font-size:11px;color:#94A3B8;">Aucune session en ligne</span>')
-      +'<span style="color:#94A3B8;">▼</span></div><div>'
+      +'<span data-login-panel-arrow style="color:#94A3B8;">'+(panelOpen?'▲':'▼')+'</span></div><div style="display:'+(panelOpen?'block':'none')+';">'
       +accounts.map(function(account){return renderLoginHistoryAccount(account,caserne.colour);}).join('')
       +'</div></div>';
   }).join('');
@@ -15697,12 +15717,20 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='20260918-diagnostic-sync-controle-247';
+const APP_VERSION='V202609_0001';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
 let _loginVersionGateState='checking';
 let _loginVersionCheckPromise=null;
+
+function _renderAppVersionLabels(){
+  const loginLabel=document.getElementById('login-app-version');
+  const topLabel=document.getElementById('top-app-version');
+  if(loginLabel)loginLabel.textContent='Version '+APP_VERSION;
+  if(topLabel)topLabel.textContent='· '+APP_VERSION;
+}
+_renderAppVersionLabels();
 
 // Une saisie est-elle en cours ? (protection contre la perte de données)
 function _saisieEnCours(){
@@ -15785,19 +15813,30 @@ async function _fetchRemoteVersion(){
   }catch(e){/* la version du manifeste reste utilisable */}
   if(!manifestVersion)return pageVersion;
   if(!pageVersion)return manifestVersion;
-  const manifestSequence=_versionSequence(manifestVersion),pageSequence=_versionSequence(pageVersion);
-  if(Number.isFinite(manifestSequence)&&Number.isFinite(pageSequence))return manifestSequence>=pageSequence?manifestVersion:pageVersion;
+  const comparison=_compareVersions(manifestVersion,pageVersion);
+  if(Number.isFinite(comparison))return comparison>=0?manifestVersion:pageVersion;
   return pageVersion;
 }
 
-function _versionSequence(value){
-  const match=String(value||'').match(/-(\d+(?:\.\d+)?)$/);
-  return match?Number(match[1]):NaN;
+function _versionInfo(value){
+  const text=String(value||'').trim();
+  const monthly=text.match(/^V(\d{6})_(\d{4})$/);
+  if(monthly)return{month:Number(monthly[1]),sequence:Number(monthly[2]),scheme:2};
+  const legacy=text.match(/^(\d{6})\d{2}.*-(\d+(?:\.\d+)?)$/);
+  if(legacy)return{month:Number(legacy[1]),sequence:Number(legacy[2]),scheme:1};
+  return null;
+}
+function _compareVersions(left,right){
+  const a=_versionInfo(left),b=_versionInfo(right);
+  if(!a||!b)return NaN;
+  if(a.month!==b.month)return a.month-b.month;
+  if(a.scheme!==b.scheme)return a.scheme-b.scheme;
+  return a.sequence-b.sequence;
 }
 function _remoteVersionIsNewer(remote){
   if(!remote||remote===APP_VERSION)return false;
-  const remoteSequence=_versionSequence(remote),localSequence=_versionSequence(APP_VERSION);
-  if(Number.isFinite(remoteSequence)&&Number.isFinite(localSequence))return remoteSequence>localSequence;
+  const comparison=_compareVersions(remote,APP_VERSION);
+  if(Number.isFinite(comparison))return comparison>0;
   return true;
 }
 function _renderLoginVersionGate(state,remote){

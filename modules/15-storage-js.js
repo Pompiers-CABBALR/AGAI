@@ -11,12 +11,20 @@
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='20260918-diagnostic-sync-controle-247';
+const APP_VERSION='V202609_0001';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
 let _loginVersionGateState='checking';
 let _loginVersionCheckPromise=null;
+
+function _renderAppVersionLabels(){
+  const loginLabel=document.getElementById('login-app-version');
+  const topLabel=document.getElementById('top-app-version');
+  if(loginLabel)loginLabel.textContent='Version '+APP_VERSION;
+  if(topLabel)topLabel.textContent='· '+APP_VERSION;
+}
+_renderAppVersionLabels();
 
 // Une saisie est-elle en cours ? (protection contre la perte de données)
 function _saisieEnCours(){
@@ -99,19 +107,30 @@ async function _fetchRemoteVersion(){
   }catch(e){/* la version du manifeste reste utilisable */}
   if(!manifestVersion)return pageVersion;
   if(!pageVersion)return manifestVersion;
-  const manifestSequence=_versionSequence(manifestVersion),pageSequence=_versionSequence(pageVersion);
-  if(Number.isFinite(manifestSequence)&&Number.isFinite(pageSequence))return manifestSequence>=pageSequence?manifestVersion:pageVersion;
+  const comparison=_compareVersions(manifestVersion,pageVersion);
+  if(Number.isFinite(comparison))return comparison>=0?manifestVersion:pageVersion;
   return pageVersion;
 }
 
-function _versionSequence(value){
-  const match=String(value||'').match(/-(\d+(?:\.\d+)?)$/);
-  return match?Number(match[1]):NaN;
+function _versionInfo(value){
+  const text=String(value||'').trim();
+  const monthly=text.match(/^V(\d{6})_(\d{4})$/);
+  if(monthly)return{month:Number(monthly[1]),sequence:Number(monthly[2]),scheme:2};
+  const legacy=text.match(/^(\d{6})\d{2}.*-(\d+(?:\.\d+)?)$/);
+  if(legacy)return{month:Number(legacy[1]),sequence:Number(legacy[2]),scheme:1};
+  return null;
+}
+function _compareVersions(left,right){
+  const a=_versionInfo(left),b=_versionInfo(right);
+  if(!a||!b)return NaN;
+  if(a.month!==b.month)return a.month-b.month;
+  if(a.scheme!==b.scheme)return a.scheme-b.scheme;
+  return a.sequence-b.sequence;
 }
 function _remoteVersionIsNewer(remote){
   if(!remote||remote===APP_VERSION)return false;
-  const remoteSequence=_versionSequence(remote),localSequence=_versionSequence(APP_VERSION);
-  if(Number.isFinite(remoteSequence)&&Number.isFinite(localSequence))return remoteSequence>localSequence;
+  const comparison=_compareVersions(remote,APP_VERSION);
+  if(Number.isFinite(comparison))return comparison>0;
   return true;
 }
 function _renderLoginVersionGate(state,remote){
