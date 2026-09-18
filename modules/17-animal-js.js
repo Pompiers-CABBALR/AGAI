@@ -2693,7 +2693,14 @@ async function _rcSendAtomicOperationalRow(row,currentUser){
   };
   let response;
   try{response=await _agaiFetchWithTimeout(RC_ATOMIC_RPC,{method:'POST',headers:_sbHeaders,body:JSON.stringify(payload)},45000);}
-  catch(error){return {ok:false,status:0,detail:String(error&&error.message||error||'Erreur réseau')};}
+  catch(error){
+    // Une fonction RPC peut avoir terminé côté Supabase alors que sa réponse
+    // arrive trop tard (verrou, redémarrage ou charge ponctuelle). L'écriture
+    // standard qui suit est idempotente grâce à l'id stable de la fiche : elle
+    // confirme la même version sans créer de doublon et empêche une seule
+    // intervention de bloquer indéfiniment toute la file de synchronisation.
+    return {ok:false,fallback:true,status:0,detail:String(error&&error.message||error||'Erreur réseau')};
+  }
   if(response.ok){
     _rcAtomicServerState='active';_rcAtomicServerCheckedAt=Date.now();
     try{

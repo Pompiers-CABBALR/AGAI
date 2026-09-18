@@ -15677,7 +15677,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='20260918-recuperation-isolee-2397';
+const APP_VERSION='20260918-deblocage-file-2398';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -19959,7 +19959,14 @@ async function _rcSendAtomicOperationalRow(row,currentUser){
   };
   let response;
   try{response=await _agaiFetchWithTimeout(RC_ATOMIC_RPC,{method:'POST',headers:_sbHeaders,body:JSON.stringify(payload)},45000);}
-  catch(error){return {ok:false,status:0,detail:String(error&&error.message||error||'Erreur réseau')};}
+  catch(error){
+    // Une fonction RPC peut avoir terminé côté Supabase alors que sa réponse
+    // arrive trop tard (verrou, redémarrage ou charge ponctuelle). L'écriture
+    // standard qui suit est idempotente grâce à l'id stable de la fiche : elle
+    // confirme la même version sans créer de doublon et empêche une seule
+    // intervention de bloquer indéfiniment toute la file de synchronisation.
+    return {ok:false,fallback:true,status:0,detail:String(error&&error.message||error||'Erreur réseau')};
+  }
   if(response.ok){
     _rcAtomicServerState='active';_rcAtomicServerCheckedAt=Date.now();
     try{

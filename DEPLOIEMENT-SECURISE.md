@@ -173,3 +173,10 @@ taille de la pièce jointe, puis appeler Brevo avec la clé conservée côté se
 - lancer deux clôtures simultanées et contrôler l’unicité des numéros ;
 - restaurer une sauvegarde dans un environnement de test ;
 - vérifier les parcours hors connexion et après expiration de session.
+
+## Correctif v239.8 — déblocage d'une fiche isolée
+
+Lorsqu'une écriture protégée dépasse le délai serveur, l'application retente
+uniquement cette fiche par l'enregistrement standard. L'identifiant stable rend
+cette reprise idempotente : elle confirme la même fiche sans en créer une seconde.
+Les autres actions de la file peuvent ainsi continuer à être synchronisées.
