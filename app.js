@@ -15677,7 +15677,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='20260918-secours-sync-2393';
+const APP_VERSION='20260918-secours-api-degradee-2394';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -19013,7 +19013,8 @@ let _rcRealtimeJoinSequence = 0;
 let _rcNeedsRecoveryPull = false;
 let _rcInitialReconciliationDone = false;
 const RC_FALLBACK_POLL_MS = 90000;
-const RC_PULL_PAGE_SIZE = 500;
+// Pages réduites pour rester utilisable lorsque l'API Supabase est dégradée.
+const RC_PULL_PAGE_SIZE = 100;
 const RC_PENDING_DIRTY_KEY = 'agai_rc_pending_dirty';
 const RC_OUTBOX_DB_NAME = 'agai-sync-outbox';
 const RC_OUTBOX_STORE = 'records';
@@ -19865,7 +19866,7 @@ function _rcPushGlobalRowKeepalive(){
       headers:Object.assign({},_sbHeaders,{'Prefer':'resolution=merge-duplicates,return=minimal'}),
       body:JSON.stringify(payload),
       keepalive:true
-    },20000).catch(function(){});
+    },45000).catch(function(){});
   }catch(e){}
 }
 
@@ -19902,7 +19903,7 @@ async function _rcSendAtomicOperationalRow(row,currentUser){
     p_action_id:String(row._atomicActionId||row.data&&row.data._statusChangeId||'')
   };
   let response;
-  try{response=await _agaiFetchWithTimeout(RC_ATOMIC_RPC,{method:'POST',headers:_sbHeaders,body:JSON.stringify(payload)},20000);}
+  try{response=await _agaiFetchWithTimeout(RC_ATOMIC_RPC,{method:'POST',headers:_sbHeaders,body:JSON.stringify(payload)},45000);}
   catch(error){return {ok:false,status:0,detail:String(error&&error.message||error||'Erreur réseau')};}
   if(response.ok){
     _rcAtomicServerState='active';_rcAtomicServerCheckedAt=Date.now();
@@ -19967,7 +19968,7 @@ async function _rcSendRowsWithIsolation(rows,currentUser){
     const payload=group.map(function(r){return {id:r.id,caserne:r.caserne,type:r.type,data:r.data,deleted:r.deleted,updated_by:currentUser};});
     let resp;
     try{
-      resp=await _agaiFetchWithTimeout(RC_REST,{method:'POST',headers:Object.assign({},_sbHeaders,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify(payload)},20000);
+      resp=await _agaiFetchWithTimeout(RC_REST,{method:'POST',headers:Object.assign({},_sbHeaders,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify(payload)},45000);
     }catch(error){
       resp={ok:false,status:0,_agaiDetail:String(error&&error.message||error||'Erreur réseau')};
     }
@@ -20135,7 +20136,7 @@ async function _rcFetchAllActiveRows(){
   const rows=[];
   for(let offset=0,page=0;page<200;page++){
     const query='?deleted=eq.false&select=id,caserne,type,data,deleted&order=id.asc&limit='+RC_PULL_PAGE_SIZE+'&offset='+offset+_rcPullScopeFilter();
-    const resp=await _agaiFetchWithTimeout(RC_REST+query,{headers:_sbHeaders},20000);
+    const resp=await _agaiFetchWithTimeout(RC_REST+query,{headers:_sbHeaders},45000);
     if(!resp.ok)throw new Error('records GET HTTP '+resp.status+' (page '+(page+1)+')');
     const batch=await resp.json();
     if(!Array.isArray(batch))throw new Error('Données records invalides (page '+(page+1)+')');
@@ -20406,7 +20407,7 @@ async function _rcMigrate(){
     let sent = 0;
     for(let i=0;i<rows.length;i+=200){
       const chunk = rows.slice(i,i+200).map(function(r){ return {id:r.id,caserne:r.caserne,type:r.type,data:r.data,deleted:r.deleted,updated_by:currentUser}; });
-      const resp = await _agaiFetchWithTimeout(RC_REST, { method:'POST', headers:Object.assign({},_sbHeaders,{'Prefer':'resolution=merge-duplicates,return=minimal'}), body:JSON.stringify(chunk) },20000);
+      const resp = await _agaiFetchWithTimeout(RC_REST, { method:'POST', headers:Object.assign({},_sbHeaders,{'Prefer':'resolution=merge-duplicates,return=minimal'}), body:JSON.stringify(chunk) },45000);
       if(!resp.ok) throw new Error('records POST HTTP '+resp.status);
       sent += chunk.length;
     }

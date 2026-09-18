@@ -36,6 +36,10 @@ traitées par lots de 25 au maximum afin que plusieurs casernes puissent continu
 Ne pas réactiver `accountLinkEnabled` avant une validation séparée de la future
 version.
 
+**Mode API dégradée v239.4 :** la réception est découpée en pages de 100 lignes au
+lieu de 500 et le délai réseau est porté à 45 secondes. Cette adaptation évite qu’un
+ralentissement temporaire de l’API Gateway Supabase bloque la récupération complète.
+
 **Correctif v239.2 :** cette version répare la reprise de synchronisation après une
 mise à jour. Elle rapproche automatiquement la file locale avec les données déjà
 confirmées par Supabase, au lieu de recompter toute la base comme de nouvelles
