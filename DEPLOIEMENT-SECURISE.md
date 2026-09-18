@@ -211,3 +211,11 @@ interventions continuent vers la protection atomique ; les autres fiches sont
 conservées et espacées de cinq minutes. Un lot refusé par Supabase n'est plus
 découpé en dizaines de nouvelles requêtes, afin de ne pas aggraver une panne
 `PGRST002` du cache de schéma.
+
+## Correctif v242 — date de clôture directe
+
+La clôture directe par le superadministrateur demande désormais la date réelle de
+l’intervention. Cette date est utilisée pour les contrôles de disponibilité, les
+événements de départ et de retour, l’historique et les statistiques. La date de
+création de l’appel reste conservée séparément et ne déplace plus une intervention
+réalisée ultérieurement dans le mauvais jour.

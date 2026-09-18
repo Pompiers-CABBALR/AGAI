@@ -7516,7 +7516,8 @@ function showNextSelectedInterventionModal(closedIv){
 }
 
 function manualOperationalTimelineStamp(iv,time,isEnd){
-  let startStamp=interventionTimelineStamp(iv,'en-cours',false)||iv&&iv.h||getH(N());
+  const explicitDate=String(iv&&iv._dateDebut||'').replace(/\D/g,'').slice(0,8);
+  let startStamp=interventionTimelineStamp(iv,'en-cours',false)||(explicitDate?explicitDate+'_'+String(iv&&iv._hDebut||time||'').replace(':',''):'')||iv&&iv.h||getH(N());
   const digits=String(startStamp||'').replace(/\D/g,'');
   let date=digits.length>=8?new Date(Number(digits.slice(0,4)),Number(digits.slice(4,6))-1,Number(digits.slice(6,8))):new Date();
   if(isEnd){
@@ -7574,6 +7575,7 @@ function clot(id,options){
   iv.s='terminee';iv._hFin=endTime;
   const closeWho=opts.superAdminManual?(iv.agr+agr2Lbl+' (clôture saisie par le superadmin '+CU.l+')'):(CU.l+agr2Lbl);
   pushTL(iv,'terminee',closeWho,opts.superAdminManual?'Retour manuel à '+endTime:'',h);
+  if(opts.superAdminManual)iv._dateFin=historyDateKey(h)||iv._dateDebut||'';
   if(opts.superAdminManual){
     iv._superAdminOperationalEdits=Array.isArray(iv._superAdminOperationalEdits)?iv._superAdminOperationalEdits:[];
     iv._superAdminOperationalEdits.push({action:'cloture',at:getH(N()),by:CU.l,chef:iv.agr||'',heure:endTime});
@@ -12201,6 +12203,7 @@ function showSuperAdminDirectClosureModal(id){
   document.getElementById('mb').innerHTML=
     '<div style="background:#EEF2FF;border:1px solid #A5B4FC;border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;color:#3730A3;">L’intervention sera enregistrée directement comme terminée, sans apparaître auparavant en cours. Le chef d’agrès choisi restera le responsable opérationnel et figurera dans le rapport.</div>'
     +'<div class="fg"><div class="fgl">Chef d’agrès <span class="req">*</span></div><select class="fi" id="superadmin-depart-chief" onchange="refreshSuperAdminDepartureCrew()"><option value="">— Sélectionner le chef d’agrès —</option>'+superAdminChiefOptions(initialChief)+'</select></div>'
+    +'<div class="fg"><div class="fgl">Date de l’intervention <span class="req">*</span></div><input class="fi" type="date" id="superadmin-direct-date" value="'+getDS(N()).slice(0,4)+'-'+getDS(N()).slice(4,6)+'-'+getDS(N()).slice(6,8)+'"/></div>'
     +'<div class="fg"><div class="fgl">Heure de départ <span class="req">*</span></div><input class="fi" type="time" id="superadmin-depart-time" value="'+getHHMM(N())+'"/></div>'
     +'<div class="fg"><div class="fgl">Heure de retour <span class="req">*</span></div><input class="fi" type="time" id="superadmin-direct-end-time" value="'+getHHMM(N())+'"/></div>'
     +'<div class="fg"><div class="fgl">Véhicule <span class="req">*</span></div><select class="fi" id="superadmin-depart-vehicle" onchange="refreshSuperAdminDepartureCrew()">'+superAdminVehicleOptions(initialVehicle)+'</select></div>'
@@ -12239,8 +12242,10 @@ function interventionOperationalConflictBounds(iv){
   if(Number.isFinite(start)&&Number.isFinite(end)&&end<start)end+=24*60*60*1000;
   return {start:start,end:end};
 }
-function findManualOperationalIntervalConflict(iv,startTime,endTime,vehicles,personnel){
-  const proposedStart=interventionClockMillis(iv,startTime,'en-cours',false);
+function findManualOperationalIntervalConflict(iv,startTime,endTime,vehicles,personnel,operationalDate){
+  const dateKey=String(operationalDate||'').replace(/\D/g,'').slice(0,8);
+  const datedIntervention=dateKey?Object.assign({},iv,{_dateDebut:dateKey}):iv;
+  const proposedStart=interventionClockMillis(datedIntervention,startTime,'en-cours',false);
   if(!Number.isFinite(proposedStart))return null;
   const proposedEndDate=new Date(proposedStart),endMinutes=hhmmToMinutes(endTime);
   if(endMinutes===null)return null;
@@ -12269,11 +12274,13 @@ function confirmerClotureSuperAdminDirecte(id){
   if(operationalActionInProgress(iv,'cloture-directe')){showToast('Cette clôture est déjà en cours d’enregistrement.','warn');return;}
   if(!canSuperAdminOperateForAnotherChief()){cM();showToast('Le pouvoir superadmin n’est plus actif.','warn');return;}
   const chief=document.getElementById('superadmin-depart-chief')?.value||'';
+  const operationalDate=String(document.getElementById('superadmin-direct-date')?.value||'').replace(/\D/g,'').slice(0,8);
   const time=document.getElementById('superadmin-depart-time')?.value||'';
   const endTime=document.getElementById('superadmin-direct-end-time')?.value||'';
   const vehicle=document.getElementById('superadmin-depart-vehicle')?.value||'';
   const chiefUser=USERS.find(function(user){return user.l===chief;});
   if(!chiefUser||!isChefAgresByGrade(chiefUser)){showToast('Sélectionnez obligatoirement un chef d’agrès qualifié.','warn');return;}
+  if(!/^\d{8}$/.test(operationalDate)){showToast('Sélectionnez obligatoirement la date réelle de l’intervention.','warn');return;}
   if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)){showToast('Saisissez une heure de départ valide.','warn');return;}
   if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(endTime)){showToast('Saisissez une heure de retour valide.','warn');return;}
   if(!vehicle){showToast('Sélectionnez obligatoirement le véhicule.','warn');return;}
@@ -12282,7 +12289,7 @@ function confirmerClotureSuperAdminDirecte(id){
   if(!driver){showToast('Sélectionnez obligatoirement le conducteur. Les autres membres de l’équipage sont optionnels.','warn');return;}
   const logins=crew.map(function(member){return member.login;}).filter(Boolean);
   if(new Set(logins).size!==logins.length){showToast('Un agent ne peut pas occuper plusieurs places dans le même véhicule.','warn');return;}
-  const intervalConflict=findManualOperationalIntervalConflict(iv,time,endTime,[vehicle],logins);
+  const intervalConflict=findManualOperationalIntervalConflict(iv,time,endTime,[vehicle],logins,operationalDate);
   if(intervalConflict){
     if(intervalConflict.active)showOperationalConflict(intervalConflict.kind,intervalConflict.value,intervalConflict.iv);
     else showStartCorrectionOperationalConflict(intervalConflict);
@@ -12291,6 +12298,7 @@ function confirmerClotureSuperAdminDirecte(id){
   if(!beginOperationalAction(iv,'cloture-directe',['en-attente','selectionne']))return;
   if(!iv.tl)iv.tl=[];
   iv.s='en-cours';iv.agr=chief;iv._agr2=null;
+  iv._dateDebut=operationalDate;
   iv._hDebut=time;iv._hDebutReelle=time;if(!iv._hDebutInitiale)iv._hDebutInitiale=time;
   iv._equipage1=crew;iv._engin1=vehicle;iv.eng=vehicle;
   iv._engin1RoleConfig=JSON.parse(JSON.stringify(getEnginRoles(vehicle)));
@@ -12299,7 +12307,7 @@ function confirmerClotureSuperAdminDirecte(id){
   const who=chief+' (départ saisi par le superadmin '+CU.l+')';
   pushTL(iv,'en-cours',who,'Départ manuel à '+time+' — '+vehicle,manualOperationalTimelineStamp(iv,time,false));
   iv._superAdminOperationalEdits=Array.isArray(iv._superAdminOperationalEdits)?iv._superAdminOperationalEdits:[];
-  iv._superAdminOperationalEdits.push({action:'saisie-directe',at:getH(N()),by:CU.l,chef:chief,heureDepart:time,heureRetour:endTime,engin:vehicle,equipage:crew.map(function(member){return {role:member.role,login:member.login};})});
+  iv._superAdminOperationalEdits.push({action:'saisie-directe',at:getH(N()),by:CU.l,chef:chief,dateIntervention:operationalDate,heureDepart:time,heureRetour:endTime,engin:vehicle,equipage:crew.map(function(member){return {role:member.role,login:member.login};})});
   assignInterventionNumbersAtStart(iv);syncInternalReinforcementSource(iv);markOperationalInterventionDirty(iv);
   clot(id,{superAdminManual:true,endTime:endTime,directClosure:true});
 }
@@ -15677,7 +15685,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='20260918-mode-degrade-supabase-241';
+const APP_VERSION='20260918-date-cloture-directe-242';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;

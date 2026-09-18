@@ -2189,7 +2189,8 @@ function showNextSelectedInterventionModal(closedIv){
 }
 
 function manualOperationalTimelineStamp(iv,time,isEnd){
-  let startStamp=interventionTimelineStamp(iv,'en-cours',false)||iv&&iv.h||getH(N());
+  const explicitDate=String(iv&&iv._dateDebut||'').replace(/\D/g,'').slice(0,8);
+  let startStamp=interventionTimelineStamp(iv,'en-cours',false)||(explicitDate?explicitDate+'_'+String(iv&&iv._hDebut||time||'').replace(':',''):'')||iv&&iv.h||getH(N());
   const digits=String(startStamp||'').replace(/\D/g,'');
   let date=digits.length>=8?new Date(Number(digits.slice(0,4)),Number(digits.slice(4,6))-1,Number(digits.slice(6,8))):new Date();
   if(isEnd){
@@ -2247,6 +2248,7 @@ function clot(id,options){
   iv.s='terminee';iv._hFin=endTime;
   const closeWho=opts.superAdminManual?(iv.agr+agr2Lbl+' (clôture saisie par le superadmin '+CU.l+')'):(CU.l+agr2Lbl);
   pushTL(iv,'terminee',closeWho,opts.superAdminManual?'Retour manuel à '+endTime:'',h);
+  if(opts.superAdminManual)iv._dateFin=historyDateKey(h)||iv._dateDebut||'';
   if(opts.superAdminManual){
     iv._superAdminOperationalEdits=Array.isArray(iv._superAdminOperationalEdits)?iv._superAdminOperationalEdits:[];
     iv._superAdminOperationalEdits.push({action:'cloture',at:getH(N()),by:CU.l,chef:iv.agr||'',heure:endTime});
