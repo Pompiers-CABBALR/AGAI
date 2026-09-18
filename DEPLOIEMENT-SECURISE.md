@@ -37,6 +37,9 @@ d’attente : l’application ne peut plus rester indéfiniment sur « Chargemen
 affiche un diagnostic exploitable en cas d’indisponibilité du serveur. Ce correctif
 ne demande ni nouveau script SQL ni nouveau déploiement de fonction serveur. Il ne
 faut pas effacer l’historique ou les données du navigateur avant sa publication.
+Les appareils déjà utilisés sur le terrain ne sont jamais rechargés automatiquement :
+un bandeau informe de la nouvelle version et l’utilisateur choisit lui-même le moment
+sûr pour l’actualiser.
 
 **Correctif v239.1 :** pendant cette phase progressive, le jeton Supabase rattaché
 sert uniquement à la gestion sécurisée du compte. La synchronisation des données

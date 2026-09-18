@@ -3,26 +3,18 @@
 // PERSISTANCE localStorage
 // ══════════════════════════════════════════════════════
 // ══════════════════════════════════════════════════════
-// CONTRÔLE DE VERSION — bandeau + rechargement si inactif
+// CONTRÔLE DE VERSION — bandeau sans rechargement automatique
 // ══════════════════════════════════════════════════════
 // À INCRÉMENTER À CHAQUE DÉPLOIEMENT D'UNE NOUVELLE VERSION.
 // Fonctionnement :
 //   1. L'app vérifie périodiquement si une version plus récente est en ligne.
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
-//   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
-//      n'est en cours, l'app se recharge d'elle-même.
-// Un appel ou une saisie en cours ne peut donc jamais être interrompu.
+//   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
+//      un départ, une intervention ou une consultation opérationnelle.
 const APP_VERSION='20260918-reprise-sync-securisee-2392';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
-const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
-let _verLastActivity=Date.now();
-
-// Toute action de l'utilisateur repousse le rechargement automatique
-['mousedown','keydown','touchstart','scroll'].forEach(function(evt){
-  document.addEventListener(evt,function(){_verLastActivity=Date.now();},{passive:true,capture:true});
-});
 
 // Une saisie est-elle en cours ? (protection contre la perte de données)
 function _saisieEnCours(){
@@ -112,26 +104,15 @@ async function _checkVersion(){
     const distante=await _fetchRemoteVersion();
     if(distante&&distante!==APP_VERSION){
       _verNouvelle=distante;
-      _showVersionBanner();          // 1. prévenir tout de suite
-      _tryAutoReloadIfIdle();        // 2. recharger seul si inactif
+      _showVersionBanner();
     }
   }catch(e){/* hors ligne : on réessaiera */}
 }
 
-// Recharge automatiquement SI : nouvelle version détectée, aucune saisie en cours,
-// et utilisateur inactif depuis _VER_IDLE_MS.
-function _tryAutoReloadIfIdle(){
-  if(!_verNouvelle||_verReloading)return;
-  const inactif=(Date.now()-_verLastActivity)>=_VER_IDLE_MS;
-  if(inactif&&!_saisieEnCours())_verReload();
-}
-
 function _startVersionCheck(){
   setInterval(_checkVersion,_VER_CHECK_MS);
-  // Tant qu'une nouvelle version est en attente, retenter le rechargement auto
-  setInterval(_tryAutoReloadIfIdle,30000);
   document.addEventListener('visibilitychange',function(){
-    if(document.visibilityState==='visible'){_verLastActivity=Date.now();_checkVersion();}
+    if(document.visibilityState==='visible')_checkVersion();
   });
   window.addEventListener('online',_checkVersion);
   setTimeout(_checkVersion,3000);
