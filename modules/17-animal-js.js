@@ -1850,8 +1850,11 @@ async function _rcReconcileOutboxWithRemote(remoteRows,durableRows){
 async function _rcFetchRemoteRowsForPending(durableRows){
   const ids=Array.from(new Set((durableRows||[]).map(function(row){return row&&row.id;}).filter(Boolean)));
   const remoteRows=[];
-  for(let index=0;index<ids.length;index+=20){
-    const chunk=ids.slice(index,index+20);
+  // Les filtres contenant trop d'identifiants peuvent être rejetés en 503 par
+  // le proxy Supabase lorsqu'il est sous charge. Cinq fiches suffisent pour
+  // rapprocher progressivement la file sans fabriquer une URL volumineuse.
+  for(let index=0;index<ids.length;index+=5){
+    const chunk=ids.slice(index,index+5);
     const filter='('+chunk.map(function(id){return '"'+String(id).replace(/"/g,'')+'"';}).join(',')+')';
     const response=await _agaiFetchWithTimeout(RC_REST+'?id=in.'+encodeURIComponent(filter)+'&select=id,caserne,type,data,deleted',{headers:_sbHeaders},45000);
     if(!response.ok)throw new Error('reprise ciblée GET HTTP '+response.status);
@@ -1877,7 +1880,19 @@ async function _rcRecoverPendingQueue(knownRows){
       _jbSetStatus(_rcHasActivePending()?'pending':'ok');
       return true;
     }catch(error){
-      _rcLastSyncError='Reprise ciblée — '+String(error&&error.message||error||'Erreur inconnue');
+      const detail=String(error&&error.message||error||'Erreur inconnue');
+      // Une indisponibilité 5xx de la lecture de contrôle ne doit pas bloquer
+      // toutes les écritures locales. Les envois restent idempotents et sont
+      // déjà protégés individuellement ; on autorise donc leur reprise puis la
+      // prochaine réception réessaiera le rapprochement avec Supabase.
+      if(/HTTP 50[234]|délai|timeout/i.test(detail)){
+        console.warn('[AGAI][RC] Rapprochement Supabase indisponible, reprise directe de la file :',detail);
+        _rcInitialReconciliationDone=true;
+        _rcLastSyncError='';
+        _jbSetStatus(_rcHasActivePending()?'pending':'ok');
+        return true;
+      }
+      _rcLastSyncError='Reprise ciblée — '+detail;
       _jbSetStatus('error');
       return false;
     }finally{_rcRecoveryPromise=null;}

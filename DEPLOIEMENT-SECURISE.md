@@ -195,3 +195,10 @@ Le dossier `.github/workflows` fait partie de l'application. Son fichier
 `static.yml` déclenche la publication après chaque envoi sur la branche `main`.
 Il ne doit pas être supprimé lors d'une mise à jour ; sans lui, les fichiers
 peuvent être présents dans le dépôt tandis que le site public affiche 404.
+
+## Correctif v240 — contournement des erreurs Supabase 503
+
+Le rapprochement initial interroge au maximum cinq identifiants à la fois. Si
+Supabase répond temporairement 502, 503 ou 504, cette lecture de contrôle ne
+fige plus la file : les écritures locales idempotentes reprennent directement,
+puis le rapprochement est retenté lors d'une réception ultérieure.
