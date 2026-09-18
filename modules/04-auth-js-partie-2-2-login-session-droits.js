@@ -27,6 +27,10 @@ async function doLogin(){
   const lerr=document.getElementById('lerr');
   const btn=document.querySelector('.lbtn');
 
+  // Une version ancienne confirmée par le serveur ne peut jamais ouvrir une
+  // session et envoyer des données incompatibles vers Supabase.
+  if(typeof _ensureLoginVersionReady==='function'&&!await _ensureLoginVersionReady())return;
+
   // ── P5 : Protection brute-force avec délai exponentiel ──
   if(_loginLocked){
     lerr.style.display='block';
@@ -135,6 +139,6 @@ async function doLogin(){
 
   } finally {
     // Restaurer le bouton dans tous les cas (sauf si bloqué)
-    if(btn&&!_loginLocked){btn.disabled=false;btn.textContent='Se connecter';}
+    if(btn&&!_loginLocked&&(typeof _loginVersionGateState==='undefined'||_loginVersionGateState!=='blocked')){btn.disabled=false;btn.textContent='Se connecter';}
   }
 }

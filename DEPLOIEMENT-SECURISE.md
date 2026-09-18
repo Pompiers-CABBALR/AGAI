@@ -243,3 +243,11 @@ désormais strictement en lecture seule. Les anciennes réparations automatiques
 restent présentes pour une maintenance volontaire, mais ne sont plus lancées
 pendant un affichage. Cela évite les renumérotations inattendues et les rafales
 d’écritures concurrentes vers Supabase lorsque plusieurs appareils sont connectés.
+
+## Stabilisation v246 — mise à jour avant connexion
+
+Avant toute connexion, l’application compare sa version avec `version.json` et
+la page publiée sans utiliser le cache. Si une version plus récente est confirmée,
+le bouton de connexion reste bloqué jusqu’au rechargement. Une indisponibilité du
+réseau n’interdit toutefois pas l’accès local : la continuité opérationnelle reste
+prioritaire et le contrôle sera repris dès le retour de la connexion.

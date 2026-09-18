@@ -1401,6 +1401,10 @@ async function doLogin(){
   const lerr=document.getElementById('lerr');
   const btn=document.querySelector('.lbtn');
 
+  // Une version ancienne confirmée par le serveur ne peut jamais ouvrir une
+  // session et envoyer des données incompatibles vers Supabase.
+  if(typeof _ensureLoginVersionReady==='function'&&!await _ensureLoginVersionReady())return;
+
   // ── P5 : Protection brute-force avec délai exponentiel ──
   if(_loginLocked){
     lerr.style.display='block';
@@ -1509,7 +1513,7 @@ async function doLogin(){
 
   } finally {
     // Restaurer le bouton dans tous les cas (sauf si bloqué)
-    if(btn&&!_loginLocked){btn.disabled=false;btn.textContent='Se connecter';}
+    if(btn&&!_loginLocked&&(typeof _loginVersionGateState==='undefined'||_loginVersionGateState!=='blocked')){btn.disabled=false;btn.textContent='Se connecter';}
   }
 }
 // === MODULE: admin.js (partie 1/2 — vues globales superadmin) ===
@@ -15673,10 +15677,12 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='20260918-rendus-sans-ecriture-245';
+const APP_VERSION='20260918-mise-a-jour-avant-connexion-246';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
+let _loginVersionGateState='checking';
+let _loginVersionCheckPromise=null;
 
 // Une saisie est-elle en cours ? (protection contre la perte de données)
 function _saisieEnCours(){
@@ -15696,9 +15702,9 @@ function _saisieEnCours(){
   return false;
 }
 
-async function _verReload(){
+async function _verReload(force){
   if(_verReloading)return;
-  if(_saisieEnCours()&&!window.confirm('Une saisie est en cours. Actualiser quand même pour charger la dernière version ?'))return;
+  if(!force&&_saisieEnCours()&&!window.confirm('Une saisie est en cours. Actualiser quand même pour charger la dernière version ?'))return;
   _verReloading=true;
   const button=document.getElementById('ver-reload-button');
   if(button){button.disabled=true;button.textContent='Actualisation…';}
@@ -15733,7 +15739,7 @@ function _showVersionBanner(){
 }
 
 async function _fetchRemoteVersion(){
-  let manifestVersion=null;
+  let manifestVersion=null,pageVersion=null;
   // La version modulaire publie ce petit manifeste à côté d'index.html.
   try{
     const manifestUrl=new URL('version.json',document.baseURI);
@@ -15754,18 +15760,82 @@ async function _fetchRemoteVersion(){
     if(response.ok){
       const source=await response.text();
       const match=source.match(/const APP_VERSION='([^']+)'/);
-      if(match&&match[1])return match[1].trim();
+      if(match&&match[1])pageVersion=match[1].trim();
     }
   }catch(e){/* la version du manifeste reste utilisable */}
-  return manifestVersion;
+  if(!manifestVersion)return pageVersion;
+  if(!pageVersion)return manifestVersion;
+  const manifestSequence=_versionSequence(manifestVersion),pageSequence=_versionSequence(pageVersion);
+  if(Number.isFinite(manifestSequence)&&Number.isFinite(pageSequence))return manifestSequence>=pageSequence?manifestVersion:pageVersion;
+  return pageVersion;
+}
+
+function _versionSequence(value){
+  const match=String(value||'').match(/-(\d+(?:\.\d+)?)$/);
+  return match?Number(match[1]):NaN;
+}
+function _remoteVersionIsNewer(remote){
+  if(!remote||remote===APP_VERSION)return false;
+  const remoteSequence=_versionSequence(remote),localSequence=_versionSequence(APP_VERSION);
+  if(Number.isFinite(remoteSequence)&&Number.isFinite(localSequence))return remoteSequence>localSequence;
+  return true;
+}
+function _renderLoginVersionGate(state,remote){
+  _loginVersionGateState=state;
+  const panel=document.getElementById('login-version-status');
+  const button=document.getElementById('lbtn');
+  if(!panel||!button)return;
+  if(state==='blocked'){
+    panel.style.display='block';panel.style.background='#FEE2E2';panel.style.color='#991B1B';
+    panel.innerHTML='<strong>Mise à jour obligatoire</strong><br>Une nouvelle version est disponible. Actualisez l’application avant de vous connecter.'
+      +'<br><button type="button" onclick="_verReload(true)" style="margin-top:8px;background:#B91C1C;color:#fff;border:0;border-radius:7px;padding:7px 12px;font-weight:700;">Actualiser maintenant</button>';
+    button.disabled=true;button.textContent='Mise à jour requise';return;
+  }
+  if(state==='checking'){
+    panel.style.display='block';panel.style.background='#EFF6FF';panel.style.color='#1D4ED8';panel.textContent='Vérification de la version de l’application…';
+    button.disabled=true;button.textContent='Vérification…';return;
+  }
+  if(state==='offline'){
+    panel.style.display='block';panel.style.background='#FFF7ED';panel.style.color='#9A3412';panel.textContent='Version non vérifiable — connexion hors ligne autorisée pour préserver la continuité opérationnelle.';
+  }else panel.style.display='none';
+  button.disabled=false;button.textContent='Se connecter';
+}
+async function _checkVersionBeforeLogin(){
+  if(_loginVersionCheckPromise)return _loginVersionCheckPromise;
+  _renderLoginVersionGate('checking');
+  _loginVersionCheckPromise=(async function(){
+    try{
+      const remote=await Promise.race([
+        _fetchRemoteVersion(),
+        new Promise(function(resolve){setTimeout(function(){resolve(null);},8000);})
+      ]);
+      if(remote&&_remoteVersionIsNewer(remote)){
+        _verNouvelle=remote;_renderLoginVersionGate('blocked',remote);return false;
+      }
+      _renderLoginVersionGate(remote?'ready':'offline',remote);return true;
+    }catch(error){_renderLoginVersionGate('offline');return true;}
+    finally{_loginVersionCheckPromise=null;}
+  })();
+  return _loginVersionCheckPromise;
+}
+async function _ensureLoginVersionReady(){
+  if(_loginVersionGateState==='blocked'){
+    _renderLoginVersionGate('blocked',_verNouvelle);return false;
+  }
+  if(_loginVersionGateState==='ready'||_loginVersionGateState==='offline')return true;
+  return _checkVersionBeforeLogin();
 }
 
 async function _checkVersion(){
   if(_verReloading)return;
   try{
     const distante=await _fetchRemoteVersion();
-    if(distante&&distante!==APP_VERSION){
+    if(distante&&_remoteVersionIsNewer(distante)){
       _verNouvelle=distante;
+      if(!CU&&document.getElementById('lw')&&document.getElementById('lw').style.display!=='none'){
+        _renderLoginVersionGate('blocked',distante);
+        return;
+      }
       _showVersionBanner();
     }
   }catch(e){/* hors ligne : on réessaiera */}
@@ -15777,7 +15847,7 @@ function _startVersionCheck(){
     if(document.visibilityState==='visible')_checkVersion();
   });
   window.addEventListener('online',_checkVersion);
-  setTimeout(_checkVersion,3000);
+  _checkVersionBeforeLogin();
 }
 
 
