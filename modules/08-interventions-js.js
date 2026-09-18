@@ -2189,7 +2189,7 @@ function showNextSelectedInterventionModal(closedIv){
 }
 
 function manualOperationalTimelineStamp(iv,time,isEnd){
-  const explicitDate=String(iv&&iv._dateDebut||'').replace(/\D/g,'').slice(0,8);
+  const explicitDate=String(isEnd&&iv&&iv._dateFin||iv&&iv._dateDebut||'').replace(/\D/g,'').slice(0,8);
   let startStamp=interventionTimelineStamp(iv,'en-cours',false)||(explicitDate?explicitDate+'_'+String(iv&&iv._hDebut||time||'').replace(':',''):'')||iv&&iv.h||getH(N());
   const digits=String(startStamp||'').replace(/\D/g,'');
   let date=digits.length>=8?new Date(Number(digits.slice(0,4)),Number(digits.slice(4,6))-1,Number(digits.slice(6,8))):new Date();

@@ -219,3 +219,11 @@ l’intervention. Cette date est utilisée pour les contrôles de disponibilité
 événements de départ et de retour, l’historique et les statistiques. La date de
 création de l’appel reste conservée séparément et ne déplace plus une intervention
 réalisée ultérieurement dans le mauvais jour.
+
+## Correctif v243 — date de retour explicite
+
+La clôture directe distingue désormais la date de départ de la date de retour.
+Un retour antérieur ou égal au départ est refusé tant que les dates et heures ne
+sont pas cohérentes. L’application ne transforme donc plus silencieusement une
+erreur de saisie horaire en retour le lendemain, ce qui garantit l’affichage dans
+« Terminées » le bon jour.
