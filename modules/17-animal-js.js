@@ -2275,6 +2275,13 @@ function _rcRequestRealtimePull(delay){
   _rcRealtimePullTimer=window.setTimeout(function attemptRealtimePull(){
     _rcRealtimePullTimer=null;
     if(!_rcRealtimePullPending)return;
+    // Tant qu'une file locale subsiste, aucun événement temps réel ne doit
+    // relancer la lecture globale et masquer l'erreur ou la progression réelle.
+    if(_rcPendingDirty.size){
+      _rcRealtimePullPending=false;
+      _rcScheduleRetry(0);
+      return;
+    }
     const lockRemaining=Math.max(0,12000-(Date.now()-_jbEditLock));
     if(_rcSaving||lockRemaining>0){
       if(_rcPendingDirty.size)_rcScheduleRetry(0);
@@ -2931,6 +2938,13 @@ async function _rcFetchAllActiveRows(){
 // ── PULL : lit tous les enregistrements et reconstruit l'état ──
 async function _rcPull(silent){
   if(_rcSaving||_rcPulling) return true;
+  // La reprise de la file est prioritaire. Le chargement complet de toutes les
+  // casernes ne reprend qu'une fois le compteur revenu à zéro.
+  if(_rcPendingDirty.size){
+    if(!_rcInitialReconciliationDone)return _rcRecoverPendingQueue();
+    await _rcPush(false);
+    return true;
+  }
   _rcPulling=true;
   try {
     _rcRequestPersistentStorage();

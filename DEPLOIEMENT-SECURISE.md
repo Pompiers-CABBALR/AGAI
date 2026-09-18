@@ -46,6 +46,11 @@ les identifiants encore en attente, par groupes de 20, rapproche les réponses p
 envoie au maximum 25 changements. Le chargement global reprend seulement après la
 résorption de la file.
 
+**File prioritaire v239.6 :** les événements temps réel et le contrôle périodique
+ne peuvent plus lancer une réception globale tant qu’une action locale reste en
+attente. La progression et les éventuelles erreurs de la file ne sont donc plus
+masquées par un chargement général de toutes les casernes.
+
 **Correctif v239.2 :** cette version répare la reprise de synchronisation après une
 mise à jour. Elle rapproche automatiquement la file locale avec les données déjà
 confirmées par Supabase, au lieu de recompter toute la base comme de nouvelles

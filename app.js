@@ -15677,7 +15677,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='20260918-reprise-ciblee-2395';
+const APP_VERSION='20260918-file-prioritaire-2396';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -19541,6 +19541,13 @@ function _rcRequestRealtimePull(delay){
   _rcRealtimePullTimer=window.setTimeout(function attemptRealtimePull(){
     _rcRealtimePullTimer=null;
     if(!_rcRealtimePullPending)return;
+    // Tant qu'une file locale subsiste, aucun événement temps réel ne doit
+    // relancer la lecture globale et masquer l'erreur ou la progression réelle.
+    if(_rcPendingDirty.size){
+      _rcRealtimePullPending=false;
+      _rcScheduleRetry(0);
+      return;
+    }
     const lockRemaining=Math.max(0,12000-(Date.now()-_jbEditLock));
     if(_rcSaving||lockRemaining>0){
       if(_rcPendingDirty.size)_rcScheduleRetry(0);
@@ -20197,6 +20204,13 @@ async function _rcFetchAllActiveRows(){
 // ── PULL : lit tous les enregistrements et reconstruit l'état ──
 async function _rcPull(silent){
   if(_rcSaving||_rcPulling) return true;
+  // La reprise de la file est prioritaire. Le chargement complet de toutes les
+  // casernes ne reprend qu'une fois le compteur revenu à zéro.
+  if(_rcPendingDirty.size){
+    if(!_rcInitialReconciliationDone)return _rcRecoverPendingQueue();
+    await _rcPush(false);
+    return true;
+  }
   _rcPulling=true;
   try {
     _rcRequestPersistentStorage();
