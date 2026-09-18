@@ -28,6 +28,11 @@ protection par elle-même : la sécurité dépend des règles RLS.
 
 ### Liaison invisible des comptes v239 — déploiement progressif
 
+**Correctif v239.1 :** pendant cette phase progressive, le jeton Supabase rattaché
+sert uniquement à la gestion sécurisée du compte. La synchronisation des données
+reste sur l’accès historique jusqu’à la v240. Cela évite qu’une politique RLS
+intermédiaire transforme toutes les écritures en actions « Sync KO ».
+
 La v239 conserve exactement l’écran de connexion AGAI. Chaque agent continue à
 utiliser son identifiant et son mot de passe habituels ; une identité Supabase est
 créée silencieusement lors de sa première connexion après activation.

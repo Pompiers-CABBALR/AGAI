@@ -15670,7 +15670,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260918-liaison-comptes-239';
+const APP_VERSION='20260918-correctif-sync-liaison-2391';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -18712,7 +18712,10 @@ let _sbPollTimer = null;
 
 const _sbHeaders = {
   'apikey': SB_KEY,
-  get 'Authorization'(){return 'Bearer '+(_agaiAuthAccessToken()||SB_KEY);},
+  // Phase v239 : la session liée sert uniquement aux opérations de compte.
+  // Les données restent volontairement sur l'accès historique jusqu'à la v240,
+  // sinon les politiques RLS intermédiaires peuvent bloquer toute la file.
+  'Authorization': 'Bearer ' + SB_KEY,
   'Content-Type': 'application/json'
 };
 

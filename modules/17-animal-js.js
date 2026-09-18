@@ -1435,7 +1435,10 @@ let _sbPollTimer = null;
 
 const _sbHeaders = {
   'apikey': SB_KEY,
-  get 'Authorization'(){return 'Bearer '+(_agaiAuthAccessToken()||SB_KEY);},
+  // Phase v239 : la session liée sert uniquement aux opérations de compte.
+  // Les données restent volontairement sur l'accès historique jusqu'à la v240,
+  // sinon les politiques RLS intermédiaires peuvent bloquer toute la file.
+  'Authorization': 'Bearer ' + SB_KEY,
   'Content-Type': 'application/json'
 };
 
