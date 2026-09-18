@@ -188,3 +188,10 @@ délai serveur, la fiche est conservée dans la file durable et isolée pendant 
 minutes. Les autres actions continuent, la réception des interventions reprend,
 puis la fiche isolée est retentée automatiquement. Aucune donnée locale n'est
 supprimée pour obtenir un état « Sync OK ».
+
+## Publication GitHub Pages
+
+Le dossier `.github/workflows` fait partie de l'application. Son fichier
+`static.yml` déclenche la publication après chaque envoi sur la branche `main`.
+Il ne doit pas être supprimé lors d'une mise à jour ; sans lui, les fichiers
+peuvent être présents dans le dépôt tandis que le site public affiche 404.
