@@ -1845,11 +1845,8 @@ function setSuperAdminSection(section){
 }
 
 function renderSuperAdmin(){
-  const repairedChefCorps=repairKnownChefCorpsAssignment();
-  if(repairedChefCorps){
-    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-    window.setTimeout(function(){saveData(true);showToast('Affectation du chef de corps restaur\u00e9e : Vincent Fabre.','success');},0);
-  }
+  // Lecture seule : ouvrir la superadministration ne déclenche aucune
+  // réparation ni écriture automatique vers Supabase.
   const body=document.getElementById('gv-body');
   // Section gestion des comptes (admins casernes + chef de corps)
   const sa=getSuperAdminAccount();
@@ -6420,29 +6417,9 @@ function deactivateRainMode(){
   saveData(true);renderRainModeZone();showToast('Mode pluie désactivé.','success');
 }
 function rI(){
-  const pendingAssignmentRepairs=agaiRepairPendingOperationalAssignments();
-  const pendingPilpAssignmentRepairs=agaiRepairPendingPilpAssignments();
-  if(pendingAssignmentRepairs.length||pendingPilpAssignmentRepairs.length){
-    if(typeof syncCaserneContext==='function')syncCaserneContext();
-    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-    saveData(true);
-    if(pendingAssignmentRepairs.some(function(id){const iv=interventionById(id);return iv&&iv._numApl==='APL_2026_000259';}))showToast('APL_2026_000259 : véhicule et équipage retirés de la file d’attente.','success');
-    if(pendingPilpAssignmentRepairs.length)showToast('Affectation PILP incorrecte retirée : la fiche est de nouveau disponible pour les tireurs PILP.','success');
-  }
-  const ut188Repair=agaiRepairIntervention188ChainedStart();
-  if(ut188Repair.applied){
-    if(typeof syncCaserneContext==='function')syncCaserneContext();
-    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-    saveData(true);
-    if(ut188Repair.changed)showToast('Intervention UT 188 : heure de départ corrigée à 16:11.','success');
-  }
-  const ut185Repair=agaiRepairPilpUt185Chronology();
-  if(ut185Repair.applied){
-    if(typeof syncCaserneContext==='function')syncCaserneContext();
-    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-    saveData(true);
-    if(ut185Repair.changed)showToast('Intervention UT 185 : horaires replacés entre les UT 184 et 186.','success');
-  }
+  // Lecture seule : aucune migration ni correction automatique pendant le rendu.
+  // Les réparations historiques restent disponibles pour une maintenance
+  // volontaire, mais ne sont plus déclenchées en ouvrant Interventions.
   updateRenfortBadge();
   renderRainModeZone();
   // Afficher les renforts reçus en attente
@@ -7839,13 +7816,7 @@ function sfPilp(f,btn){
 }
 
 function rPilp(){
-  const planningRevisionRepairs=agaiRepairPilpPlanningRevisions();
-  const legacyPilpRepairs=agaiRepairLegacyPilpDetails();
-  if(legacyPilpRepairs.length||planningRevisionRepairs.length){
-    if(typeof syncCaserneContext==='function')syncCaserneContext();
-    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-    saveData(true);
-  }
+  // Lecture seule : consulter PILP ne déclenche aucune écriture Supabase.
   // Même règle que la liste Interventions : les statuts actifs restent visibles,
   // tandis qu'une terminée disparaît dès le changement de journée.
   const pilpTermineeAujourdhui=function(iv){return iv.s==='terminee'&&iv.tl&&iv.tl.some(function(t){return t.s==='terminee'&&(t.h||'').startsWith(TDP);});};
@@ -8722,20 +8693,8 @@ function setHistoryDateFilter(value){HIST_DATE=String(value||'').replace(/\D/g,'
 function setHistoryCrewFilter(value){HIST_CREW=String(value||'');filterHistoryRows();}
 function clearHistorySearch(){HIST_SEARCH='';HIST_DATE='';HIST_CREW='';rHist();const input=document.getElementById('hist-search');if(input)input.focus();}
 function rHist(){
-  const startOrderRepair=agaiRepairNumberingByStartOrder();
-  if(startOrderRepair.applied){
-    if(typeof syncCaserneContext==='function')syncCaserneContext();
-    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-    saveData(true);
-    if(startOrderRepair.changes.length)showToast('Numérotation remise dans l’ordre des départs : '+startOrderRepair.changes.length+' correction(s).','success');
-  }
-  const monthlyNumberRepairs=agaiRepairMonthlyNumberingConflicts();
-  if(monthlyNumberRepairs.length){
-    if(typeof syncCaserneContext==='function')syncCaserneContext();
-    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-    saveData(true);
-    showToast('Numérotation mensuelle corrigée : '+monthlyNumberRepairs.length+' intervention(s).','success');
-  }
+  // Lecture seule : ouvrir ou filtrer l'historique ne renumérote plus aucune
+  // intervention et n'ajoute plus d'action à la file de synchronisation.
   const cA=isChef()||hasRight('Administration');
   const normalIvs=cA?IVS.filter(function(iv){return !['en-attente','selectionne','en-cours'].includes(iv.s)&&!iv._isPilip;}):IVS.filter(function(iv){return (isTdy(iv)||iv.s==='annulee')&&!iv._isPilip;});
   const pilpIvsH=canSeePILP()?(cA?PILP_IVS:PILP_IVS.filter(function(iv){return isTdy(iv);})) : [];
@@ -15714,7 +15673,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='20260918-vehicules-superadmin-stables-244';
+const APP_VERSION='20260918-rendus-sans-ecriture-245';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;

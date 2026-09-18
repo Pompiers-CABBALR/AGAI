@@ -206,13 +206,7 @@ function sfPilp(f,btn){
 }
 
 function rPilp(){
-  const planningRevisionRepairs=agaiRepairPilpPlanningRevisions();
-  const legacyPilpRepairs=agaiRepairLegacyPilpDetails();
-  if(legacyPilpRepairs.length||planningRevisionRepairs.length){
-    if(typeof syncCaserneContext==='function')syncCaserneContext();
-    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-    saveData(true);
-  }
+  // Lecture seule : consulter PILP ne déclenche aucune écriture Supabase.
   // Même règle que la liste Interventions : les statuts actifs restent visibles,
   // tandis qu'une terminée disparaît dès le changement de journée.
   const pilpTermineeAujourdhui=function(iv){return iv.s==='terminee'&&iv.tl&&iv.tl.some(function(t){return t.s==='terminee'&&(t.h||'').startsWith(TDP);});};

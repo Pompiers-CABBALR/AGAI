@@ -1093,29 +1093,9 @@ function deactivateRainMode(){
   saveData(true);renderRainModeZone();showToast('Mode pluie désactivé.','success');
 }
 function rI(){
-  const pendingAssignmentRepairs=agaiRepairPendingOperationalAssignments();
-  const pendingPilpAssignmentRepairs=agaiRepairPendingPilpAssignments();
-  if(pendingAssignmentRepairs.length||pendingPilpAssignmentRepairs.length){
-    if(typeof syncCaserneContext==='function')syncCaserneContext();
-    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-    saveData(true);
-    if(pendingAssignmentRepairs.some(function(id){const iv=interventionById(id);return iv&&iv._numApl==='APL_2026_000259';}))showToast('APL_2026_000259 : véhicule et équipage retirés de la file d’attente.','success');
-    if(pendingPilpAssignmentRepairs.length)showToast('Affectation PILP incorrecte retirée : la fiche est de nouveau disponible pour les tireurs PILP.','success');
-  }
-  const ut188Repair=agaiRepairIntervention188ChainedStart();
-  if(ut188Repair.applied){
-    if(typeof syncCaserneContext==='function')syncCaserneContext();
-    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-    saveData(true);
-    if(ut188Repair.changed)showToast('Intervention UT 188 : heure de départ corrigée à 16:11.','success');
-  }
-  const ut185Repair=agaiRepairPilpUt185Chronology();
-  if(ut185Repair.applied){
-    if(typeof syncCaserneContext==='function')syncCaserneContext();
-    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-    saveData(true);
-    if(ut185Repair.changed)showToast('Intervention UT 185 : horaires replacés entre les UT 184 et 186.','success');
-  }
+  // Lecture seule : aucune migration ni correction automatique pendant le rendu.
+  // Les réparations historiques restent disponibles pour une maintenance
+  // volontaire, mais ne sont plus déclenchées en ouvrant Interventions.
   updateRenfortBadge();
   renderRainModeZone();
   // Afficher les renforts reçus en attente

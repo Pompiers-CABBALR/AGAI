@@ -209,20 +209,8 @@ function setHistoryDateFilter(value){HIST_DATE=String(value||'').replace(/\D/g,'
 function setHistoryCrewFilter(value){HIST_CREW=String(value||'');filterHistoryRows();}
 function clearHistorySearch(){HIST_SEARCH='';HIST_DATE='';HIST_CREW='';rHist();const input=document.getElementById('hist-search');if(input)input.focus();}
 function rHist(){
-  const startOrderRepair=agaiRepairNumberingByStartOrder();
-  if(startOrderRepair.applied){
-    if(typeof syncCaserneContext==='function')syncCaserneContext();
-    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-    saveData(true);
-    if(startOrderRepair.changes.length)showToast('Numérotation remise dans l’ordre des départs : '+startOrderRepair.changes.length+' correction(s).','success');
-  }
-  const monthlyNumberRepairs=agaiRepairMonthlyNumberingConflicts();
-  if(monthlyNumberRepairs.length){
-    if(typeof syncCaserneContext==='function')syncCaserneContext();
-    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-    saveData(true);
-    showToast('Numérotation mensuelle corrigée : '+monthlyNumberRepairs.length+' intervention(s).','success');
-  }
+  // Lecture seule : ouvrir ou filtrer l'historique ne renumérote plus aucune
+  // intervention et n'ajoute plus d'action à la file de synchronisation.
   const cA=isChef()||hasRight('Administration');
   const normalIvs=cA?IVS.filter(function(iv){return !['en-attente','selectionne','en-cours'].includes(iv.s)&&!iv._isPilip;}):IVS.filter(function(iv){return (isTdy(iv)||iv.s==='annulee')&&!iv._isPilip;});
   const pilpIvsH=canSeePILP()?(cA?PILP_IVS:PILP_IVS.filter(function(iv){return isTdy(iv);})) : [];

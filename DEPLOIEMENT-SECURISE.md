@@ -235,3 +235,11 @@ engins. La liste est reconstruite à partir de la configuration active, de la
 configuration de la caserne, des piquets et des véhicules déjà connus dans ses
 interventions. Un chargement tardif de la configuration ne laisse donc plus le
 sélecteur vide sur mobile.
+
+## Stabilisation v245 — affichages sans écriture
+
+L’ouverture des écrans Interventions, PILP, Historique et Superadministration est
+désormais strictement en lecture seule. Les anciennes réparations automatiques
+restent présentes pour une maintenance volontaire, mais ne sont plus lancées
+pendant un affichage. Cela évite les renumérotations inattendues et les rafales
+d’écritures concurrentes vers Supabase lorsque plusieurs appareils sont connectés.

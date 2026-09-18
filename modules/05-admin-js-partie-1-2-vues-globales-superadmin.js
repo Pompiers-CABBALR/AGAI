@@ -331,11 +331,8 @@ function setSuperAdminSection(section){
 }
 
 function renderSuperAdmin(){
-  const repairedChefCorps=repairKnownChefCorpsAssignment();
-  if(repairedChefCorps){
-    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-    window.setTimeout(function(){saveData(true);showToast('Affectation du chef de corps restaur\u00e9e : Vincent Fabre.','success');},0);
-  }
+  // Lecture seule : ouvrir la superadministration ne déclenche aucune
+  // réparation ni écriture automatique vers Supabase.
   const body=document.getElementById('gv-body');
   // Section gestion des comptes (admins casernes + chef de corps)
   const sa=getSuperAdminAccount();
