@@ -271,3 +271,10 @@ versions afin d’imposer correctement l’actualisation avant connexion.
 Dans le menu Superadministration > Connexions, les casernes et les comptes qui
 ont été ouverts ou refermés conservent leur état pendant les actualisations
 automatiques. La liste ne se replie donc plus toutes les trente secondes.
+
+## Correctif V202609_0002 — véhicules au départ
+
+La liste des véhicules du passage « En cours » ne dépend plus uniquement de la
+copie momentanée de la configuration chargée en mémoire. Elle est reconstruite
+depuis la configuration de la caserne, les piquets et les véhicules déjà connus
+dans les interventions. Le même secours est appliqué aux renforts complets.

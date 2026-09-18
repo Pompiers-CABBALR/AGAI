@@ -2898,9 +2898,9 @@ function showPersonnelModal(id){
   const eq2Sugg=_eq2.equipier;
 
   const enginOpts=function(sugg){
-    return [''].concat(ASTR_CONFIG.engins||[]).map(function(e){
+    return [''].concat(availableCaserneVehicleNames(sugg)).map(function(e){
       const conflict=e?findActiveVehicleConflict(e,id):null;
-      return '<option value="'+e+'"'+(e===sugg?' selected':'')+(conflict?' disabled':'')+'>'+(e||'\u2014 Aucun \u2014')+(conflict?' \u2014 D\u00e9j\u00e0 en intervention':'')+'</option>';
+      return '<option value="'+escHtml(e)+'"'+(e===sugg?' selected':'')+(conflict?' disabled':'')+'>'+(e?escHtml(e):'\u2014 Sélectionner un véhicule \u2014')+(conflict?' \u2014 D\u00e9j\u00e0 en intervention':'')+'</option>';
     }).join('');
   };
 
@@ -3847,7 +3847,7 @@ function showRenfortEquipageModal(cid,renfortId){
   // Construire sélecteurs selon le type
   const isComplet=r.type==='complet';
   const ivSrc=renfortSourceIntervention(r);
-  const enginOpts=[''].concat(ASTR_CONFIG.engins||[]).map(function(e){
+  const enginOpts=[''].concat(availableCaserneVehicleNames('')).map(function(e){
     if(!e)return '<option value="">\u2014 Sélectionner un véhicule \u2014</option>';
     const usedHere=renfortSourceHasVehicle(ivSrc,cid,e);
     const conflict=findActiveVehicleConflict(e,null);

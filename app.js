@@ -12089,9 +12089,9 @@ function showPersonnelModal(id){
   const eq2Sugg=_eq2.equipier;
 
   const enginOpts=function(sugg){
-    return [''].concat(ASTR_CONFIG.engins||[]).map(function(e){
+    return [''].concat(availableCaserneVehicleNames(sugg)).map(function(e){
       const conflict=e?findActiveVehicleConflict(e,id):null;
-      return '<option value="'+e+'"'+(e===sugg?' selected':'')+(conflict?' disabled':'')+'>'+(e||'\u2014 Aucun \u2014')+(conflict?' \u2014 D\u00e9j\u00e0 en intervention':'')+'</option>';
+      return '<option value="'+escHtml(e)+'"'+(e===sugg?' selected':'')+(conflict?' disabled':'')+'>'+(e?escHtml(e):'\u2014 Sélectionner un véhicule \u2014')+(conflict?' \u2014 D\u00e9j\u00e0 en intervention':'')+'</option>';
     }).join('');
   };
 
@@ -13038,7 +13038,7 @@ function showRenfortEquipageModal(cid,renfortId){
   // Construire sélecteurs selon le type
   const isComplet=r.type==='complet';
   const ivSrc=renfortSourceIntervention(r);
-  const enginOpts=[''].concat(ASTR_CONFIG.engins||[]).map(function(e){
+  const enginOpts=[''].concat(availableCaserneVehicleNames('')).map(function(e){
     if(!e)return '<option value="">\u2014 Sélectionner un véhicule \u2014</option>';
     const usedHere=renfortSourceHasVehicle(ivSrc,cid,e);
     const conflict=findActiveVehicleConflict(e,null);
@@ -15717,7 +15717,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202609_0001';
+const APP_VERSION='V202609_0002';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
