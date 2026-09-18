@@ -11,7 +11,10 @@ le code afin de faciliter les prochaines corrections.
 - `version.json` : numéro de la version publiée, utilisé par le bandeau de mise à jour ;
 - `modules/` : logique applicative répartie en 22 fichiers ;
 - `app.js` : copie complète du JavaScript, conservée comme référence de contrôle
-  mais non chargée par `index.html`.
+  mais non chargée par `index.html` ;
+- `supabase-atomic-operations-v238.sql` : mise à niveau Supabase qui protège les
+  engagements simultanés et attribue les numéros d’intervention côté serveur ;
+- `DEPLOIEMENT-SECURISE.md` : procédure d’installation et de vérification.
 
 ## Utilisation
 

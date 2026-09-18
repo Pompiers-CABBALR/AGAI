@@ -1667,7 +1667,7 @@ function renderOperationalHealthPanel(){
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">ACTIONS EN ATTENTE</div><strong style="font-size:18px;color:'+(report.pending?'#B45309':'#047857')+';">'+report.pending+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">UTILISATEURS EN LIGNE</div><strong style="font-size:18px;">'+report.online.length+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">FICHES ANCIENNES PROTÉGÉES</div><strong style="font-size:18px;color:#047857;">'+report.legacyProtected+'</strong></div>'
-    +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">PROTECTION SERVEUR V237</div><strong id="sa-atomic-state" style="font-size:11px;color:'+(report.atomicState==='active'?'#047857':report.atomicState==='missing'?'#B45309':'#64748B')+';">'+(report.atomicState==='active'?'Active':report.atomicState==='missing'?'Script v237 à installer':report.atomicState==='error'?'Vérification impossible':'Vérification…')+'</strong></div>'
+    +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">PROTECTION SERVEUR V238</div><strong id="sa-atomic-state" style="font-size:11px;color:'+(report.atomicState==='active'?'#047857':report.atomicState==='missing'?'#B45309':'#64748B')+';">'+(report.atomicState==='active'?'Active':report.atomicState==='missing'?'Script v238 à installer':report.atomicState==='error'?'Vérification impossible':'Vérification…')+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">DERNIÈRE SYNC RÉUSSIE</div><strong style="font-size:11px;">'+escHtml(fmt(report.lastOkAt))+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">VERSIONS ACTIVES</div><strong style="font-size:10px;overflow-wrap:anywhere;">'+escHtml(deviceVersions.join(' · ')||APP_VERSION)+'</strong></div></div>'
     +(report.lastError?'<div style="background:#FEF2F2;color:#991B1B;border-radius:8px;padding:8px 10px;font-size:11px;margin-bottom:10px;"><strong>Dernière erreur :</strong> '+escHtml(report.lastError)+' · '+escHtml(fmt(report.lastErrorAt))+'</div>':'')
@@ -15538,7 +15538,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260918-protection-supabase-237';
+const APP_VERSION='20260918-numerotation-serveur-238';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -18848,6 +18848,7 @@ const RC_ATOMIC_RPC = SB_URL + '/rest/v1/rpc/agai_atomic_upsert_record';
 const RC_ATOMIC_HEALTH_RPC = SB_URL + '/rest/v1/rpc/agai_atomic_health';
 let _rcAtomicServerState='unknown';
 let _rcAtomicServerCheckedAt=0;
+let _rcAtomicServerHealth=null;
 async function _rcCheckAtomicServer(force){
   if(!USE_RECORDS)return false;
   if(!force&&_rcAtomicServerCheckedAt&&Date.now()-_rcAtomicServerCheckedAt<5*60*1000)return _rcAtomicServerState==='active';
@@ -18855,12 +18856,14 @@ async function _rcCheckAtomicServer(force){
   try{
     const response=await fetch(RC_ATOMIC_HEALTH_RPC,{method:'POST',headers:_sbHeaders,body:'{}'});
     _rcAtomicServerState=response.ok?'active':(response.status===404?'missing':'error');
+    if(response.ok)try{_rcAtomicServerHealth=await response.json();}catch(error){_rcAtomicServerHealth=null;}
   }catch(error){_rcAtomicServerState='error';}
   const target=document.getElementById('sa-atomic-state');
   if(target){
-    const labels={active:'Active',missing:'Script v237 à installer',error:'Vérification impossible',unknown:'Vérification…'};
-    target.textContent=labels[_rcAtomicServerState]||labels.unknown;
-    target.style.color=_rcAtomicServerState==='active'?'#047857':_rcAtomicServerState==='missing'?'#B45309':'#B91C1C';
+    const labels={active:'Active',missing:'Script v238 à installer',error:'Vérification impossible',unknown:'Vérification…'};
+    const anomalies=_rcAtomicServerHealth?Number(_rcAtomicServerHealth.duplicateVehicles||0)+Number(_rcAtomicServerHealth.duplicatePersonnel||0)+Number(_rcAtomicServerHealth.duplicateNumbers||0):0;
+    target.textContent=(_rcAtomicServerState==='active'&&anomalies?'Active · '+anomalies+' anomalie(s) historique(s)':labels[_rcAtomicServerState]||labels.unknown);
+    target.style.color=_rcAtomicServerState==='active'?(anomalies?'#B45309':'#047857'):_rcAtomicServerState==='missing'?'#B45309':'#B91C1C';
   }
   return _rcAtomicServerState==='active';
 }
@@ -19736,7 +19739,7 @@ async function _rcProtectSensitiveGlobalRow(rows){
 }
 
 async function _rcSendAtomicOperationalRow(row,currentUser){
-  if(_rcAtomicServerState==='missing'&&Date.now()-_rcAtomicServerCheckedAt<5*60*1000)return {ok:false,fallback:true,status:404,detail:'Protection v237 non installée'};
+  if(_rcAtomicServerState==='missing'&&Date.now()-_rcAtomicServerCheckedAt<5*60*1000)return {ok:false,fallback:true,status:404,detail:'Protection v238 non installée'};
   const payload={
     p_id:row.id,p_caserne:row.caserne,p_type:row.type,p_data:row.data,
     p_deleted:!!row.deleted,p_updated_by:currentUser||'',
@@ -19748,7 +19751,17 @@ async function _rcSendAtomicOperationalRow(row,currentUser){
   let response;
   try{response=await fetch(RC_ATOMIC_RPC,{method:'POST',headers:_sbHeaders,body:JSON.stringify(payload)});}
   catch(error){return {ok:false,status:0,detail:String(error&&error.message||error||'Erreur réseau')};}
-  if(response.ok){_rcAtomicServerState='active';_rcAtomicServerCheckedAt=Date.now();return {ok:true};}
+  if(response.ok){
+    _rcAtomicServerState='active';_rcAtomicServerCheckedAt=Date.now();
+    try{
+      const result=await response.json();
+      if(result&&result.data&&typeof result.data==='object'){
+        row.data=result.data;
+        _rcReplaceLocalOperationalRecord(row.caserne,row.type,result.data);
+      }
+    }catch(error){}
+    return {ok:true};
+  }
   let detail='';
   try{detail=String(await response.text()||'').replace(/\s+/g,' ').slice(0,500);}catch(error){}
   if(response.status===404||/PGRST202|agai_atomic_upsert_record.*not found/i.test(detail)){
@@ -19897,7 +19910,8 @@ async function _rcPush(fullPush){
       sendResult.failures=unresolved;
     }
     const pushedRows=sendResult.succeeded;
-    _writeLocalCache(data);
+    pushedRows.forEach(function(row){sentSignatures[row.id]=_rcSyncSignature(row);});
+    _writeLocalCache(_buildDataObject());
     _rcLastPush = Date.now();
     // Une modification indépendante pendant l'envoi ne doit plus maintenir
     // tout le lot en attente. On conserve uniquement les lignes dont le

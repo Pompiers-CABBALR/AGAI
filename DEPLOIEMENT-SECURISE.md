@@ -26,9 +26,9 @@ protection par elle-même : la sécurité dépend des règles RLS.
 
 ## Migration Supabase
 
-### Protection atomique v237 — compatible avec la connexion actuelle
+### Protection atomique et numérotation serveur v238 — compatible avec la connexion actuelle
 
-Le fichier `supabase-atomic-operations-v237.sql` peut être appliqué dès maintenant
+Le fichier `supabase-atomic-operations-v238.sql` peut être appliqué dès maintenant
 dans l’éditeur SQL Supabase. Il ne nécessite pas encore Supabase Auth et ne modifie
 aucune intervention existante.
 
@@ -36,10 +36,10 @@ Procédure :
 
 1. créer un point de restauration depuis **Superadmin → Maintenance** ;
 2. ouvrir **Supabase → SQL Editor → New query** ;
-3. coller tout le contenu de `supabase-atomic-operations-v237.sql` ;
+3. coller tout le contenu de `supabase-atomic-operations-v238.sql` ;
 4. exécuter le script une seule fois ; il peut toutefois être réexécuté sans supprimer les données ;
 5. ouvrir **Superadmin → Maintenance** et cliquer sur **Actualiser** ;
-6. vérifier que « Protection serveur v237 » affiche **Active**.
+6. vérifier que « Protection serveur v238 » affiche **Active**.
 
 Une fois actif, le serveur refuse atomiquement :
 
@@ -47,10 +47,10 @@ Une fois actif, le serveur refuse atomiquement :
 - deux modifications concurrentes de la même fiche ;
 - l’engagement simultané d’un véhicule dans la même caserne ;
 - l’engagement simultané d’un agent, y compris entre deux casernes ;
-- un doublon de numéro UT, mensuel ou intercommunal lors du départ.
+- les doublons de numéro UT, mensuel ou intercommunal : si deux appareils proposent le même numéro, Supabase leur attribue automatiquement deux numéros successifs.
 
 Chaque écriture protégée est inscrite dans `agai_operation_log`. Cette table n’est
-pas lisible depuis le navigateur. Tant que le script n’est pas installé, la v237
+pas lisible depuis le navigateur. Tant que le script n’est pas installé, la v238
 continue d’utiliser automatiquement le mécanisme de synchronisation précédent.
 
 Le fichier `supabase-security.sql` décrit la cible recommandée :
