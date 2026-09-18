@@ -2221,8 +2221,13 @@ async function _rcProtectOperationalStatusRows(rows){
   });
   const ids=operational.map(function(row){return row.id;});
   const filter='('+ids.map(function(id){return '"'+String(id).replace(/"/g,'')+'"';}).join(',')+')';
-  const resp=await _agaiFetchWithTimeout(RC_REST+'?id=in.'+encodeURIComponent(filter)+'&select=id,data,deleted',{headers:_sbHeaders},45000);
-  if(!resp.ok)throw new Error('status guard GET HTTP '+resp.status);
+  let resp;
+  try{resp=await _agaiFetchWithTimeout(RC_REST+'?id=in.'+encodeURIComponent(filter)+'&select=id,data,deleted',{headers:_sbHeaders},45000);}
+  catch(error){console.warn('[AGAI][RC] Contrôle des statuts indisponible, protection atomique conservée :',error);return rows;}
+  if(!resp.ok){
+    if(resp.status===502||resp.status===503||resp.status===504){console.warn('[AGAI][RC] Contrôle des statuts HTTP '+resp.status+', protection atomique conservée.');return rows;}
+    throw new Error('status guard GET HTTP '+resp.status);
+  }
   const remoteRows=await resp.json(),remoteById={};
   (Array.isArray(remoteRows)?remoteRows:[]).forEach(function(row){if(row&&row.id&&!row.deleted)remoteById[row.id]=row;});
   operational.forEach(function(row){
@@ -2273,8 +2278,13 @@ async function _rcProtectDispoRows(rows){
   if(!availability.length)return rows;
   const ids=availability.map(function(row){return row.id;});
   const filter='('+ids.map(function(id){return '"'+String(id).replace(/"/g,'')+'"';}).join(',')+')';
-  const resp=await _agaiFetchWithTimeout(RC_REST+'?id=in.'+encodeURIComponent(filter)+'&select=id,data,deleted',{headers:_sbHeaders},45000);
-  if(!resp.ok)throw new Error('dispo guard GET HTTP '+resp.status);
+  let resp;
+  try{resp=await _agaiFetchWithTimeout(RC_REST+'?id=in.'+encodeURIComponent(filter)+'&select=id,data,deleted',{headers:_sbHeaders},45000);}
+  catch(error){availability.forEach(function(row){_rcDeferFailedRow({row:row,status:0,detail:String(error)});});return (rows||[]).filter(function(row){return !availability.includes(row);});}
+  if(!resp.ok){
+    if(resp.status===502||resp.status===503||resp.status===504){availability.forEach(function(row){_rcDeferFailedRow({row:row,status:resp.status,detail:'dispo guard HTTP '+resp.status});});return (rows||[]).filter(function(row){return !availability.includes(row);});}
+    throw new Error('dispo guard GET HTTP '+resp.status);
+  }
   const remoteRows=await resp.json(),remoteById={};
   (Array.isArray(remoteRows)?remoteRows:[]).forEach(function(row){if(row&&row.id&&!row.deleted)remoteById[row.id]=row;});
   availability.forEach(function(row){
@@ -2294,8 +2304,13 @@ async function _rcProtectPersonnelGradeRows(rows){
   const users=(rows||[]).filter(function(row){return row&&row.type==='user'&&!row.deleted;});
   if(!users.length)return rows;
   const ids=users.map(function(row){return row.id;}),filter='('+ids.map(function(id){return '"'+String(id).replace(/"/g,'')+'"';}).join(',')+')';
-  const resp=await _agaiFetchWithTimeout(RC_REST+'?id=in.'+encodeURIComponent(filter)+'&select=id,data,deleted',{headers:_sbHeaders},45000);
-  if(!resp.ok)throw new Error('grade history guard GET HTTP '+resp.status);
+  let resp;
+  try{resp=await _agaiFetchWithTimeout(RC_REST+'?id=in.'+encodeURIComponent(filter)+'&select=id,data,deleted',{headers:_sbHeaders},45000);}
+  catch(error){users.forEach(function(row){_rcDeferFailedRow({row:row,status:0,detail:String(error)});});return (rows||[]).filter(function(row){return !users.includes(row);});}
+  if(!resp.ok){
+    if(resp.status===502||resp.status===503||resp.status===504){users.forEach(function(row){_rcDeferFailedRow({row:row,status:resp.status,detail:'grade guard HTTP '+resp.status});});return (rows||[]).filter(function(row){return !users.includes(row);});}
+    throw new Error('grade history guard GET HTTP '+resp.status);
+  }
   const remoteRows=await resp.json(),remoteById={};
   (Array.isArray(remoteRows)?remoteRows:[]).forEach(function(row){if(row&&row.id&&!row.deleted)remoteById[row.id]=row;});
   users.forEach(function(row){
@@ -2769,6 +2784,9 @@ async function _rcSendAtomicOperationalRow(row,currentUser){
   if(response.status===404||/PGRST202|agai_atomic_upsert_record.*not found/i.test(detail)){
     _rcAtomicServerState='missing';_rcAtomicServerCheckedAt=Date.now();return {ok:false,fallback:true,status:response.status,detail:detail};
   }
+  if(response.status===502||response.status===503||response.status===504){
+    return {ok:false,fallback:true,status:response.status,detail:detail||'Protection Supabase temporairement indisponible'};
+  }
   _rcAtomicServerState='active';_rcAtomicServerCheckedAt=Date.now();
   return {ok:false,status:response.status,detail:detail||'Conflit atomique Supabase'};
 }
@@ -2821,6 +2839,10 @@ async function _rcSendRowsWithIsolation(rows,currentUser){
       resp={ok:false,status:0,_agaiDetail:String(error&&error.message||error||'Erreur réseau')};
     }
     if(resp.ok){succeeded.push.apply(succeeded,group);return;}
+    if((resp.status===0||resp.status===502||resp.status===503||resp.status===504)&&group.length>1){
+      group.forEach(function(row){failures.push({row:row,status:resp.status||0,detail:resp._agaiDetail||'Service Supabase indisponible'});});
+      return;
+    }
     if(group.length>1){
       const middle=Math.ceil(group.length/2);
       await send(group.slice(0,middle));
@@ -2906,7 +2928,7 @@ async function _rcPush(fullPush){
     if(!fullPush)rows=await _rcProtectOperationalStatusRows(rows);
     if(!fullPush)rows=await _rcProtectDispoRows(rows);
     if(!fullPush)rows=await _rcProtectPersonnelGradeRows(rows);
-    if(!rows.length){_jbSetStatus(_rcHasActivePending()?'pending':'ok');return;}
+    if(!rows.length){_jbSetStatus(_rcHasActivePending()?'pending':'ok');if(_rcPendingDirty.size)_rcScheduleRetry();return;}
     // Reprise progressive : même en présence de plusieurs centaines d'actions,
     // ne jamais monopoliser le réseau ni bloquer les autres utilisateurs.
     if(!fullPush&&rows.length>25){
@@ -2939,7 +2961,7 @@ async function _rcPush(fullPush){
     if(sendResult.failures.length){
       const stillBlocking=[];
       sendResult.failures.forEach(function(failure){
-        if(Number(failure.status||0)===0&&_rcDeferFailedRow(failure)){
+        if((Number(failure.status||0)===0||Number(failure.status||0)===502||Number(failure.status||0)===503||Number(failure.status||0)===504)&&_rcDeferFailedRow(failure)){
           console.warn('[AGAI][RC] Fiche isolée temporairement :',failure.row&&failure.row.id);
         }else stillBlocking.push(failure);
       });

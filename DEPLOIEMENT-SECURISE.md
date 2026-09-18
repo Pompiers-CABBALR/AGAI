@@ -202,3 +202,12 @@ Le rapprochement initial interroge au maximum cinq identifiants à la fois. Si
 Supabase répond temporairement 502, 503 ou 504, cette lecture de contrôle ne
 fige plus la file : les écritures locales idempotentes reprennent directement,
 puis le rapprochement est retenté lors d'une réception ultérieure.
+
+## Correctif v241 — mode dégradé Supabase
+
+Les contrôles préalables de statut, de disponibilités et d'historique de grade
+ne figent plus l'ensemble de la file lorsque l'API répond 502, 503 ou 504. Les
+interventions continuent vers la protection atomique ; les autres fiches sont
+conservées et espacées de cinq minutes. Un lot refusé par Supabase n'est plus
+découpé en dizaines de nouvelles requêtes, afin de ne pas aggraver une panne
+`PGRST002` du cache de schéma.
