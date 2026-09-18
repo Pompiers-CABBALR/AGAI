@@ -4,5 +4,7 @@
 window.AGAI_CONFIG = Object.freeze({
   supabaseUrl: 'https://lpzblzqxmoiwghvkhqnt.supabase.co',
   supabasePublishableKey: 'sb_publishable_PehrBg34OLpPTmv9GtuIQg_KMFtUcQX',
+  accountLinkEnabled: false,
+  accountLinkEndpoint: '',
   mailEndpoint: ''
 });

@@ -198,6 +198,13 @@ const SB_URL  = AGAI_RUNTIME_CONFIG.supabaseUrl||'https://lpzblzqxmoiwghvkhqnt.s
 const SB_KEY  = AGAI_RUNTIME_CONFIG.supabasePublishableKey||'sb_publishable_PehrBg34OLpPTmv9GtuIQg_KMFtUcQX';
 const SB_REST = SB_URL + '/rest/v1';
 const SB_GLOBAL_ROW = '_GLOBAL';
+const AUTH_LINK_ENABLED = AGAI_RUNTIME_CONFIG.accountLinkEnabled===true;
+const AUTH_LINK_ENDPOINT = AGAI_RUNTIME_CONFIG.accountLinkEndpoint||SB_URL+'/functions/v1/agai-account-link';
+const AUTH_LINK_SESSION_KEY='agai_supabase_auth_v239';
+let _agaiAuthSession=null;
+let _agaiAuthBridgeState=AUTH_LINK_ENABLED?'unknown':'disabled';
+let _agaiAuthBridgeHealth=null;
+let _agaiAuthRefreshTimer=null;
 function CC(){return CASERNES.find(c=>c.id===CURRENT_CASERNE_ID)||null;}
 function CD(){if(!CURRENT_CASERNE_ID)return null;initCaserneData(CURRENT_CASERNE_ID);return CASERNE_DATA[CURRENT_CASERNE_ID];}
 function getCaserneStationLocation(caserneId){

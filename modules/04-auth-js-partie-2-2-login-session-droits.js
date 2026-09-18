@@ -51,6 +51,7 @@ async function doLogin(){
     }
     if(gaFound){
       const ga=gaFound;
+      await _agaiLinkSupabaseAccount(ga,p);
       GLOBAL_ROLE=ga.role;
       _loginAttempts=0;_loginLocked=false;
       if(_loginLockTimer){clearTimeout(_loginLockTimer);_loginLockTimer=null;}
@@ -113,6 +114,7 @@ async function doLogin(){
     }
 
     // ── Connexion réussie ──
+    await _agaiLinkSupabaseAccount(foundUser,p);
     _loginAttempts=0;_loginLocked=false;
     if(_loginLockTimer){clearTimeout(_loginLockTimer);_loginLockTimer=null;}
     lerr.style.display='none';

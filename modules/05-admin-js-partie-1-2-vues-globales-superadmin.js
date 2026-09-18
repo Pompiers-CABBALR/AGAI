@@ -262,7 +262,7 @@ function operationalHealthReport(){
   Object.values(personnelUse).filter(function(list){return list.length>1;}).forEach(function(list){list.forEach(function(item){add('error',item.station,item.iv,'Agent '+item.value+' engagé simultanément sur plusieurs interventions.');});});
   const pending=typeof _rcPendingDirty!=='undefined'?_rcPendingDirty.size:0;
   const online=(LOGIN_HISTORY||[]).filter(isLoginHistorySessionActive);
-  return {issues:issues,pending:pending,online:online,legacyProtected:Number(window._agaiLegacyStatusMetadataCount)||0,atomicState:typeof _rcAtomicServerState==='string'?_rcAtomicServerState:'unknown',lastOkAt:window._agaiSyncHealth&&window._agaiSyncHealth.lastOkAt||null,lastErrorAt:window._agaiSyncHealth&&window._agaiSyncHealth.lastErrorAt||null,lastError:window._agaiSyncHealth&&window._agaiSyncHealth.lastError||''};
+  return {issues:issues,pending:pending,online:online,legacyProtected:Number(window._agaiLegacyStatusMetadataCount)||0,atomicState:typeof _rcAtomicServerState==='string'?_rcAtomicServerState:'unknown',authBridgeState:_agaiAuthBridgeState,authBridgeHealth:_agaiAuthBridgeHealth,lastOkAt:window._agaiSyncHealth&&window._agaiSyncHealth.lastOkAt||null,lastErrorAt:window._agaiSyncHealth&&window._agaiSyncHealth.lastErrorAt||null,lastError:window._agaiSyncHealth&&window._agaiSyncHealth.lastError||''};
 }
 function renderOperationalHealthPanel(){
   const report=operationalHealthReport(),errors=report.issues.filter(function(issue){return issue.severity==='error';}).length,warnings=report.issues.length-errors;
@@ -277,13 +277,14 @@ function renderOperationalHealthPanel(){
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">UTILISATEURS EN LIGNE</div><strong style="font-size:18px;">'+report.online.length+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">FICHES ANCIENNES PROTÉGÉES</div><strong style="font-size:18px;color:#047857;">'+report.legacyProtected+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">PROTECTION SERVEUR V238</div><strong id="sa-atomic-state" style="font-size:11px;color:'+(report.atomicState==='active'?'#047857':report.atomicState==='missing'?'#B45309':'#64748B')+';">'+(report.atomicState==='active'?'Active':report.atomicState==='missing'?'Script v238 à installer':report.atomicState==='error'?'Vérification impossible':'Vérification…')+'</strong></div>'
+    +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">LIAISON DES COMPTES V239</div><strong id="sa-auth-link-state" style="font-size:11px;color:#B45309;">'+(report.authBridgeState==='disabled'?'À activer après installation':report.authBridgeState==='missing'?'Script v239 à installer':report.authBridgeState==='error'?'Vérification impossible':'Vérification…')+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">DERNIÈRE SYNC RÉUSSIE</div><strong style="font-size:11px;">'+escHtml(fmt(report.lastOkAt))+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">VERSIONS ACTIVES</div><strong style="font-size:10px;overflow-wrap:anywhere;">'+escHtml(deviceVersions.join(' · ')||APP_VERSION)+'</strong></div></div>'
     +(report.lastError?'<div style="background:#FEF2F2;color:#991B1B;border-radius:8px;padding:8px 10px;font-size:11px;margin-bottom:10px;"><strong>Dernière erreur :</strong> '+escHtml(report.lastError)+' · '+escHtml(fmt(report.lastErrorAt))+'</div>':'')
     +(report.issues.length?'<div style="max-height:260px;overflow:auto;border:1px solid #E5E7EB;border-radius:9px;">'+report.issues.slice(0,100).map(function(issue){return '<div style="padding:7px 9px;border-bottom:1px solid #F1F5F9;font-size:11px;display:flex;gap:8px;"><span>'+(issue.severity==='error'?'🔴':'🟠')+'</span><span><strong>'+escHtml(issue.station)+'</strong>'+(issue.iv?' · '+escHtml(issue.iv):'')+' — '+escHtml(issue.message)+'</span></div>';}).join('')+'</div>':'<div style="font-size:12px;color:#047857;">Les statuts actifs, véhicules, personnels et numéros de tournée sont cohérents.</div>')
     +'</div>';
 }
-function refreshOperationalHealthPanel(){const panel=document.getElementById('sa-health-panel');if(panel)panel.innerHTML=renderOperationalHealthPanel();if(typeof _rcCheckAtomicServer==='function')_rcCheckAtomicServer(true);}
+function refreshOperationalHealthPanel(){const panel=document.getElementById('sa-health-panel');if(panel)panel.innerHTML=renderOperationalHealthPanel();if(typeof _rcCheckAtomicServer==='function')_rcCheckAtomicServer(true);if(typeof _agaiCheckAccountLinkServer==='function')_agaiCheckAccountLinkServer(true);}
 
 const SUPERADMIN_SECTIONS=[
   {id:'casernes',icon:'🏠',label:'Casernes'},
@@ -728,6 +729,7 @@ function renderSuperAdmin(){
   try{renderEnginTypes();}catch(e){}
   try{refreshRecoveryCheckpointsPanel();}catch(e){}
   try{if(typeof _rcCheckAtomicServer==='function')_rcCheckAtomicServer(false);}catch(e){}
+  try{if(typeof _agaiCheckAccountLinkServer==='function')_agaiCheckAccountLinkServer(false);}catch(e){}
   try{
     const _bg=document.getElementById('sa-bglogout');
     if(_bg)_bg.value=(ASTR_CONFIG&&typeof ASTR_CONFIG.bgLogoutMin==='number')?ASTR_CONFIG.bgLogoutMin:15;
@@ -1328,6 +1330,7 @@ function setCaserneAdmin(caserneId,login,enabled){
     } else if(current.has(user.l)){if(!user.rights.includes('Administration'))user.rights.push('Administration');}
     else user.rights=user.rights.filter(function(right){return right!=='Administration';});
     user.caserneId=caserneId;user.appRole=deriveAccountRole(user);
+    _agaiSyncLinkedAccount(user);
   });
   if(CURRENT_CASERNE_ID===caserneId)syncCaserneContext();
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
@@ -1340,7 +1343,7 @@ function setResponsableFormation(caserneId,login){
   if(!isSuperAdmin()){showToast('Seul le super-administrateur peut d\u00e9finir le responsable formation.','warn');return;}
   const data=CASERNE_DATA[caserneId];
   if(!data||!Array.isArray(data.users))return;
-  data.users.forEach(u=>{u.responsableFormation=false;u.appRole=deriveAccountRole(u);});
+  data.users.forEach(u=>{u.responsableFormation=false;u.appRole=deriveAccountRole(u);_agaiSyncLinkedAccount(u);});
   if(login){
     const selected=data.users.find(u=>u.l===login);
     if(!selected){showToast('Compte introuvable dans cette caserne.','warn');renderSuperAdmin();return;}
@@ -1349,6 +1352,7 @@ function setResponsableFormation(caserneId,login){
     selected.rights=Array.isArray(selected.rights)?selected.rights:[];
     if(!selected.rights.includes('Formation'))selected.rights.push('Formation');
     selected.appRole=deriveAccountRole(selected);
+    _agaiSyncLinkedAccount(selected);
   }
   if(CURRENT_CASERNE_ID===caserneId)syncCaserneContext();
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
@@ -1609,6 +1613,7 @@ async function saveCompteSpecial(role){
   const pwdErr=mdp?passwordPolicyError(mdp):'';
   if(pwdErr){err.style.display='block';err.textContent=pwdErr;return;}
   const oldLogin=acc.l;
+  if(mdp&&!await _agaiLinkedPasswordChange(acc.l===CU.l?'change_password':'admin_reset',acc.l,mdp)){err.style.display='block';err.textContent='Le mot de passe n’a pas pu être sécurisé sur le serveur.';return;}
   if(gradeChanged)recordPersonnelGradeChange(acc,grade,gradeEffective,CU&&CU.l);
   acc.prenom=prenom;acc.nom=nom;acc.l=login;
   if(mdp){acc.p=await hashPassword(mdp);} // P1
@@ -1684,6 +1689,7 @@ async function saveAdminCaserne(cid,adminLogin){
   const pwdErr=mdp?passwordPolicyError(mdp):'';
   if(pwdErr){err.style.display='block';err.textContent=pwdErr;return;}
   const oldLogin=admin.l;
+  if(mdp&&!await _agaiLinkedPasswordChange('admin_reset',admin.l,mdp)){err.style.display='block';err.textContent='Le mot de passe n’a pas pu être sécurisé sur le serveur.';return;}
   if(gradeChanged)recordPersonnelGradeChange(admin,grade,gradeEffective,CU&&CU.l);
   admin.prenom=prenom;admin.nom=nom;admin.l=login;
   const adminLogins=getCaserneAdmins(cid).map(function(item){return item.l===oldLogin?login:item.l;});
@@ -2303,6 +2309,9 @@ function doLoginSuccess(){
   if(window.innerWidth<=480){window.scrollTo(0,0);}
 }
 function doLogout(){
+  const authToken=_agaiAuthAccessToken();
+  if(authToken)fetch(SB_URL+'/auth/v1/logout',{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+authToken}}).catch(function(){});
+  _agaiStoreAuthSession(null);
   // Marquer la déconnexion dans l'historique
   if(SESSION_TOKEN){
     const entry=LOGIN_HISTORY.find(e=>e.id===SESSION_TOKEN);

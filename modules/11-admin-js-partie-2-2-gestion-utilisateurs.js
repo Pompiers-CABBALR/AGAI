@@ -13,6 +13,7 @@ async function resetPwd(login){
   if(pwdErr){showToast(pwdErr,'warn');return;}
   const u=USERS.find(x=>x.l===login);
   if(!u)return;
+  if(!await _agaiLinkedPasswordChange('admin_reset',login,inp.value.trim())){showToast('Mot de passe non modifié : liaison serveur indisponible.','error');return;}
   const hashed=await hashPassword(inp.value.trim()); // P1
   u.p=hashed;
   if(CU&&CU.l===login)CU.p=hashed;
@@ -175,6 +176,7 @@ async function addUser(){
   err.style.display='none';
   const hashed=await hashPassword(mdp);
   const newUser={l:login,p:hashed,prenom,nom,grade,fonction,matricule,caserneId:CURRENT_CASERNE_ID,appRole:'agent',rights:['Prise d\'appel','Interventions'],rl:'Utilisateur'};
+  if(!await _agaiProvisionLinkedAccount(newUser,mdp)){err.style.display='block';err.textContent='Le compte n’a pas pu être créé sur le serveur. Vérifiez la connexion puis réessayez.';return;}
   normalizePersonnelGradeHistory(newUser);newUser._gradeHistoryUpdatedAt=Date.now();USERS.push(newUser);
   // Réinitialiser tous les champs du formulaire
   ['nu-matricule','nu-prenom','nu-nom','nu-mdp'].forEach(id=>{
@@ -187,7 +189,7 @@ async function addUser(){
 }
 function delUser(login){
   if(GLOBAL_ACCOUNTS.find(a=>a.l===login&&a.role==='superadmin')){showToast('Impossible de supprimer le Super Administrateur.','error');return;}
-  confirmModal('Supprimer cet utilisateur ?',function(){USERS=USERS.filter(u=>u.l!==login);saveData();rAdm();});
+  confirmModal('Supprimer cet utilisateur ?',async function(){if(!await _agaiDeactivateLinkedAccount(login)){showToast('Suppression annulée : liaison serveur indisponible.','error');return;}USERS=USERS.filter(u=>u.l!==login);saveData();rAdm();});
 }
 function updateFormateurFn(login,fn,checked){
   const u=USERS.find(x=>x.l===login);if(!u)return;
@@ -211,6 +213,7 @@ function updateRight(login,right,checked){
   else if(!checked)u.rights=u.rights.filter(r=>r!==right);
   u.caserneId=CURRENT_CASERNE_ID;
   u.appRole=deriveAccountRole(u);
+  _agaiSyncLinkedAccount(u);
   if(CU&&CU.l===login){CU.rights=[...u.rights];applyNavRights();}
   saveData();
   rAdm();
@@ -226,6 +229,7 @@ function updateUser(login,field,val){
     if(uInUsers){
       uInUsers[field]=val;
       if(field==='fonction'&&val!=='Chef de centre'&&val!=='Adjoint au chef de centre')uInUsers.fonction2='';
+      uInUsers.appRole=deriveAccountRole(uInUsers);_agaiSyncLinkedAccount(uInUsers);
     }
     saveData();
     _updateUserRefresh(login,field);
@@ -237,6 +241,7 @@ function updateUser(login,field,val){
     if(field==='fonction'&&val!=='Chef de centre'&&val!=='Adjoint au chef de centre')u.fonction2='';
     u.caserneId=CURRENT_CASERNE_ID;
     u.appRole=deriveAccountRole(u);
+    _agaiSyncLinkedAccount(u);
   }
   if(CU&&CU.l===login){
     CU[field]=val;

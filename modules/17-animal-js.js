@@ -1435,7 +1435,7 @@ let _sbPollTimer = null;
 
 const _sbHeaders = {
   'apikey': SB_KEY,
-  'Authorization': 'Bearer ' + SB_KEY,
+  get 'Authorization'(){return 'Bearer '+(_agaiAuthAccessToken()||SB_KEY);},
   'Content-Type': 'application/json'
 };
 

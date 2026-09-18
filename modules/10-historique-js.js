@@ -341,6 +341,9 @@ async function saveProfil(){
   if(mdp&&mdp!==mdp2){err.style.display='block';err.textContent='Les mots de passe ne correspondent pas.';return;}
   err.style.display='none';
   if(mdp){
+    if(!await _agaiLinkedPasswordChange('change_password',CU.l,mdp)){
+      err.style.display='block';err.textContent='Le mot de passe n’a pas pu être sécurisé sur le serveur. Réessayez lorsque la synchronisation est disponible.';return;
+    }
     const hashed=await hashPassword(mdp);
     const u=USERS.find(x=>x.l===CU.l);
     if(u)u.p=hashed;

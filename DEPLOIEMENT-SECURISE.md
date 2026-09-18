@@ -26,6 +26,36 @@ protection par elle-même : la sécurité dépend des règles RLS.
 
 ## Migration Supabase
 
+### Liaison invisible des comptes v239 — déploiement progressif
+
+La v239 conserve exactement l’écran de connexion AGAI. Chaque agent continue à
+utiliser son identifiant et son mot de passe habituels ; une identité Supabase est
+créée silencieusement lors de sa première connexion après activation.
+
+Ordre obligatoire :
+
+1. vérifier que la **Protection serveur v238** est active ;
+2. créer un point de restauration dans **Superadmin → Maintenance** ;
+3. exécuter `supabase-account-link-v239.sql` dans l’éditeur SQL Supabase ;
+4. déployer la fonction Edge située dans `supabase/functions/agai-account-link` en
+   conservant le fichier `supabase/config.toml` fourni : la fonction vérifie elle-même
+   les identifiants AGAI et applique son propre blocage des tentatives ;
+5. vérifier l’adresse `https://<projet>.supabase.co/functions/v1/agai-account-link`, qui doit répondre avec la version `v239` ;
+6. dans `runtime-config.js`, passer `accountLinkEnabled` à `true` et laisser
+   `accountLinkEndpoint` vide pour utiliser automatiquement le projet configuré ;
+7. publier l’application, puis contrôler **Liaison des comptes v239** dans la maintenance.
+
+Le compteur augmente au fil des connexions ordinaires. Les agents n’ont aucune
+inscription à effectuer et ne voient jamais l’interface Supabase. Les mots de passe
+importés sont placés dans une table privée inaccessible aux navigateurs. Les
+créations et changements de mot de passe réalisés ensuite depuis AGAI passent par
+la fonction serveur.
+
+Ne pas encore appliquer `supabase-security.sql`. Il faut attendre que le compteur
+indique que tous les comptes actifs sont rattachés. La fermeture de l’accès anonyme
+fera l’objet de la phase suivante, après vérification sur ordinateur, Android et
+iPhone Safari.
+
 ### Protection atomique et numérotation serveur v238 — compatible avec la connexion actuelle
 
 Le fichier `supabase-atomic-operations-v238.sql` peut être appliqué dès maintenant

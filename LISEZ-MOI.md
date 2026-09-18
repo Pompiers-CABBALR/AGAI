@@ -14,6 +14,8 @@ le code afin de faciliter les prochaines corrections.
   mais non chargée par `index.html` ;
 - `supabase-atomic-operations-v238.sql` : mise à niveau Supabase qui protège les
   engagements simultanés et attribue les numéros d’intervention côté serveur ;
+- `supabase-account-link-v239.sql` et `supabase/functions/agai-account-link/` :
+  liaison invisible et progressive des comptes AGAI à Supabase Auth ;
 - `DEPLOIEMENT-SECURISE.md` : procédure d’installation et de vérification.
 
 ## Utilisation

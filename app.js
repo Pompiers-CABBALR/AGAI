@@ -351,6 +351,13 @@ const SB_URL  = AGAI_RUNTIME_CONFIG.supabaseUrl||'https://lpzblzqxmoiwghvkhqnt.s
 const SB_KEY  = AGAI_RUNTIME_CONFIG.supabasePublishableKey||'sb_publishable_PehrBg34OLpPTmv9GtuIQg_KMFtUcQX';
 const SB_REST = SB_URL + '/rest/v1';
 const SB_GLOBAL_ROW = '_GLOBAL';
+const AUTH_LINK_ENABLED = AGAI_RUNTIME_CONFIG.accountLinkEnabled===true;
+const AUTH_LINK_ENDPOINT = AGAI_RUNTIME_CONFIG.accountLinkEndpoint||SB_URL+'/functions/v1/agai-account-link';
+const AUTH_LINK_SESSION_KEY='agai_supabase_auth_v239';
+let _agaiAuthSession=null;
+let _agaiAuthBridgeState=AUTH_LINK_ENABLED?'unknown':'disabled';
+let _agaiAuthBridgeHealth=null;
+let _agaiAuthRefreshTimer=null;
 function CC(){return CASERNES.find(c=>c.id===CURRENT_CASERNE_ID)||null;}
 function CD(){if(!CURRENT_CASERNE_ID)return null;initCaserneData(CURRENT_CASERNE_ID);return CASERNE_DATA[CURRENT_CASERNE_ID];}
 function getCaserneStationLocation(caserneId){
@@ -1115,6 +1122,112 @@ async function verifyPassword(password,stored){
 // Détecte si un MDP est déjà haché (format "32hexChars:64hexChars")
 function _isHashed(p){return typeof p==='string'&&/^[0-9a-f]{32}:[0-9a-f]{64}$/.test(p);}
 
+function _agaiReadAuthSession(){
+  if(_agaiAuthSession)return _agaiAuthSession;
+  try{_agaiAuthSession=JSON.parse(localStorage.getItem(AUTH_LINK_SESSION_KEY)||'null');}catch(error){_agaiAuthSession=null;}
+  if(_agaiAuthSession&&!_agaiAuthRefreshTimer)setTimeout(_agaiScheduleAuthRefresh,0);
+  return _agaiAuthSession;
+}
+function _agaiAuthAccessToken(){
+  const session=_agaiReadAuthSession();
+  if(!session||!session.access_token)return'';
+  const expires=Number(session.expires_at)||0;
+  if(expires&&expires*1000<Date.now()+30000)return'';
+  return String(session.access_token);
+}
+function _agaiStoreAuthSession(session){
+  _agaiAuthSession=session&&session.access_token?session:null;
+  try{
+    if(_agaiAuthSession)localStorage.setItem(AUTH_LINK_SESSION_KEY,JSON.stringify(_agaiAuthSession));
+    else localStorage.removeItem(AUTH_LINK_SESSION_KEY);
+  }catch(error){}
+  _agaiScheduleAuthRefresh();
+}
+function _agaiScheduleAuthRefresh(){
+  if(_agaiAuthRefreshTimer){clearTimeout(_agaiAuthRefreshTimer);_agaiAuthRefreshTimer=null;}
+  const session=_agaiAuthSession;if(!session||!session.refresh_token||!session.expires_at)return;
+  const delay=Math.max(5000,Number(session.expires_at)*1000-Date.now()-90000);
+  _agaiAuthRefreshTimer=setTimeout(_agaiRefreshAuthSession,delay);
+}
+async function _agaiRefreshAuthSession(){
+  const session=_agaiReadAuthSession();if(!session||!session.refresh_token)return false;
+  try{
+    const response=await fetch(SB_URL+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{'apikey':SB_KEY,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:session.refresh_token})});
+    const refreshed=await response.json();if(!response.ok||!refreshed.access_token)throw new Error('HTTP '+response.status);
+    _agaiStoreAuthSession(refreshed);return true;
+  }catch(error){console.warn('[AGAI][AUTH] Renouvellement de session différé :',error);_agaiAuthRefreshTimer=setTimeout(_agaiRefreshAuthSession,30000);return false;}
+}
+async function _agaiLinkSupabaseAccount(account,password){
+  if(!AUTH_LINK_ENABLED||!account||!account.l)return false;
+  try{
+    const response=await fetch(AUTH_LINK_ENDPOINT,{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','x-device-id':agaiDeviceId()},body:JSON.stringify({mode:'login',login:account.l,password:password})});
+    const result=await response.json().catch(function(){return{};});
+    if(!response.ok||!result.session||!result.authUserId)throw new Error(result.error||('HTTP '+response.status));
+    _agaiStoreAuthSession(result.session);
+    account._supabaseAuthId=String(result.authUserId);
+    account._supabaseLinkedAt=new Date().toISOString();
+    account.caserneId=result.caserneId||account.caserneId;
+    account.appRole=result.appRole||account.appRole;
+    _agaiAuthBridgeState='active';
+    return true;
+  }catch(error){
+    _agaiAuthBridgeState='error';
+    console.warn('[AGAI][AUTH] Liaison Supabase différée :',error);
+    return false;
+  }
+}
+async function _agaiLinkedPasswordChange(mode,login,newPassword){
+  if(!AUTH_LINK_ENABLED)return true;
+  const token=_agaiAuthAccessToken();
+  if(!token)return false;
+  try{
+    const response=await fetch(AUTH_LINK_ENDPOINT,{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+token,'Content-Type':'application/json','x-device-id':agaiDeviceId()},body:JSON.stringify({mode:mode,login:login,newPassword:newPassword})});
+    if(!response.ok){const detail=await response.json().catch(function(){return{};});throw new Error(detail.error||('HTTP '+response.status));}
+    return true;
+  }catch(error){console.warn('[AGAI][AUTH] Mot de passe non synchronisé :',error);return false;}
+}
+async function _agaiProvisionLinkedAccount(account,password){
+  if(!AUTH_LINK_ENABLED)return true;
+  const token=_agaiAuthAccessToken();if(!token)return false;
+  try{
+    const response=await fetch(AUTH_LINK_ENDPOINT,{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+token,'Content-Type':'application/json','x-device-id':agaiDeviceId()},body:JSON.stringify({mode:'admin_provision',login:account.l,newPassword:password,caserneId:account.caserneId,appRole:account.appRole||deriveAccountRole(account),firstName:account.prenom||'',lastName:account.nom||''})});
+    if(!response.ok){const detail=await response.json().catch(function(){return{};});throw new Error(detail.error||('HTTP '+response.status));}
+    return true;
+  }catch(error){console.warn('[AGAI][AUTH] Création du compte lié impossible :',error);return false;}
+}
+async function _agaiSyncLinkedAccount(account){
+  if(!AUTH_LINK_ENABLED||!account||!account.l)return true;
+  const token=_agaiAuthAccessToken();if(!token)return false;
+  try{
+    const response=await fetch(AUTH_LINK_ENDPOINT,{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+token,'Content-Type':'application/json','x-device-id':agaiDeviceId()},body:JSON.stringify({mode:'admin_sync',login:account.l,caserneId:account.caserneId||CURRENT_CASERNE_ID,appRole:account.appRole||deriveAccountRole(account),firstName:account.prenom||'',lastName:account.nom||''})});
+    if(!response.ok)throw new Error('HTTP '+response.status);
+    return true;
+  }catch(error){console.warn('[AGAI][AUTH] Métadonnées du compte à resynchroniser :',error);return false;}
+}
+async function _agaiDeactivateLinkedAccount(login){
+  if(!AUTH_LINK_ENABLED)return true;
+  const token=_agaiAuthAccessToken();if(!token)return false;
+  try{
+    const response=await fetch(AUTH_LINK_ENDPOINT,{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({mode:'admin_deactivate',login:login})});
+    return response.ok;
+  }catch(error){return false;}
+}
+async function _agaiCheckAccountLinkServer(force){
+  if(!AUTH_LINK_ENABLED){_agaiAuthBridgeState='disabled';return false;}
+  try{
+    const response=await fetch(SB_REST+'/rpc/agai_account_link_health',{method:'POST',headers:_sbHeaders,body:'{}'});
+    _agaiAuthBridgeState=response.ok?'active':response.status===404?'missing':'error';
+    _agaiAuthBridgeHealth=response.ok?await response.json():null;
+  }catch(error){_agaiAuthBridgeState='error';_agaiAuthBridgeHealth=null;}
+  const target=document.getElementById('sa-auth-link-state');
+  if(target){
+    const health=_agaiAuthBridgeHealth||{},linked=Number(health.linkedAccounts)||0,total=Number(health.eligibleAccounts)||0;
+    target.textContent=_agaiAuthBridgeState==='active'?(linked+' / '+total+' compte(s) rattaché(s)'):_agaiAuthBridgeState==='missing'?'Script v239 à installer':_agaiAuthBridgeState==='disabled'?'À activer après installation':'Vérification impossible';
+    target.style.color=_agaiAuthBridgeState==='active'&&total&&linked===total?'#047857':_agaiAuthBridgeState==='error'?'#B91C1C':'#B45309';
+  }
+  return _agaiAuthBridgeState==='active';
+}
+
 // ── P2 : Session token + timeout automatique ──
 let SESSION_TOKEN=null;
 let SESSION_EXPIRY=null;
@@ -1304,6 +1417,7 @@ async function doLogin(){
     }
     if(gaFound){
       const ga=gaFound;
+      await _agaiLinkSupabaseAccount(ga,p);
       GLOBAL_ROLE=ga.role;
       _loginAttempts=0;_loginLocked=false;
       if(_loginLockTimer){clearTimeout(_loginLockTimer);_loginLockTimer=null;}
@@ -1366,6 +1480,7 @@ async function doLogin(){
     }
 
     // ── Connexion réussie ──
+    await _agaiLinkSupabaseAccount(foundUser,p);
     _loginAttempts=0;_loginLocked=false;
     if(_loginLockTimer){clearTimeout(_loginLockTimer);_loginLockTimer=null;}
     lerr.style.display='none';
@@ -1653,7 +1768,7 @@ function operationalHealthReport(){
   Object.values(personnelUse).filter(function(list){return list.length>1;}).forEach(function(list){list.forEach(function(item){add('error',item.station,item.iv,'Agent '+item.value+' engagé simultanément sur plusieurs interventions.');});});
   const pending=typeof _rcPendingDirty!=='undefined'?_rcPendingDirty.size:0;
   const online=(LOGIN_HISTORY||[]).filter(isLoginHistorySessionActive);
-  return {issues:issues,pending:pending,online:online,legacyProtected:Number(window._agaiLegacyStatusMetadataCount)||0,atomicState:typeof _rcAtomicServerState==='string'?_rcAtomicServerState:'unknown',lastOkAt:window._agaiSyncHealth&&window._agaiSyncHealth.lastOkAt||null,lastErrorAt:window._agaiSyncHealth&&window._agaiSyncHealth.lastErrorAt||null,lastError:window._agaiSyncHealth&&window._agaiSyncHealth.lastError||''};
+  return {issues:issues,pending:pending,online:online,legacyProtected:Number(window._agaiLegacyStatusMetadataCount)||0,atomicState:typeof _rcAtomicServerState==='string'?_rcAtomicServerState:'unknown',authBridgeState:_agaiAuthBridgeState,authBridgeHealth:_agaiAuthBridgeHealth,lastOkAt:window._agaiSyncHealth&&window._agaiSyncHealth.lastOkAt||null,lastErrorAt:window._agaiSyncHealth&&window._agaiSyncHealth.lastErrorAt||null,lastError:window._agaiSyncHealth&&window._agaiSyncHealth.lastError||''};
 }
 function renderOperationalHealthPanel(){
   const report=operationalHealthReport(),errors=report.issues.filter(function(issue){return issue.severity==='error';}).length,warnings=report.issues.length-errors;
@@ -1668,13 +1783,14 @@ function renderOperationalHealthPanel(){
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">UTILISATEURS EN LIGNE</div><strong style="font-size:18px;">'+report.online.length+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">FICHES ANCIENNES PROTÉGÉES</div><strong style="font-size:18px;color:#047857;">'+report.legacyProtected+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">PROTECTION SERVEUR V238</div><strong id="sa-atomic-state" style="font-size:11px;color:'+(report.atomicState==='active'?'#047857':report.atomicState==='missing'?'#B45309':'#64748B')+';">'+(report.atomicState==='active'?'Active':report.atomicState==='missing'?'Script v238 à installer':report.atomicState==='error'?'Vérification impossible':'Vérification…')+'</strong></div>'
+    +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">LIAISON DES COMPTES V239</div><strong id="sa-auth-link-state" style="font-size:11px;color:#B45309;">'+(report.authBridgeState==='disabled'?'À activer après installation':report.authBridgeState==='missing'?'Script v239 à installer':report.authBridgeState==='error'?'Vérification impossible':'Vérification…')+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">DERNIÈRE SYNC RÉUSSIE</div><strong style="font-size:11px;">'+escHtml(fmt(report.lastOkAt))+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">VERSIONS ACTIVES</div><strong style="font-size:10px;overflow-wrap:anywhere;">'+escHtml(deviceVersions.join(' · ')||APP_VERSION)+'</strong></div></div>'
     +(report.lastError?'<div style="background:#FEF2F2;color:#991B1B;border-radius:8px;padding:8px 10px;font-size:11px;margin-bottom:10px;"><strong>Dernière erreur :</strong> '+escHtml(report.lastError)+' · '+escHtml(fmt(report.lastErrorAt))+'</div>':'')
     +(report.issues.length?'<div style="max-height:260px;overflow:auto;border:1px solid #E5E7EB;border-radius:9px;">'+report.issues.slice(0,100).map(function(issue){return '<div style="padding:7px 9px;border-bottom:1px solid #F1F5F9;font-size:11px;display:flex;gap:8px;"><span>'+(issue.severity==='error'?'🔴':'🟠')+'</span><span><strong>'+escHtml(issue.station)+'</strong>'+(issue.iv?' · '+escHtml(issue.iv):'')+' — '+escHtml(issue.message)+'</span></div>';}).join('')+'</div>':'<div style="font-size:12px;color:#047857;">Les statuts actifs, véhicules, personnels et numéros de tournée sont cohérents.</div>')
     +'</div>';
 }
-function refreshOperationalHealthPanel(){const panel=document.getElementById('sa-health-panel');if(panel)panel.innerHTML=renderOperationalHealthPanel();if(typeof _rcCheckAtomicServer==='function')_rcCheckAtomicServer(true);}
+function refreshOperationalHealthPanel(){const panel=document.getElementById('sa-health-panel');if(panel)panel.innerHTML=renderOperationalHealthPanel();if(typeof _rcCheckAtomicServer==='function')_rcCheckAtomicServer(true);if(typeof _agaiCheckAccountLinkServer==='function')_agaiCheckAccountLinkServer(true);}
 
 const SUPERADMIN_SECTIONS=[
   {id:'casernes',icon:'🏠',label:'Casernes'},
@@ -2119,6 +2235,7 @@ function renderSuperAdmin(){
   try{renderEnginTypes();}catch(e){}
   try{refreshRecoveryCheckpointsPanel();}catch(e){}
   try{if(typeof _rcCheckAtomicServer==='function')_rcCheckAtomicServer(false);}catch(e){}
+  try{if(typeof _agaiCheckAccountLinkServer==='function')_agaiCheckAccountLinkServer(false);}catch(e){}
   try{
     const _bg=document.getElementById('sa-bglogout');
     if(_bg)_bg.value=(ASTR_CONFIG&&typeof ASTR_CONFIG.bgLogoutMin==='number')?ASTR_CONFIG.bgLogoutMin:15;
@@ -2719,6 +2836,7 @@ function setCaserneAdmin(caserneId,login,enabled){
     } else if(current.has(user.l)){if(!user.rights.includes('Administration'))user.rights.push('Administration');}
     else user.rights=user.rights.filter(function(right){return right!=='Administration';});
     user.caserneId=caserneId;user.appRole=deriveAccountRole(user);
+    _agaiSyncLinkedAccount(user);
   });
   if(CURRENT_CASERNE_ID===caserneId)syncCaserneContext();
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
@@ -2731,7 +2849,7 @@ function setResponsableFormation(caserneId,login){
   if(!isSuperAdmin()){showToast('Seul le super-administrateur peut d\u00e9finir le responsable formation.','warn');return;}
   const data=CASERNE_DATA[caserneId];
   if(!data||!Array.isArray(data.users))return;
-  data.users.forEach(u=>{u.responsableFormation=false;u.appRole=deriveAccountRole(u);});
+  data.users.forEach(u=>{u.responsableFormation=false;u.appRole=deriveAccountRole(u);_agaiSyncLinkedAccount(u);});
   if(login){
     const selected=data.users.find(u=>u.l===login);
     if(!selected){showToast('Compte introuvable dans cette caserne.','warn');renderSuperAdmin();return;}
@@ -2740,6 +2858,7 @@ function setResponsableFormation(caserneId,login){
     selected.rights=Array.isArray(selected.rights)?selected.rights:[];
     if(!selected.rights.includes('Formation'))selected.rights.push('Formation');
     selected.appRole=deriveAccountRole(selected);
+    _agaiSyncLinkedAccount(selected);
   }
   if(CURRENT_CASERNE_ID===caserneId)syncCaserneContext();
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
@@ -3000,6 +3119,7 @@ async function saveCompteSpecial(role){
   const pwdErr=mdp?passwordPolicyError(mdp):'';
   if(pwdErr){err.style.display='block';err.textContent=pwdErr;return;}
   const oldLogin=acc.l;
+  if(mdp&&!await _agaiLinkedPasswordChange(acc.l===CU.l?'change_password':'admin_reset',acc.l,mdp)){err.style.display='block';err.textContent='Le mot de passe n’a pas pu être sécurisé sur le serveur.';return;}
   if(gradeChanged)recordPersonnelGradeChange(acc,grade,gradeEffective,CU&&CU.l);
   acc.prenom=prenom;acc.nom=nom;acc.l=login;
   if(mdp){acc.p=await hashPassword(mdp);} // P1
@@ -3075,6 +3195,7 @@ async function saveAdminCaserne(cid,adminLogin){
   const pwdErr=mdp?passwordPolicyError(mdp):'';
   if(pwdErr){err.style.display='block';err.textContent=pwdErr;return;}
   const oldLogin=admin.l;
+  if(mdp&&!await _agaiLinkedPasswordChange('admin_reset',admin.l,mdp)){err.style.display='block';err.textContent='Le mot de passe n’a pas pu être sécurisé sur le serveur.';return;}
   if(gradeChanged)recordPersonnelGradeChange(admin,grade,gradeEffective,CU&&CU.l);
   admin.prenom=prenom;admin.nom=nom;admin.l=login;
   const adminLogins=getCaserneAdmins(cid).map(function(item){return item.l===oldLogin?login:item.l;});
@@ -3694,6 +3815,9 @@ function doLoginSuccess(){
   if(window.innerWidth<=480){window.scrollTo(0,0);}
 }
 function doLogout(){
+  const authToken=_agaiAuthAccessToken();
+  if(authToken)fetch(SB_URL+'/auth/v1/logout',{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+authToken}}).catch(function(){});
+  _agaiStoreAuthSession(null);
   // Marquer la déconnexion dans l'historique
   if(SESSION_TOKEN){
     const entry=LOGIN_HISTORY.find(e=>e.id===SESSION_TOKEN);
@@ -8720,6 +8844,9 @@ async function saveProfil(){
   if(mdp&&mdp!==mdp2){err.style.display='block';err.textContent='Les mots de passe ne correspondent pas.';return;}
   err.style.display='none';
   if(mdp){
+    if(!await _agaiLinkedPasswordChange('change_password',CU.l,mdp)){
+      err.style.display='block';err.textContent='Le mot de passe n’a pas pu être sécurisé sur le serveur. Réessayez lorsque la synchronisation est disponible.';return;
+    }
     const hashed=await hashPassword(mdp);
     const u=USERS.find(x=>x.l===CU.l);
     if(u)u.p=hashed;
@@ -8752,6 +8879,7 @@ async function resetPwd(login){
   if(pwdErr){showToast(pwdErr,'warn');return;}
   const u=USERS.find(x=>x.l===login);
   if(!u)return;
+  if(!await _agaiLinkedPasswordChange('admin_reset',login,inp.value.trim())){showToast('Mot de passe non modifié : liaison serveur indisponible.','error');return;}
   const hashed=await hashPassword(inp.value.trim()); // P1
   u.p=hashed;
   if(CU&&CU.l===login)CU.p=hashed;
@@ -8914,6 +9042,7 @@ async function addUser(){
   err.style.display='none';
   const hashed=await hashPassword(mdp);
   const newUser={l:login,p:hashed,prenom,nom,grade,fonction,matricule,caserneId:CURRENT_CASERNE_ID,appRole:'agent',rights:['Prise d\'appel','Interventions'],rl:'Utilisateur'};
+  if(!await _agaiProvisionLinkedAccount(newUser,mdp)){err.style.display='block';err.textContent='Le compte n’a pas pu être créé sur le serveur. Vérifiez la connexion puis réessayez.';return;}
   normalizePersonnelGradeHistory(newUser);newUser._gradeHistoryUpdatedAt=Date.now();USERS.push(newUser);
   // Réinitialiser tous les champs du formulaire
   ['nu-matricule','nu-prenom','nu-nom','nu-mdp'].forEach(id=>{
@@ -8926,7 +9055,7 @@ async function addUser(){
 }
 function delUser(login){
   if(GLOBAL_ACCOUNTS.find(a=>a.l===login&&a.role==='superadmin')){showToast('Impossible de supprimer le Super Administrateur.','error');return;}
-  confirmModal('Supprimer cet utilisateur ?',function(){USERS=USERS.filter(u=>u.l!==login);saveData();rAdm();});
+  confirmModal('Supprimer cet utilisateur ?',async function(){if(!await _agaiDeactivateLinkedAccount(login)){showToast('Suppression annulée : liaison serveur indisponible.','error');return;}USERS=USERS.filter(u=>u.l!==login);saveData();rAdm();});
 }
 function updateFormateurFn(login,fn,checked){
   const u=USERS.find(x=>x.l===login);if(!u)return;
@@ -8950,6 +9079,7 @@ function updateRight(login,right,checked){
   else if(!checked)u.rights=u.rights.filter(r=>r!==right);
   u.caserneId=CURRENT_CASERNE_ID;
   u.appRole=deriveAccountRole(u);
+  _agaiSyncLinkedAccount(u);
   if(CU&&CU.l===login){CU.rights=[...u.rights];applyNavRights();}
   saveData();
   rAdm();
@@ -8965,6 +9095,7 @@ function updateUser(login,field,val){
     if(uInUsers){
       uInUsers[field]=val;
       if(field==='fonction'&&val!=='Chef de centre'&&val!=='Adjoint au chef de centre')uInUsers.fonction2='';
+      uInUsers.appRole=deriveAccountRole(uInUsers);_agaiSyncLinkedAccount(uInUsers);
     }
     saveData();
     _updateUserRefresh(login,field);
@@ -8976,6 +9107,7 @@ function updateUser(login,field,val){
     if(field==='fonction'&&val!=='Chef de centre'&&val!=='Adjoint au chef de centre')u.fonction2='';
     u.caserneId=CURRENT_CASERNE_ID;
     u.appRole=deriveAccountRole(u);
+    _agaiSyncLinkedAccount(u);
   }
   if(CU&&CU.l===login){
     CU[field]=val;
@@ -15538,7 +15670,7 @@ function exportAdminMonthlyExcel(){
 //   3. En plus, si l'utilisateur est INACTIF depuis 2 min ET qu'aucune saisie
 //      n'est en cours, l'app se recharge d'elle-même.
 // Un appel ou une saisie en cours ne peut donc jamais être interrompu.
-const APP_VERSION='20260918-numerotation-serveur-238';
+const APP_VERSION='20260918-liaison-comptes-239';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 const _VER_IDLE_MS=2*60*1000;       // inactivité requise pour un rechargement auto
 let _verNouvelle=null;              // version détectée en ligne
@@ -18580,7 +18712,7 @@ let _sbPollTimer = null;
 
 const _sbHeaders = {
   'apikey': SB_KEY,
-  'Authorization': 'Bearer ' + SB_KEY,
+  get 'Authorization'(){return 'Bearer '+(_agaiAuthAccessToken()||SB_KEY);},
   'Content-Type': 'application/json'
 };
 
