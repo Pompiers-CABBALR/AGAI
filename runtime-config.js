@@ -4,7 +4,9 @@
 window.AGAI_CONFIG = Object.freeze({
   supabaseUrl: 'https://lpzblzqxmoiwghvkhqnt.supabase.co',
   supabasePublishableKey: 'sb_publishable_PehrBg34OLpPTmv9GtuIQg_KMFtUcQX',
-  accountLinkEnabled: true,
+  // Mode secours v239.3 : la liaison des comptes reste installée côté serveur,
+  // mais elle est neutralisée dans le navigateur jusqu'à validation complète.
+  accountLinkEnabled: false,
   accountLinkEndpoint: '',
   mailEndpoint: ''
 });

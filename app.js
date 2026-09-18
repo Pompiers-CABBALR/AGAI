@@ -1230,7 +1230,7 @@ async function _agaiCheckAccountLinkServer(force){
   const target=document.getElementById('sa-auth-link-state');
   if(target){
     const health=_agaiAuthBridgeHealth||{},linked=Number(health.linkedAccounts)||0,total=Number(health.eligibleAccounts)||0;
-    target.textContent=_agaiAuthBridgeState==='active'?(linked+' / '+total+' compte(s) rattaché(s)'):_agaiAuthBridgeState==='missing'?'Script v239 à installer':_agaiAuthBridgeState==='disabled'?'À activer après installation':'Vérification impossible';
+    target.textContent=_agaiAuthBridgeState==='active'?(linked+' / '+total+' compte(s) rattaché(s)'):_agaiAuthBridgeState==='missing'?'Script v239 à installer':_agaiAuthBridgeState==='disabled'?'Suspendue pour stabilité':'Vérification impossible';
     target.style.color=_agaiAuthBridgeState==='active'&&total&&linked===total?'#047857':_agaiAuthBridgeState==='error'?'#B91C1C':'#B45309';
   }
   return _agaiAuthBridgeState==='active';
@@ -1791,7 +1791,7 @@ function renderOperationalHealthPanel(){
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">UTILISATEURS EN LIGNE</div><strong style="font-size:18px;">'+report.online.length+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">FICHES ANCIENNES PROTÉGÉES</div><strong style="font-size:18px;color:#047857;">'+report.legacyProtected+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">PROTECTION SERVEUR V238</div><strong id="sa-atomic-state" style="font-size:11px;color:'+(report.atomicState==='active'?'#047857':report.atomicState==='missing'?'#B45309':'#64748B')+';">'+(report.atomicState==='active'?'Active':report.atomicState==='missing'?'Script v238 à installer':report.atomicState==='error'?'Vérification impossible':'Vérification…')+'</strong></div>'
-    +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">LIAISON DES COMPTES V239</div><strong id="sa-auth-link-state" style="font-size:11px;color:#B45309;">'+(report.authBridgeState==='disabled'?'À activer après installation':report.authBridgeState==='missing'?'Script v239 à installer':report.authBridgeState==='error'?'Vérification impossible':'Vérification…')+'</strong></div>'
+    +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">LIAISON DES COMPTES V239</div><strong id="sa-auth-link-state" style="font-size:11px;color:#B45309;">'+(report.authBridgeState==='disabled'?'Suspendue pour stabilité':report.authBridgeState==='missing'?'Script v239 à installer':report.authBridgeState==='error'?'Vérification impossible':'Vérification…')+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">DERNIÈRE SYNC RÉUSSIE</div><strong style="font-size:11px;">'+escHtml(fmt(report.lastOkAt))+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">VERSIONS ACTIVES</div><strong style="font-size:10px;overflow-wrap:anywhere;">'+escHtml(deviceVersions.join(' · ')||APP_VERSION)+'</strong></div></div>'
     +(report.lastError?'<div style="background:#FEF2F2;color:#991B1B;border-radius:8px;padding:8px 10px;font-size:11px;margin-bottom:10px;"><strong>Dernière erreur :</strong> '+escHtml(report.lastError)+' · '+escHtml(fmt(report.lastErrorAt))+'</div>':'')
@@ -15677,7 +15677,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='20260918-reprise-sync-securisee-2392';
+const APP_VERSION='20260918-secours-sync-2393';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -18559,10 +18559,12 @@ function _postLoadInit(){
 
 function jbSyncNow(){
   if(USE_RECORDS&&typeof _rcPendingDirty!=='undefined'&&_rcPendingDirty.size){
-    // Après l'envoi de la file locale, relire toutes les pages distantes : un
-    // simple push ne suffisait pas à récupérer les interventions absentes.
-    Promise.resolve(_rcPush(false)).finally(function(){_rcRequestRealtimePull(150);});
-    showToast('Synchronisation des actions en attente relancée','info');
+    // Toujours recevoir et rapprocher avant le moindre renvoi. Une ancienne
+    // file volumineuse ne doit jamais saturer le serveur ni les autres appareils.
+    Promise.resolve(_rcPull(false)).then(function(ok){
+      if(ok)return _rcPush(false);
+    }).finally(function(){_rcRequestRealtimePull(150);});
+    showToast('Vérification de la file avant synchronisation','info');
     return;
   }
   const puller = USE_RECORDS ? _rcPull : (USE_SUPABASE ? _sbPull : _jbPull);
@@ -19009,6 +19011,7 @@ let _rcRealtimePullPending = false;
 let _rcRealtimeReconnectTimer = null;
 let _rcRealtimeJoinSequence = 0;
 let _rcNeedsRecoveryPull = false;
+let _rcInitialReconciliationDone = false;
 const RC_FALLBACK_POLL_MS = 90000;
 const RC_PULL_PAGE_SIZE = 500;
 const RC_PENDING_DIRTY_KEY = 'agai_rc_pending_dirty';
@@ -19202,7 +19205,12 @@ function _rcScheduleRetry(delay){
   const wait=typeof delay==='number'?Math.max(0,delay):_rcRetryDelay;
   _rcRetryTimer=window.setTimeout(function(){
     _rcRetryTimer=null;
-    if(!_rcSaving)_rcPush(false);
+    if(_rcSaving)return;
+    if(!_rcInitialReconciliationDone){
+      Promise.resolve(_rcPull(false)).then(function(ok){if(ok)_rcPush(false);});
+      return;
+    }
+    _rcPush(false);
   },wait);
 }
 // Les photos originales et les aperçus PDF sont volontairement locaux. Ils ne
@@ -19988,6 +19996,14 @@ async function _rcSendRowsWithIsolation(rows,currentUser){
 
 async function _rcPush(fullPush){
   if(_rcSaving){ _rcScheduleRetry(800); return; }
+  // Une file issue d'une ancienne version doit d'abord être comparée au serveur.
+  // Cette barrière empêche notamment les centaines de lignes fantômes de partir
+  // en rafale dès l'ouverture de l'application.
+  if(!fullPush&&!_rcInitialReconciliationDone){
+    if(_rcPulling){_rcScheduleRetry(1000);return;}
+    const reconciled=await _rcPull(false);
+    if(!reconciled||!_rcInitialReconciliationDone){_rcScheduleRetry(5000);return;}
+  }
   _rcSaving = true; _jbSetStatus('saving');
   let generationAtStart=_rcDirtyGeneration;
   try {
@@ -20043,6 +20059,20 @@ async function _rcPush(fullPush){
     if(!fullPush)rows=await _rcProtectDispoRows(rows);
     if(!fullPush)rows=await _rcProtectPersonnelGradeRows(rows);
     if(!rows.length){_jbSetStatus(_rcPendingDirty.size?'pending':'ok');return;}
+    // Reprise progressive : même en présence de plusieurs centaines d'actions,
+    // ne jamais monopoliser le réseau ni bloquer les autres utilisateurs.
+    if(!fullPush&&rows.length>25){
+      rows.sort(function(a,b){
+        function priority(row){
+          if(row&&(row.type==='iv'||row.type==='pilp')&&row.data&&RC_OPERATIONAL_STATUSES.includes(row.data.s))return 0;
+          if(row&&(row.type==='iv'||row.type==='pilp'))return 1;
+          if(row&&(row.type==='dispo'||row.type==='login'))return 2;
+          return 3;
+        }
+        return priority(a)-priority(b);
+      });
+      rows=rows.slice(0,25);
+    }
     const currentUser = (typeof CU!=='undefined' && CU) ? (CU.l||'') : '';
     const sentSignatures={};
     rows.forEach(function(row){sentSignatures[row.id]=_rcSyncSignature(row);});
@@ -20133,6 +20163,7 @@ async function _rcPull(silent){
     // pourtant déjà présentes sur le serveur. Les confirmer avant l'overlay
     // empêche une file fantôme de 500+ actions de bloquer l'application.
     durableRows=await _rcReconcileOutboxWithRemote(rows,durableRows);
+    _rcInitialReconciliationDone=true;
     // Un pull peut avoir commencé juste avant une clôture. Les lignes locales
     // marquées en attente d'envoi restent prioritaires sur ce résultat distant.
     _rcOverlayPendingLocalRows(rows,durableRows);

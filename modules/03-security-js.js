@@ -131,7 +131,7 @@ async function _agaiCheckAccountLinkServer(force){
   const target=document.getElementById('sa-auth-link-state');
   if(target){
     const health=_agaiAuthBridgeHealth||{},linked=Number(health.linkedAccounts)||0,total=Number(health.eligibleAccounts)||0;
-    target.textContent=_agaiAuthBridgeState==='active'?(linked+' / '+total+' compte(s) rattaché(s)'):_agaiAuthBridgeState==='missing'?'Script v239 à installer':_agaiAuthBridgeState==='disabled'?'À activer après installation':'Vérification impossible';
+    target.textContent=_agaiAuthBridgeState==='active'?(linked+' / '+total+' compte(s) rattaché(s)'):_agaiAuthBridgeState==='missing'?'Script v239 à installer':_agaiAuthBridgeState==='disabled'?'Suspendue pour stabilité':'Vérification impossible';
     target.style.color=_agaiAuthBridgeState==='active'&&total&&linked===total?'#047857':_agaiAuthBridgeState==='error'?'#B91C1C':'#B45309';
   }
   return _agaiAuthBridgeState==='active';

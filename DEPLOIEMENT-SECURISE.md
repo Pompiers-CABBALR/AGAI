@@ -28,6 +28,14 @@ protection par elle-même : la sécurité dépend des règles RLS.
 
 ### Liaison invisible des comptes v239 — déploiement progressif
 
+**Mode de secours v239.3 :** la liaison des comptes est temporairement désactivée
+dans `runtime-config.js`. La reprise commence obligatoirement par une réception et
+un rapprochement avec Supabase. Les actions restant réellement à envoyer sont
+traitées par lots de 25 au maximum afin que plusieurs casernes puissent continuer
+à utiliser l’application pendant la résorption d’une ancienne file volumineuse.
+Ne pas réactiver `accountLinkEnabled` avant une validation séparée de la future
+version.
+
 **Correctif v239.2 :** cette version répare la reprise de synchronisation après une
 mise à jour. Elle rapproche automatiquement la file locale avec les données déjà
 confirmées par Supabase, au lieu de recompter toute la base comme de nouvelles

@@ -1293,10 +1293,12 @@ function _postLoadInit(){
 
 function jbSyncNow(){
   if(USE_RECORDS&&typeof _rcPendingDirty!=='undefined'&&_rcPendingDirty.size){
-    // Après l'envoi de la file locale, relire toutes les pages distantes : un
-    // simple push ne suffisait pas à récupérer les interventions absentes.
-    Promise.resolve(_rcPush(false)).finally(function(){_rcRequestRealtimePull(150);});
-    showToast('Synchronisation des actions en attente relancée','info');
+    // Toujours recevoir et rapprocher avant le moindre renvoi. Une ancienne
+    // file volumineuse ne doit jamais saturer le serveur ni les autres appareils.
+    Promise.resolve(_rcPull(false)).then(function(ok){
+      if(ok)return _rcPush(false);
+    }).finally(function(){_rcRequestRealtimePull(150);});
+    showToast('Vérification de la file avant synchronisation','info');
     return;
   }
   const puller = USE_RECORDS ? _rcPull : (USE_SUPABASE ? _sbPull : _jbPull);
@@ -1743,6 +1745,7 @@ let _rcRealtimePullPending = false;
 let _rcRealtimeReconnectTimer = null;
 let _rcRealtimeJoinSequence = 0;
 let _rcNeedsRecoveryPull = false;
+let _rcInitialReconciliationDone = false;
 const RC_FALLBACK_POLL_MS = 90000;
 const RC_PULL_PAGE_SIZE = 500;
 const RC_PENDING_DIRTY_KEY = 'agai_rc_pending_dirty';
@@ -1936,7 +1939,12 @@ function _rcScheduleRetry(delay){
   const wait=typeof delay==='number'?Math.max(0,delay):_rcRetryDelay;
   _rcRetryTimer=window.setTimeout(function(){
     _rcRetryTimer=null;
-    if(!_rcSaving)_rcPush(false);
+    if(_rcSaving)return;
+    if(!_rcInitialReconciliationDone){
+      Promise.resolve(_rcPull(false)).then(function(ok){if(ok)_rcPush(false);});
+      return;
+    }
+    _rcPush(false);
   },wait);
 }
 // Les photos originales et les aperçus PDF sont volontairement locaux. Ils ne
@@ -2722,6 +2730,14 @@ async function _rcSendRowsWithIsolation(rows,currentUser){
 
 async function _rcPush(fullPush){
   if(_rcSaving){ _rcScheduleRetry(800); return; }
+  // Une file issue d'une ancienne version doit d'abord être comparée au serveur.
+  // Cette barrière empêche notamment les centaines de lignes fantômes de partir
+  // en rafale dès l'ouverture de l'application.
+  if(!fullPush&&!_rcInitialReconciliationDone){
+    if(_rcPulling){_rcScheduleRetry(1000);return;}
+    const reconciled=await _rcPull(false);
+    if(!reconciled||!_rcInitialReconciliationDone){_rcScheduleRetry(5000);return;}
+  }
   _rcSaving = true; _jbSetStatus('saving');
   let generationAtStart=_rcDirtyGeneration;
   try {
@@ -2777,6 +2793,20 @@ async function _rcPush(fullPush){
     if(!fullPush)rows=await _rcProtectDispoRows(rows);
     if(!fullPush)rows=await _rcProtectPersonnelGradeRows(rows);
     if(!rows.length){_jbSetStatus(_rcPendingDirty.size?'pending':'ok');return;}
+    // Reprise progressive : même en présence de plusieurs centaines d'actions,
+    // ne jamais monopoliser le réseau ni bloquer les autres utilisateurs.
+    if(!fullPush&&rows.length>25){
+      rows.sort(function(a,b){
+        function priority(row){
+          if(row&&(row.type==='iv'||row.type==='pilp')&&row.data&&RC_OPERATIONAL_STATUSES.includes(row.data.s))return 0;
+          if(row&&(row.type==='iv'||row.type==='pilp'))return 1;
+          if(row&&(row.type==='dispo'||row.type==='login'))return 2;
+          return 3;
+        }
+        return priority(a)-priority(b);
+      });
+      rows=rows.slice(0,25);
+    }
     const currentUser = (typeof CU!=='undefined' && CU) ? (CU.l||'') : '';
     const sentSignatures={};
     rows.forEach(function(row){sentSignatures[row.id]=_rcSyncSignature(row);});
@@ -2867,6 +2897,7 @@ async function _rcPull(silent){
     // pourtant déjà présentes sur le serveur. Les confirmer avant l'overlay
     // empêche une file fantôme de 500+ actions de bloquer l'application.
     durableRows=await _rcReconcileOutboxWithRemote(rows,durableRows);
+    _rcInitialReconciliationDone=true;
     // Un pull peut avoir commencé juste avant une clôture. Les lignes locales
     // marquées en attente d'envoi restent prioritaires sur ce résultat distant.
     _rcOverlayPendingLocalRows(rows,durableRows);
