@@ -262,7 +262,7 @@ function operationalHealthReport(){
   Object.values(personnelUse).filter(function(list){return list.length>1;}).forEach(function(list){list.forEach(function(item){add('error',item.station,item.iv,'Agent '+item.value+' engagé simultanément sur plusieurs interventions.');});});
   const pending=typeof _rcPendingDirty!=='undefined'?_rcPendingDirty.size:0;
   const online=(LOGIN_HISTORY||[]).filter(isLoginHistorySessionActive);
-  return {issues:issues,pending:pending,online:online,legacyProtected:Number(window._agaiLegacyStatusMetadataCount)||0,lastOkAt:window._agaiSyncHealth&&window._agaiSyncHealth.lastOkAt||null,lastErrorAt:window._agaiSyncHealth&&window._agaiSyncHealth.lastErrorAt||null,lastError:window._agaiSyncHealth&&window._agaiSyncHealth.lastError||''};
+  return {issues:issues,pending:pending,online:online,legacyProtected:Number(window._agaiLegacyStatusMetadataCount)||0,atomicState:typeof _rcAtomicServerState==='string'?_rcAtomicServerState:'unknown',lastOkAt:window._agaiSyncHealth&&window._agaiSyncHealth.lastOkAt||null,lastErrorAt:window._agaiSyncHealth&&window._agaiSyncHealth.lastErrorAt||null,lastError:window._agaiSyncHealth&&window._agaiSyncHealth.lastError||''};
 }
 function renderOperationalHealthPanel(){
   const report=operationalHealthReport(),errors=report.issues.filter(function(issue){return issue.severity==='error';}).length,warnings=report.issues.length-errors;
@@ -276,13 +276,14 @@ function renderOperationalHealthPanel(){
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">ACTIONS EN ATTENTE</div><strong style="font-size:18px;color:'+(report.pending?'#B45309':'#047857')+';">'+report.pending+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">UTILISATEURS EN LIGNE</div><strong style="font-size:18px;">'+report.online.length+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">FICHES ANCIENNES PROTÉGÉES</div><strong style="font-size:18px;color:#047857;">'+report.legacyProtected+'</strong></div>'
+    +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">PROTECTION SERVEUR V237</div><strong id="sa-atomic-state" style="font-size:11px;color:'+(report.atomicState==='active'?'#047857':report.atomicState==='missing'?'#B45309':'#64748B')+';">'+(report.atomicState==='active'?'Active':report.atomicState==='missing'?'Script v237 à installer':report.atomicState==='error'?'Vérification impossible':'Vérification…')+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">DERNIÈRE SYNC RÉUSSIE</div><strong style="font-size:11px;">'+escHtml(fmt(report.lastOkAt))+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">VERSIONS ACTIVES</div><strong style="font-size:10px;overflow-wrap:anywhere;">'+escHtml(deviceVersions.join(' · ')||APP_VERSION)+'</strong></div></div>'
     +(report.lastError?'<div style="background:#FEF2F2;color:#991B1B;border-radius:8px;padding:8px 10px;font-size:11px;margin-bottom:10px;"><strong>Dernière erreur :</strong> '+escHtml(report.lastError)+' · '+escHtml(fmt(report.lastErrorAt))+'</div>':'')
     +(report.issues.length?'<div style="max-height:260px;overflow:auto;border:1px solid #E5E7EB;border-radius:9px;">'+report.issues.slice(0,100).map(function(issue){return '<div style="padding:7px 9px;border-bottom:1px solid #F1F5F9;font-size:11px;display:flex;gap:8px;"><span>'+(issue.severity==='error'?'🔴':'🟠')+'</span><span><strong>'+escHtml(issue.station)+'</strong>'+(issue.iv?' · '+escHtml(issue.iv):'')+' — '+escHtml(issue.message)+'</span></div>';}).join('')+'</div>':'<div style="font-size:12px;color:#047857;">Les statuts actifs, véhicules, personnels et numéros de tournée sont cohérents.</div>')
     +'</div>';
 }
-function refreshOperationalHealthPanel(){const panel=document.getElementById('sa-health-panel');if(panel)panel.innerHTML=renderOperationalHealthPanel();}
+function refreshOperationalHealthPanel(){const panel=document.getElementById('sa-health-panel');if(panel)panel.innerHTML=renderOperationalHealthPanel();if(typeof _rcCheckAtomicServer==='function')_rcCheckAtomicServer(true);}
 
 const SUPERADMIN_SECTIONS=[
   {id:'casernes',icon:'🏠',label:'Casernes'},
@@ -726,6 +727,7 @@ function renderSuperAdmin(){
   // Rendu de la configuration des types d'engins
   try{renderEnginTypes();}catch(e){}
   try{refreshRecoveryCheckpointsPanel();}catch(e){}
+  try{if(typeof _rcCheckAtomicServer==='function')_rcCheckAtomicServer(false);}catch(e){}
   try{
     const _bg=document.getElementById('sa-bglogout');
     if(_bg)_bg.value=(ASTR_CONFIG&&typeof ASTR_CONFIG.bgLogoutMin==='number')?ASTR_CONFIG.bgLogoutMin:15;

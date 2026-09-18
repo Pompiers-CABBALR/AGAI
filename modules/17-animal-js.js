@@ -1699,6 +1699,26 @@ async function _sbMigrateFromJsonbin(){
 
 const RC_SEP = '__'; // séparateur d'id : CIS02__iv__APL_2026_000009
 const RC_REST = SB_URL + '/rest/v1/records';
+const RC_ATOMIC_RPC = SB_URL + '/rest/v1/rpc/agai_atomic_upsert_record';
+const RC_ATOMIC_HEALTH_RPC = SB_URL + '/rest/v1/rpc/agai_atomic_health';
+let _rcAtomicServerState='unknown';
+let _rcAtomicServerCheckedAt=0;
+async function _rcCheckAtomicServer(force){
+  if(!USE_RECORDS)return false;
+  if(!force&&_rcAtomicServerCheckedAt&&Date.now()-_rcAtomicServerCheckedAt<5*60*1000)return _rcAtomicServerState==='active';
+  _rcAtomicServerCheckedAt=Date.now();
+  try{
+    const response=await fetch(RC_ATOMIC_HEALTH_RPC,{method:'POST',headers:_sbHeaders,body:'{}'});
+    _rcAtomicServerState=response.ok?'active':(response.status===404?'missing':'error');
+  }catch(error){_rcAtomicServerState='error';}
+  const target=document.getElementById('sa-atomic-state');
+  if(target){
+    const labels={active:'Active',missing:'Script v237 à installer',error:'Vérification impossible',unknown:'Vérification…'};
+    target.textContent=labels[_rcAtomicServerState]||labels.unknown;
+    target.style.color=_rcAtomicServerState==='active'?'#047857':_rcAtomicServerState==='missing'?'#B45309':'#B91C1C';
+  }
+  return _rcAtomicServerState==='active';
+}
 let _rcSaving = false;
 let _rcPulling = false;
 let _rcRealtime = null;
@@ -2057,6 +2077,12 @@ function _rcReplaceLocalOperationalRecord(caserne,type,value){
 async function _rcProtectOperationalStatusRows(rows){
   const operational=(rows||[]).filter(function(row){return row&&(row.type==='iv'||row.type==='pilp')&&!row.deleted;});
   if(!operational.length)return rows;
+  operational.forEach(function(row){
+    row._atomicEligible=true;
+    row._expectedStatusRevision=0;
+    row._expectedRecordRevision=0;
+    row._atomicActionId=String(row.data&&row.data._statusChangeId||agaiDeviceId()+'-'+Date.now());
+  });
   const ids=operational.map(function(row){return row.id;});
   const filter='('+ids.map(function(id){return '"'+String(id).replace(/"/g,'')+'"';}).join(',')+')';
   const resp=await fetch(RC_REST+'?id=in.'+encodeURIComponent(filter)+'&select=id,data,deleted',{headers:_sbHeaders});
@@ -2065,6 +2091,9 @@ async function _rcProtectOperationalStatusRows(rows){
   (Array.isArray(remoteRows)?remoteRows:[]).forEach(function(row){if(row&&row.id&&!row.deleted)remoteById[row.id]=row;});
   operational.forEach(function(row){
     const remote=remoteById[row.id];if(!remote||!remote.data)return;
+    ensureOperationalStatusMetadata(remote.data);
+    row._expectedStatusRevision=Number(remote.data._statusRevision)||0;
+    row._expectedRecordRevision=Number(remote.data._serverRevision)||0;
     const resolved=_rcMergeOperationalInterventionVersions(remote.data,row.data);
     row.data=resolved.value;
     if(resolved.keptCurrentStatus)_rcReplaceLocalOperationalRecord(row.caserne,row.type,resolved.value);
@@ -2561,6 +2590,65 @@ async function _rcProtectSensitiveGlobalRow(rows){
   }
 }
 
+async function _rcSendAtomicOperationalRow(row,currentUser){
+  if(_rcAtomicServerState==='missing'&&Date.now()-_rcAtomicServerCheckedAt<5*60*1000)return {ok:false,fallback:true,status:404,detail:'Protection v237 non installée'};
+  const payload={
+    p_id:row.id,p_caserne:row.caserne,p_type:row.type,p_data:row.data,
+    p_deleted:!!row.deleted,p_updated_by:currentUser||'',
+    p_expected_revision:Number(row._expectedStatusRevision)||0,
+    p_expected_record_revision:Number(row._expectedRecordRevision)||0,
+    p_device_id:agaiDeviceId(),p_app_version:APP_VERSION,
+    p_action_id:String(row._atomicActionId||row.data&&row.data._statusChangeId||'')
+  };
+  let response;
+  try{response=await fetch(RC_ATOMIC_RPC,{method:'POST',headers:_sbHeaders,body:JSON.stringify(payload)});}
+  catch(error){return {ok:false,status:0,detail:String(error&&error.message||error||'Erreur réseau')};}
+  if(response.ok){_rcAtomicServerState='active';_rcAtomicServerCheckedAt=Date.now();return {ok:true};}
+  let detail='';
+  try{detail=String(await response.text()||'').replace(/\s+/g,' ').slice(0,500);}catch(error){}
+  if(response.status===404||/PGRST202|agai_atomic_upsert_record.*not found/i.test(detail)){
+    _rcAtomicServerState='missing';_rcAtomicServerCheckedAt=Date.now();return {ok:false,fallback:true,status:response.status,detail:detail};
+  }
+  _rcAtomicServerState='active';_rcAtomicServerCheckedAt=Date.now();
+  return {ok:false,status:response.status,detail:detail||'Conflit atomique Supabase'};
+}
+async function _rcResolveAtomicRejection(failure){
+  const row=failure&&failure.row,detail=String(failure&&failure.detail||'');
+  if(!row||!row._atomicEligible||!/AGAI_[A-Z_]+/.test(detail))return false;
+  let remoteData=null;
+  try{
+    const response=await fetch(RC_REST+'?id=eq.'+encodeURIComponent(row.id)+'&select=data,deleted&limit=1',{headers:_sbHeaders});
+    if(response.ok){const records=await response.json();if(records&&records[0]&&!records[0].deleted)remoteData=records[0].data||null;}
+  }catch(error){}
+  if(remoteData){
+    ensureOperationalStatusMetadata(remoteData);
+    _rcReplaceLocalOperationalRecord(row.caserne,row.type,remoteData);
+    _rcPendingDirty.delete(row.id);await _rcOutboxDelete([row.id]);_rcPersistPendingDirty();
+  }else{
+    const data=CASERNE_DATA[row.caserne]||{},list=row.type==='pilp'?(data.pilpIvs||[]):(data.ivs||[]),local=list.find(function(item){return item&&item.id===row.data.id;});
+    if(local&&local.s==='en-cours'){
+      local.s='en-attente';clearInterventionDepartureForPending(local,'Protection serveur',{createHandoff:false});clearInterventionNumbersForPending(local);local.agr=null;if(row.type==='pilp')local.tireur=null;
+      pushTL(local,'en-attente','Protection serveur','Départ annulé après détection d’un conflit simultané');
+      markOperationalInterventionDirty(local);
+    }
+  }
+  const messages={
+    AGAI_VEHICLE_ALREADY_ENGAGED:'Départ refusé : ce véhicule vient d’être engagé sur une autre intervention.',
+    AGAI_PERSON_ALREADY_ENGAGED:'Départ refusé : un membre de l’équipage vient d’être engagé sur une autre intervention.',
+    AGAI_UT_NUMBER_CONFLICT:'Départ refusé : le numéro UT venait d’être attribué. La fiche a été actualisée.',
+    AGAI_GLOBAL_NUMBER_CONFLICT:'Départ refusé : le numéro intercommunal venait d’être attribué. La fiche a été actualisée.',
+    AGAI_MONTH_NUMBER_CONFLICT:'Départ refusé : le numéro mensuel venait d’être attribué. La fiche a été actualisée.',
+    AGAI_REVISION_CONFLICT:'Cette intervention venait d’être modifiée sur un autre appareil. La fiche a été actualisée.',
+    AGAI_RECORD_REVISION_CONFLICT:'Cette fiche venait d’être enregistrée sur un autre appareil. Les dernières données ont été rechargées.',
+    AGAI_STALE_STATUS_REVISION:'Une version plus récente de cette intervention existe déjà. La fiche a été actualisée.',
+    AGAI_STATUS_REVISION_REQUIRED:'Le changement de statut a été refusé car une version plus récente existe déjà.'
+  };
+  const code=(detail.match(/AGAI_[A-Z_]+/)||[])[0]||'';
+  showToast(messages[code]||'Action refusée par la protection serveur. La fiche a été actualisée.','warn');
+  refreshOperationalInterventionViews();
+  return true;
+}
+
 async function _rcSendRowsWithIsolation(rows,currentUser){
   const succeeded=[],failures=[];
   async function send(group){
@@ -2583,7 +2671,15 @@ async function _rcSendRowsWithIsolation(rows,currentUser){
     if(!detail)try{detail=String(await resp.text()||'').replace(/\s+/g,' ').slice(0,180);}catch(readError){}
     failures.push({row:group[0],status:resp.status||0,detail:detail});
   }
-  for(let index=0;index<rows.length;index+=10)await send(rows.slice(index,index+10));
+  const atomicRows=(rows||[]).filter(function(row){return row&&row._atomicEligible&&(row.type==='iv'||row.type==='pilp');});
+  const standardRows=(rows||[]).filter(function(row){return !atomicRows.includes(row);});
+  for(const row of atomicRows){
+    const result=await _rcSendAtomicOperationalRow(row,currentUser);
+    if(result.ok)succeeded.push(row);
+    else if(result.fallback)await send([row]);
+    else failures.push({row:row,status:result.status||0,detail:result.detail||''});
+  }
+  for(let index=0;index<standardRows.length;index+=10)await send(standardRows.slice(index,index+10));
   return {succeeded:succeeded,failures:failures};
 }
 
@@ -2648,6 +2744,13 @@ async function _rcPush(fullPush){
     const sentSignatures={};
     rows.forEach(function(row){sentSignatures[row.id]=_rcSyncSignature(row);});
     const sendResult=await _rcSendRowsWithIsolation(rows,currentUser);
+    if(sendResult.failures.length){
+      const unresolved=[];
+      for(const failure of sendResult.failures){
+        if(!await _rcResolveAtomicRejection(failure))unresolved.push(failure);
+      }
+      sendResult.failures=unresolved;
+    }
     const pushedRows=sendResult.succeeded;
     _writeLocalCache(data);
     _rcLastPush = Date.now();
