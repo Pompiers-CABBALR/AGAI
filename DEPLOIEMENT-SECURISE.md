@@ -28,6 +28,16 @@ protection par elle-même : la sécurité dépend des règles RLS.
 
 ### Liaison invisible des comptes v239 — déploiement progressif
 
+**Correctif v239.2 :** cette version répare la reprise de synchronisation après une
+mise à jour. Elle rapproche automatiquement la file locale avec les données déjà
+confirmées par Supabase, au lieu de recompter toute la base comme de nouvelles
+actions. Les véritables modifications hors ligne restent conservées et sont
+envoyées normalement. Les appels de synchronisation possèdent désormais une limite
+d’attente : l’application ne peut plus rester indéfiniment sur « Chargement » et
+affiche un diagnostic exploitable en cas d’indisponibilité du serveur. Ce correctif
+ne demande ni nouveau script SQL ni nouveau déploiement de fonction serveur. Il ne
+faut pas effacer l’historique ou les données du navigateur avant sa publication.
+
 **Correctif v239.1 :** pendant cette phase progressive, le jeton Supabase rattaché
 sert uniquement à la gestion sécurisée du compte. La synchronisation des données
 reste sur l’accès historique jusqu’à la v240. Cela évite qu’une politique RLS

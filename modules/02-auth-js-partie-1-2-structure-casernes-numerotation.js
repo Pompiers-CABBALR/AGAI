@@ -205,6 +205,14 @@ let _agaiAuthSession=null;
 let _agaiAuthBridgeState=AUTH_LINK_ENABLED?'unknown':'disabled';
 let _agaiAuthBridgeHealth=null;
 let _agaiAuthRefreshTimer=null;
+let _agaiLastDataSnapshot=null;
+async function _agaiFetchWithTimeout(url,options,timeoutMs){
+  const controller=new AbortController(),delay=Math.max(3000,Number(timeoutMs)||15000);
+  const timer=setTimeout(function(){controller.abort();},delay);
+  try{return await fetch(url,Object.assign({},options||{},{signal:controller.signal}));}
+  catch(error){if(error&&error.name==='AbortError')throw new Error('Délai serveur dépassé après '+Math.round(delay/1000)+' s');throw error;}
+  finally{clearTimeout(timer);}
+}
 function CC(){return CASERNES.find(c=>c.id===CURRENT_CASERNE_ID)||null;}
 function CD(){if(!CURRENT_CASERNE_ID)return null;initCaserneData(CURRENT_CASERNE_ID);return CASERNE_DATA[CURRENT_CASERNE_ID];}
 function getCaserneStationLocation(caserneId){

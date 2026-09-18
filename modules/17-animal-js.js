@@ -986,9 +986,11 @@ function saveData(immediate){
     }
     const data=_buildDataObject();
     if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcTrackChangedRecords==='function'){
-      let previous=null;
-      try{const raw=localStorage.getItem(JB_CACHE_KEY);if(raw)previous=JSON.parse(raw);}catch(e){}
-      _rcTrackChangedRecords(previous,data);
+      let previous=_agaiLastDataSnapshot;
+      if(!previous)try{const raw=localStorage.getItem(JB_CACHE_KEY);if(raw)previous=JSON.parse(raw);}catch(e){}
+      // Sans référence fiable, ne jamais classer toute la base comme modifiée.
+      // Les actions critiques sont déjà inscrites explicitement dans la file.
+      if(previous)_rcTrackChangedRecords(previous,data);
     }
     _writeLocalCache(data);
     if(_jbSaveTimer)clearTimeout(_jbSaveTimer);
@@ -1137,6 +1139,7 @@ function _writeLocalCache(data){
   try{compact=_stripHeavyForPush(data);}
   catch(error){console.warn('[AGAI] Allègement du cache impossible :',error);return false;}
   const serialized=JSON.stringify(compact);
+  try{_agaiLastDataSnapshot=JSON.parse(serialized);}catch(snapshotError){_agaiLastDataSnapshot=null;}
   try{localStorage.setItem(JB_CACHE_KEY,serialized);window._agaiLocalCacheLimited=false;return true;}
   catch(firstError){
     try{
@@ -1712,7 +1715,7 @@ async function _rcCheckAtomicServer(force){
   if(!force&&_rcAtomicServerCheckedAt&&Date.now()-_rcAtomicServerCheckedAt<5*60*1000)return _rcAtomicServerState==='active';
   _rcAtomicServerCheckedAt=Date.now();
   try{
-    const response=await fetch(RC_ATOMIC_HEALTH_RPC,{method:'POST',headers:_sbHeaders,body:'{}'});
+    const response=await _agaiFetchWithTimeout(RC_ATOMIC_HEALTH_RPC,{method:'POST',headers:_sbHeaders,body:'{}'},10000);
     _rcAtomicServerState=response.ok?'active':(response.status===404?'missing':'error');
     if(response.ok)try{_rcAtomicServerHealth=await response.json();}catch(error){_rcAtomicServerHealth=null;}
   }catch(error){_rcAtomicServerState='error';}
@@ -1808,6 +1811,24 @@ async function _rcOutboxDelete(ids){
     tx.onerror=function(){console.warn('[AGAI][RC] Nettoyage file durable impossible :',tx.error);resolve(false);};
     tx.onabort=function(){resolve(false);};
   });
+}
+async function _rcReconcileOutboxWithRemote(remoteRows,durableRows){
+  const remoteById={};
+  (remoteRows||[]).forEach(function(row){if(row&&row.id)remoteById[row.id]=row;});
+  const acknowledged=[];
+  (durableRows||[]).forEach(function(row){
+    if(!row||!row.id||row.deleted)return;
+    const remote=remoteById[row.id];
+    if(remote&&!remote.deleted&&_rcSyncSignature(remote)===_rcSyncSignature(row))acknowledged.push(row.id);
+  });
+  if(acknowledged.length){
+    acknowledged.forEach(function(id){_rcPendingDirty.delete(id);});
+    await _rcOutboxDelete(acknowledged);
+    _rcPersistPendingDirty();
+    console.info('[AGAI][RC] File nettoyée après confirmation distante :',acknowledged.length);
+  }
+  const acknowledgedSet=new Set(acknowledged);
+  return (durableRows||[]).filter(function(row){return row&&row.id&&!acknowledgedSet.has(row.id);});
 }
 function _rcScheduleOutboxSnapshot(){
   if(_rcOutboxSnapshotTimer)clearTimeout(_rcOutboxSnapshotTimer);
@@ -2091,7 +2112,7 @@ async function _rcProtectOperationalStatusRows(rows){
   });
   const ids=operational.map(function(row){return row.id;});
   const filter='('+ids.map(function(id){return '"'+String(id).replace(/"/g,'')+'"';}).join(',')+')';
-  const resp=await fetch(RC_REST+'?id=in.'+encodeURIComponent(filter)+'&select=id,data,deleted',{headers:_sbHeaders});
+  const resp=await _agaiFetchWithTimeout(RC_REST+'?id=in.'+encodeURIComponent(filter)+'&select=id,data,deleted',{headers:_sbHeaders},15000);
   if(!resp.ok)throw new Error('status guard GET HTTP '+resp.status);
   const remoteRows=await resp.json(),remoteById={};
   (Array.isArray(remoteRows)?remoteRows:[]).forEach(function(row){if(row&&row.id&&!row.deleted)remoteById[row.id]=row;});
@@ -2143,7 +2164,7 @@ async function _rcProtectDispoRows(rows){
   if(!availability.length)return rows;
   const ids=availability.map(function(row){return row.id;});
   const filter='('+ids.map(function(id){return '"'+String(id).replace(/"/g,'')+'"';}).join(',')+')';
-  const resp=await fetch(RC_REST+'?id=in.'+encodeURIComponent(filter)+'&select=id,data,deleted',{headers:_sbHeaders});
+  const resp=await _agaiFetchWithTimeout(RC_REST+'?id=in.'+encodeURIComponent(filter)+'&select=id,data,deleted',{headers:_sbHeaders},15000);
   if(!resp.ok)throw new Error('dispo guard GET HTTP '+resp.status);
   const remoteRows=await resp.json(),remoteById={};
   (Array.isArray(remoteRows)?remoteRows:[]).forEach(function(row){if(row&&row.id&&!row.deleted)remoteById[row.id]=row;});
@@ -2164,7 +2185,7 @@ async function _rcProtectPersonnelGradeRows(rows){
   const users=(rows||[]).filter(function(row){return row&&row.type==='user'&&!row.deleted;});
   if(!users.length)return rows;
   const ids=users.map(function(row){return row.id;}),filter='('+ids.map(function(id){return '"'+String(id).replace(/"/g,'')+'"';}).join(',')+')';
-  const resp=await fetch(RC_REST+'?id=in.'+encodeURIComponent(filter)+'&select=id,data,deleted',{headers:_sbHeaders});
+  const resp=await _agaiFetchWithTimeout(RC_REST+'?id=in.'+encodeURIComponent(filter)+'&select=id,data,deleted',{headers:_sbHeaders},15000);
   if(!resp.ok)throw new Error('grade history guard GET HTTP '+resp.status);
   const remoteRows=await resp.json(),remoteById={};
   (Array.isArray(remoteRows)?remoteRows:[]).forEach(function(row){if(row&&row.id&&!row.deleted)remoteById[row.id]=row;});
@@ -2565,12 +2586,12 @@ function _rcPushGlobalRowKeepalive(){
     if(!rows.length)return;
     const currentUser=(typeof CU!=='undefined'&&CU)?(CU.l||''):'';
     const payload=rows.map(function(r){return {id:r.id,caserne:r.caserne,type:r.type,data:r.data,deleted:!!r.deleted,updated_by:currentUser};});
-    fetch(RC_REST,{
+    _agaiFetchWithTimeout(RC_REST,{
       method:'POST',
       headers:Object.assign({},_sbHeaders,{'Prefer':'resolution=merge-duplicates,return=minimal'}),
       body:JSON.stringify(payload),
       keepalive:true
-    }).catch(function(){});
+    },20000).catch(function(){});
   }catch(e){}
 }
 
@@ -2580,7 +2601,7 @@ async function _rcProtectSensitiveGlobalRow(rows){
   if(!globalRow)return rows;
   try{
     const globalId=_rcId('_GLOBAL','global','main');
-    const resp=await fetch(RC_REST+'?id=eq.'+encodeURIComponent(globalId)+'&select=data&limit=1',{headers:_sbHeaders});
+    const resp=await _agaiFetchWithTimeout(RC_REST+'?id=eq.'+encodeURIComponent(globalId)+'&select=data&limit=1',{headers:_sbHeaders},15000);
     if(!resp.ok)throw new Error('global GET HTTP '+resp.status);
     const records=await resp.json();
     const remote=Array.isArray(records)&&records[0]&&records[0].data||null;
@@ -2607,7 +2628,7 @@ async function _rcSendAtomicOperationalRow(row,currentUser){
     p_action_id:String(row._atomicActionId||row.data&&row.data._statusChangeId||'')
   };
   let response;
-  try{response=await fetch(RC_ATOMIC_RPC,{method:'POST',headers:_sbHeaders,body:JSON.stringify(payload)});}
+  try{response=await _agaiFetchWithTimeout(RC_ATOMIC_RPC,{method:'POST',headers:_sbHeaders,body:JSON.stringify(payload)},20000);}
   catch(error){return {ok:false,status:0,detail:String(error&&error.message||error||'Erreur réseau')};}
   if(response.ok){
     _rcAtomicServerState='active';_rcAtomicServerCheckedAt=Date.now();
@@ -2633,7 +2654,7 @@ async function _rcResolveAtomicRejection(failure){
   if(!row||!row._atomicEligible||!/AGAI_[A-Z_]+/.test(detail))return false;
   let remoteData=null;
   try{
-    const response=await fetch(RC_REST+'?id=eq.'+encodeURIComponent(row.id)+'&select=data,deleted&limit=1',{headers:_sbHeaders});
+    const response=await _agaiFetchWithTimeout(RC_REST+'?id=eq.'+encodeURIComponent(row.id)+'&select=data,deleted&limit=1',{headers:_sbHeaders},15000);
     if(response.ok){const records=await response.json();if(records&&records[0]&&!records[0].deleted)remoteData=records[0].data||null;}
   }catch(error){}
   if(remoteData){
@@ -2672,7 +2693,7 @@ async function _rcSendRowsWithIsolation(rows,currentUser){
     const payload=group.map(function(r){return {id:r.id,caserne:r.caserne,type:r.type,data:r.data,deleted:r.deleted,updated_by:currentUser};});
     let resp;
     try{
-      resp=await fetch(RC_REST,{method:'POST',headers:Object.assign({},_sbHeaders,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify(payload)});
+      resp=await _agaiFetchWithTimeout(RC_REST,{method:'POST',headers:Object.assign({},_sbHeaders,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify(payload)},20000);
     }catch(error){
       resp={ok:false,status:0,_agaiDetail:String(error&&error.message||error||'Erreur réseau')};
     }
@@ -2706,7 +2727,7 @@ async function _rcPush(fullPush){
   try {
     _rcRepairDuplicateLocalRecordIds();
     generationAtStart=_rcDirtyGeneration;
-    const durableRows=await _rcOutboxGetRows();
+    let durableRows=await _rcOutboxGetRows();
     durableRows.forEach(function(row){if(row&&row.id)_rcPendingDirty.add(row.id);});
     _rcPersistPendingDirty();
     const data = _buildDataObject();
@@ -2818,7 +2839,7 @@ async function _rcFetchAllActiveRows(){
   const rows=[];
   for(let offset=0,page=0;page<200;page++){
     const query='?deleted=eq.false&select=id,caserne,type,data,deleted&order=id.asc&limit='+RC_PULL_PAGE_SIZE+'&offset='+offset+_rcPullScopeFilter();
-    const resp=await fetch(RC_REST+query,{headers:_sbHeaders});
+    const resp=await _agaiFetchWithTimeout(RC_REST+query,{headers:_sbHeaders},20000);
     if(!resp.ok)throw new Error('records GET HTTP '+resp.status+' (page '+(page+1)+')');
     const batch=await resp.json();
     if(!Array.isArray(batch))throw new Error('Données records invalides (page '+(page+1)+')');
@@ -2837,11 +2858,15 @@ async function _rcPull(silent){
     _rcRequestPersistentStorage();
     // Restaurer la file complète avant la réception. Un envoi bloqué ne doit
     // jamais empêcher l'iPhone de recevoir les nouvelles interventions.
-    const durableRows=await _rcOutboxGetRows();
+    let durableRows=await _rcOutboxGetRows();
     durableRows.forEach(function(row){if(row&&row.id)_rcPendingDirty.add(row.id);});
     _rcPersistPendingDirty();
     if(!silent) _jbSetStatus('loading');
     const rows = await _rcFetchAllActiveRows();
+    // Une interruption après un envoi peut laisser des centaines de lignes
+    // pourtant déjà présentes sur le serveur. Les confirmer avant l'overlay
+    // empêche une file fantôme de 500+ actions de bloquer l'application.
+    durableRows=await _rcReconcileOutboxWithRemote(rows,durableRows);
     // Un pull peut avoir commencé juste avant une clôture. Les lignes locales
     // marquées en attente d'envoi restent prioritaires sur ce résultat distant.
     _rcOverlayPendingLocalRows(rows,durableRows);
@@ -3084,7 +3109,7 @@ async function _rcMigrate(){
     let sent = 0;
     for(let i=0;i<rows.length;i+=200){
       const chunk = rows.slice(i,i+200).map(function(r){ return {id:r.id,caserne:r.caserne,type:r.type,data:r.data,deleted:r.deleted,updated_by:currentUser}; });
-      const resp = await fetch(RC_REST, { method:'POST', headers:Object.assign({},_sbHeaders,{'Prefer':'resolution=merge-duplicates,return=minimal'}), body:JSON.stringify(chunk) });
+      const resp = await _agaiFetchWithTimeout(RC_REST, { method:'POST', headers:Object.assign({},_sbHeaders,{'Prefer':'resolution=merge-duplicates,return=minimal'}), body:JSON.stringify(chunk) },20000);
       if(!resp.ok) throw new Error('records POST HTTP '+resp.status);
       sent += chunk.length;
     }

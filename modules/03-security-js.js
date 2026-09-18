@@ -69,7 +69,7 @@ async function _agaiRefreshAuthSession(){
 async function _agaiLinkSupabaseAccount(account,password){
   if(!AUTH_LINK_ENABLED||!account||!account.l)return false;
   try{
-    const response=await fetch(AUTH_LINK_ENDPOINT,{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','x-device-id':agaiDeviceId()},body:JSON.stringify({mode:'login',login:account.l,password:password})});
+    const response=await _agaiFetchWithTimeout(AUTH_LINK_ENDPOINT,{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','x-device-id':agaiDeviceId()},body:JSON.stringify({mode:'login',login:account.l,password:password})},12000);
     const result=await response.json().catch(function(){return{};});
     if(!response.ok||!result.session||!result.authUserId)throw new Error(result.error||('HTTP '+response.status));
     _agaiStoreAuthSession(result.session);
@@ -124,7 +124,7 @@ async function _agaiDeactivateLinkedAccount(login){
 async function _agaiCheckAccountLinkServer(force){
   if(!AUTH_LINK_ENABLED){_agaiAuthBridgeState='disabled';return false;}
   try{
-    const response=await fetch(SB_REST+'/rpc/agai_account_link_health',{method:'POST',headers:_sbHeaders,body:'{}'});
+    const response=await _agaiFetchWithTimeout(SB_REST+'/rpc/agai_account_link_health',{method:'POST',headers:_sbHeaders,body:'{}'},10000);
     _agaiAuthBridgeState=response.ok?'active':response.status===404?'missing':'error';
     _agaiAuthBridgeHealth=response.ok?await response.json():null;
   }catch(error){_agaiAuthBridgeState='error';_agaiAuthBridgeHealth=null;}
