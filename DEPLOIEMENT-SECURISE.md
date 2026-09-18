@@ -40,6 +40,12 @@ version.
 lieu de 500 et le délai réseau est porté à 45 secondes. Cette adaptation évite qu’un
 ralentissement temporaire de l’API Gateway Supabase bloque la récupération complète.
 
+**Reprise ciblée v239.5 :** lorsqu’une file locale existe déjà, l’application ne
+charge plus toute la base avant de la traiter. Elle demande uniquement au serveur
+les identifiants encore en attente, par groupes de 20, rapproche les réponses puis
+envoie au maximum 25 changements. Le chargement global reprend seulement après la
+résorption de la file.
+
 **Correctif v239.2 :** cette version répare la reprise de synchronisation après une
 mise à jour. Elle rapproche automatiquement la file locale avec les données déjà
 confirmées par Supabase, au lieu de recompter toute la base comme de nouvelles

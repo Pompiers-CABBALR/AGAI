@@ -1250,6 +1250,16 @@ function _jbStartPolling(){
   },15000);
 }
 
+async function _rcBootstrapSync(){
+  const durableRows=await _rcOutboxGetRows();
+  if(durableRows.length||_rcPendingDirty.size){
+    const recovered=await _rcRecoverPendingQueue(durableRows);
+    if(recovered)await _rcPush(false);
+    return recovered;
+  }
+  return _rcPull(false);
+}
+
 function loadData(){
   const cache=localStorage.getItem(JB_CACHE_KEY);
   if(cache){
@@ -1260,7 +1270,7 @@ function loadData(){
     }catch(e){}
   }
   if(USE_RECORDS){
-    _rcPull(false).then(function(){_rcStartRealtime();_rcStartPolling();});
+    _rcBootstrapSync().then(function(){_rcStartRealtime();_rcStartPolling();});
   }else if(USE_SUPABASE){
     _sbPull(false).then(function(){_sbStartRealtime();_sbStartPolling();});
   }else{
@@ -1275,7 +1285,7 @@ function _loadClear(){
     if(raw){const data=JSON.parse(raw);_applyDataObject(data);_postLoadInit();saveData();showToast('Données migrées ✓','success');}
   }catch(e){console.warn('[AGAI] Chargement impossible:',e);}
   if(USE_RECORDS){
-    _rcPull(false).then(function(){_rcStartRealtime();_rcStartPolling();});
+    _rcBootstrapSync().then(function(){_rcStartRealtime();_rcStartPolling();});
   }else if(USE_SUPABASE){
     _sbPull(false).then(function(){_sbStartRealtime();_sbStartPolling();});
   }else{
@@ -1295,7 +1305,7 @@ function jbSyncNow(){
   if(USE_RECORDS&&typeof _rcPendingDirty!=='undefined'&&_rcPendingDirty.size){
     // Toujours recevoir et rapprocher avant le moindre renvoi. Une ancienne
     // file volumineuse ne doit jamais saturer le serveur ni les autres appareils.
-    Promise.resolve(_rcPull(false)).then(function(ok){
+    Promise.resolve(_rcRecoverPendingQueue()).then(function(ok){
       if(ok)return _rcPush(false);
     }).finally(function(){_rcRequestRealtimePull(150);});
     showToast('Vérification de la file avant synchronisation','info');
@@ -1746,6 +1756,7 @@ let _rcRealtimeReconnectTimer = null;
 let _rcRealtimeJoinSequence = 0;
 let _rcNeedsRecoveryPull = false;
 let _rcInitialReconciliationDone = false;
+let _rcRecoveryPromise = null;
 const RC_FALLBACK_POLL_MS = 90000;
 // Pages réduites pour rester utilisable lorsque l'API Supabase est dégradée.
 const RC_PULL_PAGE_SIZE = 100;
@@ -1833,6 +1844,43 @@ async function _rcReconcileOutboxWithRemote(remoteRows,durableRows){
   }
   const acknowledgedSet=new Set(acknowledged);
   return (durableRows||[]).filter(function(row){return row&&row.id&&!acknowledgedSet.has(row.id);});
+}
+async function _rcFetchRemoteRowsForPending(durableRows){
+  const ids=Array.from(new Set((durableRows||[]).map(function(row){return row&&row.id;}).filter(Boolean)));
+  const remoteRows=[];
+  for(let index=0;index<ids.length;index+=20){
+    const chunk=ids.slice(index,index+20);
+    const filter='('+chunk.map(function(id){return '"'+String(id).replace(/"/g,'')+'"';}).join(',')+')';
+    const response=await _agaiFetchWithTimeout(RC_REST+'?id=in.'+encodeURIComponent(filter)+'&select=id,caserne,type,data,deleted',{headers:_sbHeaders},45000);
+    if(!response.ok)throw new Error('reprise ciblée GET HTTP '+response.status);
+    const rows=await response.json();
+    if(Array.isArray(rows))remoteRows.push.apply(remoteRows,rows);
+  }
+  return _rcUniqueRowsById(remoteRows);
+}
+async function _rcRecoverPendingQueue(knownRows){
+  if(_rcInitialReconciliationDone)return true;
+  if(_rcRecoveryPromise)return _rcRecoveryPromise;
+  _rcRecoveryPromise=(async function(){
+    try{
+      const durableRows=knownRows||await _rcOutboxGetRows();
+      durableRows.forEach(function(row){if(row&&row.id)_rcPendingDirty.add(row.id);});
+      _rcPersistPendingDirty();
+      if(!durableRows.length){_rcInitialReconciliationDone=true;return true;}
+      _jbSetStatus('loading');
+      const remoteRows=await _rcFetchRemoteRowsForPending(durableRows);
+      await _rcReconcileOutboxWithRemote(remoteRows,durableRows);
+      _rcInitialReconciliationDone=true;
+      _rcLastSyncError='';
+      _jbSetStatus(_rcPendingDirty.size?'pending':'ok');
+      return true;
+    }catch(error){
+      _rcLastSyncError='Reprise ciblée — '+String(error&&error.message||error||'Erreur inconnue');
+      _jbSetStatus('error');
+      return false;
+    }finally{_rcRecoveryPromise=null;}
+  })();
+  return _rcRecoveryPromise;
 }
 function _rcScheduleOutboxSnapshot(){
   if(_rcOutboxSnapshotTimer)clearTimeout(_rcOutboxSnapshotTimer);
@@ -1942,7 +1990,7 @@ function _rcScheduleRetry(delay){
     _rcRetryTimer=null;
     if(_rcSaving)return;
     if(!_rcInitialReconciliationDone){
-      Promise.resolve(_rcPull(false)).then(function(ok){if(ok)_rcPush(false);});
+      Promise.resolve(_rcRecoverPendingQueue()).then(function(ok){if(ok)_rcPush(false);});
       return;
     }
     _rcPush(false);
@@ -2121,7 +2169,7 @@ async function _rcProtectOperationalStatusRows(rows){
   });
   const ids=operational.map(function(row){return row.id;});
   const filter='('+ids.map(function(id){return '"'+String(id).replace(/"/g,'')+'"';}).join(',')+')';
-  const resp=await _agaiFetchWithTimeout(RC_REST+'?id=in.'+encodeURIComponent(filter)+'&select=id,data,deleted',{headers:_sbHeaders},15000);
+  const resp=await _agaiFetchWithTimeout(RC_REST+'?id=in.'+encodeURIComponent(filter)+'&select=id,data,deleted',{headers:_sbHeaders},45000);
   if(!resp.ok)throw new Error('status guard GET HTTP '+resp.status);
   const remoteRows=await resp.json(),remoteById={};
   (Array.isArray(remoteRows)?remoteRows:[]).forEach(function(row){if(row&&row.id&&!row.deleted)remoteById[row.id]=row;});
@@ -2173,7 +2221,7 @@ async function _rcProtectDispoRows(rows){
   if(!availability.length)return rows;
   const ids=availability.map(function(row){return row.id;});
   const filter='('+ids.map(function(id){return '"'+String(id).replace(/"/g,'')+'"';}).join(',')+')';
-  const resp=await _agaiFetchWithTimeout(RC_REST+'?id=in.'+encodeURIComponent(filter)+'&select=id,data,deleted',{headers:_sbHeaders},15000);
+  const resp=await _agaiFetchWithTimeout(RC_REST+'?id=in.'+encodeURIComponent(filter)+'&select=id,data,deleted',{headers:_sbHeaders},45000);
   if(!resp.ok)throw new Error('dispo guard GET HTTP '+resp.status);
   const remoteRows=await resp.json(),remoteById={};
   (Array.isArray(remoteRows)?remoteRows:[]).forEach(function(row){if(row&&row.id&&!row.deleted)remoteById[row.id]=row;});
@@ -2194,7 +2242,7 @@ async function _rcProtectPersonnelGradeRows(rows){
   const users=(rows||[]).filter(function(row){return row&&row.type==='user'&&!row.deleted;});
   if(!users.length)return rows;
   const ids=users.map(function(row){return row.id;}),filter='('+ids.map(function(id){return '"'+String(id).replace(/"/g,'')+'"';}).join(',')+')';
-  const resp=await _agaiFetchWithTimeout(RC_REST+'?id=in.'+encodeURIComponent(filter)+'&select=id,data,deleted',{headers:_sbHeaders},15000);
+  const resp=await _agaiFetchWithTimeout(RC_REST+'?id=in.'+encodeURIComponent(filter)+'&select=id,data,deleted',{headers:_sbHeaders},45000);
   if(!resp.ok)throw new Error('grade history guard GET HTTP '+resp.status);
   const remoteRows=await resp.json(),remoteById={};
   (Array.isArray(remoteRows)?remoteRows:[]).forEach(function(row){if(row&&row.id&&!row.deleted)remoteById[row.id]=row;});
@@ -2610,7 +2658,7 @@ async function _rcProtectSensitiveGlobalRow(rows){
   if(!globalRow)return rows;
   try{
     const globalId=_rcId('_GLOBAL','global','main');
-    const resp=await _agaiFetchWithTimeout(RC_REST+'?id=eq.'+encodeURIComponent(globalId)+'&select=data&limit=1',{headers:_sbHeaders},15000);
+    const resp=await _agaiFetchWithTimeout(RC_REST+'?id=eq.'+encodeURIComponent(globalId)+'&select=data&limit=1',{headers:_sbHeaders},45000);
     if(!resp.ok)throw new Error('global GET HTTP '+resp.status);
     const records=await resp.json();
     const remote=Array.isArray(records)&&records[0]&&records[0].data||null;
@@ -2663,7 +2711,7 @@ async function _rcResolveAtomicRejection(failure){
   if(!row||!row._atomicEligible||!/AGAI_[A-Z_]+/.test(detail))return false;
   let remoteData=null;
   try{
-    const response=await _agaiFetchWithTimeout(RC_REST+'?id=eq.'+encodeURIComponent(row.id)+'&select=data,deleted&limit=1',{headers:_sbHeaders},15000);
+    const response=await _agaiFetchWithTimeout(RC_REST+'?id=eq.'+encodeURIComponent(row.id)+'&select=data,deleted&limit=1',{headers:_sbHeaders},45000);
     if(response.ok){const records=await response.json();if(records&&records[0]&&!records[0].deleted)remoteData=records[0].data||null;}
   }catch(error){}
   if(remoteData){
@@ -2735,8 +2783,7 @@ async function _rcPush(fullPush){
   // Cette barrière empêche notamment les centaines de lignes fantômes de partir
   // en rafale dès l'ouverture de l'application.
   if(!fullPush&&!_rcInitialReconciliationDone){
-    if(_rcPulling){_rcScheduleRetry(1000);return;}
-    const reconciled=await _rcPull(false);
+    const reconciled=await _rcRecoverPendingQueue();
     if(!reconciled||!_rcInitialReconciliationDone){_rcScheduleRetry(5000);return;}
   }
   _rcSaving = true; _jbSetStatus('saving');
