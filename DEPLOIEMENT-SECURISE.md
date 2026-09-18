@@ -227,3 +227,11 @@ Un retour antérieur ou égal au départ est refusé tant que les dates et heure
 sont pas cohérentes. L’application ne transforme donc plus silencieusement une
 erreur de saisie horaire en retour le lendemain, ce qui garantit l’affichage dans
 « Terminées » le bon jour.
+
+## Correctif v244 — véhicules disponibles en mode superadmin
+
+La clôture directe ne dépend plus d’une seule copie de la configuration des
+engins. La liste est reconstruite à partir de la configuration active, de la
+configuration de la caserne, des piquets et des véhicules déjà connus dans ses
+interventions. Un chargement tardif de la configuration ne laisse donc plus le
+sélecteur vide sur mobile.

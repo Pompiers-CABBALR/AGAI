@@ -12179,8 +12179,27 @@ function superAdminChiefOptions(selected){
     return '<option value="'+escHtml(user.l)+'"'+(user.l===selected?' selected':'')+'>'+escHtml(fullName(user))+' ('+escHtml(gradeAbbr(user.grade)) +')</option>';
   }).join('');
 }
+function availableCaserneVehicleNames(selected){
+  const vehicles=[];
+  const add=function(value){
+    const vehicle=String(value||'').trim();
+    if(vehicle&&!vehicles.some(function(existing){return nm(existing)===nm(vehicle);}))vehicles.push(vehicle);
+  };
+  add(selected);
+  const localConfig=typeof CD==='function'&&CD()&&CD().astrConfig;
+  [ASTR_CONFIG&&ASTR_CONFIG.engins,localConfig&&localConfig.engins].forEach(function(list){
+    (Array.isArray(list)?list:[]).forEach(add);
+  });
+  Object.values(PIQUETS||{}).forEach(function(list){
+    (Array.isArray(list)?list:[]).forEach(function(piquet){add(piquet&&piquet.engin);});
+  });
+  [].concat(IVS||[],PILP_IVS||[]).forEach(function(iv){
+    interventionVehicleNames(iv).forEach(add);
+  });
+  return vehicles.sort(function(a,b){return a.localeCompare(b,'fr',{numeric:true,sensitivity:'base'});});
+}
 function superAdminVehicleOptions(selected){
-  return [''].concat(ASTR_CONFIG&&Array.isArray(ASTR_CONFIG.engins)?ASTR_CONFIG.engins:[]).map(function(engin){
+  return [''].concat(availableCaserneVehicleNames(selected)).map(function(engin){
     return '<option value="'+escHtml(engin)+'"'+(engin===selected?' selected':'')+'>'+(engin?escHtml(engin):'— Sélectionner le véhicule —')+'</option>';
   }).join('');
 }
@@ -15695,7 +15714,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='20260918-retour-date-explicite-243';
+const APP_VERSION='20260918-vehicules-superadmin-stables-244';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
