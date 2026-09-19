@@ -322,3 +322,10 @@ Si le champ des véhicules d'une caserne est absent ou nul, l'application
 reconstitue le catalogue depuis les interventions et les piquets enregistrés.
 Toute écriture ultérieure réutilise cette liste reconstruite au lieu d'envoyer
 une configuration vide à Supabase.
+
+## Correctif V202609_0007 — ancien cache avec véhicules nuls
+
+L'écran des équipes protège maintenant directement son rendu contre une
+ancienne configuration contenant `engins=null`. Les types et les équipes restent
+visibles pendant la reconstruction du catalogue, y compris avant la première
+réception complète depuis Supabase.

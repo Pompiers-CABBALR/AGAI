@@ -521,6 +521,7 @@ function syncCaserneContext(){
   // Ne jamais recopier le contexte précédent dans une caserne vide.
   const equipeScope=normalizeEquipesForCaserne(CURRENT_CASERNE_ID,d);
   scheduleEquipeIsolationCleanup(CURRENT_CASERNE_ID,equipeScope);
+  d.astrConfig=_rcSafeAstrConfig(d);
   USERS=d.users;IVS=d.ivs;PILP_IVS=d.pilpIvs||[];EQUIPES=d.equipes;DISPOS=d.dispos;PIQUETS=d.piquets;ASTR_CONFIG=d.astrConfig;DISPOS_VALIDATED=d.disposValidated||{};PIQUETS_VALIDATED=d.piquetsValidated||{};
   USERS.forEach(function(user){user.caserneId=CURRENT_CASERNE_ID;user.appRole=deriveAccountRole(user);});
   // Recharger PLANNING_ROTATIONS depuis les données caserne
@@ -11229,6 +11230,12 @@ function saveWeekStart(){
   rAstrPlanning();rAstrDispo();
 }
 function rAstrEquipes(){
+  // Défense d'affichage : une ancienne configuration avec engins=null ne doit
+  // jamais interrompre le rendu des équipes et des types de véhicules.
+  if(!ASTR_CONFIG||typeof ASTR_CONFIG!=='object')ASTR_CONFIG={};
+  if(!Array.isArray(ASTR_CONFIG.engins))ASTR_CONFIG.engins=_rcVehicleCatalogFromCaserneData(CD()||{});
+  if(!ASTR_CONFIG.deadline)ASTR_CONFIG.deadline={dayOfWeek:5,hour:23,minute:59};
+  if(!ASTR_CONFIG.deadlinePiquet)ASTR_CONFIG.deadlinePiquet={dayOfWeek:0,hour:18,minute:0};
   // Initialiser les champs deadline
   const dlDay=document.getElementById('dl-day');
   const dlTime=document.getElementById('dl-time');
@@ -15794,7 +15801,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202609_0006';
+const APP_VERSION='V202609_0007';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -18315,7 +18322,7 @@ function _applyDataObject(data){
           dst.piquets=src.piquets;
         }
         if(src.planningRotations)dst.planningRotations=src.planningRotations;
-        if(src.astrConfig)dst.astrConfig=src.astrConfig;
+        if(src.astrConfig)dst.astrConfig=_rcSafeAstrConfig(Object.assign({},src,{ivs:src.ivs||dst.ivs||[],pilpIvs:src.pilpIvs||dst.pilpIvs||[],piquets:src.piquets||dst.piquets||{}}));
         if(src.disposValidated)dst.disposValidated=src.disposValidated;
         if(src.piquetsValidated)dst.piquetsValidated=src.piquetsValidated;
         if(src.astrTelData&&!dispoLocked)dst.astrTelData=src.astrTelData;

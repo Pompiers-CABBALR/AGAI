@@ -368,6 +368,7 @@ function syncCaserneContext(){
   // Ne jamais recopier le contexte précédent dans une caserne vide.
   const equipeScope=normalizeEquipesForCaserne(CURRENT_CASERNE_ID,d);
   scheduleEquipeIsolationCleanup(CURRENT_CASERNE_ID,equipeScope);
+  d.astrConfig=_rcSafeAstrConfig(d);
   USERS=d.users;IVS=d.ivs;PILP_IVS=d.pilpIvs||[];EQUIPES=d.equipes;DISPOS=d.dispos;PIQUETS=d.piquets;ASTR_CONFIG=d.astrConfig;DISPOS_VALIDATED=d.disposValidated||{};PIQUETS_VALIDATED=d.piquetsValidated||{};
   USERS.forEach(function(user){user.caserneId=CURRENT_CASERNE_ID;user.appRole=deriveAccountRole(user);});
   // Recharger PLANNING_ROTATIONS depuis les données caserne

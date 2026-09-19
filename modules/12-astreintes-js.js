@@ -1973,6 +1973,12 @@ function saveWeekStart(){
   rAstrPlanning();rAstrDispo();
 }
 function rAstrEquipes(){
+  // Défense d'affichage : une ancienne configuration avec engins=null ne doit
+  // jamais interrompre le rendu des équipes et des types de véhicules.
+  if(!ASTR_CONFIG||typeof ASTR_CONFIG!=='object')ASTR_CONFIG={};
+  if(!Array.isArray(ASTR_CONFIG.engins))ASTR_CONFIG.engins=_rcVehicleCatalogFromCaserneData(CD()||{});
+  if(!ASTR_CONFIG.deadline)ASTR_CONFIG.deadline={dayOfWeek:5,hour:23,minute:59};
+  if(!ASTR_CONFIG.deadlinePiquet)ASTR_CONFIG.deadlinePiquet={dayOfWeek:0,hour:18,minute:0};
   // Initialiser les champs deadline
   const dlDay=document.getElementById('dl-day');
   const dlTime=document.getElementById('dl-time');

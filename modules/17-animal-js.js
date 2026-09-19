@@ -847,7 +847,7 @@ function _applyDataObject(data){
           dst.piquets=src.piquets;
         }
         if(src.planningRotations)dst.planningRotations=src.planningRotations;
-        if(src.astrConfig)dst.astrConfig=src.astrConfig;
+        if(src.astrConfig)dst.astrConfig=_rcSafeAstrConfig(Object.assign({},src,{ivs:src.ivs||dst.ivs||[],pilpIvs:src.pilpIvs||dst.pilpIvs||[],piquets:src.piquets||dst.piquets||{}}));
         if(src.disposValidated)dst.disposValidated=src.disposValidated;
         if(src.piquetsValidated)dst.piquetsValidated=src.piquetsValidated;
         if(src.astrTelData&&!dispoLocked)dst.astrTelData=src.astrTelData;
