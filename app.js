@@ -6168,6 +6168,10 @@ function interventionTeammateEditorHTML(iv){
       +escHtml(interventionTeammateName(member.login))+'</span>';
   }).join(''):'<span style="font-size:12px;color:#64748B;">Aucun agent renseign\u00e9.</span>';
   const configuredPlaces=interventionConfiguredCrewPlaceCount(iv);
+  const canReassignChief=canSuperAdminOperateForAnotherChief();
+  const chiefEditor=canReassignChief
+    ?'<div class="fg" style="margin:0 0 9px 0;"><div class="fgl" style="font-size:11px;">Corriger le chef d’agrès</div><select class="fi" id="cr-chief" style="min-width:0;"><option value="">— Sélectionner le chef d’agrès —</option>'+superAdminChiefOptions(iv.agr||'')+'</select></div>'
+    :'';
   const vehicleInfo=vehicle?'<span style="font-size:10px;font-weight:500;color:#475569;margin-left:6px;">'+escHtml(vehicle)+' · '+configuredPlaces+' place'+(configuredPlaces>1?'s':'')+' définie'+(configuredPlaces>1?'s':'')+' au départ</span>':'';
   const crewHeader='<div style="font-size:12px;font-weight:700;color:#1D4ED8;margin-bottom:7px;">\ud83d\ude92 \u00c9quipage repris dans le rapport'+vehicleInfo+'</div>'
     +'<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:'+(canManage?'10':'0')+'px;">'+crewSummary+'</div>';
@@ -6178,6 +6182,7 @@ function interventionTeammateEditorHTML(iv){
   const configuredFields=interventionReportCrewFieldsHTML(iv,vehicle);
   return '<div style="background:#EFF6FF;border:1px solid #93C5FD;border-radius:10px;padding:10px 12px;margin-bottom:10px;">'
     +crewHeader
+    +chiefEditor
     +'<div class="fg" style="margin:0 0 9px 0;"><div class="fgl" style="font-size:11px;">Corriger le v&eacute;hicule principal</div>'
     +'<select class="fi" id="cr-vehicle" style="min-width:0;" onchange="refreshInterventionReportCrewForVehicle(\''+escHtml(iv.id)+'\',this.value)">'+interventionReportVehicleOptions(iv)+'</select>'
     +'<div id="cr-vehicle-place-info" style="font-size:10px;color:#64748B;margin-top:3px;">'+configuredPlaces+' place'+(configuredPlaces>1?'s':'')+' d&eacute;finie'+(configuredPlaces>1?'s':'')+' pour cet engin</div></div>'
@@ -6193,8 +6198,15 @@ function saveInterventionTeammate(ivId){
   }
   const vehicleField=document.getElementById('cr-vehicle');
   const selectedVehicle=vehicleField?vehicleField.value||'':(iv._engin1||iv.eng||'');
+  const chiefField=document.getElementById('cr-chief');
+  const selectedChief=chiefField?chiefField.value||'':(iv.agr||'');
+  if(chiefField){
+    if(!canSuperAdminOperateForAnotherChief()){showToast('Activez les pouvoirs superadmin pour modifier le chef d’agrès.','warn');return;}
+    const chiefUser=USERS.find(function(user){return user&&user.l===selectedChief;});
+    if(!chiefUser||!isChefAgresByGrade(chiefUser)){showToast('Sélectionnez un chef d’agrès qualifié.','warn');return;}
+  }
   const configuredFields=document.querySelectorAll?Array.from(document.querySelectorAll('[data-report-crew-slot="1"]')):[];
-  if(configuredFields.length||vehicleField){saveInterventionConfiguredCrew(iv,configuredFields,selectedVehicle);return;}
+  if(configuredFields.length||vehicleField){saveInterventionConfiguredCrew(iv,configuredFields,selectedVehicle,selectedChief);return;}
   const driverField=document.getElementById('cr-conducteur');
   const teammateField=document.getElementById('cr-equipier');
   if(!driverField&&!teammateField)return;
@@ -6245,10 +6257,18 @@ function saveInterventionTeammate(ivId){
   showToast('Composition de l\u2019\u00e9quipage enregistr\u00e9e.','success');
 }
 
-function saveInterventionConfiguredCrew(iv,fields,selectedVehicle){
+function saveInterventionConfiguredCrew(iv,fields,selectedVehicle,selectedChief){
   const beforeVehicle=iv._engin1||iv.eng||'';
   const afterVehicle=selectedVehicle||beforeVehicle;
   const vehicleChanged=nm(beforeVehicle)!==nm(afterVehicle);
+  const beforeChief=iv.agr||'';
+  const afterChief=selectedChief||beforeChief;
+  const chiefChanged=beforeChief!==afterChief;
+  if(chiefChanged&&!canSuperAdminOperateForAnotherChief()){showToast('Activez les pouvoirs superadmin pour modifier le chef d’agrès.','warn');return;}
+  if(chiefChanged){
+    const chiefUser=USERS.find(function(user){return user&&user.l===afterChief;});
+    if(!chiefUser||!isChefAgresByGrade(chiefUser)){showToast('Sélectionnez un chef d’agrès qualifié.','warn');return;}
+  }
   if(!afterVehicle){showToast('Sélectionnez un véhicule pour le rapport.','warn');return;}
   if(iv._engin2&&nm(afterVehicle)===nm(iv._engin2)){
     showToast('Le même véhicule ne peut pas être affecté aux deux engins de l’intervention.','warn');return;
@@ -6263,7 +6283,7 @@ function saveInterventionConfiguredCrew(iv,fields,selectedVehicle){
   const logins=selected.map(function(item){return item.login;}).filter(Boolean);
   const occupiedOutside=[iv._agr2].concat((Array.isArray(iv._equipage2)?iv._equipage2:[]).map(function(member){return member&&member.login;})).filter(Boolean);
   interventionInternalReinforcements(iv).forEach(function(renfort){(renfort.equipage||[]).forEach(function(member){if(member&&member.login)occupiedOutside.push(member.login);});});
-  if(new Set(logins).size!==logins.length||logins.includes(iv.agr)||logins.some(function(login){return occupiedOutside.includes(login);})){
+  if(new Set(logins).size!==logins.length||logins.includes(afterChief)||logins.some(function(login){return occupiedOutside.includes(login);})){ 
     showToast('Chaque place de l’équipage doit être occupée par un agent différent.','warn');return;
   }
   if(iv.s==='en-cours'){
@@ -6278,8 +6298,8 @@ function saveInterventionConfiguredCrew(iv,fields,selectedVehicle){
     const member=interventionConfiguredCrewMember(iv,slot);
     previousBySlot[slot.key+'-'+slot.ordinal]=member&&member.login||'';
   });
-  const chiefExisting=beforeCrew.find(function(member){return member&&member.login===iv.agr;});
-  const nextCrew=iv.agr?[Object.assign({},chiefExisting||{},{role:'CA',login:iv.agr})]:[];
+  const chiefExisting=beforeCrew.find(function(member){return member&&member.login===afterChief;});
+  const nextCrew=afterChief?[Object.assign({},chiefExisting||{},{role:'CA',login:afterChief})]:[];
   selected.forEach(function(item){
     if(!item.login)return;
     const existing=beforeCrew.find(function(member){return member&&member.login===item.login;});
@@ -6294,7 +6314,7 @@ function saveInterventionConfiguredCrew(iv,fields,selectedVehicle){
     else if(before&&!item.login)changes.push(place+' retiré : '+interventionTeammateName(before));
     else changes.push(place+' modifié : '+interventionTeammateName(before)+' → '+interventionTeammateName(item.login));
   });
-  if(!changes.length&&!vehicleChanged){showToast('Le véhicule et l’équipage sont déjà enregistrés.','info');return;}
+  if(!changes.length&&!vehicleChanged&&!chiefChanged){showToast('Le véhicule et l’équipage sont déjà enregistrés.','info');return;}
   const reportField=document.getElementById('cr-texte');
   if(reportField)writeCompteRenduDraft(iv.id,reportField.value);
   if(vehicleChanged){
@@ -6304,15 +6324,21 @@ function saveInterventionConfiguredCrew(iv,fields,selectedVehicle){
     if(!Array.isArray(iv._enginModifications))iv._enginModifications=[];
     iv._enginModifications.push({date:getH(N()),auteur:CU.l,avant:beforeVehicle||null,apres:afterVehicle});
   }
+  if(chiefChanged){
+    iv.agr=afterChief;
+    if(!Array.isArray(iv._chefAgresModifications))iv._chefAgresModifications=[];
+    iv._chefAgresModifications.push({date:getH(N()),auteur:CU.l,avant:beforeChief||null,apres:afterChief});
+  }
   iv._equipage1=nextCrew;
   if(changes.length){
     if(!Array.isArray(iv._equipierModifications))iv._equipierModifications=[];
     iv._equipierModifications.push({date:getH(N()),auteur:CU.l,role:'equipage-configure',details:changes.slice()});
   }
   const notes=[];
+  if(chiefChanged)notes.push('Chef d’agrès modifié : '+interventionTeammateName(beforeChief)+' → '+interventionTeammateName(afterChief));
   if(vehicleChanged)notes.push('Véhicule modifié : '+(beforeVehicle||'Aucun')+' → '+afterVehicle);
   if(changes.length)notes.push(changes.join(' · '));
-  pushTL(iv,vehicleChanged?'modif-engin':'modif-equipier',CU.l,notes.join(' · '));
+  pushTL(iv,chiefChanged?'modif-chef-agres':(vehicleChanged?'modif-engin':'modif-equipier'),CU.l,notes.join(' · '));
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   markOperationalInterventionDirty(iv);
   saveData(true);refreshOperationalInterventionViews();rHist();
@@ -15801,7 +15827,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202609_0007';
+const APP_VERSION='V202609_0008';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;

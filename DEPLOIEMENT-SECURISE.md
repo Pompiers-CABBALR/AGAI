@@ -329,3 +329,10 @@ L'écran des équipes protège maintenant directement son rendu contre une
 ancienne configuration contenant `engins=null`. Les types et les équipes restent
 visibles pendant la reconstruction du catalogue, y compris avant la première
 réception complète depuis Supabase.
+
+## Correctif V202609_0008 — chef d'agrès du rapport
+
+Avec ses pouvoirs activés, le superadministrateur peut désormais remplacer le
+chef d'agrès depuis la correction du véhicule et de l'équipage, même lorsque le
+chef initial était le superadministrateur lui-même. La modification met à jour
+le responsable opérationnel et reste tracée dans l'historique du rapport.
