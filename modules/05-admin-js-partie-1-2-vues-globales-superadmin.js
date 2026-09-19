@@ -288,7 +288,7 @@ function operationalHealthReport(){
   const oldestPendingAt=pendingDetails.length?Number(pendingDetails[0].since||0):0;
   const online=(LOGIN_HISTORY||[]).filter(isLoginHistorySessionActive);
   const health=window._agaiSyncHealth||{};
-  return {issues:issues,pending:pending,pendingDetails:pendingDetails,deferred:deferredDetails.length,oldestPendingAt:oldestPendingAt,online:online,legacyProtected:Number(window._agaiLegacyStatusMetadataCount)||0,atomicState:typeof _rcAtomicServerState==='string'?_rcAtomicServerState:'unknown',authBridgeState:_agaiAuthBridgeState,authBridgeHealth:_agaiAuthBridgeHealth,syncState:health.state||'loading',lastOkAt:health.lastOkAt||null,lastPushOkAt:health.lastPushOkAt||null,lastPullOkAt:health.lastPullOkAt||null,lastErrorAt:health.lastErrorAt||null,lastError:health.lastError||'',lastPushError:health.lastPushError||'',lastPullError:health.lastPullError||''};
+  return {issues:issues,pending:pending,pendingDetails:pendingDetails,deferred:deferredDetails.length,oldestPendingAt:oldestPendingAt,online:online,legacyProtected:Number(window._agaiLegacyStatusMetadataCount)||0,atomicState:typeof _rcAtomicServerState==='string'?_rcAtomicServerState:'unknown',authBridgeState:_agaiAuthBridgeState,authBridgeHealth:_agaiAuthBridgeHealth,serverCircuitUntil:typeof _agaiServerCircuitOpenUntil==='number'?_agaiServerCircuitOpenUntil:0,syncState:health.state||'loading',lastOkAt:health.lastOkAt||null,lastPushOkAt:health.lastPushOkAt||null,lastPullOkAt:health.lastPullOkAt||null,lastErrorAt:health.lastErrorAt||null,lastError:health.lastError||'',lastPushError:health.lastPushError||'',lastPullError:health.lastPullError||''};
 }
 function renderOperationalHealthPanel(){
   const report=operationalHealthReport(),errors=report.issues.filter(function(issue){return issue.severity==='error';}).length,warnings=report.issues.length-errors;
@@ -310,6 +310,7 @@ function renderOperationalHealthPanel(){
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">LIAISON DES COMPTES V239</div><strong id="sa-auth-link-state" style="font-size:11px;color:#B45309;">'+(report.authBridgeState==='disabled'?'Suspendue pour stabilité':report.authBridgeState==='missing'?'Script v239 à installer':report.authBridgeState==='error'?'Vérification impossible':'Vérification…')+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">DERNIER ENVOI RÉUSSI</div><strong style="font-size:11px;">'+escHtml(fmt(report.lastPushOkAt))+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">DERNIÈRE RÉCEPTION RÉUSSIE</div><strong style="font-size:11px;">'+escHtml(fmt(report.lastPullOkAt))+'</strong></div>'
+    +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">PROTECTION ANTI-SATURATION</div><strong style="font-size:11px;color:'+(report.serverCircuitUntil>Date.now()?'#B45309':'#047857')+';">'+(report.serverCircuitUntil>Date.now()?'Pause jusqu’à '+new Date(report.serverCircuitUntil).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):'Disponible')+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">VERSIONS ACTIVES</div><strong style="font-size:10px;overflow-wrap:anywhere;color:'+(outdated?'#B45309':'inherit')+';">'+escHtml(deviceVersions.join(' · ')||APP_VERSION)+'</strong>'+(outdated?'<div style="font-size:10px;color:#B45309;">'+outdated+' appareil(s) à actualiser</div>':'')+'</div></div>'
     +(report.lastError?'<div style="background:#FEF2F2;color:#991B1B;border-radius:8px;padding:8px 10px;font-size:11px;margin-bottom:10px;"><strong>Dernière erreur :</strong> '+escHtml(report.lastError)+' · '+escHtml(fmt(report.lastErrorAt))+'</div>':'')
     +(report.pendingDetails.length?'<div style="margin-bottom:10px;border:1px solid #FDE68A;border-radius:9px;overflow:hidden;">'+(report.deferred?'<div style="padding:7px 9px;background:#FFFBEB;text-align:right;"><button class="btn sm" style="font-size:10px;padding:4px 8px;" onclick="retryAllPendingRecords()">↻ Réessayer toutes les actions</button></div>':'')+report.pendingDetails.slice(0,10).map(function(item){return '<div style="padding:7px 9px;border-bottom:1px solid #FEF3C7;font-size:10px;display:flex;align-items:center;gap:7px;"><span style="flex:1;overflow-wrap:anywhere;"><strong>'+escHtml(item.id)+'</strong> · '+escHtml(age(item.since))+(item.deferred?' · isolée'+(item.reason?' : '+escHtml(item.reason):''):'')+'</span><button class="btn sm" style="font-size:10px;padding:3px 7px;" onclick="retrySinglePendingRecord(\''+encodeURIComponent(item.id)+'\')">Réessayer</button></div>';}).join('')+'</div>':'')
@@ -320,6 +321,7 @@ function retrySinglePendingRecord(encodedId){
   if(!isSuperAdmin()){showToast('Action réservée au superadministrateur.','warn');return;}
   const id=decodeURIComponent(String(encodedId||''));
   if(!id||typeof _rcPendingDirty==='undefined'||!_rcPendingDirty.has(id)){showToast('Cette action n’est plus en attente.','info');refreshOperationalHealthPanel();return;}
+  if(typeof _agaiAllowServerProbeNow==='function')_agaiAllowServerProbeNow();
   if(typeof _rcClearDeferred==='function')_rcClearDeferred([id]);
   if(typeof _rcScheduleRetry==='function')_rcScheduleRetry(0);
   showToast('Nouvelle tentative lancée uniquement pour cette action.','info');
@@ -329,6 +331,7 @@ function retryAllPendingRecords(){
   if(!isSuperAdmin()){showToast('Action réservée au superadministrateur.','warn');return;}
   const ids=typeof _rcPendingDirty!=='undefined'?Array.from(_rcPendingDirty):[];
   if(!ids.length){showToast('Aucune action en attente.','info');refreshOperationalHealthPanel();return;}
+  if(typeof _agaiAllowServerProbeNow==='function')_agaiAllowServerProbeNow();
   if(typeof _rcClearDeferred==='function')_rcClearDeferred(ids);
   if(typeof _rcScheduleRetry==='function')_rcScheduleRetry(0);
   _jbSetStatus('pending');
@@ -776,8 +779,8 @@ function renderSuperAdmin(){
   // Rendu de la configuration des types d'engins
   try{renderEnginTypes();}catch(e){}
   try{refreshRecoveryCheckpointsPanel();}catch(e){}
-  try{if(typeof _rcCheckAtomicServer==='function')_rcCheckAtomicServer(false);}catch(e){}
-  try{if(typeof _agaiCheckAccountLinkServer==='function')_agaiCheckAccountLinkServer(false);}catch(e){}
+  // Les diagnostics serveur sont lancés uniquement par le bouton Actualiser du
+  // panneau Maintenance. Un simple rendu ne doit générer aucune requête SQL.
   try{
     const _bg=document.getElementById('sa-bglogout');
     if(_bg)_bg.value=(ASTR_CONFIG&&typeof ASTR_CONFIG.bgLogoutMin==='number')?ASTR_CONFIG.bgLogoutMin:15;

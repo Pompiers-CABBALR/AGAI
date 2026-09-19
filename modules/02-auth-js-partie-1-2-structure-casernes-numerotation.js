@@ -206,12 +206,58 @@ let _agaiAuthBridgeState=AUTH_LINK_ENABLED?'unknown':'disabled';
 let _agaiAuthBridgeHealth=null;
 let _agaiAuthRefreshTimer=null;
 let _agaiLastDataSnapshot=null;
+const AGAI_SERVER_CIRCUIT_KEY='agai_server_circuit_v1';
+const AGAI_SERVER_CIRCUIT_MS=5*60*1000;
+let _agaiServerFailureCount=0;
+let _agaiServerCircuitOpenUntil=0;
+let _agaiServerProbeInFlight=false;
+try{
+  const savedCircuit=JSON.parse(localStorage.getItem(AGAI_SERVER_CIRCUIT_KEY)||'null');
+  if(savedCircuit&&Number(savedCircuit.until)>Date.now()){
+    _agaiServerFailureCount=Math.max(2,Number(savedCircuit.failures)||2);
+    _agaiServerCircuitOpenUntil=Number(savedCircuit.until)||0;
+  }
+}catch(error){}
+function _agaiIsSupabaseRequest(url){return String(url||'').startsWith(SB_URL+'/');}
+function _agaiPersistServerCircuit(){
+  try{
+    if(_agaiServerCircuitOpenUntil>Date.now())localStorage.setItem(AGAI_SERVER_CIRCUIT_KEY,JSON.stringify({until:_agaiServerCircuitOpenUntil,failures:_agaiServerFailureCount}));
+    else localStorage.removeItem(AGAI_SERVER_CIRCUIT_KEY);
+  }catch(error){}
+}
+function _agaiServerCircuitWaitMs(){return Math.max(0,_agaiServerCircuitOpenUntil-Date.now());}
+function _agaiRegisterServerFailure(){
+  _agaiServerFailureCount++;
+  if(_agaiServerFailureCount>=2)_agaiServerCircuitOpenUntil=Date.now()+AGAI_SERVER_CIRCUIT_MS;
+  _agaiPersistServerCircuit();
+}
+function _agaiRegisterServerSuccess(){
+  _agaiServerFailureCount=0;_agaiServerCircuitOpenUntil=0;_agaiPersistServerCircuit();
+}
+function _agaiAllowServerProbeNow(){
+  _agaiServerCircuitOpenUntil=0;_agaiServerFailureCount=Math.max(2,_agaiServerFailureCount);_agaiPersistServerCircuit();
+}
 async function _agaiFetchWithTimeout(url,options,timeoutMs){
+  const supabaseRequest=_agaiIsSupabaseRequest(url),probe=supabaseRequest&&_agaiServerFailureCount>=2;
+  if(supabaseRequest&&_agaiServerCircuitWaitMs()>0)throw new Error('Service Supabase en pause de protection');
+  if(probe&&_agaiServerProbeInFlight)throw new Error('Vérification Supabase déjà en cours');
+  if(probe)_agaiServerProbeInFlight=true;
   const controller=new AbortController(),delay=Math.max(3000,Number(timeoutMs)||15000);
   const timer=setTimeout(function(){controller.abort();},delay);
-  try{return await fetch(url,Object.assign({},options||{},{signal:controller.signal}));}
-  catch(error){if(error&&error.name==='AbortError')throw new Error('Délai serveur dépassé après '+Math.round(delay/1000)+' s');throw error;}
-  finally{clearTimeout(timer);}
+  try{
+    const response=await fetch(url,Object.assign({},options||{},{signal:controller.signal}));
+    if(supabaseRequest){
+      if(response.status===0||response.status===502||response.status===503||response.status===504)_agaiRegisterServerFailure();
+      else if(response.ok)_agaiRegisterServerSuccess();
+    }
+    return response;
+  }
+  catch(error){
+    if(supabaseRequest)_agaiRegisterServerFailure();
+    if(error&&error.name==='AbortError')throw new Error('Délai serveur dépassé après '+Math.round(delay/1000)+' s');
+    throw error;
+  }
+  finally{clearTimeout(timer);if(probe)_agaiServerProbeInFlight=false;}
 }
 function CC(){return CASERNES.find(c=>c.id===CURRENT_CASERNE_ID)||null;}
 function CD(){if(!CURRENT_CASERNE_ID)return null;initCaserneData(CURRENT_CASERNE_ID);return CASERNE_DATA[CURRENT_CASERNE_ID];}
@@ -237,7 +283,9 @@ let LOGIN_HISTORY=[];
 let LOGIN_HISTORY_DELETED={};
 const LOGIN_HISTORY_MAX=5000;
 const LOGIN_HISTORY_PER_ACCOUNT_MAX=6;
-const LOGIN_PRESENCE_TIMEOUT_MS=150000;
+// Une présence partagée toutes les cinq minutes suffit pour l'exploitation.
+// L'ancien rythme inférieur à une minute provoquait des écritures permanentes.
+const LOGIN_PRESENCE_TIMEOUT_MS=12*60*1000;
 let _equipeIsolationCleanupTimer=null;
 const _equipeIsolationCleanupPending={};
 function normalizeEquipesForCaserne(cid,d){

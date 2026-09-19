@@ -297,3 +297,16 @@ attente » jusqu’à la transmission réelle. Un clic sur le bandeau ou sur
 relance la file. Les suppressions différées restent conservées durablement sans
 bloquer la réception des nouvelles interventions ni afficher un faux échec
 général de l’application.
+
+## Stabilisation V202609_0005 — coupe-circuit Supabase
+
+Après deux réponses réseau 502, 503 ou 504, l’application suspend désormais ses
+requêtes Supabase pendant cinq minutes. Une seule sonde est ensuite autorisée,
+ce qui empêche plusieurs onglets de maintenir la base à 100 % de CPU. Les
+reconnexions Realtime et le polling de secours sont également espacés.
+
+La présence partagée n’est plus écrite chaque minute, les diagnostics serveur
+ne sont exécutés qu’à la demande et un superadministrateur revenu dans une
+caserne ne recharge plus automatiquement toutes les autres casernes. Enfin, une
+file locale en attente ne bloque plus la réception : les équipes, véhicules et
+nouvelles interventions restent chargés pendant la reprise des écritures.

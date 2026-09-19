@@ -448,7 +448,7 @@ function _touchSessionActivity(){
     entry.lastSeenAt=new Date(now).toISOString();
     entry.actif=true;
     entry.hDeconnexion=null;
-    if(now-_loginPresenceLastPush>=45000){
+    if(now-_loginPresenceLastPush>=5*60*1000){
       _loginPresenceLastPush=now;
       if(typeof _jbEditLock!=='undefined')_jbEditLock=now;
       saveData(true);
@@ -458,7 +458,7 @@ function _touchSessionActivity(){
 ['pointerdown','keydown','touchstart'].forEach(function(eventName){
   document.addEventListener(eventName,_touchSessionActivity,{passive:true});
 });
-window.setInterval(_touchSessionActivity,60000);
+window.setInterval(_touchSessionActivity,2*60*1000);
 // Fermer le dropdown quand on clique ailleurs
 document.addEventListener('click',function(e){
   const dd=document.getElementById('fa-dd');

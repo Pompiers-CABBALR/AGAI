@@ -359,12 +359,58 @@ let _agaiAuthBridgeState=AUTH_LINK_ENABLED?'unknown':'disabled';
 let _agaiAuthBridgeHealth=null;
 let _agaiAuthRefreshTimer=null;
 let _agaiLastDataSnapshot=null;
+const AGAI_SERVER_CIRCUIT_KEY='agai_server_circuit_v1';
+const AGAI_SERVER_CIRCUIT_MS=5*60*1000;
+let _agaiServerFailureCount=0;
+let _agaiServerCircuitOpenUntil=0;
+let _agaiServerProbeInFlight=false;
+try{
+  const savedCircuit=JSON.parse(localStorage.getItem(AGAI_SERVER_CIRCUIT_KEY)||'null');
+  if(savedCircuit&&Number(savedCircuit.until)>Date.now()){
+    _agaiServerFailureCount=Math.max(2,Number(savedCircuit.failures)||2);
+    _agaiServerCircuitOpenUntil=Number(savedCircuit.until)||0;
+  }
+}catch(error){}
+function _agaiIsSupabaseRequest(url){return String(url||'').startsWith(SB_URL+'/');}
+function _agaiPersistServerCircuit(){
+  try{
+    if(_agaiServerCircuitOpenUntil>Date.now())localStorage.setItem(AGAI_SERVER_CIRCUIT_KEY,JSON.stringify({until:_agaiServerCircuitOpenUntil,failures:_agaiServerFailureCount}));
+    else localStorage.removeItem(AGAI_SERVER_CIRCUIT_KEY);
+  }catch(error){}
+}
+function _agaiServerCircuitWaitMs(){return Math.max(0,_agaiServerCircuitOpenUntil-Date.now());}
+function _agaiRegisterServerFailure(){
+  _agaiServerFailureCount++;
+  if(_agaiServerFailureCount>=2)_agaiServerCircuitOpenUntil=Date.now()+AGAI_SERVER_CIRCUIT_MS;
+  _agaiPersistServerCircuit();
+}
+function _agaiRegisterServerSuccess(){
+  _agaiServerFailureCount=0;_agaiServerCircuitOpenUntil=0;_agaiPersistServerCircuit();
+}
+function _agaiAllowServerProbeNow(){
+  _agaiServerCircuitOpenUntil=0;_agaiServerFailureCount=Math.max(2,_agaiServerFailureCount);_agaiPersistServerCircuit();
+}
 async function _agaiFetchWithTimeout(url,options,timeoutMs){
+  const supabaseRequest=_agaiIsSupabaseRequest(url),probe=supabaseRequest&&_agaiServerFailureCount>=2;
+  if(supabaseRequest&&_agaiServerCircuitWaitMs()>0)throw new Error('Service Supabase en pause de protection');
+  if(probe&&_agaiServerProbeInFlight)throw new Error('Vérification Supabase déjà en cours');
+  if(probe)_agaiServerProbeInFlight=true;
   const controller=new AbortController(),delay=Math.max(3000,Number(timeoutMs)||15000);
   const timer=setTimeout(function(){controller.abort();},delay);
-  try{return await fetch(url,Object.assign({},options||{},{signal:controller.signal}));}
-  catch(error){if(error&&error.name==='AbortError')throw new Error('Délai serveur dépassé après '+Math.round(delay/1000)+' s');throw error;}
-  finally{clearTimeout(timer);}
+  try{
+    const response=await fetch(url,Object.assign({},options||{},{signal:controller.signal}));
+    if(supabaseRequest){
+      if(response.status===0||response.status===502||response.status===503||response.status===504)_agaiRegisterServerFailure();
+      else if(response.ok)_agaiRegisterServerSuccess();
+    }
+    return response;
+  }
+  catch(error){
+    if(supabaseRequest)_agaiRegisterServerFailure();
+    if(error&&error.name==='AbortError')throw new Error('Délai serveur dépassé après '+Math.round(delay/1000)+' s');
+    throw error;
+  }
+  finally{clearTimeout(timer);if(probe)_agaiServerProbeInFlight=false;}
 }
 function CC(){return CASERNES.find(c=>c.id===CURRENT_CASERNE_ID)||null;}
 function CD(){if(!CURRENT_CASERNE_ID)return null;initCaserneData(CURRENT_CASERNE_ID);return CASERNE_DATA[CURRENT_CASERNE_ID];}
@@ -390,7 +436,9 @@ let LOGIN_HISTORY=[];
 let LOGIN_HISTORY_DELETED={};
 const LOGIN_HISTORY_MAX=5000;
 const LOGIN_HISTORY_PER_ACCOUNT_MAX=6;
-const LOGIN_PRESENCE_TIMEOUT_MS=150000;
+// Une présence partagée toutes les cinq minutes suffit pour l'exploitation.
+// L'ancien rythme inférieur à une minute provoquait des écritures permanentes.
+const LOGIN_PRESENCE_TIMEOUT_MS=12*60*1000;
 let _equipeIsolationCleanupTimer=null;
 const _equipeIsolationCleanupPending={};
 function normalizeEquipesForCaserne(cid,d){
@@ -1806,7 +1854,7 @@ function operationalHealthReport(){
   const oldestPendingAt=pendingDetails.length?Number(pendingDetails[0].since||0):0;
   const online=(LOGIN_HISTORY||[]).filter(isLoginHistorySessionActive);
   const health=window._agaiSyncHealth||{};
-  return {issues:issues,pending:pending,pendingDetails:pendingDetails,deferred:deferredDetails.length,oldestPendingAt:oldestPendingAt,online:online,legacyProtected:Number(window._agaiLegacyStatusMetadataCount)||0,atomicState:typeof _rcAtomicServerState==='string'?_rcAtomicServerState:'unknown',authBridgeState:_agaiAuthBridgeState,authBridgeHealth:_agaiAuthBridgeHealth,syncState:health.state||'loading',lastOkAt:health.lastOkAt||null,lastPushOkAt:health.lastPushOkAt||null,lastPullOkAt:health.lastPullOkAt||null,lastErrorAt:health.lastErrorAt||null,lastError:health.lastError||'',lastPushError:health.lastPushError||'',lastPullError:health.lastPullError||''};
+  return {issues:issues,pending:pending,pendingDetails:pendingDetails,deferred:deferredDetails.length,oldestPendingAt:oldestPendingAt,online:online,legacyProtected:Number(window._agaiLegacyStatusMetadataCount)||0,atomicState:typeof _rcAtomicServerState==='string'?_rcAtomicServerState:'unknown',authBridgeState:_agaiAuthBridgeState,authBridgeHealth:_agaiAuthBridgeHealth,serverCircuitUntil:typeof _agaiServerCircuitOpenUntil==='number'?_agaiServerCircuitOpenUntil:0,syncState:health.state||'loading',lastOkAt:health.lastOkAt||null,lastPushOkAt:health.lastPushOkAt||null,lastPullOkAt:health.lastPullOkAt||null,lastErrorAt:health.lastErrorAt||null,lastError:health.lastError||'',lastPushError:health.lastPushError||'',lastPullError:health.lastPullError||''};
 }
 function renderOperationalHealthPanel(){
   const report=operationalHealthReport(),errors=report.issues.filter(function(issue){return issue.severity==='error';}).length,warnings=report.issues.length-errors;
@@ -1828,6 +1876,7 @@ function renderOperationalHealthPanel(){
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">LIAISON DES COMPTES V239</div><strong id="sa-auth-link-state" style="font-size:11px;color:#B45309;">'+(report.authBridgeState==='disabled'?'Suspendue pour stabilité':report.authBridgeState==='missing'?'Script v239 à installer':report.authBridgeState==='error'?'Vérification impossible':'Vérification…')+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">DERNIER ENVOI RÉUSSI</div><strong style="font-size:11px;">'+escHtml(fmt(report.lastPushOkAt))+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">DERNIÈRE RÉCEPTION RÉUSSIE</div><strong style="font-size:11px;">'+escHtml(fmt(report.lastPullOkAt))+'</strong></div>'
+    +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">PROTECTION ANTI-SATURATION</div><strong style="font-size:11px;color:'+(report.serverCircuitUntil>Date.now()?'#B45309':'#047857')+';">'+(report.serverCircuitUntil>Date.now()?'Pause jusqu’à '+new Date(report.serverCircuitUntil).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):'Disponible')+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">VERSIONS ACTIVES</div><strong style="font-size:10px;overflow-wrap:anywhere;color:'+(outdated?'#B45309':'inherit')+';">'+escHtml(deviceVersions.join(' · ')||APP_VERSION)+'</strong>'+(outdated?'<div style="font-size:10px;color:#B45309;">'+outdated+' appareil(s) à actualiser</div>':'')+'</div></div>'
     +(report.lastError?'<div style="background:#FEF2F2;color:#991B1B;border-radius:8px;padding:8px 10px;font-size:11px;margin-bottom:10px;"><strong>Dernière erreur :</strong> '+escHtml(report.lastError)+' · '+escHtml(fmt(report.lastErrorAt))+'</div>':'')
     +(report.pendingDetails.length?'<div style="margin-bottom:10px;border:1px solid #FDE68A;border-radius:9px;overflow:hidden;">'+(report.deferred?'<div style="padding:7px 9px;background:#FFFBEB;text-align:right;"><button class="btn sm" style="font-size:10px;padding:4px 8px;" onclick="retryAllPendingRecords()">↻ Réessayer toutes les actions</button></div>':'')+report.pendingDetails.slice(0,10).map(function(item){return '<div style="padding:7px 9px;border-bottom:1px solid #FEF3C7;font-size:10px;display:flex;align-items:center;gap:7px;"><span style="flex:1;overflow-wrap:anywhere;"><strong>'+escHtml(item.id)+'</strong> · '+escHtml(age(item.since))+(item.deferred?' · isolée'+(item.reason?' : '+escHtml(item.reason):''):'')+'</span><button class="btn sm" style="font-size:10px;padding:3px 7px;" onclick="retrySinglePendingRecord(\''+encodeURIComponent(item.id)+'\')">Réessayer</button></div>';}).join('')+'</div>':'')
@@ -1838,6 +1887,7 @@ function retrySinglePendingRecord(encodedId){
   if(!isSuperAdmin()){showToast('Action réservée au superadministrateur.','warn');return;}
   const id=decodeURIComponent(String(encodedId||''));
   if(!id||typeof _rcPendingDirty==='undefined'||!_rcPendingDirty.has(id)){showToast('Cette action n’est plus en attente.','info');refreshOperationalHealthPanel();return;}
+  if(typeof _agaiAllowServerProbeNow==='function')_agaiAllowServerProbeNow();
   if(typeof _rcClearDeferred==='function')_rcClearDeferred([id]);
   if(typeof _rcScheduleRetry==='function')_rcScheduleRetry(0);
   showToast('Nouvelle tentative lancée uniquement pour cette action.','info');
@@ -1847,6 +1897,7 @@ function retryAllPendingRecords(){
   if(!isSuperAdmin()){showToast('Action réservée au superadministrateur.','warn');return;}
   const ids=typeof _rcPendingDirty!=='undefined'?Array.from(_rcPendingDirty):[];
   if(!ids.length){showToast('Aucune action en attente.','info');refreshOperationalHealthPanel();return;}
+  if(typeof _agaiAllowServerProbeNow==='function')_agaiAllowServerProbeNow();
   if(typeof _rcClearDeferred==='function')_rcClearDeferred(ids);
   if(typeof _rcScheduleRetry==='function')_rcScheduleRetry(0);
   _jbSetStatus('pending');
@@ -2294,8 +2345,8 @@ function renderSuperAdmin(){
   // Rendu de la configuration des types d'engins
   try{renderEnginTypes();}catch(e){}
   try{refreshRecoveryCheckpointsPanel();}catch(e){}
-  try{if(typeof _rcCheckAtomicServer==='function')_rcCheckAtomicServer(false);}catch(e){}
-  try{if(typeof _agaiCheckAccountLinkServer==='function')_agaiCheckAccountLinkServer(false);}catch(e){}
+  // Les diagnostics serveur sont lancés uniquement par le bouton Actualiser du
+  // panneau Maintenance. Un simple rendu ne doit générer aucune requête SQL.
   try{
     const _bg=document.getElementById('sa-bglogout');
     if(_bg)_bg.value=(ASTR_CONFIG&&typeof ASTR_CONFIG.bgLogoutMin==='number')?ASTR_CONFIG.bgLogoutMin:15;
@@ -4768,7 +4819,7 @@ function _touchSessionActivity(){
     entry.lastSeenAt=new Date(now).toISOString();
     entry.actif=true;
     entry.hDeconnexion=null;
-    if(now-_loginPresenceLastPush>=45000){
+    if(now-_loginPresenceLastPush>=5*60*1000){
       _loginPresenceLastPush=now;
       if(typeof _jbEditLock!=='undefined')_jbEditLock=now;
       saveData(true);
@@ -4778,7 +4829,7 @@ function _touchSessionActivity(){
 ['pointerdown','keydown','touchstart'].forEach(function(eventName){
   document.addEventListener(eventName,_touchSessionActivity,{passive:true});
 });
-window.setInterval(_touchSessionActivity,60000);
+window.setInterval(_touchSessionActivity,2*60*1000);
 // Fermer le dropdown quand on clique ailleurs
 document.addEventListener('click',function(e){
   const dd=document.getElementById('fa-dd');
@@ -15740,7 +15791,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202609_0004';
+const APP_VERSION='V202609_0005';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -18672,8 +18723,10 @@ async function _rcBootstrapSync(){
   if(durableRows.length||_rcPendingDirty.size){
     const recovered=await _rcRecoverPendingQueue(durableRows);
     if(recovered)await _rcPush(false);
-    return recovered;
   }
+  // Même si une écriture reste différée, charger ensuite le serveur. Sans ce
+  // passage, un appareil neuf affichait des équipes et véhicules vides jusqu'à
+  // la disparition complète de sa file locale.
   return _rcPull(false);
 }
 
@@ -18719,6 +18772,7 @@ function _postLoadInit(){
 }
 
 function jbSyncNow(){
+  if(typeof _agaiAllowServerProbeNow==='function')_agaiAllowServerProbeNow();
   if(USE_RECORDS&&typeof _rcPendingDirty!=='undefined'&&_rcPendingDirty.size){
     // Un clic utilisateur signifie « réessayer maintenant » : ne pas attendre
     // la fin du délai de cinq minutes des lignes temporairement isolées.
@@ -19178,7 +19232,7 @@ let _rcRealtimeJoinSequence = 0;
 let _rcNeedsRecoveryPull = false;
 let _rcInitialReconciliationDone = false;
 let _rcRecoveryPromise = null;
-const RC_FALLBACK_POLL_MS = 90000;
+const RC_FALLBACK_POLL_MS = 5*60*1000;
 // Pages réduites pour rester utilisable lorsque l'API Supabase est dégradée.
 const RC_PULL_PAGE_SIZE = 100;
 const RC_PENDING_DIRTY_KEY = 'agai_rc_pending_dirty';
@@ -19470,6 +19524,8 @@ function _rcScheduleRetry(delay){
   if(!USE_RECORDS||!_rcPendingDirty.size)return;
   if(_rcRetryTimer)clearTimeout(_rcRetryTimer);
   let wait=typeof delay==='number'?Math.max(0,delay):_rcRetryDelay;
+  const circuitWait=typeof _agaiServerCircuitWaitMs==='function'?_agaiServerCircuitWaitMs():0;
+  if(circuitWait>0)wait=Math.max(wait,circuitWait);
   if(!_rcHasActivePending()){
     const future=Array.from(_rcPendingDirty).map(function(id){return Number(_rcDeferredDirty[id]&&_rcDeferredDirty[id].until||0);}).filter(function(until){return until>Date.now();});
     wait=future.length?Math.max(1000,Math.min.apply(Math,future)-Date.now()):wait;
@@ -19774,17 +19830,13 @@ function _rcRenderRealtimeViews(){
 function _rcRequestRealtimePull(delay){
   _rcRealtimePullPending=true;
   if(_rcRealtimePullTimer)clearTimeout(_rcRealtimePullTimer);
-  const wait=typeof delay==='number'?Math.max(0,delay):0;
+  const circuitWait=typeof _agaiServerCircuitWaitMs==='function'?_agaiServerCircuitWaitMs():0;
+  const wait=Math.max(typeof delay==='number'?Math.max(0,delay):0,circuitWait);
   _rcRealtimePullTimer=window.setTimeout(function attemptRealtimePull(){
     _rcRealtimePullTimer=null;
     if(!_rcRealtimePullPending)return;
-    // Tant qu'une file locale subsiste, aucun événement temps réel ne doit
-    // relancer la lecture globale et masquer l'erreur ou la progression réelle.
-    if(_rcHasActivePending()){
-      _rcRealtimePullPending=false;
-      _rcScheduleRetry(0);
-      return;
-    }
+    // Une file locale ne bloque plus la réception. La fusion protège les
+    // changements en attente tout en laissant arriver les nouvelles alertes.
     const lockRemaining=Math.max(0,12000-(Date.now()-_jbEditLock));
     if(_rcSaving||lockRemaining>0){
       if(_rcHasActivePending())_rcScheduleRetry(0);
@@ -19794,7 +19846,7 @@ function _rcRequestRealtimePull(delay){
     }
     _rcRealtimePullPending=false;
     Promise.resolve(_rcPull(true)).then(function(ok){
-      if(ok===false)_rcRequestRealtimePull(1500);
+      if(ok===false)_rcRequestRealtimePull(Math.max(AGAI_SERVER_CIRCUIT_MS,_agaiServerCircuitWaitMs()));
     });
   },wait);
 }
@@ -20466,7 +20518,9 @@ async function _rcPush(fullPush){
 // Un appareil neuf (notamment un iPhone sans cache complet) doit donc lire
 // toutes les pages avant de reconstruire les interventions de la caserne.
 function _rcPullScopeFilter(){
-  const privileged=GLOBAL_ROLE==='superadmin'||(CU&&CU.appRole==='chef_corps');
+  const globalView=document.getElementById('global-view');
+  const globalSuperAdmin=GLOBAL_ROLE==='superadmin'&&globalView&&globalView.style.display!=='none';
+  const privileged=globalSuperAdmin||(CU&&CU.appRole==='chef_corps');
   if(privileged||!CURRENT_CASERNE_ID)return '';
   const caserneId=String(CURRENT_CASERNE_ID).replace(/[^A-Za-z0-9_-]/g,'');
   return caserneId?'&caserne=in.(_GLOBAL,'+caserneId+')':'';
@@ -20489,12 +20543,12 @@ async function _rcFetchAllActiveRows(){
 // ── PULL : lit tous les enregistrements et reconstruit l'état ──
 async function _rcPull(silent){
   if(_rcSaving||_rcPulling) return true;
-  // La reprise de la file est prioritaire. Le chargement complet de toutes les
-  // casernes ne reprend qu'une fois le compteur revenu à zéro.
+  // Traiter d'abord la file locale, puis poursuivre la réception. L'overlay
+  // protège les modifications locales : une action bloquée ne doit plus cacher
+  // les nouvelles interventions reçues par la caserne.
   if(_rcHasActivePending()){
-    if(!_rcInitialReconciliationDone)return _rcRecoverPendingQueue();
+    if(!_rcInitialReconciliationDone)await _rcRecoverPendingQueue();
     await _rcPush(false);
-    return true;
   }
   _rcPulling=true;
   try {
@@ -20725,7 +20779,8 @@ function _rcStartRealtime(){
       if(USE_RECORDS&&!ws._agaiManualClose){
         _rcNeedsRecoveryPull=true;
         if(_rcRealtimeReconnectTimer)clearTimeout(_rcRealtimeReconnectTimer);
-        _rcRealtimeReconnectTimer=window.setTimeout(_rcStartRealtime,ws._agaiJoinRejected?15000:3000);
+        const circuitWait=typeof _agaiServerCircuitWaitMs==='function'?_agaiServerCircuitWaitMs():0;
+        _rcRealtimeReconnectTimer=window.setTimeout(_rcStartRealtime,Math.max(circuitWait,ws._agaiJoinRejected?60000:30000));
       }
     };
     ws.onerror = function(){ try{ws.close();}catch(e){} };

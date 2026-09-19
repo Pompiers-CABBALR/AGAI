@@ -1258,8 +1258,10 @@ async function _rcBootstrapSync(){
   if(durableRows.length||_rcPendingDirty.size){
     const recovered=await _rcRecoverPendingQueue(durableRows);
     if(recovered)await _rcPush(false);
-    return recovered;
   }
+  // Même si une écriture reste différée, charger ensuite le serveur. Sans ce
+  // passage, un appareil neuf affichait des équipes et véhicules vides jusqu'à
+  // la disparition complète de sa file locale.
   return _rcPull(false);
 }
 
@@ -1305,6 +1307,7 @@ function _postLoadInit(){
 }
 
 function jbSyncNow(){
+  if(typeof _agaiAllowServerProbeNow==='function')_agaiAllowServerProbeNow();
   if(USE_RECORDS&&typeof _rcPendingDirty!=='undefined'&&_rcPendingDirty.size){
     // Un clic utilisateur signifie « réessayer maintenant » : ne pas attendre
     // la fin du délai de cinq minutes des lignes temporairement isolées.
@@ -1764,7 +1767,7 @@ let _rcRealtimeJoinSequence = 0;
 let _rcNeedsRecoveryPull = false;
 let _rcInitialReconciliationDone = false;
 let _rcRecoveryPromise = null;
-const RC_FALLBACK_POLL_MS = 90000;
+const RC_FALLBACK_POLL_MS = 5*60*1000;
 // Pages réduites pour rester utilisable lorsque l'API Supabase est dégradée.
 const RC_PULL_PAGE_SIZE = 100;
 const RC_PENDING_DIRTY_KEY = 'agai_rc_pending_dirty';
@@ -2056,6 +2059,8 @@ function _rcScheduleRetry(delay){
   if(!USE_RECORDS||!_rcPendingDirty.size)return;
   if(_rcRetryTimer)clearTimeout(_rcRetryTimer);
   let wait=typeof delay==='number'?Math.max(0,delay):_rcRetryDelay;
+  const circuitWait=typeof _agaiServerCircuitWaitMs==='function'?_agaiServerCircuitWaitMs():0;
+  if(circuitWait>0)wait=Math.max(wait,circuitWait);
   if(!_rcHasActivePending()){
     const future=Array.from(_rcPendingDirty).map(function(id){return Number(_rcDeferredDirty[id]&&_rcDeferredDirty[id].until||0);}).filter(function(until){return until>Date.now();});
     wait=future.length?Math.max(1000,Math.min.apply(Math,future)-Date.now()):wait;
@@ -2360,17 +2365,13 @@ function _rcRenderRealtimeViews(){
 function _rcRequestRealtimePull(delay){
   _rcRealtimePullPending=true;
   if(_rcRealtimePullTimer)clearTimeout(_rcRealtimePullTimer);
-  const wait=typeof delay==='number'?Math.max(0,delay):0;
+  const circuitWait=typeof _agaiServerCircuitWaitMs==='function'?_agaiServerCircuitWaitMs():0;
+  const wait=Math.max(typeof delay==='number'?Math.max(0,delay):0,circuitWait);
   _rcRealtimePullTimer=window.setTimeout(function attemptRealtimePull(){
     _rcRealtimePullTimer=null;
     if(!_rcRealtimePullPending)return;
-    // Tant qu'une file locale subsiste, aucun événement temps réel ne doit
-    // relancer la lecture globale et masquer l'erreur ou la progression réelle.
-    if(_rcHasActivePending()){
-      _rcRealtimePullPending=false;
-      _rcScheduleRetry(0);
-      return;
-    }
+    // Une file locale ne bloque plus la réception. La fusion protège les
+    // changements en attente tout en laissant arriver les nouvelles alertes.
     const lockRemaining=Math.max(0,12000-(Date.now()-_jbEditLock));
     if(_rcSaving||lockRemaining>0){
       if(_rcHasActivePending())_rcScheduleRetry(0);
@@ -2380,7 +2381,7 @@ function _rcRequestRealtimePull(delay){
     }
     _rcRealtimePullPending=false;
     Promise.resolve(_rcPull(true)).then(function(ok){
-      if(ok===false)_rcRequestRealtimePull(1500);
+      if(ok===false)_rcRequestRealtimePull(Math.max(AGAI_SERVER_CIRCUIT_MS,_agaiServerCircuitWaitMs()));
     });
   },wait);
 }
@@ -3052,7 +3053,9 @@ async function _rcPush(fullPush){
 // Un appareil neuf (notamment un iPhone sans cache complet) doit donc lire
 // toutes les pages avant de reconstruire les interventions de la caserne.
 function _rcPullScopeFilter(){
-  const privileged=GLOBAL_ROLE==='superadmin'||(CU&&CU.appRole==='chef_corps');
+  const globalView=document.getElementById('global-view');
+  const globalSuperAdmin=GLOBAL_ROLE==='superadmin'&&globalView&&globalView.style.display!=='none';
+  const privileged=globalSuperAdmin||(CU&&CU.appRole==='chef_corps');
   if(privileged||!CURRENT_CASERNE_ID)return '';
   const caserneId=String(CURRENT_CASERNE_ID).replace(/[^A-Za-z0-9_-]/g,'');
   return caserneId?'&caserne=in.(_GLOBAL,'+caserneId+')':'';
@@ -3075,12 +3078,12 @@ async function _rcFetchAllActiveRows(){
 // ── PULL : lit tous les enregistrements et reconstruit l'état ──
 async function _rcPull(silent){
   if(_rcSaving||_rcPulling) return true;
-  // La reprise de la file est prioritaire. Le chargement complet de toutes les
-  // casernes ne reprend qu'une fois le compteur revenu à zéro.
+  // Traiter d'abord la file locale, puis poursuivre la réception. L'overlay
+  // protège les modifications locales : une action bloquée ne doit plus cacher
+  // les nouvelles interventions reçues par la caserne.
   if(_rcHasActivePending()){
-    if(!_rcInitialReconciliationDone)return _rcRecoverPendingQueue();
+    if(!_rcInitialReconciliationDone)await _rcRecoverPendingQueue();
     await _rcPush(false);
-    return true;
   }
   _rcPulling=true;
   try {
@@ -3311,7 +3314,8 @@ function _rcStartRealtime(){
       if(USE_RECORDS&&!ws._agaiManualClose){
         _rcNeedsRecoveryPull=true;
         if(_rcRealtimeReconnectTimer)clearTimeout(_rcRealtimeReconnectTimer);
-        _rcRealtimeReconnectTimer=window.setTimeout(_rcStartRealtime,ws._agaiJoinRejected?15000:3000);
+        const circuitWait=typeof _agaiServerCircuitWaitMs==='function'?_agaiServerCircuitWaitMs():0;
+        _rcRealtimeReconnectTimer=window.setTimeout(_rcStartRealtime,Math.max(circuitWait,ws._agaiJoinRejected?60000:30000));
       }
     };
     ws.onerror = function(){ try{ws.close();}catch(e){} };
