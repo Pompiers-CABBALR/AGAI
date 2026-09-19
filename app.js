@@ -466,8 +466,11 @@ function normalizeEquipesForCaserne(cid,d){
     const localCount=refs.filter(function(login){return localLogins.has(login);}).length;
     const foreignCount=refs.filter(function(login){return foreignLogins.has(login)&&!localLogins.has(login);}).length;
     const explicitlyForeign=!!(eq.caserneId&&eq.caserneId!==cid);
-    const copiedLegacyTeam=!eq.caserneId&&refs.length>0&&localCount===0&&foreignCount===refs.length;
-    if(explicitlyForeign||copiedLegacyTeam){
+    // Ne jamais conclure qu'une équipe est étrangère uniquement parce que la
+    // liste du personnel reçue est vide ou partielle. Lors d'une panne réseau,
+    // cette ancienne déduction pouvait masquer l'équipe puis planifier sa
+    // suppression sur le serveur. Seul un caserneId explicite fait foi.
+    if(explicitlyForeign){
       result.changed=true;result.removedIds.push(eq.id);return;
     }
     if(eq.caserneId!==cid){eq.caserneId=cid;result.changed=true;}
@@ -15791,7 +15794,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202609_0005';
+const APP_VERSION='V202609_0006';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -20016,7 +20019,7 @@ function _rcSplitCaserne(cid, d){
     planningRotations: d.planningRotations||{},
     disposValidated: d.disposValidated||{},
     piquetsValidated: d.piquetsValidated||{},
-    astrConfig: d.astrConfig||{},
+    astrConfig: _rcSafeAstrConfig(d),
     astrTelData: JSON.parse(JSON.stringify(d.astrTelData||{})),
     astrTelParams: Object.assign({},d.astrTelParams||{}),
     statsTaux: Object.assign({},d.statsTaux||{}),
@@ -20073,7 +20076,39 @@ function _rcAssembleCaserne(rows){
       out.adminLogin=c.adminLogin||out.adminLogins[0]||'';
     }
   });
+  // Une ligne config incomplète ne doit jamais faire disparaître tous les
+  // véhicules. Le catalogue est reconstruit à partir des interventions et des
+  // piquets déjà enregistrés, puis sera resynchronisé au prochain envoi.
+  out.astrConfig=_rcSafeAstrConfig(out);
   return out;
+}
+
+function _rcVehicleCatalogFromCaserneData(data){
+  const vehicles=[];
+  const add=function(value){
+    const name=String(value||'').trim();
+    if(name&&!vehicles.some(function(existing){return nm(existing)===nm(name);}))vehicles.push(name);
+  };
+  const config=data&&data.astrConfig;
+  (config&&Array.isArray(config.engins)?config.engins:[]).forEach(add);
+  Object.keys(data&&data.piquets||{}).forEach(function(week){
+    (Array.isArray(data.piquets[week])?data.piquets[week]:[]).forEach(function(item){add(item&&item.engin);});
+  });
+  ['ivs','pilpIvs'].forEach(function(key){
+    (data&&Array.isArray(data[key])?data[key]:[]).forEach(function(iv){
+      if(!iv)return;
+      add(iv._engin1||iv.eng);add(iv._engin2);
+      (Array.isArray(iv._renfortsInternes)?iv._renfortsInternes:[]).forEach(function(renfort){add(renfort&&renfort.engin);});
+    });
+  });
+  return vehicles.sort(function(a,b){return a.localeCompare(b,'fr',{numeric:true,sensitivity:'base'});});
+}
+function _rcSafeAstrConfig(data){
+  const source=data&&data.astrConfig&&typeof data.astrConfig==='object'?data.astrConfig:{};
+  const safe=Object.assign({},source);
+  const configured=Array.isArray(source.engins)?source.engins.map(function(value){return String(value||'').trim();}).filter(Boolean):[];
+  safe.engins=configured.length?Array.from(new Set(configured)):_rcVehicleCatalogFromCaserneData(data||{});
+  return safe;
 }
 
 // ── Découpe TOUTES les casernes + global en lignes records ──
@@ -20625,7 +20660,15 @@ async function _rcPull(silent){
       Object.keys(deleteGroups).forEach(function(caserneId){_rcMarkDeleted(caserneId,'login',deleteGroups[caserneId]);});
     }
     Object.keys(byCaserne).forEach(function(cid){
-      data.CASERNE_DATA[cid] = _rcAssembleCaserne(byCaserne[cid]);
+      const stationRows=byCaserne[cid];
+      const configRow=stationRows.find(function(row){return row.type==='config'&&!row.deleted;});
+      const remoteEngins=configRow&&configRow.data&&configRow.data.astrConfig&&configRow.data.astrConfig.engins;
+      data.CASERNE_DATA[cid] = _rcAssembleCaserne(stationRows);
+      // Réparer durablement uniquement la caserne active : les véhicules
+      // retrouvés dans son historique sont renvoyés dans sa configuration.
+      if(cid===CURRENT_CASERNE_ID&&(!Array.isArray(remoteEngins)||!remoteEngins.filter(Boolean).length)&&data.CASERNE_DATA[cid].astrConfig.engins.length){
+        _rcPendingDirty.add(_rcId(cid,'config','main'));_rcDirtyGeneration++;
+      }
     });
     // Protéger les modifications locales en cours et récupérer les anciennes
     // heures locales si elles étaient absentes de l'ancien format "records".

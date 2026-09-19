@@ -310,3 +310,15 @@ ne sont exécutés qu’à la demande et un superadministrateur revenu dans une
 caserne ne recharge plus automatiquement toutes les autres casernes. Enfin, une
 file locale en attente ne bloque plus la réception : les équipes, véhicules et
 nouvelles interventions restent chargés pendant la reprise des écritures.
+
+## Protection V202609_0006 — équipes et véhicules critiques
+
+Une liste de personnel reçue partiellement ne peut plus faire considérer une
+équipe locale comme étrangère, la masquer puis préparer sa suppression. Seul
+le rattachement explicite d'une équipe à une autre caserne permet désormais son
+nettoyage.
+
+Si le champ des véhicules d'une caserne est absent ou nul, l'application
+reconstitue le catalogue depuis les interventions et les piquets enregistrés.
+Toute écriture ultérieure réutilise cette liste reconstruite au lieu d'envoyer
+une configuration vide à Supabase.

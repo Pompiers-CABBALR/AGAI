@@ -313,8 +313,11 @@ function normalizeEquipesForCaserne(cid,d){
     const localCount=refs.filter(function(login){return localLogins.has(login);}).length;
     const foreignCount=refs.filter(function(login){return foreignLogins.has(login)&&!localLogins.has(login);}).length;
     const explicitlyForeign=!!(eq.caserneId&&eq.caserneId!==cid);
-    const copiedLegacyTeam=!eq.caserneId&&refs.length>0&&localCount===0&&foreignCount===refs.length;
-    if(explicitlyForeign||copiedLegacyTeam){
+    // Ne jamais conclure qu'une équipe est étrangère uniquement parce que la
+    // liste du personnel reçue est vide ou partielle. Lors d'une panne réseau,
+    // cette ancienne déduction pouvait masquer l'équipe puis planifier sa
+    // suppression sur le serveur. Seul un caserneId explicite fait foi.
+    if(explicitlyForeign){
       result.changed=true;result.removedIds.push(eq.id);return;
     }
     if(eq.caserneId!==cid){eq.caserneId=cid;result.changed=true;}
