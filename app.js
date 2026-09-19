@@ -1830,7 +1830,7 @@ function renderOperationalHealthPanel(){
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">DERNIÈRE RÉCEPTION RÉUSSIE</div><strong style="font-size:11px;">'+escHtml(fmt(report.lastPullOkAt))+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">VERSIONS ACTIVES</div><strong style="font-size:10px;overflow-wrap:anywhere;color:'+(outdated?'#B45309':'inherit')+';">'+escHtml(deviceVersions.join(' · ')||APP_VERSION)+'</strong>'+(outdated?'<div style="font-size:10px;color:#B45309;">'+outdated+' appareil(s) à actualiser</div>':'')+'</div></div>'
     +(report.lastError?'<div style="background:#FEF2F2;color:#991B1B;border-radius:8px;padding:8px 10px;font-size:11px;margin-bottom:10px;"><strong>Dernière erreur :</strong> '+escHtml(report.lastError)+' · '+escHtml(fmt(report.lastErrorAt))+'</div>':'')
-    +(report.pendingDetails.length?'<div style="margin-bottom:10px;border:1px solid #FDE68A;border-radius:9px;overflow:hidden;">'+report.pendingDetails.slice(0,10).map(function(item){return '<div style="padding:7px 9px;border-bottom:1px solid #FEF3C7;font-size:10px;display:flex;align-items:center;gap:7px;"><span style="flex:1;overflow-wrap:anywhere;"><strong>'+escHtml(item.id)+'</strong> · '+escHtml(age(item.since))+(item.deferred?' · isolée'+(item.reason?' : '+escHtml(item.reason):''):'')+'</span><button class="btn sm" style="font-size:10px;padding:3px 7px;" onclick="retrySinglePendingRecord(\''+encodeURIComponent(item.id)+'\')">Réessayer</button></div>';}).join('')+'</div>':'')
+    +(report.pendingDetails.length?'<div style="margin-bottom:10px;border:1px solid #FDE68A;border-radius:9px;overflow:hidden;">'+(report.deferred?'<div style="padding:7px 9px;background:#FFFBEB;text-align:right;"><button class="btn sm" style="font-size:10px;padding:4px 8px;" onclick="retryAllPendingRecords()">↻ Réessayer toutes les actions</button></div>':'')+report.pendingDetails.slice(0,10).map(function(item){return '<div style="padding:7px 9px;border-bottom:1px solid #FEF3C7;font-size:10px;display:flex;align-items:center;gap:7px;"><span style="flex:1;overflow-wrap:anywhere;"><strong>'+escHtml(item.id)+'</strong> · '+escHtml(age(item.since))+(item.deferred?' · isolée'+(item.reason?' : '+escHtml(item.reason):''):'')+'</span><button class="btn sm" style="font-size:10px;padding:3px 7px;" onclick="retrySinglePendingRecord(\''+encodeURIComponent(item.id)+'\')">Réessayer</button></div>';}).join('')+'</div>':'')
     +(report.issues.length?'<div style="max-height:260px;overflow:auto;border:1px solid #E5E7EB;border-radius:9px;">'+report.issues.slice(0,100).map(function(issue){return '<div style="padding:7px 9px;border-bottom:1px solid #F1F5F9;font-size:11px;display:flex;gap:8px;"><span>'+(issue.severity==='error'?'🔴':'🟠')+'</span><span><strong>'+escHtml(issue.station)+'</strong>'+(issue.iv?' · '+escHtml(issue.iv):'')+' — '+escHtml(issue.message)+'</span></div>';}).join('')+'</div>':'<div style="font-size:12px;color:#047857;">Les statuts actifs, véhicules, personnels et numéros de tournée sont cohérents.</div>')
     +'</div>';
 }
@@ -1841,6 +1841,16 @@ function retrySinglePendingRecord(encodedId){
   if(typeof _rcClearDeferred==='function')_rcClearDeferred([id]);
   if(typeof _rcScheduleRetry==='function')_rcScheduleRetry(0);
   showToast('Nouvelle tentative lancée uniquement pour cette action.','info');
+  window.setTimeout(refreshOperationalHealthPanel,800);
+}
+function retryAllPendingRecords(){
+  if(!isSuperAdmin()){showToast('Action réservée au superadministrateur.','warn');return;}
+  const ids=typeof _rcPendingDirty!=='undefined'?Array.from(_rcPendingDirty):[];
+  if(!ids.length){showToast('Aucune action en attente.','info');refreshOperationalHealthPanel();return;}
+  if(typeof _rcClearDeferred==='function')_rcClearDeferred(ids);
+  if(typeof _rcScheduleRetry==='function')_rcScheduleRetry(0);
+  _jbSetStatus('pending');
+  showToast('Nouvelle tentative lancée pour '+ids.length+' action(s).','info');
   window.setTimeout(refreshOperationalHealthPanel,800);
 }
 function refreshOperationalHealthPanel(){const panel=document.getElementById('sa-health-panel');if(panel)panel.innerHTML=renderOperationalHealthPanel();if(typeof _rcCheckAtomicServer==='function')_rcCheckAtomicServer(true);if(typeof _agaiCheckAccountLinkServer==='function')_agaiCheckAccountLinkServer(true);}
@@ -15730,7 +15740,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202609_0003';
+const APP_VERSION='V202609_0004';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -18362,9 +18372,12 @@ window._agaiSyncHealth=window._agaiSyncHealth||{lastOkAt:null,lastErrorAt:null,l
 function _jbSetStatus(state){
   let el=document.getElementById('jb-status');
   if(!el){el=document.createElement('div');el.id='jb-status';document.body.appendChild(el);}
+  const queued=typeof _rcPendingDirty!=='undefined'?_rcPendingDirty.size:0;
+  // Une file différée reste une file non synchronisée. Elle ne doit jamais être
+  // présentée comme « Sync OK », même si sa reprise automatique est temporisée.
+  if(state==='ok'&&queued)state='pending';
   const cfg={ok:{txt:'☁️ Sync OK',bg:'#ECFDF5',color:'#065F46'},saving:{txt:'⏳ Sync...',bg:'#FFF7ED',color:'#92400E'},pending:{txt:'⏳ Sync en attente',bg:'#FFF7ED',color:'#92400E'},error:{txt:'⚠️ Sync KO',bg:'#FEF2F2',color:'#991B1B'},loading:{txt:'⏳ Chargement',bg:'#EFF6FF',color:'#1D4ED8'}};
   const c=cfg[state]||cfg.ok;
-  const queued=typeof _rcPendingDirty!=='undefined'?_rcPendingDirty.size:0;
   const syncError=typeof _rcLastSyncError!=='undefined'?_rcLastSyncError:'';
   window._agaiSyncHealth.state=state;
   if(state==='ok'&&!queued){window._agaiSyncHealth.lastOkAt=Date.now();window._agaiSyncHealth.lastError='';}
@@ -18372,7 +18385,7 @@ function _jbSetStatus(state){
   const lastOkLabel=state==='ok'&&window._agaiSyncHealth.lastOkAt?' · '+new Date(window._agaiSyncHealth.lastOkAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):'';
   el.textContent=c.txt+lastOkLabel+((state==='pending'||state==='error')&&queued?' ('+queued+' en attente)':'');
   el.style.cssText='position:fixed;bottom:8px;right:8px;z-index:9999;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;background:'+c.bg+';color:'+c.color+';box-shadow:0 1px 4px rgba(0,0,0,.15);cursor:pointer;';
-  el.title=state==='error'&&syncError?syncError:(state==='ok'&&window._agaiLocalCacheLimited?'Supabase synchronisé — cache hors ligne limité sur cet appareil':'Dernière synchronisation réussie : '+(window._agaiSyncHealth.lastOkAt?new Date(window._agaiSyncHealth.lastOkAt).toLocaleString('fr-FR'):'—')+' — cliquer pour synchroniser maintenant');
+  el.title=state==='error'&&syncError?syncError:(state==='pending'?'Des actions restent à transmettre — cliquer pour les relancer maintenant':state==='ok'&&window._agaiLocalCacheLimited?'Supabase synchronisé — cache hors ligne limité sur cet appareil':'Dernière synchronisation réussie : '+(window._agaiSyncHealth.lastOkAt?new Date(window._agaiSyncHealth.lastOkAt).toLocaleString('fr-FR'):'—')+' — cliquer pour synchroniser maintenant');
   el.onclick=function(){
     if(state==='error'&&syncError)alert('Diagnostic de synchronisation\n\n'+syncError+'\n\nVersion : '+APP_VERSION);
     jbSyncNow();
@@ -18707,12 +18720,16 @@ function _postLoadInit(){
 
 function jbSyncNow(){
   if(USE_RECORDS&&typeof _rcPendingDirty!=='undefined'&&_rcPendingDirty.size){
+    // Un clic utilisateur signifie « réessayer maintenant » : ne pas attendre
+    // la fin du délai de cinq minutes des lignes temporairement isolées.
+    if(typeof _rcClearDeferred==='function')_rcClearDeferred(Array.from(_rcPendingDirty));
+    _jbSetStatus('pending');
     // Toujours recevoir et rapprocher avant le moindre renvoi. Une ancienne
     // file volumineuse ne doit jamais saturer le serveur ni les autres appareils.
     Promise.resolve(_rcRecoverPendingQueue()).then(function(ok){
       if(ok)return _rcPush(false);
     }).finally(function(){_rcRequestRealtimePull(150);});
-    showToast('Vérification de la file avant synchronisation','info');
+    showToast('Nouvelle tentative de synchronisation lancée','info');
     return;
   }
   const puller = USE_RECORDS ? _rcPull : (USE_SUPABASE ? _sbPull : _jbPull);
@@ -20085,8 +20102,24 @@ async function _rcMarkDeleted(caserne, type, recordIds){
     result.succeeded.forEach(function(row){_rcPendingDirty.delete(row.id);});
     await _rcOutboxDelete(result.succeeded.map(function(row){return row.id;}));
     _rcPersistPendingDirty();
-    if(result.failures.length)throw new Error('records delete HTTP '+result.failures[0].status);
+    const unresolved=[];
+    result.failures.forEach(function(failure){
+      const status=Number(failure&&failure.status||0);
+      if((status===0||status===502||status===503||status===504)&&_rcDeferFailedRow(failure))return;
+      unresolved.push(failure);
+    });
+    if(unresolved.length)throw new Error('records delete HTTP '+unresolved[0].status);
     _rcLastPush = Date.now();
+    if(result.failures.length){
+      // La suppression est conservée dans la file durable et sera retentée.
+      // Les lectures restent disponibles afin de ne pas priver les équipes des
+      // nouvelles interventions pendant une indisponibilité Supabase.
+      _rcLastSyncError='';
+      _jbSetStatus('pending');
+      _rcScheduleRetry();
+      return;
+    }
+    _jbSetStatus(_rcPendingDirty.size?'pending':'ok');
   } catch(e){
     console.warn('[AGAI][RC] MarkDeleted error:', e);
     _rcLastSyncError='Suppression — '+String(e&&e.message||e||'Erreur inconnue');

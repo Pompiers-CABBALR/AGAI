@@ -312,7 +312,7 @@ function renderOperationalHealthPanel(){
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">DERNIÈRE RÉCEPTION RÉUSSIE</div><strong style="font-size:11px;">'+escHtml(fmt(report.lastPullOkAt))+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">VERSIONS ACTIVES</div><strong style="font-size:10px;overflow-wrap:anywhere;color:'+(outdated?'#B45309':'inherit')+';">'+escHtml(deviceVersions.join(' · ')||APP_VERSION)+'</strong>'+(outdated?'<div style="font-size:10px;color:#B45309;">'+outdated+' appareil(s) à actualiser</div>':'')+'</div></div>'
     +(report.lastError?'<div style="background:#FEF2F2;color:#991B1B;border-radius:8px;padding:8px 10px;font-size:11px;margin-bottom:10px;"><strong>Dernière erreur :</strong> '+escHtml(report.lastError)+' · '+escHtml(fmt(report.lastErrorAt))+'</div>':'')
-    +(report.pendingDetails.length?'<div style="margin-bottom:10px;border:1px solid #FDE68A;border-radius:9px;overflow:hidden;">'+report.pendingDetails.slice(0,10).map(function(item){return '<div style="padding:7px 9px;border-bottom:1px solid #FEF3C7;font-size:10px;display:flex;align-items:center;gap:7px;"><span style="flex:1;overflow-wrap:anywhere;"><strong>'+escHtml(item.id)+'</strong> · '+escHtml(age(item.since))+(item.deferred?' · isolée'+(item.reason?' : '+escHtml(item.reason):''):'')+'</span><button class="btn sm" style="font-size:10px;padding:3px 7px;" onclick="retrySinglePendingRecord(\''+encodeURIComponent(item.id)+'\')">Réessayer</button></div>';}).join('')+'</div>':'')
+    +(report.pendingDetails.length?'<div style="margin-bottom:10px;border:1px solid #FDE68A;border-radius:9px;overflow:hidden;">'+(report.deferred?'<div style="padding:7px 9px;background:#FFFBEB;text-align:right;"><button class="btn sm" style="font-size:10px;padding:4px 8px;" onclick="retryAllPendingRecords()">↻ Réessayer toutes les actions</button></div>':'')+report.pendingDetails.slice(0,10).map(function(item){return '<div style="padding:7px 9px;border-bottom:1px solid #FEF3C7;font-size:10px;display:flex;align-items:center;gap:7px;"><span style="flex:1;overflow-wrap:anywhere;"><strong>'+escHtml(item.id)+'</strong> · '+escHtml(age(item.since))+(item.deferred?' · isolée'+(item.reason?' : '+escHtml(item.reason):''):'')+'</span><button class="btn sm" style="font-size:10px;padding:3px 7px;" onclick="retrySinglePendingRecord(\''+encodeURIComponent(item.id)+'\')">Réessayer</button></div>';}).join('')+'</div>':'')
     +(report.issues.length?'<div style="max-height:260px;overflow:auto;border:1px solid #E5E7EB;border-radius:9px;">'+report.issues.slice(0,100).map(function(issue){return '<div style="padding:7px 9px;border-bottom:1px solid #F1F5F9;font-size:11px;display:flex;gap:8px;"><span>'+(issue.severity==='error'?'🔴':'🟠')+'</span><span><strong>'+escHtml(issue.station)+'</strong>'+(issue.iv?' · '+escHtml(issue.iv):'')+' — '+escHtml(issue.message)+'</span></div>';}).join('')+'</div>':'<div style="font-size:12px;color:#047857;">Les statuts actifs, véhicules, personnels et numéros de tournée sont cohérents.</div>')
     +'</div>';
 }
@@ -323,6 +323,16 @@ function retrySinglePendingRecord(encodedId){
   if(typeof _rcClearDeferred==='function')_rcClearDeferred([id]);
   if(typeof _rcScheduleRetry==='function')_rcScheduleRetry(0);
   showToast('Nouvelle tentative lancée uniquement pour cette action.','info');
+  window.setTimeout(refreshOperationalHealthPanel,800);
+}
+function retryAllPendingRecords(){
+  if(!isSuperAdmin()){showToast('Action réservée au superadministrateur.','warn');return;}
+  const ids=typeof _rcPendingDirty!=='undefined'?Array.from(_rcPendingDirty):[];
+  if(!ids.length){showToast('Aucune action en attente.','info');refreshOperationalHealthPanel();return;}
+  if(typeof _rcClearDeferred==='function')_rcClearDeferred(ids);
+  if(typeof _rcScheduleRetry==='function')_rcScheduleRetry(0);
+  _jbSetStatus('pending');
+  showToast('Nouvelle tentative lancée pour '+ids.length+' action(s).','info');
   window.setTimeout(refreshOperationalHealthPanel,800);
 }
 function refreshOperationalHealthPanel(){const panel=document.getElementById('sa-health-panel');if(panel)panel.innerHTML=renderOperationalHealthPanel();if(typeof _rcCheckAtomicServer==='function')_rcCheckAtomicServer(true);if(typeof _agaiCheckAccountLinkServer==='function')_agaiCheckAccountLinkServer(true);}

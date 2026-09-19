@@ -287,3 +287,13 @@ le départ est bloqué avec un message explicite au lieu d’afficher une liste 
 Le panneau « Santé opérationnelle » contrôle également chaque caserne et signale
 immédiatement l’absence totale de véhicules. Ce contrôle fait partie des tests
 obligatoires exécutés avant chaque livraison.
+
+## Stabilisation V202609_0004 — actions isolées visibles et relançables
+
+Une action différée après une réponse Supabase 502, 503 ou 504 n’est plus
+présentée comme une synchronisation complète : le bandeau reste sur « Sync en
+attente » jusqu’à la transmission réelle. Un clic sur le bandeau ou sur
+« Réessayer toutes les actions » annule immédiatement le délai de reprise et
+relance la file. Les suppressions différées restent conservées durablement sans
+bloquer la réception des nouvelles interventions ni afficher un faux échec
+général de l’application.

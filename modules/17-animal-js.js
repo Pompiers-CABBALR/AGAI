@@ -958,9 +958,12 @@ window._agaiSyncHealth=window._agaiSyncHealth||{lastOkAt:null,lastErrorAt:null,l
 function _jbSetStatus(state){
   let el=document.getElementById('jb-status');
   if(!el){el=document.createElement('div');el.id='jb-status';document.body.appendChild(el);}
+  const queued=typeof _rcPendingDirty!=='undefined'?_rcPendingDirty.size:0;
+  // Une file différée reste une file non synchronisée. Elle ne doit jamais être
+  // présentée comme « Sync OK », même si sa reprise automatique est temporisée.
+  if(state==='ok'&&queued)state='pending';
   const cfg={ok:{txt:'☁️ Sync OK',bg:'#ECFDF5',color:'#065F46'},saving:{txt:'⏳ Sync...',bg:'#FFF7ED',color:'#92400E'},pending:{txt:'⏳ Sync en attente',bg:'#FFF7ED',color:'#92400E'},error:{txt:'⚠️ Sync KO',bg:'#FEF2F2',color:'#991B1B'},loading:{txt:'⏳ Chargement',bg:'#EFF6FF',color:'#1D4ED8'}};
   const c=cfg[state]||cfg.ok;
-  const queued=typeof _rcPendingDirty!=='undefined'?_rcPendingDirty.size:0;
   const syncError=typeof _rcLastSyncError!=='undefined'?_rcLastSyncError:'';
   window._agaiSyncHealth.state=state;
   if(state==='ok'&&!queued){window._agaiSyncHealth.lastOkAt=Date.now();window._agaiSyncHealth.lastError='';}
@@ -968,7 +971,7 @@ function _jbSetStatus(state){
   const lastOkLabel=state==='ok'&&window._agaiSyncHealth.lastOkAt?' · '+new Date(window._agaiSyncHealth.lastOkAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):'';
   el.textContent=c.txt+lastOkLabel+((state==='pending'||state==='error')&&queued?' ('+queued+' en attente)':'');
   el.style.cssText='position:fixed;bottom:8px;right:8px;z-index:9999;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;background:'+c.bg+';color:'+c.color+';box-shadow:0 1px 4px rgba(0,0,0,.15);cursor:pointer;';
-  el.title=state==='error'&&syncError?syncError:(state==='ok'&&window._agaiLocalCacheLimited?'Supabase synchronisé — cache hors ligne limité sur cet appareil':'Dernière synchronisation réussie : '+(window._agaiSyncHealth.lastOkAt?new Date(window._agaiSyncHealth.lastOkAt).toLocaleString('fr-FR'):'—')+' — cliquer pour synchroniser maintenant');
+  el.title=state==='error'&&syncError?syncError:(state==='pending'?'Des actions restent à transmettre — cliquer pour les relancer maintenant':state==='ok'&&window._agaiLocalCacheLimited?'Supabase synchronisé — cache hors ligne limité sur cet appareil':'Dernière synchronisation réussie : '+(window._agaiSyncHealth.lastOkAt?new Date(window._agaiSyncHealth.lastOkAt).toLocaleString('fr-FR'):'—')+' — cliquer pour synchroniser maintenant');
   el.onclick=function(){
     if(state==='error'&&syncError)alert('Diagnostic de synchronisation\n\n'+syncError+'\n\nVersion : '+APP_VERSION);
     jbSyncNow();
@@ -1303,12 +1306,16 @@ function _postLoadInit(){
 
 function jbSyncNow(){
   if(USE_RECORDS&&typeof _rcPendingDirty!=='undefined'&&_rcPendingDirty.size){
+    // Un clic utilisateur signifie « réessayer maintenant » : ne pas attendre
+    // la fin du délai de cinq minutes des lignes temporairement isolées.
+    if(typeof _rcClearDeferred==='function')_rcClearDeferred(Array.from(_rcPendingDirty));
+    _jbSetStatus('pending');
     // Toujours recevoir et rapprocher avant le moindre renvoi. Une ancienne
     // file volumineuse ne doit jamais saturer le serveur ni les autres appareils.
     Promise.resolve(_rcRecoverPendingQueue()).then(function(ok){
       if(ok)return _rcPush(false);
     }).finally(function(){_rcRequestRealtimePull(150);});
-    showToast('Vérification de la file avant synchronisation','info');
+    showToast('Nouvelle tentative de synchronisation lancée','info');
     return;
   }
   const puller = USE_RECORDS ? _rcPull : (USE_SUPABASE ? _sbPull : _jbPull);
@@ -2681,8 +2688,24 @@ async function _rcMarkDeleted(caserne, type, recordIds){
     result.succeeded.forEach(function(row){_rcPendingDirty.delete(row.id);});
     await _rcOutboxDelete(result.succeeded.map(function(row){return row.id;}));
     _rcPersistPendingDirty();
-    if(result.failures.length)throw new Error('records delete HTTP '+result.failures[0].status);
+    const unresolved=[];
+    result.failures.forEach(function(failure){
+      const status=Number(failure&&failure.status||0);
+      if((status===0||status===502||status===503||status===504)&&_rcDeferFailedRow(failure))return;
+      unresolved.push(failure);
+    });
+    if(unresolved.length)throw new Error('records delete HTTP '+unresolved[0].status);
     _rcLastPush = Date.now();
+    if(result.failures.length){
+      // La suppression est conservée dans la file durable et sera retentée.
+      // Les lectures restent disponibles afin de ne pas priver les équipes des
+      // nouvelles interventions pendant une indisponibilité Supabase.
+      _rcLastSyncError='';
+      _jbSetStatus('pending');
+      _rcScheduleRetry();
+      return;
+    }
+    _jbSetStatus(_rcPendingDirty.size?'pending':'ok');
   } catch(e){
     console.warn('[AGAI][RC] MarkDeleted error:', e);
     _rcLastSyncError='Suppression — '+String(e&&e.message||e||'Erreur inconnue');
