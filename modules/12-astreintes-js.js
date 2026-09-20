@@ -1122,6 +1122,10 @@ function rAstrDispo(){
 let _dispoRevisionSequence=0;
 function markDispoSlotsChanged(wk,login,keys){
   if(!wk||!login)return;
+  if(_rcIsForeignSuperAdminDispoIdentity(CURRENT_CASERNE_ID,login)){
+    showToast('Disponibilité refusée : ce compte superadmin n’appartient pas à cette caserne.','warn');
+    return false;
+  }
   if(!DISPOS[wk])DISPOS[wk]={};
   if(!DISPOS[wk][login])DISPOS[wk][login]={};
   const slots=DISPOS[wk][login];
@@ -1136,6 +1140,7 @@ function markDispoSlotsChanged(wk,login,keys){
     if(typeof _rcDirtyGeneration!=='undefined')_rcDirtyGeneration++;
     if(typeof _rcPersistPendingDirty==='function')_rcPersistPendingDirty();
   }
+  return true;
 }
 
 function toggleDispoCell(wk,login,d,s,el,eqColor){

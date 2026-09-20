@@ -1879,7 +1879,8 @@ async function _rcRecoverPendingQueue(knownRows){
   if(_rcRecoveryPromise)return _rcRecoveryPromise;
   _rcRecoveryPromise=(async function(){
     try{
-      const durableRows=knownRows||await _rcOutboxGetRows();
+      let durableRows=knownRows||await _rcOutboxGetRows();
+      durableRows=await _rcDiscardForeignSuperAdminDispoRows(durableRows);
       durableRows.forEach(function(row){if(row&&row.id)_rcPendingDirty.add(row.id);});
       _rcPersistPendingDirty();
       if(!durableRows.length){_rcInitialReconciliationDone=true;return true;}
@@ -2301,6 +2302,7 @@ function _rcMergeDispoRows(current,incoming){
   return {value:Object.assign({},incoming,{wk:incoming.wk||current.wk,login:incoming.login||current.login,slots:mergedSlots}),keptCurrentData:keptCurrentData};
 }
 async function _rcProtectDispoRows(rows){
+  rows=await _rcDiscardForeignSuperAdminDispoRows(rows||[]);
   const availability=(rows||[]).filter(function(row){return row&&row.type==='dispo'&&!row.deleted;});
   if(!availability.length)return rows;
   const ids=availability.map(function(row){return row.id;});
@@ -2542,6 +2544,7 @@ function _rcSplitCaserne(cid, d){
   Object.keys(dispos).forEach(function(wk){
     const week = dispos[wk]||{};
     Object.keys(week).forEach(function(login){
+      if(_rcIsForeignSuperAdminDispoIdentity(cid,login))return;
       rows.push({ id:_rcId(cid,'dispo',wk+RC_SEP+login), caserne:cid, type:'dispo', data:{wk:wk, login:login, slots:week[login]}, deleted:false });
     });
   });
@@ -2572,7 +2575,7 @@ function _rcSplitCaserne(cid, d){
 }
 
 // ── Reconstruit l'objet CASERNE_DATA[cid] à partir de lignes records ──
-function _rcAssembleCaserne(rows){
+function _rcAssembleCaserne(rows,cid){
   const out = { users:[], ivs:[], pilpIvs:[], equipes:[], fmpas:[], formStag:[], formForm:[], renforts:[], activites:[], astrTelDuties:[],
                 dispos:{}, piquets:{}, planningRotations:{}, disposValidated:{}, piquetsValidated:{}, astrConfig:{},
                 astrTelData:{}, astrTelParams:{}, statsTaux:{}, _stationLocation:null, _operationalStartGeolocationEnabled:undefined, _rainModeAllowed:false, rainMode:{active:false,until:null,history:[]}, _statsPersonnelHoursReal:false, _indemnitesAdmins:false,
@@ -2586,6 +2589,7 @@ function _rcAssembleCaserne(rows){
       out.users.push(r.data);
     } else if(r.type==='dispo'){
       const dd = r.data||{};
+      if(_rcIsForeignSuperAdminDispoIdentity(cid||r.caserne,dd.login))return;
       if(dd.wk && dd.login){ if(!out.dispos[dd.wk]) out.dispos[dd.wk]={}; out.dispos[dd.wk][dd.login]=dd.slots; }
     } else if(r.type==='config'){
       const c = r.data||{};
@@ -2641,6 +2645,32 @@ function _rcSafeAstrConfig(data){
   const configured=Array.isArray(source.engins)?source.engins.map(function(value){return String(value||'').trim();}).filter(Boolean):[];
   safe.engins=configured.length?Array.from(new Set(configured)):_rcVehicleCatalogFromCaserneData(data||{});
   return safe;
+}
+
+function _rcIsForeignSuperAdminDispoIdentity(caserneId,login){
+  const account=(GLOBAL_ACCOUNTS||[]).find(function(item){return item&&item.role==='superadmin'&&item.l===login;});
+  return !!(account&&account.caserneId&&caserneId&&account.caserneId!==caserneId);
+}
+function _rcIsForeignSuperAdminDispoRow(row){
+  return !!(row&&row.type==='dispo'&&row.data&&_rcIsForeignSuperAdminDispoIdentity(row.caserne,row.data.login));
+}
+async function _rcDiscardForeignSuperAdminDispoRows(rows){
+  const rejected=(rows||[]).filter(_rcIsForeignSuperAdminDispoRow);
+  if(!rejected.length)return rows||[];
+  const ids=rejected.map(function(row){return row.id;});
+  rejected.forEach(function(row){
+    _rcPendingDirty.delete(row.id);
+    const data=CASERNE_DATA[row.caserne],wk=row.data&&row.data.wk,login=row.data&&row.data.login;
+    if(data&&data.dispos&&data.dispos[wk]){
+      delete data.dispos[wk][login];
+      if(!Object.keys(data.dispos[wk]).length)delete data.dispos[wk];
+    }
+  });
+  _rcClearDeferred(ids);
+  await _rcOutboxDelete(ids);
+  _rcPersistPendingDirty();
+  console.warn('[AGAI][RC] Disponibilité superadmin étrangère abandonnée :',ids);
+  return (rows||[]).filter(function(row){return !ids.includes(row&&row.id);});
 }
 
 // ── Découpe TOUTES les casernes + global en lignes records ──
@@ -2951,6 +2981,7 @@ async function _rcPush(fullPush){
     _rcRepairDuplicateLocalRecordIds();
     generationAtStart=_rcDirtyGeneration;
     let durableRows=await _rcOutboxGetRows();
+    durableRows=await _rcDiscardForeignSuperAdminDispoRows(durableRows);
     durableRows.forEach(function(row){if(row&&row.id)_rcPendingDirty.add(row.id);});
     _rcPersistPendingDirty();
     const data = _buildDataObject();
@@ -3123,6 +3154,7 @@ async function _rcPull(silent){
     // Restaurer la file complète avant la réception. Un envoi bloqué ne doit
     // jamais empêcher l'iPhone de recevoir les nouvelles interventions.
     let durableRows=await _rcOutboxGetRows();
+    durableRows=await _rcDiscardForeignSuperAdminDispoRows(durableRows);
     durableRows.forEach(function(row){if(row&&row.id)_rcPendingDirty.add(row.id);});
     _rcPersistPendingDirty();
     if(!silent) _jbSetStatus('loading');
@@ -3195,7 +3227,7 @@ async function _rcPull(silent){
       const stationRows=byCaserne[cid];
       const configRow=stationRows.find(function(row){return row.type==='config'&&!row.deleted;});
       const remoteEngins=configRow&&configRow.data&&configRow.data.astrConfig&&configRow.data.astrConfig.engins;
-      data.CASERNE_DATA[cid] = _rcAssembleCaserne(stationRows);
+      data.CASERNE_DATA[cid] = _rcAssembleCaserne(stationRows,cid);
       // Réparer durablement uniquement la caserne active : les véhicules
       // retrouvés dans son historique sont renvoyés dans sa configuration.
       if(cid===CURRENT_CASERNE_ID&&(!Array.isArray(remoteEngins)||!remoteEngins.filter(Boolean).length)&&data.CASERNE_DATA[cid].astrConfig.engins.length){

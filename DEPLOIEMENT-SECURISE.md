@@ -336,3 +336,10 @@ Avec ses pouvoirs activés, le superadministrateur peut désormais remplacer le
 chef d'agrès depuis la correction du véhicule et de l'équipage, même lorsque le
 chef initial était le superadministrateur lui-même. La modification met à jour
 le responsable opérationnel et reste tracée dans l'historique du rapport.
+
+## Correctif V202609_0009 — disponibilité superadmin inter-caserne
+
+Une disponibilité d'un compte superadmin ne peut plus être enregistrée dans
+une caserne différente de sa caserne de rattachement. Les anciennes actions
+locales de ce type sont abandonnées automatiquement avant tout envoi, et les
+lignes distantes parasites ne sont plus chargées dans l'écran des astreintes.
