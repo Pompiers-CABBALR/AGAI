@@ -343,3 +343,10 @@ Une disponibilité d'un compte superadmin ne peut plus être enregistrée dans
 une caserne différente de sa caserne de rattachement. Les anciennes actions
 locales de ce type sont abandonnées automatiquement avant tout envoi, et les
 lignes distantes parasites ne sont plus chargées dans l'écran des astreintes.
+
+## Correctif V202609_0010 — faux « Sync en attente » sur iPhone
+
+Le rapprochement entre la file locale Safari et Supabase compare maintenant le
+contenu JSON sans dépendre de l'ordre technique des champs. Une disponibilité
+déjà présente à l'identique sur le serveur est automatiquement acquittée,
+sans suppression de disponibilité ni nettoyage de l'historique Safari.

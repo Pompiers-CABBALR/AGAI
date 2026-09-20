@@ -15832,7 +15832,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202609_0009';
+const APP_VERSION='V202609_0010';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -19603,9 +19603,24 @@ function _rcTransportRow(row){
   }
   return row;
 }
+// PostgreSQL stocke `data` en JSONB et peut renvoyer les propriétés dans un
+// ordre différent de celui d'IndexedDB. Une comparaison JSON.stringify directe
+// maintenait alors une action en attente alors que Supabase contenait déjà la
+// même donnée (cas observé sur les disponibilités Safari/iPhone).
+function _rcCanonicalSyncValue(value){
+  if(Array.isArray(value))return value.map(_rcCanonicalSyncValue);
+  if(value&&typeof value==='object'){
+    const ordered={};
+    Object.keys(value).sort().forEach(function(key){
+      if(value[key]!==undefined)ordered[key]=_rcCanonicalSyncValue(value[key]);
+    });
+    return ordered;
+  }
+  return value;
+}
 function _rcSyncSignature(row){
   const transport=_rcTransportRow(row);
-  return JSON.stringify({data:transport&&transport.data,deleted:!!(transport&&transport.deleted)});
+  return JSON.stringify(_rcCanonicalSyncValue({data:transport&&transport.data,deleted:!!(transport&&transport.deleted)}));
 }
 function _rcTrackChangedRecords(previousData,nextData){
   if(!USE_RECORDS||!nextData)return;
