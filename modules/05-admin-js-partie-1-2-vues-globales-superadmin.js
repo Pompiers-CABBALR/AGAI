@@ -22,10 +22,12 @@ function showGlobalView(role){
   }
   if(role==='superadmin')renderSuperAdmin();
   else renderChefCorps();
+  if(typeof _rcRefreshRealtimeScope==='function')_rcRefreshRealtimeScope();
 }
 function retourCaserne(){
   document.getElementById('global-view').style.display='none';
   document.getElementById('app').style.display='flex';
+  if(typeof _rcRefreshRealtimeScope==='function')_rcRefreshRealtimeScope();
 }
 
 // ══════════════════════════════════════════════════════
@@ -1424,6 +1426,7 @@ function changeSACaserne(cid){
     }
   }
   renderSuperAdmin();
+  if(typeof _rcRefreshRealtimeScope==='function')_rcRefreshRealtimeScope();
 }
 // Superadmin accède directement à une caserne depuis la vue globale
 function saAccederCaserne(cid){
@@ -1437,6 +1440,7 @@ function saAccederCaserne(cid){
   document.getElementById('t2r').textContent='Super Admin · '+c.code;
   // Revenir à l'app et rafraîchir
   document.getElementById('global-view').style.display='none';
+  if(typeof _rcRefreshRealtimeScope==='function')_rcRefreshRealtimeScope();
   const ap=document.getElementById('app');ap.style.display='flex';
   GRADES.forEach(g=>{['prof-grade-sel','nu-grade'].forEach(id=>{const el=document.getElementById(id);if(el&&![...el.options].find(o=>o.textContent===g)){const o=document.createElement('option');o.textContent=g;el.appendChild(o);}});});
   // Rafraîchir toutes les vues pour refléter la nouvelle caserne
@@ -1504,6 +1508,7 @@ function ccAccederEspaceSaisie(){
   if(t2r)t2r.textContent='Chef de Corps · '+(c?c.nom:'État-Major');
   // Basculer de la vue globale vers l'app
   document.getElementById('global-view').style.display='none';
+  if(typeof _rcRefreshRealtimeScope==='function')_rcRefreshRealtimeScope();
   const ap=document.getElementById('app');ap.style.display='flex';
   GRADES.forEach(g=>{['prof-grade-sel','nu-grade'].forEach(id=>{const el=document.getElementById(id);if(el&&![...el.options].find(o=>o.textContent===g)){const o=document.createElement('option');o.textContent=g;el.appendChild(o);}});});
   applyNavRights();
@@ -2338,6 +2343,7 @@ function doLoginSuccess(){
   }
   try{applyNavRights();}catch(e){}
   if(GLOBAL_ROLE==='chef_corps'){showGlobalView('chef_corps');return;}
+  if(typeof _rcRefreshRealtimeScope==='function')_rcRefreshRealtimeScope();
   try{rNatures(NAT);}catch(e){}
   try{rAdm();}catch(e){}
   try{rProfil();}catch(e){}
@@ -2371,6 +2377,7 @@ function doLogout(){
   }
   _clearSession(); // P2 : invalider la session
   CU=null;GLOBAL_ROLE=null;CURRENT_CASERNE_ID=null;syncCaserneContext();
+  if(typeof _rcStopRealtime==='function')_rcStopRealtime();
   // Masquer la vue globale si visible
   const gv=document.getElementById('global-view');if(gv)gv.style.display='none';
   document.getElementById('lw').style.display='flex';

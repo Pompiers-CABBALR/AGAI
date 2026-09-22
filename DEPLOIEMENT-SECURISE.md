@@ -350,3 +350,15 @@ Le rapprochement entre la file locale Safari et Supabase compare maintenant le
 contenu JSON sans dépendre de l'ordre technique des champs. Une disponibilité
 déjà présente à l'identique sur le serveur est automatiquement acquittée,
 sans suppression de disponibilité ni nettoyage de l'historique Safari.
+
+## Stabilisation V202609_0011 — synchronisation isolée par caserne
+
+- Un appareil dans une caserne écoute uniquement les changements de cette caserne et des paramètres communs. L'espace global superadmin conserve sa vue de toutes les casernes.
+- Les changements d'une autre caserne ne modifient plus le cache local et ne déclenchent plus un chargement complet.
+- Les actions conservées sur l'appareil pour une autre caserne attendent son propre contexte ; elles ne sont plus envoyées ni superposées aux données de la caserne affichée.
+- Les paramètres communs reçus en temps réel sont appliqués directement, sans relire toutes les interventions.
+- La lecture par pages reprend à l'identifiant suivant : une insertion concurrente ne peut plus décaler la pagination et faire manquer une fiche.
+- Une relecture de sécurité reste prévue toutes les 15 minutes et à la reprise de l'application, pour récupérer les événements manqués après une coupure.
+- Les reconnexions en temps réel ralentissent progressivement si Supabase ne répond pas.
+
+Le graphique « Postgres errors » ne permet pas d'identifier seul l'origine des erreurs. Pour la diagnostiquer sans redémarrer Supabase, ouvrir **Logs & Analytics → Logs**, sélectionner **Postgres** et les 15 dernières minutes, puis consulter les messages d'erreur les plus fréquents. Dans l'éditeur SQL des journaux, la source doit être **Logs** et non **Database**.

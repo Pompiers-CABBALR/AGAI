@@ -1763,11 +1763,14 @@ let _rcRealtimeReady = false;
 let _rcRealtimePullTimer = null;
 let _rcRealtimePullPending = false;
 let _rcRealtimeReconnectTimer = null;
+let _rcRealtimeReconnectDelay = 30000;
 let _rcRealtimeJoinSequence = 0;
 let _rcNeedsRecoveryPull = false;
 let _rcInitialReconciliationDone = false;
 let _rcRecoveryPromise = null;
 const RC_FALLBACK_POLL_MS = 5*60*1000;
+const RC_REALTIME_SAFETY_PULL_MS = 15*60*1000;
+let _rcLastSafetyPullAt=Date.now();
 // Pages réduites pour rester utilisable lorsque l'API Supabase est dégradée.
 const RC_PULL_PAGE_SIZE = 100;
 const RC_PENDING_DIRTY_KEY = 'agai_rc_pending_dirty';
@@ -1879,10 +1882,11 @@ async function _rcRecoverPendingQueue(knownRows){
   if(_rcRecoveryPromise)return _rcRecoveryPromise;
   _rcRecoveryPromise=(async function(){
     try{
-      let durableRows=knownRows||await _rcOutboxGetRows();
-      durableRows=await _rcDiscardForeignSuperAdminDispoRows(durableRows);
-      durableRows.forEach(function(row){if(row&&row.id)_rcPendingDirty.add(row.id);});
+      let localRows=knownRows||await _rcOutboxGetRows();
+      localRows=await _rcDiscardForeignSuperAdminDispoRows(localRows);
+      localRows.forEach(function(row){if(row&&row.id)_rcPendingDirty.add(row.id);});
       _rcPersistPendingDirty();
+      const durableRows=localRows.filter(_rcRowWritableHere);
       if(!durableRows.length){_rcInitialReconciliationDone=true;return true;}
       _jbSetStatus('loading');
       const remoteRows=await _rcFetchRemoteRowsForPending(durableRows);
@@ -1959,7 +1963,7 @@ function _rcIsDeferred(id){
   return false;
 }
 function _rcHasActivePending(){
-  return Array.from(_rcPendingDirty).some(function(id){return !_rcIsDeferred(id);});
+  return Array.from(_rcPendingDirty).some(function(id){return _rcPendingIdInScope(id)&&!_rcIsDeferred(id);});
 }
 function _rcClearDeferred(ids){
   let changed=false;
@@ -1984,13 +1988,24 @@ function _rcPersistPendingDirty(){
 }
 function _rcRowWritableHere(row){
   if(!row)return false;
-  if(typeof isSuperAdmin==='function'&&isSuperAdmin())return true;
+  const scopedCaserne=_rcSyncScopeCaserne();
+  if(typeof isSuperAdmin==='function'&&isSuperAdmin()){
+    return !scopedCaserne||row.caserne===scopedCaserne||row.caserne==='_GLOBAL';
+  }
   // Chaque utilisateur peut publier uniquement sa propre ligne de présence.
   // L'historique n'est ainsi plus bloqué par la protection de la ligne globale.
   if(row.type==='login'&&row.data&&CU&&row.data.login===CU.l)return true;
   // La politique Supabase réserve _GLOBAL au superadmin. Un utilisateur de caserne
   // ne doit jamais laisser cette ligne bloquer l'envoi de ses interventions.
-  return !!(CURRENT_CASERNE_ID&&row.caserne===CURRENT_CASERNE_ID);
+  return !!(scopedCaserne&&row.caserne===scopedCaserne);
+}
+function _rcPendingIdInScope(id){
+  const scopedCaserne=_rcSyncScopeCaserne();
+  if(typeof isSuperAdmin==='function'&&isSuperAdmin()&&!scopedCaserne)return true;
+  if(!scopedCaserne)return false;
+  return String(id||'').startsWith(scopedCaserne+RC_SEP)
+    ||String(id||'').startsWith('_GLOBAL'+RC_SEP+'login'+RC_SEP)
+    ||(typeof isSuperAdmin==='function'&&isSuperAdmin()&&String(id||'').startsWith('_GLOBAL'+RC_SEP));
 }
 function _rcPrunePendingDirty(candidateRows){
   const validIds=new Set((candidateRows||[]).map(function(row){return row&&row.id;}).filter(Boolean));
@@ -2057,7 +2072,7 @@ function _rcRepairDuplicateLocalRecordIds(){
   return repairs;
 }
 function _rcScheduleRetry(delay){
-  if(!USE_RECORDS||!_rcPendingDirty.size)return;
+  if(!USE_RECORDS||!Array.from(_rcPendingDirty).some(_rcPendingIdInScope))return;
   if(_rcRetryTimer)clearTimeout(_rcRetryTimer);
   let wait=typeof delay==='number'?Math.max(0,delay):_rcRetryDelay;
   const circuitWait=typeof _agaiServerCircuitWaitMs==='function'?_agaiServerCircuitWaitMs():0;
@@ -2135,8 +2150,10 @@ function _rcTrackChangedRecords(previousData,nextData){
 }
 function _rcOverlayPendingLocalRows(rows,durableRows){
   if(!Array.isArray(rows)||!_rcPendingDirty.size)return rows;
-  const durable=(durableRows||[]).filter(function(row){return row&&_rcPendingDirty.has(row.id);});
-  const localRows=_rcSplitAll(_buildDataObject()).filter(function(row){return row.caserne!=='_GLOBAL'&&_rcPendingDirty.has(row.id);});
+  const scopedCaserne=_rcSyncScopeCaserne();
+  const inScope=function(row){return row&&(!scopedCaserne||row.caserne===scopedCaserne||row.caserne==='_GLOBAL');};
+  const durable=(durableRows||[]).filter(function(row){return inScope(row)&&_rcPendingDirty.has(row.id);});
+  const localRows=_rcSplitAll(_buildDataObject()).filter(function(row){return inScope(row)&&row.caserne!=='_GLOBAL'&&_rcPendingDirty.has(row.id);});
   const indexes={};
   rows.forEach(function(row,index){if(row&&row.id)indexes[row.id]=index;});
   durable.concat(localRows).forEach(function(localRow){
@@ -2415,12 +2432,28 @@ function _rcParseRealtimeData(record){
 }
 function _rcApplyRealtimeRecord(record){
   if(!record||!record.caserne||!record.type)return false;
+  const scopedCaserne=_rcSyncScopeCaserne();
+  if(scopedCaserne&&record.caserne!==scopedCaserne&&record.caserne!=='_GLOBAL')return true;
   // Une modification locale pas encore envoyée reste prioritaire. L'événement
   // distant est ignoré sans provoquer une relecture complète de la table.
   if(_rcPendingDirty.has(record.id))return true;
   const incoming=_rcParseRealtimeData(record);
   if(!incoming)return false;
 
+  if(record.caserne==='_GLOBAL'&&record.type==='global'&&record.deleted!==true){
+    const globalData=Object.assign({},incoming);
+    globalData.LOGIN_HISTORY_DELETED=Object.assign({},LOGIN_HISTORY_DELETED||{},incoming.LOGIN_HISTORY_DELETED||{});
+    globalData.LOGIN_HISTORY=_mergeLoginHistory(LOGIN_HISTORY||[],incoming.LOGIN_HISTORY||[],globalData.LOGIN_HISTORY_DELETED);
+    globalData.CASERNE_DATA={};
+    ['_cabbalrActif','_initCabbalr','_global'].forEach(function(key){
+      if(incoming[key]!==undefined)globalData.CASERNE_DATA[key]=incoming[key];
+    });
+    _applyDataObject(globalData);
+    _writeLocalCache(_buildDataObject());
+    _rcRenderRealtimeViews();
+    _jbSetStatus(_rcHasActivePending()?'pending':'ok');
+    return true;
+  }
   if(record.type==='login'){
     if(record.deleted===true){
       LOGIN_HISTORY_DELETED[incoming.id]=true;
@@ -3005,8 +3038,7 @@ async function _rcPush(fullPush){
     // Les lignes durables sont ajoutées avant l'état courant : si la fiche a
     // encore évolué depuis sa mise en file, sa version actuelle reste prioritaire.
     const availableRows=_rcUniqueRowsById(durableRows.concat(allRows));
-    const durableIds=new Set(durableRows.map(function(row){return row&&row.id;}).filter(Boolean));
-    const candidate=fullPush?availableRows:availableRows.filter(function(row){return _rcRowWritableHere(row)||durableIds.has(row.id);});
+    const candidate=fullPush?availableRows:availableRows.filter(_rcRowWritableHere);
     const pendingBeforePrune=_rcPendingDirty.size;
     // Ne pas supprimer la file d'une autre caserne lors d'un changement de
     // contexte : seules les lignes réellement absentes de l'état ET de la
@@ -3130,25 +3162,34 @@ async function _rcPush(fullPush){
 // Supabase/PostgREST limite le nombre de lignes renvoyées par une requête.
 // Un appareil neuf (notamment un iPhone sans cache complet) doit donc lire
 // toutes les pages avant de reconstruire les interventions de la caserne.
-function _rcPullScopeFilter(){
+function _rcSyncScopeCaserne(){
   const globalView=document.getElementById('global-view');
-  const globalSuperAdmin=GLOBAL_ROLE==='superadmin'&&globalView&&globalView.style.display!=='none';
-  const privileged=globalSuperAdmin||(CU&&CU.appRole==='chef_corps');
-  if(privileged||!CURRENT_CASERNE_ID)return '';
-  const caserneId=String(CURRENT_CASERNE_ID).replace(/[^A-Za-z0-9_-]/g,'');
+  if(globalView&&globalView.style.display!=='none'&&(GLOBAL_ROLE==='superadmin'||GLOBAL_ROLE==='chef_corps'))return '';
+  const activeId=CURRENT_CASERNE_ID||(CU&&CU.appRole!=='chef_corps'&&CU.caserneId)||'';
+  return String(activeId).replace(/[^A-Za-z0-9_-]/g,'');
+}
+function _rcPullScopeFilter(){
+  const caserneId=_rcSyncScopeCaserne();
   return caserneId?'&caserne=in.(_GLOBAL,'+caserneId+')':'';
 }
-async function _rcFetchAllActiveRows(){
+async function _rcFetchAllActiveRows(scopeFilter){
   const rows=[];
-  for(let offset=0,page=0;page<200;page++){
-    const query='?deleted=eq.false&select=id,caserne,type,data,deleted&order=id.asc&limit='+RC_PULL_PAGE_SIZE+'&offset='+offset+_rcPullScopeFilter();
+  const fixedScope=typeof scopeFilter==='string'?scopeFilter:_rcPullScopeFilter();
+  let lastId='';
+  // Un nouveau dossier inséré pendant une lecture ne doit pas décaler les
+  // pages et faire disparaître temporairement des équipes ou interventions.
+  for(let page=0;page<200;page++){
+    const query='?deleted=eq.false&select=id,caserne,type,data,deleted&order=id.asc&limit='+RC_PULL_PAGE_SIZE
+      +fixedScope+(lastId?'&id=gt.'+encodeURIComponent(lastId):'');
     const resp=await _agaiFetchWithTimeout(RC_REST+query,{headers:_sbHeaders},45000);
     if(!resp.ok)throw new Error('records GET HTTP '+resp.status+' (page '+(page+1)+')');
     const batch=await resp.json();
     if(!Array.isArray(batch))throw new Error('Données records invalides (page '+(page+1)+')');
     rows.push.apply(rows,batch);
     if(batch.length<RC_PULL_PAGE_SIZE)return _rcUniqueRowsById(rows);
-    offset+=batch.length;
+    const nextId=String(batch[batch.length-1]&&batch[batch.length-1].id||'');
+    if(!nextId||nextId===lastId)throw new Error('Pagination records incohérente (page '+(page+1)+')');
+    lastId=nextId;
   }
   throw new Error('Chargement records incomplet : trop de pages');
 }
@@ -3173,7 +3214,12 @@ async function _rcPull(silent){
     durableRows.forEach(function(row){if(row&&row.id)_rcPendingDirty.add(row.id);});
     _rcPersistPendingDirty();
     if(!silent) _jbSetStatus('loading');
-    const rows = await _rcFetchAllActiveRows();
+    const requestedScope=_rcPullScopeFilter();
+    const rows = await _rcFetchAllActiveRows(requestedScope);
+    if(requestedScope!==_rcPullScopeFilter()){
+      _rcRequestRealtimePull(250);
+      return true;
+    }
     // Une interruption après un envoi peut laisser des centaines de lignes
     // pourtant déjà présentes sur le serveur. Les confirmer avant l'overlay
     // empêche une file fantôme de 500+ actions de bloquer l'application.
@@ -3333,7 +3379,30 @@ async function _rcPull(silent){
 }
 
 // ── Temps réel records ──
+function _rcStopRealtime(){
+  if(_rcRealtimeReconnectTimer){clearTimeout(_rcRealtimeReconnectTimer);_rcRealtimeReconnectTimer=null;}
+  if(_rcRealtimePullTimer){clearTimeout(_rcRealtimePullTimer);_rcRealtimePullTimer=null;}
+  _rcRealtimePullPending=false;
+  if(_rcRealtime){
+    const ws=_rcRealtime;
+    ws._agaiManualClose=true;
+    _rcRealtime=null;
+    try{ws.close();}catch(e){}
+  }
+  _rcRealtimeReady=false;
+}
+function _rcRefreshRealtimeScope(){
+  if(!USE_RECORDS||!CU)return;
+  const scopeKey=_rcSyncScopeCaserne()||'_ALL';
+  if(_rcRealtime&&_rcRealtime._agaiScopeKey===scopeKey&&_rcRealtime.readyState<=WebSocket.OPEN)return;
+  _rcInitialReconciliationDone=false;
+  _rcNeedsRecoveryPull=true;
+  _rcStartRealtime();
+  _rcRequestRealtimePull(250);
+  if(_rcHasActivePending())_rcScheduleRetry(0);
+}
 function _rcStartRealtime(){
+  if(!USE_RECORDS||!CU)return;
   try {
     if(_rcRealtimeReconnectTimer){clearTimeout(_rcRealtimeReconnectTimer);_rcRealtimeReconnectTimer=null;}
     if(_rcRealtime){
@@ -3342,14 +3411,18 @@ function _rcStartRealtime(){
       _rcRealtime=null;
     }
     _rcRealtimeReady=false;
+    const scopedCaserne=_rcSyncScopeCaserne();
+    const subscription={event:'*',schema:'public',table:'records'};
+    if(scopedCaserne)subscription.filter='caserne=in.(_GLOBAL,'+scopedCaserne+')';
     const wsUrl = SB_URL.replace('https://','wss://') + '/realtime/v1/websocket?apikey=' + SB_KEY + '&vsn=1.0.0';
     const ws = new WebSocket(wsUrl);
+    ws._agaiScopeKey=scopedCaserne||'_ALL';
     _rcRealtime = ws;
     ws.onopen = function(){
       const joinRef=String(++_rcRealtimeJoinSequence);
       ws._agaiJoinRef=joinRef;
       ws.send(JSON.stringify({ topic:'realtime:public:records', event:'phx_join',
-        payload:{ config:{ postgres_changes:[{ event:'*', schema:'public', table:'records' }] }, access_token:SB_KEY },
+        payload:{ config:{ postgres_changes:[subscription] }, access_token:SB_KEY },
         ref:joinRef, join_ref:joinRef }));
       ws._agaiJoinTimer=window.setTimeout(function(){
         if(!_rcRealtimeReady&&ws.readyState===WebSocket.OPEN)try{ws.close();}catch(e){}
@@ -3367,6 +3440,7 @@ function _rcStartRealtime(){
           if(m.payload&&m.payload.status==='ok'&&Array.isArray(subscriptions)&&subscriptions.length){
             ws._agaiSubscriptionIds=subscriptions.map(function(subscription){return subscription.id;});
             _rcRealtimeReady=true;
+            _rcRealtimeReconnectDelay=30000;
             // Le chargement initial vient déjà d'être effectué. Une relecture
             // complète n'est utile qu'après une vraie coupure, afin de récupérer
             // les événements éventuellement manqués pendant la déconnexion.
@@ -3383,7 +3457,6 @@ function _rcStartRealtime(){
         if(m.event==='postgres_changes'){
           if(Array.isArray(m.payload&&m.payload.ids)&&Array.isArray(ws._agaiSubscriptionIds)
             &&!m.payload.ids.some(function(id){return ws._agaiSubscriptionIds.includes(id);})){
-            try{ws.close();}catch(e){}
             return;
           }
           const applied=_rcApplyRealtimeRecord(_rcRealtimeRecordFromMessage(m));
@@ -3396,13 +3469,14 @@ function _rcStartRealtime(){
     ws.onclose = function(){
       if(ws._hb)clearInterval(ws._hb);
       if(ws._agaiJoinTimer)clearTimeout(ws._agaiJoinTimer);
-      if(_rcRealtime===ws)_rcRealtime=null;
-      _rcRealtimeReady=false;
+      if(_rcRealtime===ws){_rcRealtime=null;_rcRealtimeReady=false;}
       if(USE_RECORDS&&!ws._agaiManualClose){
         _rcNeedsRecoveryPull=true;
         if(_rcRealtimeReconnectTimer)clearTimeout(_rcRealtimeReconnectTimer);
         const circuitWait=typeof _agaiServerCircuitWaitMs==='function'?_agaiServerCircuitWaitMs():0;
-        _rcRealtimeReconnectTimer=window.setTimeout(_rcStartRealtime,Math.max(circuitWait,ws._agaiJoinRejected?60000:30000));
+        const retryWait=Math.max(circuitWait,ws._agaiJoinRejected?60000:_rcRealtimeReconnectDelay);
+        _rcRealtimeReconnectDelay=Math.min(5*60*1000,_rcRealtimeReconnectDelay*2);
+        _rcRealtimeReconnectTimer=window.setTimeout(_rcStartRealtime,retryWait);
       }
     };
     ws.onerror = function(){ try{ws.close();}catch(e){} };
@@ -3414,12 +3488,16 @@ function _rcStartRealtime(){
 function _rcStartPolling(){
   if(_rcPollTimer) clearInterval(_rcPollTimer);
   _rcPollTimer = window.setInterval(function(){
+    if(!CU)return;
+    if(document.visibilityState==='hidden')return;
+    _rcRefreshRealtimeScope();
     // Le temps réel est le mécanisme normal. Le polling ne sert que de secours
     // lorsque la connexion WebSocket n'est pas opérationnelle.
-    if(_rcRealtimeReady) return;
+    if(_rcRealtimeReady&&Date.now()-_rcLastSafetyPullAt<RC_REALTIME_SAFETY_PULL_MS)return;
     if(_rcSaving) return;
     if(Date.now()-_rcLastPush < 10000) return;
     if(Date.now()-_jbEditLock < 12000) return;
+    _rcLastSafetyPullAt=Date.now();
     _rcPull(true);
   }, RC_FALLBACK_POLL_MS);
 }
