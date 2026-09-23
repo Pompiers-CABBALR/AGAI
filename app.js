@@ -631,8 +631,8 @@ function interventionDisplayCallNumber(iv){
 // Indices purement visuels pour des doublons historiques précisément audités.
 // _numCaserne reste numérique pour les compteurs et la synchronisation.
 const HISTORICAL_UT_DISPLAY_SUFFIXES=Object.freeze({
-  'CIS05__iv__APL_2026_000338-Rmtr4pr8v-b8a0ee910e':{number:'276',suffix:'1'}, // départ 09/09/2026 14:41
-  'CIS05__iv__APL_2026_000354-Rmtsdguwz-fecf1988d8':{number:'278',suffix:'1'}  // départ 09/09/2026 15:45
+  'APL_2026_000338-Rmtr4pr8v-b8a0ee910e':{number:'276',suffix:'1'}, // départ 09/09/2026 14:41
+  'APL_2026_000354-Rmtsdguwz-fecf1988d8':{number:'278',suffix:'1'}  // départ 09/09/2026 15:45
 });
 function interventionDisplayUTNumber(iv){
   const value=iv&&iv._numCaserne;
@@ -16162,7 +16162,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202609_0017';
+const APP_VERSION='V202609_0018';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;

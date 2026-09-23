@@ -1,5 +1,20 @@
 # AGAI — déploiement sécurisé
 
+## Correction V202609_0018 — indices UT visibles dans l'historique
+
+La V202609_0017 a été affichée sur un appareil mais les indices « -1 » ne
+s'affichaient pas dans l'historique : le code comparait l'identifiant complet
+de la ligne Supabase (`CIS05__iv__...`) à l'identifiant de l'intervention
+présent dans la fiche (`APL_...`). La V202609_0018 utilise ce dernier, qui est
+celui reçu par l'interface. Un test rend réellement les quatre lignes de
+l'historique et vérifie les affichages 276, 276-1, 278 et 278-1.
+
+Cette correction ne modifie aucune donnée, aucun numéro technique ni aucune
+file locale. Elle ne nécessite pas de SQL ou de redémarrage Supabase. Après
+publication complète du dossier modulaire, actualiser les appareils et vérifier
+ces quatre lignes dans l'historique. Les deux anomalies historiques signalées
+par Supabase resteront visibles, puisque les numéros enregistrés sont inchangés.
+
 ## Préparation V202609_0017 — indices d'affichage des doublons UT historiques
 
 **Non déployée en production.** Les quatre interventions terminées du 9 septembre

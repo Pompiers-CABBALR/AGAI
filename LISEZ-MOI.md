@@ -39,7 +39,7 @@ passerelle serveur sécurisée.
 
 ## Authentification actuelle
 
-Les identifiants AGAI existants sont conservés. Dans la V202609_0017, la liaison
+Les identifiants AGAI existants sont conservés. Dans la V202609_0018, la liaison
 technique Supabase Auth reste désactivée dans `runtime-config.js`. Cette livraison
 prépare la numérotation provisoire au départ et définitive à la clôture, ainsi
 qu'une confirmation à deux gestes pour éviter une clôture accidentelle. Elle
