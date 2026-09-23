@@ -1,5 +1,28 @@
 # AGAI — déploiement sécurisé
 
+## Préparation V202609_0016 — conflits entre interventions et activités
+
+**Non déployée en production.** Lors d'un départ réel (intervention ou renfort),
+un chevauchement avec une FMPA, une formation ou une activité de service ne bloque
+pas le départ. L'application indique le nom de l'agent, l'activité et ses heures,
+ajoute une trace à l'intervention et affiche « Présence à régulariser » dans la
+fiche et dans la santé opérationnelle tant que l'intervention est en cours.
+
+La création ou la modification d'une FMPA ou d'une activité de service est en
+revanche refusée si un participant ou formateur est déjà engagé sur une
+intervention connue aux mêmes heures. La création des formations est soumise au
+même contrôle ; les heures du matin ou de l'après-midi sont désormais obligatoires
+et complètes. Les anciennes formations sans heures précises sont traitées comme
+une présence sur toute la journée, avec mention « horaires à préciser ».
+
+Le contrôle utilise les données déjà présentes et synchronisées sur l'appareil :
+il ne lance aucune requête Supabase supplémentaire et ne nécessite ni SQL ni
+redémarrage. Il ne peut toutefois pas garantir l'absence de chevauchement si un
+autre appareil est hors ligne ou possède des données plus récentes. Vérifier la
+liste des alertes et régulariser la présence après synchronisation. La liaison
+technique des comptes demeure désactivée. Les prérequis de numérotation V202609_0014
+ci-dessous restent obligatoires avant toute publication de cette version.
+
 ## Préparation V202609_0015 — clôture protégée contre les fausses manipulations
 
 **Non déployée en production.** Cette version reprend la numérotation préparée

@@ -532,6 +532,16 @@ function saveInterventionStartCorrection(ivId){
     if(conflict){showStartCorrectionOperationalConflict(conflict);return;}
   }
   if(next===old&&nextEnd===oldEnd){showToast('Les heures de l’intervention sont inchangées.','info');return;}
+  const proposedStart=next!==old?proposedInterventionStartMillis(iv,next,real):interventionOperationalConflictBounds(iv).start;
+  const originalBounds=interventionOperationalConflictBounds(iv);
+  let proposedEnd=Number.isFinite(originalBounds.end)?originalBounds.end:Date.now()+1000;
+  if(nextEnd&&nextEnd!==oldEnd&&Number.isFinite(originalBounds.end)){
+    const minutes=hhmmToMinutes(nextEnd),date=new Date(originalBounds.end);
+    date.setHours(Math.floor(minutes/60),minutes%60,0,0);
+    proposedEnd=date.getTime();if(proposedEnd<=proposedStart)proposedEnd+=24*60*60*1000;
+  }
+  const scheduleConflict=findPersonnelScheduleConflict(interventionHistoricalPersonnelLogins(iv),proposedStart,proposedEnd);
+  if(scheduleConflict)showPersonnelScheduleConflict(scheduleConflict);
   const notes=[];
   if(next!==old){
     if(!iv._hDebutReelle)iv._hDebutReelle=real;
@@ -553,6 +563,7 @@ function saveInterventionStartCorrection(ivId){
     notes.push('Retour '+oldEnd+' → '+nextEnd+' (heure réelle conservée : '+realEnd+')');
   }
   pushTL(iv,'modif-heure',CU.l,notes.join(' · '));
+  if(scheduleConflict)recordPersonnelScheduleAlert(iv,scheduleConflict);
   saveData(true);rI();rHist();
   showToast('Horaires corrigés et ajoutés à l’historique.','success');
   showCompteRenduModal(ivId);

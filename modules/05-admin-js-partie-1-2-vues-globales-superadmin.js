@@ -264,6 +264,9 @@ function operationalHealthReport(){
       if(iv.s!=='en-cours')return;
       if(!iv.agr)add('error',caserne.nom,iv,'Intervention en cours sans chef d’agrès.');
       const vehicles=interventionVehicleNames(iv),personnel=interventionActivePersonnelLogins(iv);
+      const scheduleBounds=interventionOperationalConflictBounds(iv);
+      const scheduleConflict=findPersonnelScheduleConflict(personnel,scheduleBounds.start,Date.now()+1000);
+      if(scheduleConflict)add('warn',caserne.nom,iv,'Présence à régulariser : '+personnelScheduleConflictMessage(scheduleConflict));
       if(!vehicles.length)add('error',caserne.nom,iv,'Intervention en cours sans véhicule enregistré.');
       if(!personnel.length)add('error',caserne.nom,iv,'Intervention en cours sans équipage enregistré.');
       if(iv.agr&&personnel.length&&!personnel.includes(iv.agr))add('error',caserne.nom,iv,'Le chef d’agrès responsable n’apparaît pas dans l’équipage engagé.');

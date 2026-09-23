@@ -1262,6 +1262,9 @@ function saveActivite(){
   if(dateErr){err.style.display='block';err.textContent=dateErr;return;}
   if(hf<=hd&&!(hf<hd)){/* ok */}
   const participants=Array.from(document.querySelectorAll('#act-participants input[type=checkbox]:checked')).map(cb=>cb.value);
+  if(hhmmToMinutes(hd)===null||hhmmToMinutes(hf)===null||hd===hf){err.style.display='block';err.textContent='Renseignez des heures de début et de fin distinctes et valides.';return;}
+  const interventionConflict=findInterventionConflictForSchedule('Activité de service',{date:date,hDebut:hd,hFin:hf,participants:participants});
+  if(interventionConflict){err.style.display='block';err.textContent=personnelScheduleConflictMessage(interventionConflict,'Cette activité de service');return;}
   const dureeEl=document.getElementById('act-duree')?.value||'';
   const {numAnnuel,numMensuel}=actNextNums(date);
   const id='ACT_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
@@ -1379,6 +1382,9 @@ function actSaveEdit(id){
   const newDuree=document.getElementById('aedit-duree')?.value;
   const newCr=(document.getElementById('aedit-cr')?.value||'').trim();
   const newPart=Array.from(document.querySelectorAll('#aedit-participants input[type=checkbox]:checked')).map(cb=>cb.value);
+  if(hhmmToMinutes(newHd)===null||hhmmToMinutes(newHf)===null||newHd===newHf){err.style.display='block';err.textContent='Renseignez des heures de début et de fin distinctes et valides.';return;}
+  const interventionConflict=findInterventionConflictForSchedule('Activité de service',{date:a.date,hDebut:newHd,hFin:newHf,participants:newPart});
+  if(interventionConflict){err.style.display='block';err.textContent=personnelScheduleConflictMessage(interventionConflict,'Cette activité de service');return;}
   if(newType!==a.type)champs.push('type');
   if(newHd!==a.hDebut)champs.push('heure début');
   if(newHf!==a.hFin)champs.push('heure fin');

@@ -521,6 +521,7 @@ function saveSupplementaryInterventionCrew(ivId,recordId){
   if(duplicate){showToast(interventionTeammateName(duplicate)+' est déjà affecté à un autre véhicule de cette intervention.','warn');return;}
   for(const login of logins){const conflict=findActivePersonnelConflict(login,iv.id);if(conflict){showOperationalConflict('personnel',login,conflict);return;}}
   const vehicleConflict=findActiveVehicleConflict(vehicle,iv.id);if(vehicleConflict){showOperationalConflict('vehicle',vehicle,vehicleConflict);return;}
+  const scheduleConflict=findInterventionAssignmentScheduleConflict(iv,logins);
   const reportField=document.getElementById('cr-texte');if(reportField)writeCompteRenduDraft(ivId,reportField.value);
   let target;
   if(recordId==='secondary'){
@@ -530,8 +531,10 @@ function saveSupplementaryInterventionCrew(ivId,recordId){
     target.engin=vehicle;target.equipage=crew;target.roleConfig=JSON.parse(JSON.stringify(getEnginRoles(vehicle)));
   }
   pushTL(iv,'modif-equipage',CU.l,(recordId==='secondary'?'Deuxième véhicule':'Renfort interne')+' corrigé : '+vehicle+' · '+crew.map(function(member){return member.role+' '+interventionTeammateName(member.login);}).join(', '));
+  if(scheduleConflict)recordPersonnelScheduleAlert(iv,scheduleConflict);
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-  saveData(true);rI();rHist();showCompteRenduModal(ivId);showToast('Véhicule et équipage enregistrés dans le rapport.','success');
+  saveData(true);rI();rHist();showCompteRenduModal(ivId);
+  if(scheduleConflict)showPersonnelScheduleConflict(scheduleConflict);else showToast('Véhicule et équipage enregistrés dans le rapport.','success');
 }
 function interventionMainCrewRoleMember(iv,roleKey){
   const crew=Array.isArray(iv&&iv._equipage1)?iv._equipage1:[];
@@ -616,6 +619,7 @@ function saveInterventionTeammateLegacy(ivId){
     });
   });
   if(afterLogin&&duplicate){showToast('Cet agent est d\u00e9j\u00e0 enregistr\u00e9 avec une autre fonction dans l\u2019\u00e9quipage.','warn');return;}
+  const scheduleConflict=findInterventionAssignmentScheduleConflict(iv,[afterLogin]);
   const reportField=document.getElementById('cr-texte');
   if(reportField)writeCompteRenduDraft(ivId,reportField.value);
   const crew=(Array.isArray(iv._equipage1)?iv._equipage1:[]).filter(function(member){
@@ -629,10 +633,11 @@ function saveInterventionTeammateLegacy(ivId){
   if(!beforeLogin&&afterLogin)note='\u00c9quipier ajout\u00e9 : '+interventionTeammateName(afterLogin);
   else if(beforeLogin&&afterLogin)note='\u00c9quipier modifi\u00e9 : '+interventionTeammateName(beforeLogin)+' \u2192 '+interventionTeammateName(afterLogin);
   pushTL(iv,'modif-equipier',CU.l,note);
+  if(scheduleConflict)recordPersonnelScheduleAlert(iv,scheduleConflict);
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);rI();rHist();
   showCompteRenduModal(ivId);
-  showToast('Composition de l\u2019\u00e9quipage enregistr\u00e9e.','success');
+  if(scheduleConflict)showPersonnelScheduleConflict(scheduleConflict);else showToast('Composition de l\u2019\u00e9quipage enregistr\u00e9e.','success');
 }
 
 function interventionCrewRoleOptions(iv,roleKey,currentLogin,emptyLabel,allowMainCrewReassignment){
@@ -795,6 +800,7 @@ function saveInterventionTeammate(ivId){
   if(duplicate||chiefs.includes(afterDriverLogin)||chiefs.includes(afterTeammateLogin)){
     showToast('Cet agent est d\u00e9j\u00e0 enregistr\u00e9 avec une autre fonction dans l\u2019\u00e9quipage.','warn');return;
   }
+  const scheduleConflict=findInterventionAssignmentScheduleConflict(iv,[afterDriverLogin,afterTeammateLogin]);
   const reportField=document.getElementById('cr-texte');
   if(reportField)writeCompteRenduDraft(ivId,reportField.value);
   const crew=(Array.isArray(iv._equipage1)?iv._equipage1:[]).filter(function(member){
@@ -816,11 +822,12 @@ function saveInterventionTeammate(ivId){
   traceRole('Conducteur','conducteur',beforeDriverLogin,afterDriverLogin);
   traceRole('\u00c9quipier','equipier',beforeTeammateLogin,afterTeammateLogin);
   pushTL(iv,'modif-equipier',CU.l,notes.join(' \u00b7 '));
+  if(scheduleConflict)recordPersonnelScheduleAlert(iv,scheduleConflict);
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   markOperationalInterventionDirty(iv);
   saveData(true);refreshOperationalInterventionViews();rHist();
   showCompteRenduModal(ivId);
-  showToast('Composition de l\u2019\u00e9quipage enregistr\u00e9e.','success');
+  if(scheduleConflict)showPersonnelScheduleConflict(scheduleConflict);else showToast('Composition de l\u2019\u00e9quipage enregistr\u00e9e.','success');
 }
 
 function saveInterventionConfiguredCrew(iv,fields,selectedVehicle,selectedChief){
@@ -881,6 +888,7 @@ function saveInterventionConfiguredCrew(iv,fields,selectedVehicle,selectedChief)
     else changes.push(place+' modifié : '+interventionTeammateName(before)+' → '+interventionTeammateName(item.login));
   });
   if(!changes.length&&!vehicleChanged&&!chiefChanged){showToast('Le véhicule et l’équipage sont déjà enregistrés.','info');return;}
+  const scheduleConflict=findInterventionAssignmentScheduleConflict(iv,[afterChief].concat(logins));
   const reportField=document.getElementById('cr-texte');
   if(reportField)writeCompteRenduDraft(iv.id,reportField.value);
   if(vehicleChanged){
@@ -905,11 +913,12 @@ function saveInterventionConfiguredCrew(iv,fields,selectedVehicle,selectedChief)
   if(vehicleChanged)notes.push('Véhicule modifié : '+(beforeVehicle||'Aucun')+' → '+afterVehicle);
   if(changes.length)notes.push(changes.join(' · '));
   pushTL(iv,chiefChanged?'modif-chef-agres':(vehicleChanged?'modif-engin':'modif-equipier'),CU.l,notes.join(' · '));
+  if(scheduleConflict)recordPersonnelScheduleAlert(iv,scheduleConflict);
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   markOperationalInterventionDirty(iv);
   saveData(true);refreshOperationalInterventionViews();rHist();
   showCompteRenduModal(iv.id);
-  showToast('Véhicule et composition de l’équipage enregistrés dans le rapport.','success');
+  if(scheduleConflict)showPersonnelScheduleConflict(scheduleConflict);else showToast('Véhicule et composition de l’équipage enregistrés dans le rapport.','success');
 }
 
 const _pendingNextInterventionStarts={};
@@ -1722,7 +1731,7 @@ function oM(id){
       </summary>
       <div style="padding:0 12px 10px 12px;">${tlHtml||'<div style="font-size:12px;color:var(--t2);">Aucun historique.</div>'}</div>
     </details>`:''}
-    ${retroPilpHtml}${reclassHtml}${actions}`;
+    ${retroPilpHtml}${reclassHtml}${operationalScheduleWarningHTML(iv)}${actions}`;
   document.getElementById('mo').style.display='flex';
 }
 function setAgr2(ivId,login){

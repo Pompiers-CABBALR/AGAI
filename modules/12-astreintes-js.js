@@ -3158,9 +3158,11 @@ function confirmerClotureSuperAdminDirecte(id,validated){
     else showStartCorrectionOperationalConflict(intervalConflict);
     return;
   }
+  const scheduleConflict=findPersonnelScheduleConflict(logins,directStart,directEnd);
   if(!validated){
     const captured={chief:chief,operationalDate:operationalDate,returnDate:returnDate,time:time,endTime:endTime,vehicle:vehicle,crew:JSON.parse(JSON.stringify(crew))};
-    requestOperationalCloseConfirmation(iv,'Saisie directe superadmin · Véhicule : '+vehicle+' · Chef d’agrès : '+chief+' · Départ : '+time+' · Retour : '+endTime,
+    requestOperationalCloseConfirmation(iv,'Saisie directe superadmin · Véhicule : '+vehicle+' · Chef d’agrès : '+chief+' · Départ : '+time+' · Retour : '+endTime
+      +(scheduleConflict?' · ⚠ '+personnelScheduleConflictMessage(scheduleConflict):''),
       function(){confirmerClotureSuperAdminDirecte(id,captured);});
     return;
   }
@@ -3176,6 +3178,7 @@ function confirmerClotureSuperAdminDirecte(id,validated){
   delete iv._retourAttenteDepuis;delete iv._chainPreviousInterventionId;
   const who=chief+' (départ saisi par le superadmin '+CU.l+')';
   pushTL(iv,'en-cours',who,'Départ manuel à '+time+' — '+vehicle,manualOperationalTimelineStamp(iv,time,false));
+  if(scheduleConflict)recordPersonnelScheduleAlert(iv,scheduleConflict);
   iv._superAdminOperationalEdits=Array.isArray(iv._superAdminOperationalEdits)?iv._superAdminOperationalEdits:[];
   iv._superAdminOperationalEdits.push({action:'saisie-directe',at:getH(N()),by:CU.l,chef:chief,dateIntervention:operationalDate,dateRetour:returnDate,heureDepart:time,heureRetour:endTime,engin:vehicle,equipage:crew.map(function(member){return {role:member.role,login:member.login};})});
   assignInterventionNumbersAtStart(iv);syncInternalReinforcementSource(iv);markOperationalInterventionDirty(iv);
@@ -3229,6 +3232,9 @@ function confirmerDepart(id){
     }
     return;
   }
+  const departureStart=personnelOperationalStartMillis(heure,interruptedHandoff&&interruptedHandoff.handoff&&interruptedHandoff.handoff.date);
+  const scheduleConflict=findPersonnelScheduleConflict(personnelLogins,departureStart,Math.max(departureStart+60000,Date.now()+1000));
+  if(scheduleConflict)showPersonnelScheduleConflict(scheduleConflict);
   const startAuthorization=takeOperationalStartAuthorization(iv);
   if(!startAuthorization){
     cM();
@@ -3277,6 +3283,7 @@ function confirmerDepart(id){
   const persLabel=' ['+eq1.concat(eq2).map(function(e){const u=USERS.find(function(x){return x.l===e.login;});return e.role+': '+(u?fullName(u):e.login);}).join(', ')+']';
   pushTL(iv,'en-cours',CU.l+agr2Label+persLabel,
     interruptedHandoff?'Départ à '+heure+' repris de l’intervention '+interruptedHandoff.source.id:(restartedAfterPending?'Nouveau départ à '+heure+' après retour en attente':(chained?'Début enchaîné à '+heure+' après l’intervention précédente':'Départ réel à '+heure)));
+  if(scheduleConflict)recordPersonnelScheduleAlert(iv,scheduleConflict);
   delete iv._retourAttenteDepuis;
   assignInterventionNumbersAtStart(iv);
   markOperationalInterventionDirty(iv);
@@ -3591,6 +3598,10 @@ function validerReleve(id){
     const conflict=findActivePersonnelConflict(login,id);
     if(conflict){showOperationalConflict('personnel',login,conflict);return;}
   }
+  const joiningLogins=nouvelEquipage.filter(function(member){return !equipActuel.some(function(old){return old.login===member.login;});}).map(function(member){return member.login;});
+  const reliefStart=personnelOperationalStartMillis(heure);
+  const scheduleConflict=findPersonnelScheduleConflict(joiningLogins,reliefStart,reliefStart+60000);
+  if(scheduleConflict)showPersonnelScheduleConflict(scheduleConflict);
 
   if(!iv._releves)iv._releves=[];
   iv._releves.push({hReleve:heure,ancienEquipage,nouvelEquipage});
@@ -3601,6 +3612,7 @@ function validerReleve(id){
       const un=nb?USERS.find(x=>x.l===nb.login):null;
       return e.role+' : '+(ua?fullName(ua):e.login)+' → '+(un?fullName(un):nb?nb.login:'?');
     }).join(', ')});
+  if(scheduleConflict)recordPersonnelScheduleAlert(iv,scheduleConflict);
 
   saveData();cM();
   setTimeout(function(){oM(id);},80);
@@ -3988,6 +4000,9 @@ function confirmerRenfortEquipage(cid,renfortId,confirmed){
     const conflict=findActivePersonnelConflict(login,null);
     if(conflict){showOperationalConflict('personnel',login,conflict);return;}
   }
+  const reinforcementStart=personnelOperationalStartMillis(getHHMM(N()));
+  const scheduleConflict=findPersonnelScheduleConflict(logins,reinforcementStart,reinforcementStart+60000);
+  if(scheduleConflict)showPersonnelScheduleConflict(scheduleConflict);
   const startAuthorization=takeOperationalStartAuthorization(startTarget);
   if(!startAuthorization){cM();showToast(OPERATIONAL_START_DENIED_MESSAGE,'warn');return;}
   r.equipageRenfort=equip;
@@ -4027,6 +4042,7 @@ function confirmerRenfortEquipage(cid,renfortId,confirmed){
       op:CU?CU.l:'',
     };
     saveOperationalStartAuthorization(renfortIv,startAuthorization);
+    if(scheduleConflict)recordPersonnelScheduleAlert(renfortIv,scheduleConflict);
     CASERNE_DATA[cid].ivs.push(renfortIv);
     assignInterventionNumbersAtStart(renfortIv);
   }

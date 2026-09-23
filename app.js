@@ -1876,6 +1876,9 @@ function operationalHealthReport(){
       if(iv.s!=='en-cours')return;
       if(!iv.agr)add('error',caserne.nom,iv,'Intervention en cours sans chef d’agrès.');
       const vehicles=interventionVehicleNames(iv),personnel=interventionActivePersonnelLogins(iv);
+      const scheduleBounds=interventionOperationalConflictBounds(iv);
+      const scheduleConflict=findPersonnelScheduleConflict(personnel,scheduleBounds.start,Date.now()+1000);
+      if(scheduleConflict)add('warn',caserne.nom,iv,'Présence à régulariser : '+personnelScheduleConflictMessage(scheduleConflict));
       if(!vehicles.length)add('error',caserne.nom,iv,'Intervention en cours sans véhicule enregistré.');
       if(!personnel.length)add('error',caserne.nom,iv,'Intervention en cours sans équipage enregistré.');
       if(iv.agr&&personnel.length&&!personnel.includes(iv.agr))add('error',caserne.nom,iv,'Le chef d’agrès responsable n’apparaît pas dans l’équipage engagé.');
@@ -6040,6 +6043,7 @@ function saveSupplementaryInterventionCrew(ivId,recordId){
   if(duplicate){showToast(interventionTeammateName(duplicate)+' est déjà affecté à un autre véhicule de cette intervention.','warn');return;}
   for(const login of logins){const conflict=findActivePersonnelConflict(login,iv.id);if(conflict){showOperationalConflict('personnel',login,conflict);return;}}
   const vehicleConflict=findActiveVehicleConflict(vehicle,iv.id);if(vehicleConflict){showOperationalConflict('vehicle',vehicle,vehicleConflict);return;}
+  const scheduleConflict=findInterventionAssignmentScheduleConflict(iv,logins);
   const reportField=document.getElementById('cr-texte');if(reportField)writeCompteRenduDraft(ivId,reportField.value);
   let target;
   if(recordId==='secondary'){
@@ -6049,8 +6053,10 @@ function saveSupplementaryInterventionCrew(ivId,recordId){
     target.engin=vehicle;target.equipage=crew;target.roleConfig=JSON.parse(JSON.stringify(getEnginRoles(vehicle)));
   }
   pushTL(iv,'modif-equipage',CU.l,(recordId==='secondary'?'Deuxième véhicule':'Renfort interne')+' corrigé : '+vehicle+' · '+crew.map(function(member){return member.role+' '+interventionTeammateName(member.login);}).join(', '));
+  if(scheduleConflict)recordPersonnelScheduleAlert(iv,scheduleConflict);
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-  saveData(true);rI();rHist();showCompteRenduModal(ivId);showToast('Véhicule et équipage enregistrés dans le rapport.','success');
+  saveData(true);rI();rHist();showCompteRenduModal(ivId);
+  if(scheduleConflict)showPersonnelScheduleConflict(scheduleConflict);else showToast('Véhicule et équipage enregistrés dans le rapport.','success');
 }
 function interventionMainCrewRoleMember(iv,roleKey){
   const crew=Array.isArray(iv&&iv._equipage1)?iv._equipage1:[];
@@ -6135,6 +6141,7 @@ function saveInterventionTeammateLegacy(ivId){
     });
   });
   if(afterLogin&&duplicate){showToast('Cet agent est d\u00e9j\u00e0 enregistr\u00e9 avec une autre fonction dans l\u2019\u00e9quipage.','warn');return;}
+  const scheduleConflict=findInterventionAssignmentScheduleConflict(iv,[afterLogin]);
   const reportField=document.getElementById('cr-texte');
   if(reportField)writeCompteRenduDraft(ivId,reportField.value);
   const crew=(Array.isArray(iv._equipage1)?iv._equipage1:[]).filter(function(member){
@@ -6148,10 +6155,11 @@ function saveInterventionTeammateLegacy(ivId){
   if(!beforeLogin&&afterLogin)note='\u00c9quipier ajout\u00e9 : '+interventionTeammateName(afterLogin);
   else if(beforeLogin&&afterLogin)note='\u00c9quipier modifi\u00e9 : '+interventionTeammateName(beforeLogin)+' \u2192 '+interventionTeammateName(afterLogin);
   pushTL(iv,'modif-equipier',CU.l,note);
+  if(scheduleConflict)recordPersonnelScheduleAlert(iv,scheduleConflict);
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);rI();rHist();
   showCompteRenduModal(ivId);
-  showToast('Composition de l\u2019\u00e9quipage enregistr\u00e9e.','success');
+  if(scheduleConflict)showPersonnelScheduleConflict(scheduleConflict);else showToast('Composition de l\u2019\u00e9quipage enregistr\u00e9e.','success');
 }
 
 function interventionCrewRoleOptions(iv,roleKey,currentLogin,emptyLabel,allowMainCrewReassignment){
@@ -6314,6 +6322,7 @@ function saveInterventionTeammate(ivId){
   if(duplicate||chiefs.includes(afterDriverLogin)||chiefs.includes(afterTeammateLogin)){
     showToast('Cet agent est d\u00e9j\u00e0 enregistr\u00e9 avec une autre fonction dans l\u2019\u00e9quipage.','warn');return;
   }
+  const scheduleConflict=findInterventionAssignmentScheduleConflict(iv,[afterDriverLogin,afterTeammateLogin]);
   const reportField=document.getElementById('cr-texte');
   if(reportField)writeCompteRenduDraft(ivId,reportField.value);
   const crew=(Array.isArray(iv._equipage1)?iv._equipage1:[]).filter(function(member){
@@ -6335,11 +6344,12 @@ function saveInterventionTeammate(ivId){
   traceRole('Conducteur','conducteur',beforeDriverLogin,afterDriverLogin);
   traceRole('\u00c9quipier','equipier',beforeTeammateLogin,afterTeammateLogin);
   pushTL(iv,'modif-equipier',CU.l,notes.join(' \u00b7 '));
+  if(scheduleConflict)recordPersonnelScheduleAlert(iv,scheduleConflict);
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   markOperationalInterventionDirty(iv);
   saveData(true);refreshOperationalInterventionViews();rHist();
   showCompteRenduModal(ivId);
-  showToast('Composition de l\u2019\u00e9quipage enregistr\u00e9e.','success');
+  if(scheduleConflict)showPersonnelScheduleConflict(scheduleConflict);else showToast('Composition de l\u2019\u00e9quipage enregistr\u00e9e.','success');
 }
 
 function saveInterventionConfiguredCrew(iv,fields,selectedVehicle,selectedChief){
@@ -6400,6 +6410,7 @@ function saveInterventionConfiguredCrew(iv,fields,selectedVehicle,selectedChief)
     else changes.push(place+' modifié : '+interventionTeammateName(before)+' → '+interventionTeammateName(item.login));
   });
   if(!changes.length&&!vehicleChanged&&!chiefChanged){showToast('Le véhicule et l’équipage sont déjà enregistrés.','info');return;}
+  const scheduleConflict=findInterventionAssignmentScheduleConflict(iv,[afterChief].concat(logins));
   const reportField=document.getElementById('cr-texte');
   if(reportField)writeCompteRenduDraft(iv.id,reportField.value);
   if(vehicleChanged){
@@ -6424,11 +6435,12 @@ function saveInterventionConfiguredCrew(iv,fields,selectedVehicle,selectedChief)
   if(vehicleChanged)notes.push('Véhicule modifié : '+(beforeVehicle||'Aucun')+' → '+afterVehicle);
   if(changes.length)notes.push(changes.join(' · '));
   pushTL(iv,chiefChanged?'modif-chef-agres':(vehicleChanged?'modif-engin':'modif-equipier'),CU.l,notes.join(' · '));
+  if(scheduleConflict)recordPersonnelScheduleAlert(iv,scheduleConflict);
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   markOperationalInterventionDirty(iv);
   saveData(true);refreshOperationalInterventionViews();rHist();
   showCompteRenduModal(iv.id);
-  showToast('Véhicule et composition de l’équipage enregistrés dans le rapport.','success');
+  if(scheduleConflict)showPersonnelScheduleConflict(scheduleConflict);else showToast('Véhicule et composition de l’équipage enregistrés dans le rapport.','success');
 }
 
 const _pendingNextInterventionStarts={};
@@ -7241,7 +7253,7 @@ function oM(id){
       </summary>
       <div style="padding:0 12px 10px 12px;">${tlHtml||'<div style="font-size:12px;color:var(--t2);">Aucun historique.</div>'}</div>
     </details>`:''}
-    ${retroPilpHtml}${reclassHtml}${actions}`;
+    ${retroPilpHtml}${reclassHtml}${operationalScheduleWarningHTML(iv)}${actions}`;
   document.getElementById('mo').style.display='flex';
 }
 function setAgr2(ivId,login){
@@ -8197,7 +8209,7 @@ function oPilp(id){
       </summary>
       <div style="padding:0 12px 10px 12px;">${tlHtml||'<div style="font-size:12px;color:var(--t2);">Aucun historique.</div>'}</div>
     </details>`:''}
-    ${actions}`;
+    ${operationalScheduleWarningHTML(iv)}${actions}`;
   document.getElementById('mo').style.display='flex';
 }
 function cSPilp(id,s,confirmed){
@@ -8356,6 +8368,167 @@ function showOperationalConflict(kind,value,iv){
     ?'Le véhicule '+label+' est déjà engagé sur '+operationalConflictLabel(iv)+'. Clôturez cette intervention avant de réutiliser ce véhicule.'
     :'L’agent '+label+' est déjà engagé sur '+operationalConflictLabel(iv)+'. Un membre du personnel ne peut pas être affecté à plusieurs véhicules en même temps.';
   showToast(message,'warn');
+}
+// Contrôle local des présences FMPA, formations et activités de service.
+// Les dates sont interprétées dans le fuseau local du navigateur ; les bornes
+// qui se touchent (fin à 10:00, départ à 10:00) ne se chevauchent pas.
+function personnelScheduleDay(value){
+  const match=String(value||'').match(/^(\d{4})-?(\d{2})-?(\d{2})$/);
+  if(!match)return NaN;
+  const year=Number(match[1]),month=Number(match[2]),day=Number(match[3]);
+  const date=new Date(year,month-1,day);
+  return date.getFullYear()===year&&date.getMonth()===month-1&&date.getDate()===day?date.getTime():NaN;
+}
+function personnelScheduleRecords(){
+  const rows=[];
+  Object.keys(CASERNE_DATA||{}).forEach(function(caserneId){
+    const data=CASERNE_DATA[caserneId];if(!data||typeof data!=='object')return;
+    [['fmpas','FMPA'],['formStag','Formation'],['formForm','Formation formateur'],['activites','Activité de service']].forEach(function(source){
+      (Array.isArray(data[source[0]])?data[source[0]]:[]).forEach(function(record){
+        if(record)rows.push({caserneId:caserneId,kind:source[1],record:record});
+      });
+    });
+  });
+  return rows;
+}
+function personnelScheduleWindows(kind,record,rangeStart,rangeEnd){
+  const formation=kind==='Formation'||kind==='Formation formateur';
+  let first=personnelScheduleDay(formation?record.ddebut:record.date);
+  let last=personnelScheduleDay(formation?record.dfin||record.ddebut:record.date);
+  if(!Number.isFinite(first)||!Number.isFinite(last)||last<first)return [];
+  if(Number.isFinite(rangeStart)){
+    const near=new Date(rangeStart);near.setHours(0,0,0,0);near.setDate(near.getDate()-1);
+    first=Math.max(first,near.getTime());
+  }
+  if(Number.isFinite(rangeEnd)){
+    const near=new Date(rangeEnd);near.setHours(0,0,0,0);near.setDate(near.getDate()+1);
+    last=Math.min(last,near.getTime());
+  }
+  const slots=formation?[[record.hmatind,record.hmatinf],[record.hapremd,record.hapremf]]:[[record.hDebut,record.hFin]];
+  const incomplete=formation&&(!slots.some(function(pair){return pair[0]&&pair[1];})||slots.some(function(pair){return !!pair[0]!==!!pair[1];}));
+  const windows=[];
+  let cursor=new Date(first),days=0;
+  while(cursor.getTime()<=last&&days<730){
+    const day=cursor.getTime();
+    const parts=incomplete?[[null,null]]:slots.filter(function(pair){return pair[0]&&pair[1];});
+    if(!parts.length)parts.push([null,null]);
+    parts.forEach(function(pair){
+      const from=hhmmToMinutes(pair[0]),to=hhmmToMinutes(pair[1]);
+      const imprecise=from===null||to===null||from===to;
+      const start=imprecise?day:day+from*60000;
+      let end=imprecise?new Date(cursor.getFullYear(),cursor.getMonth(),cursor.getDate()+1).getTime():day+to*60000;
+      if(!imprecise&&to<from)end=new Date(cursor.getFullYear(),cursor.getMonth(),cursor.getDate()+1).getTime()+to*60000;
+      windows.push({start:start,end:end,imprecise:imprecise});
+    });
+    cursor.setDate(cursor.getDate()+1);days++;
+  }
+  // Un ancien enregistrement anormalement long reste conservateur, sans boucle illimitée.
+  if(cursor.getTime()<=last)windows.push({start:cursor.getTime(),end:new Date(last).setDate(new Date(last).getDate()+1),imprecise:true});
+  return windows;
+}
+function personnelScheduleLogins(kind,record){
+  const logins=(record.participants||[]).concat(kind==='FMPA'?(record.formateurs||[]):[]);
+  return [...new Set(logins.filter(Boolean))];
+}
+function findPersonnelScheduleConflict(logins,start,end,exclude){
+  if(!Number.isFinite(start)||!(end>start))return null;
+  const wanted=new Set((logins||[]).filter(Boolean));if(!wanted.size)return null;
+  const matches=[];
+  for(const source of personnelScheduleRecords()){
+    if(exclude&&source.kind===exclude.kind&&source.record.id===exclude.id&&source.caserneId===exclude.caserneId)continue;
+    const relevant=personnelScheduleLogins(source.kind,source.record).filter(function(login){return wanted.has(login);});
+    if(!relevant.length)continue;
+    const window=personnelScheduleWindows(source.kind,source.record,start,end).find(function(item){return start<item.end&&end>item.start;});
+    if(!window)continue;
+    relevant.forEach(function(login){
+      if(matches.length<20)matches.push(Object.assign({login:login,window:window},source));
+    });
+  }
+  return matches.length?Object.assign(matches[0],{others:matches.slice(1)}):null;
+}
+function findInterventionConflictForSchedule(kind,record){
+  const logins=personnelScheduleLogins(kind,record);if(!logins.length)return null;
+  const windows=personnelScheduleWindows(kind,record);
+  for(const caserneId of Object.keys(CASERNE_DATA||{})){
+    const data=CASERNE_DATA[caserneId];if(!data||typeof data!=='object')continue;
+    for(const iv of [].concat(data.ivs||[],data.pilpIvs||[])){
+      if(!iv||!['en-cours','terminee'].includes(iv.s))continue;
+      const bounds=interventionOperationalConflictBounds(iv);
+      const end=Number.isFinite(bounds.end)?bounds.end:iv.s==='en-cours'?Number.POSITIVE_INFINITY:NaN;
+      if(!Number.isFinite(bounds.start)||!(end>bounds.start))continue;
+      const login=interventionHistoricalPersonnelLogins(iv).find(function(item){return logins.includes(item);});
+      if(!login)continue;
+      const window=windows.find(function(item){return item.start<end&&item.end>bounds.start;});
+      if(window)return {login:login,iv:iv,window:window,caserneId:caserneId};
+    }
+  }
+  return null;
+}
+function personnelScheduleName(login){
+  let user=(USERS||[]).find(function(item){return item&&item.l===login;});
+  if(!user)Object.keys(CASERNE_DATA||{}).some(function(cid){
+    user=((CASERNE_DATA[cid]||{}).users||[]).find(function(item){return item&&item.l===login;});return !!user;
+  });
+  return user?fullName(user):login;
+}
+function personnelScheduleWindowLabel(window){
+  const format=function(time){return new Date(time).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});};
+  return format(window.start)+' → '+format(window.end)+(window.imprecise?' (horaires à préciser)':'');
+}
+function personnelScheduleConflictMessage(conflict,kind){
+  if(!conflict)return '';
+  const name=personnelScheduleName(conflict.login);
+  if(conflict.iv)return name+' : '+kind+' chevauche l’intervention '+operationalConflictLabel(conflict.iv)+' ('+personnelScheduleWindowLabel(conflict.window)+'). Corrigez les horaires ou la liste des participants.';
+  const entries=[conflict].concat(conflict.others||[]);
+  return entries.map(function(entry){
+    const title=entry.record.theme||entry.record.titre||entry.record.type||'';
+    return personnelScheduleName(entry.login)+' est déjà inscrit en '+entry.kind+(title?' — '+title:'')+' ('+personnelScheduleWindowLabel(entry.window)+')';
+  }).join(' ; ')+'. L’intervention peut se poursuivre ; présences à régulariser.';
+}
+function showPersonnelScheduleConflict(conflict,kind){
+  const message=personnelScheduleConflictMessage(conflict,kind||'Cette activité');
+  showToast(message,'warn');
+  const mo=document.getElementById('mo'),body=document.getElementById('mb');
+  if(mo&&mo.style.display==='flex'&&body){
+    let warning=document.getElementById('personnel-schedule-error');
+    if(!warning){warning=document.createElement('div');warning.id='personnel-schedule-error';warning.style.cssText='background:#FEF2F2;border:1px solid #FCA5A5;color:#991B1B;border-radius:8px;padding:10px;margin-bottom:12px;font-size:12px;line-height:1.5;';body.prepend(warning);}
+    warning.textContent=message;
+  }
+}
+function personnelOperationalStartMillis(time,dateKey){
+  const minutes=hhmmToMinutes(time);if(minutes===null)return NaN;
+  const explicit=personnelScheduleDay(dateKey);
+  const date=Number.isFinite(explicit)?new Date(explicit):N();
+  date.setHours(Math.floor(minutes/60),minutes%60,0,0);
+  if(!Number.isFinite(explicit)&&date.getTime()>Date.now()+12*60*60*1000)date.setDate(date.getDate()-1);
+  return date.getTime();
+}
+function recordPersonnelScheduleAlert(iv,conflict){
+  if(!iv||!conflict)return;
+  const note=personnelScheduleConflictMessage(conflict);
+  pushTL(iv,'conflit-agenda',CU&&CU.l||'',note);
+}
+function operationalScheduleWarningHTML(iv){
+  if(!iv||iv.s!=='en-cours')return '';
+  const bounds=interventionOperationalConflictBounds(iv);
+  const conflict=findPersonnelScheduleConflict(interventionActivePersonnelLogins(iv),bounds.start,Date.now()+1000);
+  return conflict?'<div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:9px;padding:10px;margin:10px 0;color:#991B1B;font-size:12px;line-height:1.5;">⚠ Présence à régulariser : '+escHtml(personnelScheduleConflictMessage(conflict))+'</div>':'';
+}
+function findInterventionAssignmentScheduleConflict(iv,logins){
+  const bounds=interventionOperationalConflictBounds(iv);
+  const end=Number.isFinite(bounds.end)?bounds.end:iv&&iv.s==='en-cours'?Date.now()+1000:NaN;
+  return findPersonnelScheduleConflict(logins,bounds.start,end);
+}
+function personnelFormationHoursError(record){
+  const slots=[[record.hmatind,record.hmatinf],[record.hapremd,record.hapremf]];
+  if(!slots.some(function(slot){return slot[0]&&slot[1];}))return 'Renseignez au moins un créneau horaire complet (matin ou après-midi).';
+  for(const slot of slots){
+    if(!slot[0]&&!slot[1])continue;
+    const from=hhmmToMinutes(slot[0]),to=hhmmToMinutes(slot[1]);
+    if(from===null||to===null||to<=from)return 'Les heures de chaque créneau de formation doivent être complètes, valides et dans l’ordre.';
+  }
+  if(slots[0][0]&&slots[1][0]&&hhmmToMinutes(slots[1][0])<hhmmToMinutes(slots[0][1]))return 'Les créneaux du matin et de l’après-midi ne doivent pas se chevaucher.';
+  return '';
 }
 function validateOperationalDeparture(iv,engin1,engin2,personnelLogins){
   const vehicleNames=[engin1,engin2].filter(Boolean);
@@ -12554,9 +12727,11 @@ function confirmerClotureSuperAdminDirecte(id,validated){
     else showStartCorrectionOperationalConflict(intervalConflict);
     return;
   }
+  const scheduleConflict=findPersonnelScheduleConflict(logins,directStart,directEnd);
   if(!validated){
     const captured={chief:chief,operationalDate:operationalDate,returnDate:returnDate,time:time,endTime:endTime,vehicle:vehicle,crew:JSON.parse(JSON.stringify(crew))};
-    requestOperationalCloseConfirmation(iv,'Saisie directe superadmin · Véhicule : '+vehicle+' · Chef d’agrès : '+chief+' · Départ : '+time+' · Retour : '+endTime,
+    requestOperationalCloseConfirmation(iv,'Saisie directe superadmin · Véhicule : '+vehicle+' · Chef d’agrès : '+chief+' · Départ : '+time+' · Retour : '+endTime
+      +(scheduleConflict?' · ⚠ '+personnelScheduleConflictMessage(scheduleConflict):''),
       function(){confirmerClotureSuperAdminDirecte(id,captured);});
     return;
   }
@@ -12572,6 +12747,7 @@ function confirmerClotureSuperAdminDirecte(id,validated){
   delete iv._retourAttenteDepuis;delete iv._chainPreviousInterventionId;
   const who=chief+' (départ saisi par le superadmin '+CU.l+')';
   pushTL(iv,'en-cours',who,'Départ manuel à '+time+' — '+vehicle,manualOperationalTimelineStamp(iv,time,false));
+  if(scheduleConflict)recordPersonnelScheduleAlert(iv,scheduleConflict);
   iv._superAdminOperationalEdits=Array.isArray(iv._superAdminOperationalEdits)?iv._superAdminOperationalEdits:[];
   iv._superAdminOperationalEdits.push({action:'saisie-directe',at:getH(N()),by:CU.l,chef:chief,dateIntervention:operationalDate,dateRetour:returnDate,heureDepart:time,heureRetour:endTime,engin:vehicle,equipage:crew.map(function(member){return {role:member.role,login:member.login};})});
   assignInterventionNumbersAtStart(iv);syncInternalReinforcementSource(iv);markOperationalInterventionDirty(iv);
@@ -12625,6 +12801,9 @@ function confirmerDepart(id){
     }
     return;
   }
+  const departureStart=personnelOperationalStartMillis(heure,interruptedHandoff&&interruptedHandoff.handoff&&interruptedHandoff.handoff.date);
+  const scheduleConflict=findPersonnelScheduleConflict(personnelLogins,departureStart,Math.max(departureStart+60000,Date.now()+1000));
+  if(scheduleConflict)showPersonnelScheduleConflict(scheduleConflict);
   const startAuthorization=takeOperationalStartAuthorization(iv);
   if(!startAuthorization){
     cM();
@@ -12673,6 +12852,7 @@ function confirmerDepart(id){
   const persLabel=' ['+eq1.concat(eq2).map(function(e){const u=USERS.find(function(x){return x.l===e.login;});return e.role+': '+(u?fullName(u):e.login);}).join(', ')+']';
   pushTL(iv,'en-cours',CU.l+agr2Label+persLabel,
     interruptedHandoff?'Départ à '+heure+' repris de l’intervention '+interruptedHandoff.source.id:(restartedAfterPending?'Nouveau départ à '+heure+' après retour en attente':(chained?'Début enchaîné à '+heure+' après l’intervention précédente':'Départ réel à '+heure)));
+  if(scheduleConflict)recordPersonnelScheduleAlert(iv,scheduleConflict);
   delete iv._retourAttenteDepuis;
   assignInterventionNumbersAtStart(iv);
   markOperationalInterventionDirty(iv);
@@ -12987,6 +13167,10 @@ function validerReleve(id){
     const conflict=findActivePersonnelConflict(login,id);
     if(conflict){showOperationalConflict('personnel',login,conflict);return;}
   }
+  const joiningLogins=nouvelEquipage.filter(function(member){return !equipActuel.some(function(old){return old.login===member.login;});}).map(function(member){return member.login;});
+  const reliefStart=personnelOperationalStartMillis(heure);
+  const scheduleConflict=findPersonnelScheduleConflict(joiningLogins,reliefStart,reliefStart+60000);
+  if(scheduleConflict)showPersonnelScheduleConflict(scheduleConflict);
 
   if(!iv._releves)iv._releves=[];
   iv._releves.push({hReleve:heure,ancienEquipage,nouvelEquipage});
@@ -12997,6 +13181,7 @@ function validerReleve(id){
       const un=nb?USERS.find(x=>x.l===nb.login):null;
       return e.role+' : '+(ua?fullName(ua):e.login)+' → '+(un?fullName(un):nb?nb.login:'?');
     }).join(', ')});
+  if(scheduleConflict)recordPersonnelScheduleAlert(iv,scheduleConflict);
 
   saveData();cM();
   setTimeout(function(){oM(id);},80);
@@ -13384,6 +13569,9 @@ function confirmerRenfortEquipage(cid,renfortId,confirmed){
     const conflict=findActivePersonnelConflict(login,null);
     if(conflict){showOperationalConflict('personnel',login,conflict);return;}
   }
+  const reinforcementStart=personnelOperationalStartMillis(getHHMM(N()));
+  const scheduleConflict=findPersonnelScheduleConflict(logins,reinforcementStart,reinforcementStart+60000);
+  if(scheduleConflict)showPersonnelScheduleConflict(scheduleConflict);
   const startAuthorization=takeOperationalStartAuthorization(startTarget);
   if(!startAuthorization){cM();showToast(OPERATIONAL_START_DENIED_MESSAGE,'warn');return;}
   r.equipageRenfort=equip;
@@ -13423,6 +13611,7 @@ function confirmerRenfortEquipage(cid,renfortId,confirmed){
       op:CU?CU.l:'',
     };
     saveOperationalStartAuthorization(renfortIv,startAuthorization);
+    if(scheduleConflict)recordPersonnelScheduleAlert(renfortIv,scheduleConflict);
     CASERNE_DATA[cid].ivs.push(renfortIv);
     assignInterventionNumbersAtStart(renfortIv);
   }
@@ -15959,7 +16148,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202609_0015';
+const APP_VERSION='V202609_0016';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -16948,6 +17137,16 @@ function saveInterventionStartCorrection(ivId){
     if(conflict){showStartCorrectionOperationalConflict(conflict);return;}
   }
   if(next===old&&nextEnd===oldEnd){showToast('Les heures de l’intervention sont inchangées.','info');return;}
+  const proposedStart=next!==old?proposedInterventionStartMillis(iv,next,real):interventionOperationalConflictBounds(iv).start;
+  const originalBounds=interventionOperationalConflictBounds(iv);
+  let proposedEnd=Number.isFinite(originalBounds.end)?originalBounds.end:Date.now()+1000;
+  if(nextEnd&&nextEnd!==oldEnd&&Number.isFinite(originalBounds.end)){
+    const minutes=hhmmToMinutes(nextEnd),date=new Date(originalBounds.end);
+    date.setHours(Math.floor(minutes/60),minutes%60,0,0);
+    proposedEnd=date.getTime();if(proposedEnd<=proposedStart)proposedEnd+=24*60*60*1000;
+  }
+  const scheduleConflict=findPersonnelScheduleConflict(interventionHistoricalPersonnelLogins(iv),proposedStart,proposedEnd);
+  if(scheduleConflict)showPersonnelScheduleConflict(scheduleConflict);
   const notes=[];
   if(next!==old){
     if(!iv._hDebutReelle)iv._hDebutReelle=real;
@@ -16969,6 +17168,7 @@ function saveInterventionStartCorrection(ivId){
     notes.push('Retour '+oldEnd+' → '+nextEnd+' (heure réelle conservée : '+realEnd+')');
   }
   pushTL(iv,'modif-heure',CU.l,notes.join(' · '));
+  if(scheduleConflict)recordPersonnelScheduleAlert(iv,scheduleConflict);
   saveData(true);rI();rHist();
   showToast('Horaires corrigés et ajoutés à l’historique.','success');
   showCompteRenduModal(ivId);
@@ -22692,6 +22892,9 @@ function saveActivite(){
   if(dateErr){err.style.display='block';err.textContent=dateErr;return;}
   if(hf<=hd&&!(hf<hd)){/* ok */}
   const participants=Array.from(document.querySelectorAll('#act-participants input[type=checkbox]:checked')).map(cb=>cb.value);
+  if(hhmmToMinutes(hd)===null||hhmmToMinutes(hf)===null||hd===hf){err.style.display='block';err.textContent='Renseignez des heures de début et de fin distinctes et valides.';return;}
+  const interventionConflict=findInterventionConflictForSchedule('Activité de service',{date:date,hDebut:hd,hFin:hf,participants:participants});
+  if(interventionConflict){err.style.display='block';err.textContent=personnelScheduleConflictMessage(interventionConflict,'Cette activité de service');return;}
   const dureeEl=document.getElementById('act-duree')?.value||'';
   const {numAnnuel,numMensuel}=actNextNums(date);
   const id='ACT_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
@@ -22809,6 +23012,9 @@ function actSaveEdit(id){
   const newDuree=document.getElementById('aedit-duree')?.value;
   const newCr=(document.getElementById('aedit-cr')?.value||'').trim();
   const newPart=Array.from(document.querySelectorAll('#aedit-participants input[type=checkbox]:checked')).map(cb=>cb.value);
+  if(hhmmToMinutes(newHd)===null||hhmmToMinutes(newHf)===null||newHd===newHf){err.style.display='block';err.textContent='Renseignez des heures de début et de fin distinctes et valides.';return;}
+  const interventionConflict=findInterventionConflictForSchedule('Activité de service',{date:a.date,hDebut:newHd,hFin:newHf,participants:newPart});
+  if(interventionConflict){err.style.display='block';err.textContent=personnelScheduleConflictMessage(interventionConflict,'Cette activité de service');return;}
   if(newType!==a.type)champs.push('type');
   if(newHd!==a.hDebut)champs.push('heure début');
   if(newHf!==a.hFin)champs.push('heure fin');
@@ -23287,6 +23493,12 @@ function _saveFormEntry(pfx,idPrefix,getDataFn,toggleFn,listFn,recapFn){
     const allowed=new Set(declaredFormateurUsers().map(function(user){return user.l;}));
     participants=participants.filter(function(login){return allowed.has(login);});
   }
+  const proposed={ddebut:ddebut,dfin:dfin,hmatind:hmatind,hmatinf:hmatinf,hapremd:hapremd,hapremf:hapremf,participants:participants};
+  const hoursError=personnelFormationHoursError(proposed);
+  if(hoursError){err.style.display='block';err.textContent=hoursError;return;}
+  const kind=pfx==='fform'?'Formation formateur':'Formation';
+  const interventionConflict=findInterventionConflictForSchedule(kind,proposed);
+  if(interventionConflict){err.style.display='block';err.textContent=personnelScheduleConflictMessage(interventionConflict,'Cette formation');return;}
   const id=idPrefix+'_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
   getDataFn().push({id,titre,ref,lieu,ddebut,dfin,hmatind,hmatinf,hapremd,hapremf,hjour,htotal,participants,auteur:CU?CU.l:'',ts:Date.now()});
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
@@ -23521,6 +23733,9 @@ function saveFmpa(){
   if(new Date(date+'T00:00:00')>now){err.style.display='block';err.textContent='La date ne peut pas être dans le futur.';return;}
   const participants=Array.from(document.querySelectorAll('#fmpa-participants input[type=checkbox]:checked')).map(cb=>cb.value);
   const formateurs=Array.from(document.querySelectorAll('#fmpa-formateurs input[type=checkbox]:checked')).map(cb=>cb.value);
+  if(hhmmToMinutes(hd)===null||hhmmToMinutes(hf)===null||hd===hf){err.style.display='block';err.textContent='Renseignez des heures de début et de fin distinctes et valides.';return;}
+  const interventionConflict=findInterventionConflictForSchedule('FMPA',{date:date,hDebut:hd,hFin:hf,participants:participants,formateurs:formateurs});
+  if(interventionConflict){err.style.display='block';err.textContent=personnelScheduleConflictMessage(interventionConflict,'Cette FMPA');return;}
   const numAnnuel=fmpaNextNum(date);
   const id='FMPA_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
   const entry={id,date,theme,hDebut:hd,hFin:hf,duree,participants,formateurs,numAnnuel,
@@ -23637,6 +23852,9 @@ function fmpaSaveEdit(id){
   const newDuree=document.getElementById('fmedit-duree')?.value;
   const newPart=Array.from(document.querySelectorAll('#fmedit-participants input[type=checkbox]:checked')).map(cb=>cb.value);
   const newForm=Array.from(document.querySelectorAll('#fmedit-formateurs input[type=checkbox]:checked')).map(cb=>cb.value);
+  if(hhmmToMinutes(newHd)===null||hhmmToMinutes(newHf)===null||newHd===newHf){err.style.display='block';err.textContent='Renseignez des heures de début et de fin distinctes et valides.';return;}
+  const interventionConflict=findInterventionConflictForSchedule('FMPA',{date:a.date,hDebut:newHd,hFin:newHf,participants:newPart,formateurs:newForm});
+  if(interventionConflict){err.style.display='block';err.textContent=personnelScheduleConflictMessage(interventionConflict,'Cette FMPA');return;}
   const champs=[];
   if(newTheme!==a.theme)champs.push('thème');
   if(newHd!==a.hDebut)champs.push('heure début');

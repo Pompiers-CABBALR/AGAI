@@ -338,6 +338,12 @@ function _saveFormEntry(pfx,idPrefix,getDataFn,toggleFn,listFn,recapFn){
     const allowed=new Set(declaredFormateurUsers().map(function(user){return user.l;}));
     participants=participants.filter(function(login){return allowed.has(login);});
   }
+  const proposed={ddebut:ddebut,dfin:dfin,hmatind:hmatind,hmatinf:hmatinf,hapremd:hapremd,hapremf:hapremf,participants:participants};
+  const hoursError=personnelFormationHoursError(proposed);
+  if(hoursError){err.style.display='block';err.textContent=hoursError;return;}
+  const kind=pfx==='fform'?'Formation formateur':'Formation';
+  const interventionConflict=findInterventionConflictForSchedule(kind,proposed);
+  if(interventionConflict){err.style.display='block';err.textContent=personnelScheduleConflictMessage(interventionConflict,'Cette formation');return;}
   const id=idPrefix+'_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
   getDataFn().push({id,titre,ref,lieu,ddebut,dfin,hmatind,hmatinf,hapremd,hapremf,hjour,htotal,participants,auteur:CU?CU.l:'',ts:Date.now()});
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
@@ -572,6 +578,9 @@ function saveFmpa(){
   if(new Date(date+'T00:00:00')>now){err.style.display='block';err.textContent='La date ne peut pas être dans le futur.';return;}
   const participants=Array.from(document.querySelectorAll('#fmpa-participants input[type=checkbox]:checked')).map(cb=>cb.value);
   const formateurs=Array.from(document.querySelectorAll('#fmpa-formateurs input[type=checkbox]:checked')).map(cb=>cb.value);
+  if(hhmmToMinutes(hd)===null||hhmmToMinutes(hf)===null||hd===hf){err.style.display='block';err.textContent='Renseignez des heures de début et de fin distinctes et valides.';return;}
+  const interventionConflict=findInterventionConflictForSchedule('FMPA',{date:date,hDebut:hd,hFin:hf,participants:participants,formateurs:formateurs});
+  if(interventionConflict){err.style.display='block';err.textContent=personnelScheduleConflictMessage(interventionConflict,'Cette FMPA');return;}
   const numAnnuel=fmpaNextNum(date);
   const id='FMPA_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
   const entry={id,date,theme,hDebut:hd,hFin:hf,duree,participants,formateurs,numAnnuel,
@@ -688,6 +697,9 @@ function fmpaSaveEdit(id){
   const newDuree=document.getElementById('fmedit-duree')?.value;
   const newPart=Array.from(document.querySelectorAll('#fmedit-participants input[type=checkbox]:checked')).map(cb=>cb.value);
   const newForm=Array.from(document.querySelectorAll('#fmedit-formateurs input[type=checkbox]:checked')).map(cb=>cb.value);
+  if(hhmmToMinutes(newHd)===null||hhmmToMinutes(newHf)===null||newHd===newHf){err.style.display='block';err.textContent='Renseignez des heures de début et de fin distinctes et valides.';return;}
+  const interventionConflict=findInterventionConflictForSchedule('FMPA',{date:a.date,hDebut:newHd,hFin:newHf,participants:newPart,formateurs:newForm});
+  if(interventionConflict){err.style.display='block';err.textContent=personnelScheduleConflictMessage(interventionConflict,'Cette FMPA');return;}
   const champs=[];
   if(newTheme!==a.theme)champs.push('thème');
   if(newHd!==a.hDebut)champs.push('heure début');

@@ -347,7 +347,7 @@ function oPilp(id){
       </summary>
       <div style="padding:0 12px 10px 12px;">${tlHtml||'<div style="font-size:12px;color:var(--t2);">Aucun historique.</div>'}</div>
     </details>`:''}
-    ${actions}`;
+    ${operationalScheduleWarningHTML(iv)}${actions}`;
   document.getElementById('mo').style.display='flex';
 }
 function cSPilp(id,s,confirmed){
@@ -506,6 +506,167 @@ function showOperationalConflict(kind,value,iv){
     ?'Le véhicule '+label+' est déjà engagé sur '+operationalConflictLabel(iv)+'. Clôturez cette intervention avant de réutiliser ce véhicule.'
     :'L’agent '+label+' est déjà engagé sur '+operationalConflictLabel(iv)+'. Un membre du personnel ne peut pas être affecté à plusieurs véhicules en même temps.';
   showToast(message,'warn');
+}
+// Contrôle local des présences FMPA, formations et activités de service.
+// Les dates sont interprétées dans le fuseau local du navigateur ; les bornes
+// qui se touchent (fin à 10:00, départ à 10:00) ne se chevauchent pas.
+function personnelScheduleDay(value){
+  const match=String(value||'').match(/^(\d{4})-?(\d{2})-?(\d{2})$/);
+  if(!match)return NaN;
+  const year=Number(match[1]),month=Number(match[2]),day=Number(match[3]);
+  const date=new Date(year,month-1,day);
+  return date.getFullYear()===year&&date.getMonth()===month-1&&date.getDate()===day?date.getTime():NaN;
+}
+function personnelScheduleRecords(){
+  const rows=[];
+  Object.keys(CASERNE_DATA||{}).forEach(function(caserneId){
+    const data=CASERNE_DATA[caserneId];if(!data||typeof data!=='object')return;
+    [['fmpas','FMPA'],['formStag','Formation'],['formForm','Formation formateur'],['activites','Activité de service']].forEach(function(source){
+      (Array.isArray(data[source[0]])?data[source[0]]:[]).forEach(function(record){
+        if(record)rows.push({caserneId:caserneId,kind:source[1],record:record});
+      });
+    });
+  });
+  return rows;
+}
+function personnelScheduleWindows(kind,record,rangeStart,rangeEnd){
+  const formation=kind==='Formation'||kind==='Formation formateur';
+  let first=personnelScheduleDay(formation?record.ddebut:record.date);
+  let last=personnelScheduleDay(formation?record.dfin||record.ddebut:record.date);
+  if(!Number.isFinite(first)||!Number.isFinite(last)||last<first)return [];
+  if(Number.isFinite(rangeStart)){
+    const near=new Date(rangeStart);near.setHours(0,0,0,0);near.setDate(near.getDate()-1);
+    first=Math.max(first,near.getTime());
+  }
+  if(Number.isFinite(rangeEnd)){
+    const near=new Date(rangeEnd);near.setHours(0,0,0,0);near.setDate(near.getDate()+1);
+    last=Math.min(last,near.getTime());
+  }
+  const slots=formation?[[record.hmatind,record.hmatinf],[record.hapremd,record.hapremf]]:[[record.hDebut,record.hFin]];
+  const incomplete=formation&&(!slots.some(function(pair){return pair[0]&&pair[1];})||slots.some(function(pair){return !!pair[0]!==!!pair[1];}));
+  const windows=[];
+  let cursor=new Date(first),days=0;
+  while(cursor.getTime()<=last&&days<730){
+    const day=cursor.getTime();
+    const parts=incomplete?[[null,null]]:slots.filter(function(pair){return pair[0]&&pair[1];});
+    if(!parts.length)parts.push([null,null]);
+    parts.forEach(function(pair){
+      const from=hhmmToMinutes(pair[0]),to=hhmmToMinutes(pair[1]);
+      const imprecise=from===null||to===null||from===to;
+      const start=imprecise?day:day+from*60000;
+      let end=imprecise?new Date(cursor.getFullYear(),cursor.getMonth(),cursor.getDate()+1).getTime():day+to*60000;
+      if(!imprecise&&to<from)end=new Date(cursor.getFullYear(),cursor.getMonth(),cursor.getDate()+1).getTime()+to*60000;
+      windows.push({start:start,end:end,imprecise:imprecise});
+    });
+    cursor.setDate(cursor.getDate()+1);days++;
+  }
+  // Un ancien enregistrement anormalement long reste conservateur, sans boucle illimitée.
+  if(cursor.getTime()<=last)windows.push({start:cursor.getTime(),end:new Date(last).setDate(new Date(last).getDate()+1),imprecise:true});
+  return windows;
+}
+function personnelScheduleLogins(kind,record){
+  const logins=(record.participants||[]).concat(kind==='FMPA'?(record.formateurs||[]):[]);
+  return [...new Set(logins.filter(Boolean))];
+}
+function findPersonnelScheduleConflict(logins,start,end,exclude){
+  if(!Number.isFinite(start)||!(end>start))return null;
+  const wanted=new Set((logins||[]).filter(Boolean));if(!wanted.size)return null;
+  const matches=[];
+  for(const source of personnelScheduleRecords()){
+    if(exclude&&source.kind===exclude.kind&&source.record.id===exclude.id&&source.caserneId===exclude.caserneId)continue;
+    const relevant=personnelScheduleLogins(source.kind,source.record).filter(function(login){return wanted.has(login);});
+    if(!relevant.length)continue;
+    const window=personnelScheduleWindows(source.kind,source.record,start,end).find(function(item){return start<item.end&&end>item.start;});
+    if(!window)continue;
+    relevant.forEach(function(login){
+      if(matches.length<20)matches.push(Object.assign({login:login,window:window},source));
+    });
+  }
+  return matches.length?Object.assign(matches[0],{others:matches.slice(1)}):null;
+}
+function findInterventionConflictForSchedule(kind,record){
+  const logins=personnelScheduleLogins(kind,record);if(!logins.length)return null;
+  const windows=personnelScheduleWindows(kind,record);
+  for(const caserneId of Object.keys(CASERNE_DATA||{})){
+    const data=CASERNE_DATA[caserneId];if(!data||typeof data!=='object')continue;
+    for(const iv of [].concat(data.ivs||[],data.pilpIvs||[])){
+      if(!iv||!['en-cours','terminee'].includes(iv.s))continue;
+      const bounds=interventionOperationalConflictBounds(iv);
+      const end=Number.isFinite(bounds.end)?bounds.end:iv.s==='en-cours'?Number.POSITIVE_INFINITY:NaN;
+      if(!Number.isFinite(bounds.start)||!(end>bounds.start))continue;
+      const login=interventionHistoricalPersonnelLogins(iv).find(function(item){return logins.includes(item);});
+      if(!login)continue;
+      const window=windows.find(function(item){return item.start<end&&item.end>bounds.start;});
+      if(window)return {login:login,iv:iv,window:window,caserneId:caserneId};
+    }
+  }
+  return null;
+}
+function personnelScheduleName(login){
+  let user=(USERS||[]).find(function(item){return item&&item.l===login;});
+  if(!user)Object.keys(CASERNE_DATA||{}).some(function(cid){
+    user=((CASERNE_DATA[cid]||{}).users||[]).find(function(item){return item&&item.l===login;});return !!user;
+  });
+  return user?fullName(user):login;
+}
+function personnelScheduleWindowLabel(window){
+  const format=function(time){return new Date(time).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});};
+  return format(window.start)+' → '+format(window.end)+(window.imprecise?' (horaires à préciser)':'');
+}
+function personnelScheduleConflictMessage(conflict,kind){
+  if(!conflict)return '';
+  const name=personnelScheduleName(conflict.login);
+  if(conflict.iv)return name+' : '+kind+' chevauche l’intervention '+operationalConflictLabel(conflict.iv)+' ('+personnelScheduleWindowLabel(conflict.window)+'). Corrigez les horaires ou la liste des participants.';
+  const entries=[conflict].concat(conflict.others||[]);
+  return entries.map(function(entry){
+    const title=entry.record.theme||entry.record.titre||entry.record.type||'';
+    return personnelScheduleName(entry.login)+' est déjà inscrit en '+entry.kind+(title?' — '+title:'')+' ('+personnelScheduleWindowLabel(entry.window)+')';
+  }).join(' ; ')+'. L’intervention peut se poursuivre ; présences à régulariser.';
+}
+function showPersonnelScheduleConflict(conflict,kind){
+  const message=personnelScheduleConflictMessage(conflict,kind||'Cette activité');
+  showToast(message,'warn');
+  const mo=document.getElementById('mo'),body=document.getElementById('mb');
+  if(mo&&mo.style.display==='flex'&&body){
+    let warning=document.getElementById('personnel-schedule-error');
+    if(!warning){warning=document.createElement('div');warning.id='personnel-schedule-error';warning.style.cssText='background:#FEF2F2;border:1px solid #FCA5A5;color:#991B1B;border-radius:8px;padding:10px;margin-bottom:12px;font-size:12px;line-height:1.5;';body.prepend(warning);}
+    warning.textContent=message;
+  }
+}
+function personnelOperationalStartMillis(time,dateKey){
+  const minutes=hhmmToMinutes(time);if(minutes===null)return NaN;
+  const explicit=personnelScheduleDay(dateKey);
+  const date=Number.isFinite(explicit)?new Date(explicit):N();
+  date.setHours(Math.floor(minutes/60),minutes%60,0,0);
+  if(!Number.isFinite(explicit)&&date.getTime()>Date.now()+12*60*60*1000)date.setDate(date.getDate()-1);
+  return date.getTime();
+}
+function recordPersonnelScheduleAlert(iv,conflict){
+  if(!iv||!conflict)return;
+  const note=personnelScheduleConflictMessage(conflict);
+  pushTL(iv,'conflit-agenda',CU&&CU.l||'',note);
+}
+function operationalScheduleWarningHTML(iv){
+  if(!iv||iv.s!=='en-cours')return '';
+  const bounds=interventionOperationalConflictBounds(iv);
+  const conflict=findPersonnelScheduleConflict(interventionActivePersonnelLogins(iv),bounds.start,Date.now()+1000);
+  return conflict?'<div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:9px;padding:10px;margin:10px 0;color:#991B1B;font-size:12px;line-height:1.5;">⚠ Présence à régulariser : '+escHtml(personnelScheduleConflictMessage(conflict))+'</div>':'';
+}
+function findInterventionAssignmentScheduleConflict(iv,logins){
+  const bounds=interventionOperationalConflictBounds(iv);
+  const end=Number.isFinite(bounds.end)?bounds.end:iv&&iv.s==='en-cours'?Date.now()+1000:NaN;
+  return findPersonnelScheduleConflict(logins,bounds.start,end);
+}
+function personnelFormationHoursError(record){
+  const slots=[[record.hmatind,record.hmatinf],[record.hapremd,record.hapremf]];
+  if(!slots.some(function(slot){return slot[0]&&slot[1];}))return 'Renseignez au moins un créneau horaire complet (matin ou après-midi).';
+  for(const slot of slots){
+    if(!slot[0]&&!slot[1])continue;
+    const from=hhmmToMinutes(slot[0]),to=hhmmToMinutes(slot[1]);
+    if(from===null||to===null||to<=from)return 'Les heures de chaque créneau de formation doivent être complètes, valides et dans l’ordre.';
+  }
+  if(slots[0][0]&&slots[1][0]&&hhmmToMinutes(slots[1][0])<hhmmToMinutes(slots[0][1]))return 'Les créneaux du matin et de l’après-midi ne doivent pas se chevaucher.';
+  return '';
 }
 function validateOperationalDeparture(iv,engin1,engin2,personnelLogins){
   const vehicleNames=[engin1,engin2].filter(Boolean);
