@@ -161,10 +161,10 @@ function historyRowHTML(iv){
   const click=iv._isPilp?"oPilp('"+escHtml(iv.id)+"')":"oM('"+escHtml(iv.id)+"')";
   const crewLogins=historyCrewMembers(iv).map(function(member){return member.login;}).join('|');
   return `<div class="hm hist-entry${iv._crValide&&iv._impressions&&iv._impressions.length?' report-complete':''}" data-hsearch="${escHtml(historySearchBlob(iv))}" data-hdate="${historyInterventionDayKey(iv)}" data-hcrew="${escHtml(crewLogins)}" onclick="${click}">
-  <span style="font-family:monospace;font-size:10px;color:var(--t3);">${escHtml(iv._numCaserne||interventionDisplayCallNumber(iv))}</span>
+  <span style="font-family:monospace;font-size:10px;color:var(--t3);">${iv._numberingScheme==='dual-v1'&&iv.s==='terminee'&&iv._numberFinalized!==true?'N° en attente':escHtml(iv._numCaserne||interventionDisplayCallNumber(iv))}</span>
   <span style="flex:1;font-size:12px;color:var(--t);${iv.s==='annulee'?'text-decoration:line-through;color:#999;':''}">
     ${escHtml(iv.n||'Intervention')}
-    ${iv._numGlobal||iv._numCaserne||iv._numMois||iv._numRenfort?`<span style="font-size:10px;font-weight:600;margin-left:6px;">
+    ${iv._numberingScheme==='dual-v1'&&iv.s==='terminee'&&iv._numberFinalized!==true?' <span style="font-size:10px;color:#92400E;">Numérotation en attente de synchronisation</span>':iv._numGlobal||iv._numCaserne||iv._numMois||iv._numRenfort?`<span style="font-size:10px;font-weight:600;margin-left:6px;">
       ${iv._numGlobal?`<span style="color:#1A6B1A;">C:${escHtml(iv._numGlobal)}</span> `:''}
       ${iv._isRenfort?(iv._numRenfort?`<span style="color:#7C3AED;">Renfort:${escHtml(iv._numRenfort)}</span>`:''):(iv._numCaserne?`<span class="hist-num-ut" style="color:#6A0DAD;">UT:${escHtml(iv._numCaserne)}</span> `:'')}
       ${!iv._isRenfort&&iv._numMois?`<span class="hist-num-m" style="color:#C0392B;">M:${escHtml(iv._numMois)}</span>`:''}

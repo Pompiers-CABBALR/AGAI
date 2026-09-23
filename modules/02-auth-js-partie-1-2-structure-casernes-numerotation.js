@@ -565,6 +565,10 @@ function assignInterventionNumbersAtStart(iv){
     if(!iv._numCaserne)iv._numCaserne=nums.numCas;
     if(!iv._numMois)iv._numMois=nums.numMois;
   }
+  // Ces numéros servent au suivi pendant le départ. Le serveur attribue les
+  // numéros définitifs lors de la clôture ; un retour en attente les libère.
+  iv._numberingScheme='dual-v1';
+  iv._numberFinalized=false;
   iv._numberedAtStart=stamp;
 }
 function clearInterventionNumbersForPending(iv){
@@ -573,6 +577,7 @@ function clearInterventionNumbersForPending(iv){
   iv._numCaserne=null;
   iv._numMois=null;
   if(iv._isRenfort)iv._numRenfort=null;
+  if(iv._numberingScheme==='dual-v1')iv._numberFinalized=false;
   delete iv._numberedAtStart;
 }
 function clearInterventionOperationalAssignmentForPending(iv,who){
@@ -761,7 +766,7 @@ function agaiCheckNumberingConflicts(notify){
     if(cid.startsWith('_'))return;
     const data=CASERNE_DATA[cid]||{};
     [...(data.ivs||[]),...(data.pilpIvs||[])].forEach(function(iv){
-      if(!iv||iv._isRenfort)return;
+      if(!iv||iv._isRenfort||iv._lienPilp||iv._numberingScheme==='dual-v1'&&iv._numberFinalized!==true)return;
       const identity=cid+'|'+String(iv.id||'');
       if(seenRecords.has(identity))return;
       seenRecords.add(identity);

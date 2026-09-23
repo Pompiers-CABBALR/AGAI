@@ -718,6 +718,10 @@ function assignInterventionNumbersAtStart(iv){
     if(!iv._numCaserne)iv._numCaserne=nums.numCas;
     if(!iv._numMois)iv._numMois=nums.numMois;
   }
+  // Ces numéros servent au suivi pendant le départ. Le serveur attribue les
+  // numéros définitifs lors de la clôture ; un retour en attente les libère.
+  iv._numberingScheme='dual-v1';
+  iv._numberFinalized=false;
   iv._numberedAtStart=stamp;
 }
 function clearInterventionNumbersForPending(iv){
@@ -726,6 +730,7 @@ function clearInterventionNumbersForPending(iv){
   iv._numCaserne=null;
   iv._numMois=null;
   if(iv._isRenfort)iv._numRenfort=null;
+  if(iv._numberingScheme==='dual-v1')iv._numberFinalized=false;
   delete iv._numberedAtStart;
 }
 function clearInterventionOperationalAssignmentForPending(iv,who){
@@ -914,7 +919,7 @@ function agaiCheckNumberingConflicts(notify){
     if(cid.startsWith('_'))return;
     const data=CASERNE_DATA[cid]||{};
     [...(data.ivs||[]),...(data.pilpIvs||[])].forEach(function(iv){
-      if(!iv||iv._isRenfort)return;
+      if(!iv||iv._isRenfort||iv._lienPilp||iv._numberingScheme==='dual-v1'&&iv._numberFinalized!==true)return;
       const identity=cid+'|'+String(iv.id||'');
       if(seenRecords.has(identity))return;
       seenRecords.add(identity);
@@ -6467,7 +6472,14 @@ function renderInterventionRow(iv, ag, tireur) {
   const onchg = isPilp ? `toggleChkPilp('${iv.id}',this)` : `toggleChk('${iv.id}',this)`;
   const onclick = isPilp ? `oPilp('${iv.id}')` : `oM('${iv.id}')`;
 
-  const numBadges = iv.s === 'terminee' ? (
+  const dualNumbering=iv._numberingScheme==='dual-v1'&&!iv._isRenfort;
+  const pendingFinalNumber=dualNumbering&&iv.s==='terminee'&&iv._numberFinalized!==true;
+  const provisionalNumber=dualNumbering&&iv.s==='en-cours';
+  const numBadges = pendingFinalNumber
+    ? ' · <span style="font-size:10px;color:#92400E;font-weight:700;">Numéro définitif en attente de synchronisation</span>'
+    : provisionalNumber
+    ? ` · <span style="font-size:10px;color:#92400E;font-weight:700;">Provisoire ${iv._numCaserne?'UT:'+escHtml(String(iv._numCaserne))+' ':''}${iv._numMois?'M:'+escHtml(String(iv._numMois)):''}</span>`
+    : iv.s === 'terminee' ? (
     iv._isRenfort
       ? (iv._numGlobal || iv._numRenfort
           ? ` · ${iv._numGlobal ? `<span style="color:#1A6B1A;font-weight:600;font-size:10px;">C:${escHtml(String(iv._numGlobal))}</span> ` : ''}${iv._numRenfort ? `<span style="color:#7C3AED;font-weight:600;font-size:10px;">Renfort:${escHtml(String(iv._numRenfort))}</span>` : ''}` : '')
@@ -6906,7 +6918,9 @@ function oM(id){
     // Seul le numéro APL est affiché (numérotation INT désactivée)
   const dispApl=interventionDisplayCallNumber(iv);
   const dispTransfert=iv._transfertDe?` ↩ transféré de ${CASERNES.find(cas=>cas.id===iv._transfertDe)?.nom||iv._transfertDe}`:'';
-  const dispUt=iv._numCaserne?' · UT '+iv._numCaserne:'';
+  const dispUt=iv._numberingScheme==='dual-v1'&&iv.s==='terminee'&&iv._numberFinalized!==true
+    ?' · numéro définitif en attente de synchronisation'
+    :iv._numCaserne?' · UT '+iv._numCaserne+(iv._numberingScheme==='dual-v1'&&iv.s==='en-cours'?' (provisoire)':''):'';
   document.getElementById('mi').textContent=dispApl+dispUt+dispTransfert;
    const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis de passage'],'avis-classe':['bp','Avis classé'],'avis-restaure':['binfo','Avis remis en attente'],'modif':['bgr','Modification'],'modif-adresse':['bgr','Adresse corrigée'],'modif-heure':['binfo','Horaire corrigé'],'modif-equipier':['binfo','Équipage corrigé'],'modif-engin':['binfo','Véhicule corrigé'],'reclasse':['bgr','Reclasé'],'releve':['binfo','Relève'],'info-compl':['binfo','ℹ️ Complément d\u2019info']};
   const[bc,bt]=bm[iv.s]||['bgr','—'];
@@ -8825,10 +8839,10 @@ function historyRowHTML(iv){
   const click=iv._isPilp?"oPilp('"+escHtml(iv.id)+"')":"oM('"+escHtml(iv.id)+"')";
   const crewLogins=historyCrewMembers(iv).map(function(member){return member.login;}).join('|');
   return `<div class="hm hist-entry${iv._crValide&&iv._impressions&&iv._impressions.length?' report-complete':''}" data-hsearch="${escHtml(historySearchBlob(iv))}" data-hdate="${historyInterventionDayKey(iv)}" data-hcrew="${escHtml(crewLogins)}" onclick="${click}">
-  <span style="font-family:monospace;font-size:10px;color:var(--t3);">${escHtml(iv._numCaserne||interventionDisplayCallNumber(iv))}</span>
+  <span style="font-family:monospace;font-size:10px;color:var(--t3);">${iv._numberingScheme==='dual-v1'&&iv.s==='terminee'&&iv._numberFinalized!==true?'N° en attente':escHtml(iv._numCaserne||interventionDisplayCallNumber(iv))}</span>
   <span style="flex:1;font-size:12px;color:var(--t);${iv.s==='annulee'?'text-decoration:line-through;color:#999;':''}">
     ${escHtml(iv.n||'Intervention')}
-    ${iv._numGlobal||iv._numCaserne||iv._numMois||iv._numRenfort?`<span style="font-size:10px;font-weight:600;margin-left:6px;">
+    ${iv._numberingScheme==='dual-v1'&&iv.s==='terminee'&&iv._numberFinalized!==true?' <span style="font-size:10px;color:#92400E;">Numérotation en attente de synchronisation</span>':iv._numGlobal||iv._numCaserne||iv._numMois||iv._numRenfort?`<span style="font-size:10px;font-weight:600;margin-left:6px;">
       ${iv._numGlobal?`<span style="color:#1A6B1A;">C:${escHtml(iv._numGlobal)}</span> `:''}
       ${iv._isRenfort?(iv._numRenfort?`<span style="color:#7C3AED;">Renfort:${escHtml(iv._numRenfort)}</span>`:''):(iv._numCaserne?`<span class="hist-num-ut" style="color:#6A0DAD;">UT:${escHtml(iv._numCaserne)}</span> `:'')}
       ${!iv._isRenfort&&iv._numMois?`<span class="hist-num-m" style="color:#C0392B;">M:${escHtml(iv._numMois)}</span>`:''}
@@ -15876,7 +15890,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202609_0013';
+const APP_VERSION='V202609_0014';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -17492,6 +17506,11 @@ function genRapportInterventionHTML(ivId) {
 }
 function voirRapportIntervention(ivId) {
   if(!requireInterventionPdfDesktop())return;
+  const iv=interventionById(ivId);
+  if(iv&&iv._numberingScheme==='dual-v1'&&iv.s==='terminee'&&iv._numberFinalized!==true){
+    showToast('Attendez la synchronisation du numéro définitif avant d’ouvrir le rapport.','warn');
+    return;
+  }
   const html = genRapportInterventionHTML(ivId);
   if(!html){ showToast('Données insuffisantes','warn'); return; }
   openIframeModal(html, ivId);
@@ -19716,7 +19735,7 @@ const RC_OPERATIONAL_STATUSES=['en-attente','selectionne','en-cours','terminee',
 const RC_OPERATIONAL_PROTECTED_FIELDS=[
   's','agr','tireur','eng','_engin1','_engin2','_equipage1','_equipage2','_agr2',
   '_hDebut','_hDebutReelle','_hDebutInitiale','_dateDebut','_hFin','_hFinReelle','_duree',
-  '_numGlobal','_numCaserne','_numMois','_numSDIS','_numRenfort',
+  '_numGlobal','_numCaserne','_numMois','_numSDIS','_numRenfort','_numberingScheme','_numberFinalized',
   '_routeBatchId','_routeOrder','_routeConfirmedAt','_routeConfirmedBy',
   '_retourAttenteDepuis','_hDebutAvantRetourAttente','_dateDebutAvantRetourAttente','_retourAttenteAt','_retourAttentePar',
   '_startLockedByChain','_chainedFromInterventionId','_chainPreviousInterventionId','_departGeoControle',
@@ -19782,6 +19801,14 @@ function _rcMergeOperationalInterventionVersions(current,incoming){
   if(incoming)ensureOperationalStatusMetadata(incoming);
   if(!current)return {value:incoming,keptCurrentStatus:false};
   if(!incoming)return {value:current,keptCurrentStatus:true};
+  // Un numéro définitif confirmé par Supabase ne peut être remplacé par la
+  // copie provisoire restée dans la file d'un autre appareil.
+  if(current.s==='terminee'&&current._numberFinalized===true){
+    ['_numGlobal','_numCaserne','_numMois','_numberingScheme','_numberFinalized'].forEach(function(key){
+      if(Object.prototype.hasOwnProperty.call(current,key))incoming[key]=current[key];
+      else delete incoming[key];
+    });
+  }
   if(_rcOperationalStatusSource(current,incoming)!=='current'){
     const merged=Object.assign({},incoming);
     const keptCurrentPlanning=_rcMergePilpPlanningFields(current,incoming,merged);
@@ -20474,13 +20501,21 @@ async function _rcSendAtomicOperationalRow(row,currentUser){
   }
   if(response.ok){
     _rcAtomicServerState='active';_rcAtomicServerCheckedAt=Date.now();
+    let confirmedData=null;
     try{
       const result=await response.json();
       if(result&&result.data&&typeof result.data==='object'){
+        confirmedData=result.data;
         row.data=result.data;
         _rcReplaceLocalOperationalRecord(row.caserne,row.type,result.data);
       }
     }catch(error){}
+    if(row.data&&row.data._numberingScheme==='dual-v1'&&row.data.s==='terminee'&&row.data._isRenfort!==true&&row.data._lienPilp!==true
+       &&(!confirmedData||confirmedData._numberFinalized!==true)){
+      // Si le SQL V0014 n'est pas encore installé, l'ancienne fonction peut
+      // accepter la clôture sans numéro définitif. Ne pas acquitter la file.
+      return {ok:false,status:503,detail:'Numérotation définitive non confirmée par Supabase'};
+    }
     return {ok:true};
   }
   let detail='';
@@ -20562,7 +20597,10 @@ async function _rcSendRowsWithIsolation(rows,currentUser){
   for(const row of atomicRows){
     const result=await _rcSendAtomicOperationalRow(row,currentUser);
     if(result.ok)succeeded.push(row);
-    else if(result.fallback)await send([row]);
+    // Un dossier à numérotation provisoire ne doit jamais contourner la
+    // transaction serveur : la clôture doit attribuer son numéro définitif.
+    // En cas de panne, on garde seulement cette fiche dans la file locale.
+    else if(result.fallback&&!(row.data&&row.data._numberingScheme==='dual-v1'))await send([row]);
     else failures.push({row:row,status:result.status||0,detail:result.detail||''});
   }
   for(let index=0;index<standardRows.length;index+=10)await send(standardRows.slice(index,index+10));

@@ -2166,7 +2166,7 @@ const RC_OPERATIONAL_STATUSES=['en-attente','selectionne','en-cours','terminee',
 const RC_OPERATIONAL_PROTECTED_FIELDS=[
   's','agr','tireur','eng','_engin1','_engin2','_equipage1','_equipage2','_agr2',
   '_hDebut','_hDebutReelle','_hDebutInitiale','_dateDebut','_hFin','_hFinReelle','_duree',
-  '_numGlobal','_numCaserne','_numMois','_numSDIS','_numRenfort',
+  '_numGlobal','_numCaserne','_numMois','_numSDIS','_numRenfort','_numberingScheme','_numberFinalized',
   '_routeBatchId','_routeOrder','_routeConfirmedAt','_routeConfirmedBy',
   '_retourAttenteDepuis','_hDebutAvantRetourAttente','_dateDebutAvantRetourAttente','_retourAttenteAt','_retourAttentePar',
   '_startLockedByChain','_chainedFromInterventionId','_chainPreviousInterventionId','_departGeoControle',
@@ -2232,6 +2232,14 @@ function _rcMergeOperationalInterventionVersions(current,incoming){
   if(incoming)ensureOperationalStatusMetadata(incoming);
   if(!current)return {value:incoming,keptCurrentStatus:false};
   if(!incoming)return {value:current,keptCurrentStatus:true};
+  // Un numéro définitif confirmé par Supabase ne peut être remplacé par la
+  // copie provisoire restée dans la file d'un autre appareil.
+  if(current.s==='terminee'&&current._numberFinalized===true){
+    ['_numGlobal','_numCaserne','_numMois','_numberingScheme','_numberFinalized'].forEach(function(key){
+      if(Object.prototype.hasOwnProperty.call(current,key))incoming[key]=current[key];
+      else delete incoming[key];
+    });
+  }
   if(_rcOperationalStatusSource(current,incoming)!=='current'){
     const merged=Object.assign({},incoming);
     const keptCurrentPlanning=_rcMergePilpPlanningFields(current,incoming,merged);
@@ -2924,13 +2932,21 @@ async function _rcSendAtomicOperationalRow(row,currentUser){
   }
   if(response.ok){
     _rcAtomicServerState='active';_rcAtomicServerCheckedAt=Date.now();
+    let confirmedData=null;
     try{
       const result=await response.json();
       if(result&&result.data&&typeof result.data==='object'){
+        confirmedData=result.data;
         row.data=result.data;
         _rcReplaceLocalOperationalRecord(row.caserne,row.type,result.data);
       }
     }catch(error){}
+    if(row.data&&row.data._numberingScheme==='dual-v1'&&row.data.s==='terminee'&&row.data._isRenfort!==true&&row.data._lienPilp!==true
+       &&(!confirmedData||confirmedData._numberFinalized!==true)){
+      // Si le SQL V0014 n'est pas encore installé, l'ancienne fonction peut
+      // accepter la clôture sans numéro définitif. Ne pas acquitter la file.
+      return {ok:false,status:503,detail:'Numérotation définitive non confirmée par Supabase'};
+    }
     return {ok:true};
   }
   let detail='';
@@ -3012,7 +3028,10 @@ async function _rcSendRowsWithIsolation(rows,currentUser){
   for(const row of atomicRows){
     const result=await _rcSendAtomicOperationalRow(row,currentUser);
     if(result.ok)succeeded.push(row);
-    else if(result.fallback)await send([row]);
+    // Un dossier à numérotation provisoire ne doit jamais contourner la
+    // transaction serveur : la clôture doit attribuer son numéro définitif.
+    // En cas de panne, on garde seulement cette fiche dans la file locale.
+    else if(result.fallback&&!(row.data&&row.data._numberingScheme==='dual-v1'))await send([row]);
     else failures.push({row:row,status:result.status||0,detail:result.detail||''});
   }
   for(let index=0;index<standardRows.length;index+=10)await send(standardRows.slice(index,index+10));

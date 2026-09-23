@@ -13,7 +13,9 @@ le code afin de faciliter les prochaines corrections.
 - `app.js` : copie complète du JavaScript, conservée comme référence de contrôle
   mais non chargée par `index.html` ;
 - `supabase-atomic-operations-v238.sql` : mise à niveau Supabase qui protège les
-  engagements simultanés et attribue les numéros d’intervention côté serveur ;
+  engagements simultanés et attribue les numéros provisoires côté serveur ;
+- `supabase-numbering-finalization-v202609-0014.sql` : attribution définitive
+  des numéros à la clôture, à tester sur une copie avant toute production ;
 - `supabase-account-link-v239.sql` et `supabase/functions/agai-account-link/` :
   liaison invisible et progressive des comptes AGAI à Supabase Auth ;
 - `DEPLOIEMENT-SECURISE.md` : procédure d’installation et de vérification.
@@ -37,9 +39,9 @@ passerelle serveur sécurisée.
 
 ## Authentification actuelle
 
-Les identifiants AGAI existants sont conservés. Dans la V202609_0013, la liaison
+Les identifiants AGAI existants sont conservés. Dans la V202609_0014, la liaison
 technique Supabase Auth reste désactivée dans `runtime-config.js`. Cette livraison
-ne traite que les faux conflits de révision d'interventions historiques. Chaque
+prépare la numérotation provisoire au départ et définitive à la clôture. Chaque
 compte possède un `caserneId` et un `appRole` maintenus par l’application.
 
 Cette association organise les droits dans AGAI, mais ne permet pas à Supabase

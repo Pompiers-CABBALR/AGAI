@@ -989,7 +989,14 @@ function renderInterventionRow(iv, ag, tireur) {
   const onchg = isPilp ? `toggleChkPilp('${iv.id}',this)` : `toggleChk('${iv.id}',this)`;
   const onclick = isPilp ? `oPilp('${iv.id}')` : `oM('${iv.id}')`;
 
-  const numBadges = iv.s === 'terminee' ? (
+  const dualNumbering=iv._numberingScheme==='dual-v1'&&!iv._isRenfort;
+  const pendingFinalNumber=dualNumbering&&iv.s==='terminee'&&iv._numberFinalized!==true;
+  const provisionalNumber=dualNumbering&&iv.s==='en-cours';
+  const numBadges = pendingFinalNumber
+    ? ' · <span style="font-size:10px;color:#92400E;font-weight:700;">Numéro définitif en attente de synchronisation</span>'
+    : provisionalNumber
+    ? ` · <span style="font-size:10px;color:#92400E;font-weight:700;">Provisoire ${iv._numCaserne?'UT:'+escHtml(String(iv._numCaserne))+' ':''}${iv._numMois?'M:'+escHtml(String(iv._numMois)):''}</span>`
+    : iv.s === 'terminee' ? (
     iv._isRenfort
       ? (iv._numGlobal || iv._numRenfort
           ? ` · ${iv._numGlobal ? `<span style="color:#1A6B1A;font-weight:600;font-size:10px;">C:${escHtml(String(iv._numGlobal))}</span> ` : ''}${iv._numRenfort ? `<span style="color:#7C3AED;font-weight:600;font-size:10px;">Renfort:${escHtml(String(iv._numRenfort))}</span>` : ''}` : '')
@@ -1428,7 +1435,9 @@ function oM(id){
     // Seul le numéro APL est affiché (numérotation INT désactivée)
   const dispApl=interventionDisplayCallNumber(iv);
   const dispTransfert=iv._transfertDe?` ↩ transféré de ${CASERNES.find(cas=>cas.id===iv._transfertDe)?.nom||iv._transfertDe}`:'';
-  const dispUt=iv._numCaserne?' · UT '+iv._numCaserne:'';
+  const dispUt=iv._numberingScheme==='dual-v1'&&iv.s==='terminee'&&iv._numberFinalized!==true
+    ?' · numéro définitif en attente de synchronisation'
+    :iv._numCaserne?' · UT '+iv._numCaserne+(iv._numberingScheme==='dual-v1'&&iv.s==='en-cours'?' (provisoire)':''):'';
   document.getElementById('mi').textContent=dispApl+dispUt+dispTransfert;
    const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis de passage'],'avis-classe':['bp','Avis classé'],'avis-restaure':['binfo','Avis remis en attente'],'modif':['bgr','Modification'],'modif-adresse':['bgr','Adresse corrigée'],'modif-heure':['binfo','Horaire corrigé'],'modif-equipier':['binfo','Équipage corrigé'],'modif-engin':['binfo','Véhicule corrigé'],'reclasse':['bgr','Reclasé'],'releve':['binfo','Relève'],'info-compl':['binfo','ℹ️ Complément d\u2019info']};
   const[bc,bt]=bm[iv.s]||['bgr','—'];

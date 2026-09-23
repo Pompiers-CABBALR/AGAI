@@ -1159,6 +1159,11 @@ function genRapportInterventionHTML(ivId) {
 }
 function voirRapportIntervention(ivId) {
   if(!requireInterventionPdfDesktop())return;
+  const iv=interventionById(ivId);
+  if(iv&&iv._numberingScheme==='dual-v1'&&iv.s==='terminee'&&iv._numberFinalized!==true){
+    showToast('Attendez la synchronisation du numéro définitif avant d’ouvrir le rapport.','warn');
+    return;
+  }
   const html = genRapportInterventionHTML(ivId);
   if(!html){ showToast('Données insuffisantes','warn'); return; }
   openIframeModal(html, ivId);

@@ -1,5 +1,31 @@
 # AGAI — déploiement sécurisé
 
+## Préparation V202609_0014 — numérotation provisoire et définitive
+
+**Non déployée en production.** La V202609_0014 prépare un numéro provisoire
+pendant « en cours », supprimé au retour « en attente », puis un nouveau numéro
+définitif attribué par Supabase lors de la clôture. Un numéro provisoire peut
+changer à la clôture ; l'identifiant APL reste stable. Les numéros des fiches
+déjà terminées ne sont ni repris ni décalés : les trous historiques, dont M164,
+restent visibles. Les nouveaux retours en attente ne consomment plus de numéro
+définitif. Une suppression ultérieure de fiche terminée peut encore créer un
+trou ; elle doit rester tracée, et non conduire à une renumérotation silencieuse.
+
+Cette version nécessite **d'abord** le script
+`supabase-numbering-finalization-v202609-0014.sql`, sur une copie de la base.
+Il vérifie la définition actuelle des fonctions et s'arrête sans changement si
+elle diffère. La version ne doit être publiée qu'après un essai complet sur
+une base de test : deux départs simultanés, retour en attente de l'un, clôture
+de l'autre, reprise du premier, clôture des deux, puis vérification de la
+numérotation depuis deux appareils. Contrôler également une panne réseau :
+la clôture reste dans la file locale et le rapport PDF attend le numéro final.
+
+Avant une éventuelle mise en production, obtenir une sauvegarde vérifiée, une
+file « Sync OK » sur les appareils concernés et un créneau sans intervention en
+cours. Appliquer le SQL, confirmer que sa dernière requête renvoie `true`, puis
+publier l'application. Ne pas redémarrer Supabase ni effacer les caches ou files
+locales. La liaison technique des comptes reste désactivée.
+
 ## Décision actuelle — V202609_0013
 
 La V202609_0013 corrige uniquement le faux conflit de révision des interventions
