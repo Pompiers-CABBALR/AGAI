@@ -80,7 +80,7 @@ async function doLogin(){
       GRADES.forEach(g=>{['prof-grade-sel','nu-grade'].forEach(id=>{const el=document.getElementById(id);if(el&&!el.querySelector(`option[value="${g}"]`)&&![...el.options].find(o=>o.textContent===g)){const o=document.createElement('option');o.textContent=g;el.appendChild(o);}});});
       _createSession(); // P2
       // La liaison technique n'attend jamais avant de rendre l'application utilisable.
-      _agaiLinkSupabaseAccount(ga,p,SESSION_TOKEN);
+      if(AUTH_LINK_MODE==='on')_agaiLinkSupabaseAccount(ga,p,SESSION_TOKEN);
       if(ga.role==='chef_corps'){showGlobalView('chef_corps');return;}
       const hopEl=document.getElementById('hop');if(hopEl)hopEl.textContent='Opérateur : '+CU.l;
       doLoginSuccess();
@@ -135,7 +135,7 @@ async function doLogin(){
     const hopEl2=document.getElementById('hop');if(hopEl2)hopEl2.textContent='Opérateur : '+CU.l;
     GRADES.forEach(g=>{['prof-grade-sel','nu-grade'].forEach(id=>{const el=document.getElementById(id);if(el&&![...el.options].find(o=>o.textContent===g)){const o=document.createElement('option');o.textContent=g;el.appendChild(o);}});});
     _createSession(); // P2
-    _agaiLinkSupabaseAccount(foundUser,p,SESSION_TOKEN);
+    if(AUTH_LINK_MODE==='on')_agaiLinkSupabaseAccount(foundUser,p,SESSION_TOKEN);
     doLoginSuccess();
 
   } finally {

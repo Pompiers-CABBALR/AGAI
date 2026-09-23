@@ -208,9 +208,12 @@ const AUTH_LINK_SESSION_KEY='agai_supabase_auth_v239';
 let _agaiAuthSession=null;
 let _agaiAuthBridgeState=AUTH_LINK_ENABLED?'unknown':'disabled';
 let _agaiAuthBridgeHealth=null;
+let _agaiAuthBridgeCheckedAt=0;
 let _agaiAuthRefreshTimer=null;
 let _agaiAuthRefreshFailureCount=0;
 let _agaiAuthLinkRetryAfter=0;
+let _agaiAuthPilotInFlight=false;
+if(AUTH_LINK_MODE==='canary')try{localStorage.removeItem(AUTH_LINK_SESSION_KEY);}catch(error){}
 let _agaiLastDataSnapshot=null;
 const AGAI_SERVER_CIRCUIT_KEY='agai_server_circuit_v1';
 const AGAI_SERVER_CIRCUIT_MS=5*60*1000;

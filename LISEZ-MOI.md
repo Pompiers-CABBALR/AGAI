@@ -18,6 +18,8 @@ le code afin de faciliter les prochaines corrections.
   des numéros à la clôture, à tester sur une copie avant toute production ;
 - `supabase-account-link-v239.sql` et `supabase/functions/agai-account-link/` :
   liaison invisible et progressive des comptes AGAI à Supabase Auth ;
+- `DIAGNOSTIC-LIAISON-V202609-0019.sql` : vérification en lecture seule avant
+  tout essai du pilote manuel ;
 - `DEPLOIEMENT-SECURISE.md` : procédure d’installation et de vérification.
 
 ## Utilisation
@@ -39,16 +41,18 @@ passerelle serveur sécurisée.
 
 ## Authentification actuelle
 
-Les identifiants AGAI existants sont conservés. Dans la V202609_0018, la liaison
-technique Supabase Auth reste désactivée dans `runtime-config.js`. Cette livraison
+Les identifiants AGAI existants sont conservés. Le mot de passe demandé pour la
+vérification est celui d'AGAI, jamais celui du tableau de bord Supabase. Dans la V202609_0020, la liaison
+technique Supabase Auth est limitée à la **vérification manuelle d'un compte déjà lié** ;
+aucune requête Auth n'est lancée à la connexion. Cette livraison
 prépare la numérotation provisoire au départ et définitive à la clôture, ainsi
 qu'une confirmation à deux gestes pour éviter une clôture accidentelle. Elle
 signale aussi les chevauchements entre interventions et activités, en laissant
 partir une intervention réelle et en demandant la régularisation de la présence.
 Les doublons UT historiques 276 et 278 ont un indice d'affichage sur la seconde
 fiche de chaque paire, sans modifier les valeurs stockées. Elle n'est pas encore
-déployée en production ; la numérotation définitive doit rester active sur la
-base cible. Chaque
+déployée en production par cette préparation ; la numérotation définitive doit
+rester active sur la base cible. Chaque
 compte possède un `caserneId` et un `appRole` maintenus par l’application.
 
 Cette association organise les droits dans AGAI, mais ne permet pas à Supabase

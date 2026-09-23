@@ -4,9 +4,9 @@
 window.AGAI_CONFIG = Object.freeze({
   supabaseUrl: 'https://lpzblzqxmoiwghvkhqnt.supabase.co',
   supabasePublishableKey: 'sb_publishable_dkzyaOmA-FeBhL4c1z_KZw_nOdOTWuL',
-  // Stabilisation opérationnelle : liaison des comptes toujours en pause.
-  // Ne pas activer le pilote Auth tant que la synchronisation n'est pas stable.
-  accountLinkMode: 'off',
+  // Vérification manuelle d'un compte déjà lié : aucun appel Auth à la connexion AGAI.
+  // Remettre 'off' ici suffit à interrompre le pilote sans toucher aux données.
+  accountLinkMode: 'canary',
   accountLinkCanaryLogins: ['dacheville.thibaut'],
   accountLinkEndpoint: '',
   mailEndpoint: ''

@@ -1,5 +1,64 @@
 # AGAI — déploiement sécurisé
 
+## Préparation V202609_0020 — vérification du compte Supabase déjà lié
+
+**Non déployée en production par cette préparation.** Le diagnostic de production
+montre que `dacheville.thibaut` figure déjà parmi les 11 comptes liés sur 24,
+sans verrouillage. Il ne faut donc pas relancer la création ou la mise à jour de
+son identité. Le mot de passe du tableau de bord Supabase n'est **jamais**
+demandé ni utilisé : l'identité technique Auth d'AGAI est distincte du compte
+qui administre le projet Supabase. Le pilote V202609_0019 est remplacé : son bouton est désormais
+« Vérifier mon compte existant ». Après confirmation locale du mot de passe,
+il teste uniquement une connexion Supabase Auth pour l'identité technique déjà
+connue, vérifie le login et la caserne renvoyés, puis révoque **uniquement cette
+session de test** (`scope=local`). Aucun jeton n'est conservé et aucun appel
+n'est envoyé à la fonction Edge de création/mise à jour des comptes.
+
+La vérification reste manuelle, limitée à ce compte et à un appareil dont la
+synchronisation est saine. Une panne ou un mot de passe Auth devenu différent du
+mot de passe AGAI donne un échec non bloquant ; ne pas corriger les identités ou
+rejouer le SQL à l'aveugle. Le lien existant et les 13 comptes non liés restent
+inchangés. Les anciennes sessions sur d'autres appareils ne sont pas révoquées.
+Après la vérification, contrôler la file, les derniers envoi/réception et les
+logs Auth. Le retour arrière demeure `accountLinkMode: 'off'` dans
+`runtime-config.js` ; ne pas activer le mode `on` ni les RLS restrictives.
+
+## Préparation V202609_0019 — reprise manuelle de la liaison Supabase Auth
+
+**Non déployée en production par cette préparation.** Le dossier modulaire est
+configuré en mode `canary`, limité au compte pilote `dacheville.thibaut`.
+Contrairement à l'ancien essai, aucune requête Auth n'est envoyée à la connexion
+AGAI. Le pilote démarre uniquement par le bouton « Tester ma liaison sur cet
+appareil » de la Maintenance, après saisie et vérification locale du mot de
+passe AGAI. Le bouton reste désactivé si le serveur de liaison ne répond pas,
+si la dernière réception date de plus de 15 minutes, si la file n'est pas vide,
+si la synchronisation n'est pas « OK » ou si la protection anti-saturation est
+active. Une seule tentative peut être en cours ; un échec suspend les suivantes
+pendant 5 minutes. Le résultat n'empêche ni la connexion ni le travail courant.
+
+Le pilote ne garde pas de jeton Auth et n'envoie **aucune** donnée opérationnelle
+avec ce jeton. Les interventions continuent d'utiliser l'accès Supabase actuel.
+Les changements de mot de passe et la gestion des comptes AGAI ne dépendent pas
+du pilote : une liaison existante pourra devoir être réessayée après un
+changement de mot de passe. **Ne pas activer les politiques RLS restrictives**
+ni passer en mode `on` dans cette phase.
+
+Avant un essai réel, utiliser `DIAGNOSTIC-LIAISON-V202609-0019.sql` pour
+vérifier en lecture seule les tables privées, leurs droits et la fonction de
+santé ; contrôler aussi la fonction Edge `agai-account-link`. Contrôler la
+production **sans rejouer le SQL de migration** : sauvegarde disponible, état
+Sync OK, file vide, réception récente,
+absence d'erreurs Postgres répétées et charge normale. Publier tous les fichiers
+de la même V202609_0019, ouvrir Maintenance sur **un seul appareil**, rafraîchir
+la santé puis déclencher l'essai. Vérifier ensuite la connexion AGAI, la file,
+les dates d'envoi/réception, les logs Auth/Edge et la charge Supabase. Ne pas
+élargir au personnel avant une période d'observation stable.
+
+**Arrêt immédiat du pilote :** remettre `accountLinkMode: 'off'` dans
+`runtime-config.js`, republier ce fichier et actualiser l'appareil pilote.
+Ne supprimer ni cache, ni file locale, ni comptes ; ne pas redémarrer Supabase.
+Le compte Auth déjà créé peut rester lié côté serveur sans être utilisé.
+
 ## Correction V202609_0018 — indices UT visibles dans l'historique
 
 La V202609_0017 a été affichée sur un appareil mais les indices « -1 » ne
@@ -152,7 +211,7 @@ protection par elle-même : la sécurité dépend des règles RLS.
 
 ## Migration Supabase
 
-### Liaison invisible des comptes v239 — déploiement progressif
+### Historique du pilote v239 — remplacé par le protocole V202609_0019 ci-dessus
 
 **Mode pilote V202609_0012 :** `accountLinkMode: 'canary'` n'essaie la liaison que
 pour `dacheville.thibaut`. Les autres agents ne lancent aucune requête Auth à la
