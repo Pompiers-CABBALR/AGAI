@@ -1,5 +1,28 @@
 # AGAI — déploiement sécurisé
 
+## Préparation V202609_0015 — clôture protégée contre les fausses manipulations
+
+**Non déployée en production.** Cette version reprend la numérotation préparée
+en V202609_0014 et ajoute une étape distincte de vérification avant toute
+clôture courante : intervention standard, PILP, renfort UT, saisie directe
+superadmin ou clôture demandée après sauvegarde du compte rendu. Le premier
+appui ouvre un récapitulatif sans changer le statut ni enregistrer de retour.
+Le chef d'agrès doit cocher une case initialement vide, puis appuyer sur
+« Clôturer définitivement ». Annuler, fermer la fenêtre ou appuyer deux fois
+sur le bouton de la fiche ne clôture pas. Une fiche modifiée entre-temps doit
+être rouverte.
+
+La saisie directe superadmin conserve ses validations d'horaires, de véhicule
+et d'équipage avant la confirmation ; la clôture ne commence qu'après celle-ci.
+Les classements d'avis de passage conservent leur confirmation dédiée.
+
+**Ne pas publier isolément ce fichier HTML.** Le script de numérotation
+`supabase-numbering-finalization-v202609-0014.sql` et les scénarios de test
+ci-dessous restent préalables sur une copie de la base. La protection
+anti-erreur doit aussi être essayée sur mobile : défilement vertical sur le
+bouton, annulation, double appui, PILP et renfort. La production et Supabase
+n'ont pas été modifiés par cette préparation.
+
 ## Préparation V202609_0014 — numérotation provisoire et définitive
 
 **Non déployée en production.** La V202609_0014 prépare un numéro provisoire

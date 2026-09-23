@@ -4360,6 +4360,42 @@ function confirmModal(msg, onOk, onCancel){
   document.getElementById('confirm-ok-btn').onclick=function(){cM();if(onOk)onOk();};
 }
 
+// Une clôture exige deux gestes volontaires, distincts du défilement de la fiche.
+function operationalCloseSnapshot(iv){
+  return JSON.stringify([iv&&iv.s,iv&&iv._statusRevision,iv&&iv._serverRevision,iv&&iv.agr,iv&&iv._hDebut,iv&&iv.eng]);
+}
+function requestOperationalCloseConfirmation(iv,details,onConfirm){
+  if(!iv||typeof onConfirm!=='function')return;
+  const snapshot=operationalCloseSnapshot(iv);
+  const mo=document.getElementById('mo'),title=document.getElementById('mt'),info=document.getElementById('mi'),body=document.getElementById('mb');
+  if(!mo||!title||!info||!body)return;
+  title.textContent='Vérifier avant de clôturer';
+  info.textContent='Aucune clôture ne sera enregistrée sans votre confirmation.';
+  body.innerHTML='<div style="padding:8px 0;line-height:1.5;">'
+    +'<div style="font-weight:700;margin-bottom:8px;">'+escHtml(iv.n||'Intervention')+'</div>'
+    +'<div style="font-size:12px;margin-bottom:12px;">'+escHtml(interventionDisplayCallNumber(iv)||iv.id||'')+' · '+escHtml(iv.addr||'')+'</div>'
+    +'<div id="operational-close-details" style="font-size:12px;background:#F8FAFC;border:1px solid #CBD5E1;border-radius:8px;padding:10px;margin-bottom:14px;"></div>'
+    +'<label style="display:flex;align-items:flex-start;gap:9px;padding:12px;border:1px solid #F59E0B;border-radius:8px;margin-bottom:14px;cursor:pointer;">'
+    +'<input type="checkbox" id="operational-close-check" style="margin-top:3px;accent-color:#B91C1C;">'
+    +'<span>J’ai vérifié l’intervention, le véhicule et l’heure de retour. Je veux réellement la clôturer.</span></label>'
+    +'<div class="brow" style="gap:8px;"><button type="button" class="btn sm" id="operational-close-cancel">Annuler — ne rien changer</button>'
+    +'<button type="button" class="btn sm" id="operational-close-confirm" disabled style="background:#B91C1C;color:#fff;opacity:.45;">Clôturer définitivement</button></div></div>';
+  document.getElementById('operational-close-details').textContent=String(details||'');
+  mo.style.display='flex';
+  const panel=mo.querySelector('.mod');if(panel)panel.scrollTop=0;
+  const check=document.getElementById('operational-close-check'),confirm=document.getElementById('operational-close-confirm');
+  confirm.disabled=true;
+  check.onchange=function(){confirm.disabled=!check.checked;confirm.style.opacity=check.checked?'1':'.45';};
+  document.getElementById('operational-close-cancel').onclick=function(){cM();};
+  confirm.onclick=function(){
+    if(confirm.disabled||!check.checked)return;
+    confirm.disabled=true;
+    const current=interventionById(iv.id);
+    if(!current||operationalCloseSnapshot(current)!==snapshot){cM();showToast('La fiche a changé : rouvrez-la avant de clôturer.','warn');return;}
+    cM();onConfirm(snapshot);
+  };
+}
+
 // ────────────────── TABS ──────────────────
 function showT(id,btn){
   if(id==='formation'&&!hasFormationRight()){
@@ -7006,7 +7042,7 @@ function oM(id){
       const renfortCloBtn=iv._isRenfort&&!isInternalReinforcement?`<div style="background:#EDE9FE;border-radius:10px;padding:12px;margin-bottom:10px;border:2px solid #7C3AED;">
         <div style="font-size:12px;font-weight:600;color:#7C3AED;margin-bottom:6px;">&#x1F692; Renfort UT — ${iv._caserneSourceNom||''}</div>
         <div style="font-size:11px;color:var(--t2);margin-bottom:8px;">Clôturez votre partie quand votre équipage rentre à la caserne. L'intervention principale reste ouverte chez la caserne demandeuse.</div>
-        <button class="btn gn" style="width:100%;" onclick="cloturerRenfort('${CURRENT_CASERNE_ID}','${iv._renfortId}')">&#x2705; Clôturer ma partie renfort</button>
+        <button class="btn gn" style="width:100%;" onclick="cloturerRenfort('${CURRENT_CASERNE_ID}','${iv._renfortId}')">Vérifier la clôture du renfort</button>
       </div>`:'';
       const _natExclus=["Sauvetage et capture d'animaux","Sauvetage de personne"];
       const _isOwnAgres=(iv.agr===CU.l||iv._agr2===CU.l);
@@ -7036,8 +7072,8 @@ function oM(id){
         ${canCurrentUserCloseIntervention(iv)?(canSuperAdminOperateForAnotherChief()?`<div style="background:#EEF2FF;border:1px solid #A5B4FC;border-radius:9px;padding:10px;margin-bottom:10px;">
           <label for="superadmin-end-time" style="display:block;font-size:11px;font-weight:700;color:#3730A3;margin-bottom:5px;">Heure de retour saisie manuellement *</label>
           <input class="fi" type="time" id="superadmin-end-time" value="${getHHMM(N())}" style="width:100%;margin-bottom:8px;"/>
-          <button class="btn gn" style="width:100%;" onclick="clotSuperAdmin('${iv.id}')">🛡️ Clôturer pour ${escHtml(iv.agr||'le chef d’agrès')}</button>
-        </div>`:`<button class="btn gn" style="width:100%;margin-bottom:10px;" onclick="clot('${iv.id}')">✅ Confirmer la clôture</button>`):`<div style="font-size:12px;color:#991B1B;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:8px;margin-bottom:10px;">🔒 Clôture réservée au chef d'agrès assigné ou à un administrateur.</div>`}
+          <button class="btn gn" style="width:100%;" onclick="clotSuperAdmin('${iv.id}')">🛡️ Vérifier avant de clôturer pour ${escHtml(iv.agr||'le chef d’agrès')}</button>
+        </div>`:`<button class="btn gn" style="width:100%;margin-bottom:10px;" onclick="clot('${iv.id}')">Vérifier avant de clôturer</button>`):`<div style="font-size:12px;color:#991B1B;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:8px;margin-bottom:10px;">🔒 Clôture réservée au chef d'agrès assigné ou à un administrateur.</div>`}
         <div style="border-top:1px solid var(--brd);padding-top:10px;margin-bottom:6px;">
           <div style="font-size:10px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Gestion de l'équipage</div>
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:5px;">
@@ -7717,16 +7753,26 @@ function clot(id,options){
   const collection=interventionCollection(iv);
   // Ne pas re-clôturer une intervention déjà liée à une PILP
   if(iv._lienPilp&&iv.s==='terminee'){showToast('Cette intervention est déjà clôturée (liée à une PILP).','warn');cM();return;}
-  const avis=document.getElementById('chk-av')&&document.getElementById('chk-av').checked;
-  const avisHeure=avis&&document.getElementById('avis-passage-hour')?document.getElementById('avis-passage-hour').value:'';
+  const avis=opts._closeConfirmed?opts._closeAvis===true:!!(document.getElementById('chk-av')&&document.getElementById('chk-av').checked);
+  const avisHeure=opts._closeConfirmed?opts._closeAvisHeure||'':avis&&document.getElementById('avis-passage-hour')?document.getElementById('avis-passage-hour').value:'';
   if(avis&&!/^([01]\d|2[0-3]):[0-5]\d$/.test(avisHeure)){
     showToast('Renseignez l’heure à laquelle l’avis de passage a été déposé.','warn');
     const field=document.getElementById('avis-passage-hour');if(field){field.focus();field.scrollIntoView({behavior:'smooth',block:'center'});}
     return;
   }
+  if(!['en-cours','avis-passage'].includes(iv.s)){showToast('Cette intervention n’est plus en cours.','warn');return;}
+  if(!opts._closeConfirmed){
+    const capturedTime=getHHMM(N()),capturedStamp=getH(N());
+    requestOperationalCloseConfirmation(iv,
+      'Véhicule : '+(iv.eng||iv._engin1||'non renseigné')+' · Chef d’agrès : '+(iv.agr||'non renseigné')
+      +' · Retour : '+(opts.superAdminManual?opts.endTime:capturedTime)+(avis?' · Avis de passage à '+avisHeure:''),
+      function(snapshot){clot(id,Object.assign({},opts,{_closeConfirmed:true,_closeSnapshot:snapshot,_closeAvis:avis,_closeAvisHeure:avisHeure,_closeTime:capturedTime,_closeStamp:capturedStamp}));});
+    return;
+  }
+  if(!opts.directClosure&&opts._closeSnapshot!==operationalCloseSnapshot(iv)){showToast('La fiche a changé : rouvrez-la avant de clôturer.','warn');return;}
   if(!beginOperationalAction(iv,'cloture',['en-cours','avis-passage']))return;
-  const endTime=opts.superAdminManual?opts.endTime:getHHMM(N());
-  const h=opts.superAdminManual?manualOperationalTimelineStamp(iv,endTime,true):getH(N());
+  const endTime=opts.superAdminManual?opts.endTime:opts._closeTime||getHHMM(N());
+  const h=opts.superAdminManual?manualOperationalTimelineStamp(iv,endTime,true):opts._closeStamp||getH(N());
   const agr2Lbl=iv._agr2?(()=>{const u=USERS.find(u=>u.l===iv._agr2);return u?' + '+fullName(u)+' (2\u00e8me)':' + '+iv._agr2;})():'';
   if(avis){
     // Avis de passage : le requérant était absent. L'intervention de CETTE équipe
@@ -8111,7 +8157,7 @@ function oPilp(id){
           <label for="pilp-avis-passage-hour" style="display:block;font-size:11px;font-weight:700;color:#6B21A8;margin-bottom:5px;">Heure de dépôt dans la boîte aux lettres *</label>
           <input class="fi" type="time" id="pilp-avis-passage-hour" value="${getHHMM(N())}" style="width:100%;"/>
         </div>
-        <button class="btn gn" style="width:100%;" onclick="clotPilp('${id}')">✅ Confirmer la clôture</button>
+        <button class="btn gn" style="width:100%;" onclick="clotPilp('${id}')">Vérifier avant de clôturer</button>
       </div>
       <div class="brow" style="margin-top:8px;"><button class="btn sm danger" onclick="cSPilp('${id}','en-attente')">↩ En attente</button></div>`;
     } else if(iv.s==='avis-passage'&&(chef||ag)){
@@ -8177,19 +8223,28 @@ function cSPilp(id,s,confirmed){
   saveData(true);
   rPilp();oPilp(id);
 }
-function clotPilp(id){
+function clotPilp(id,options){
   const iv=PILP_IVS.find(v=>v.id===id);if(!iv)return;
+  const opts=options||{};
   if(!canOperatePilp()){showToast('La clôture d’une intervention PILP est réservée aux tireurs PILP, aux administrateurs actifs et au superadmin.','warn');return;}
   if(!canCurrentUserCloseIntervention(iv)){showToast('Seul le chef d’agrès affecté à cette intervention peut la clôturer.','warn');return;}
-  const avis=document.getElementById('chk-pilp-avis')&&document.getElementById('chk-pilp-avis').checked;
-  const avisHeure=avis&&document.getElementById('pilp-avis-passage-hour')?document.getElementById('pilp-avis-passage-hour').value:'';
+  const avis=opts._closeConfirmed?opts._closeAvis===true:!!(document.getElementById('chk-pilp-avis')&&document.getElementById('chk-pilp-avis').checked);
+  const avisHeure=opts._closeConfirmed?opts._closeAvisHeure||'':avis&&document.getElementById('pilp-avis-passage-hour')?document.getElementById('pilp-avis-passage-hour').value:'';
   if(avis&&!/^([01]\d|2[0-3]):[0-5]\d$/.test(avisHeure)){
     showToast('Renseignez l’heure à laquelle l’avis de passage a été déposé.','warn');
     const field=document.getElementById('pilp-avis-passage-hour');if(field){field.focus();field.scrollIntoView({behavior:'smooth',block:'center'});}
     return;
   }
+  if(iv.s!=='en-cours'){showToast('Cette intervention n’est plus en cours.','warn');return;}
+  if(!opts._closeConfirmed){
+    const capturedTime=getHHMM(N()),capturedStamp=getH(N());
+    requestOperationalCloseConfirmation(iv,'PILP · Chef d’agrès : '+(iv.agr||'non renseigné')+' · Retour : '+capturedTime+(avis?' · Avis de passage à '+avisHeure:''),
+      function(snapshot){clotPilp(id,{_closeConfirmed:true,_closeSnapshot:snapshot,_closeAvis:avis,_closeAvisHeure:avisHeure,_closeTime:capturedTime,_closeStamp:capturedStamp});});
+    return;
+  }
+  if(opts._closeSnapshot!==operationalCloseSnapshot(iv)){showToast('La fiche a changé : rouvrez-la avant de clôturer.','warn');return;}
   if(!beginOperationalAction(iv,'cloture-pilp',['en-cours']))return;
-  const h=getH(N());
+  const h=opts._closeStamp||getH(N());
   if(avis){
     iv.s='avis-passage';iv.rappels=(iv.rappels||0)+1;
     iv._avisPassage=true;iv._avisEnAttente=true;
@@ -8200,7 +8255,7 @@ function clotPilp(id){
     saveData(true);
     rPilp();oPilp(id);
   } else {
-    iv.s='terminee';iv._hFin=getHHMM(N());pushTL(iv,'terminee',CU.l,'',h);
+    iv.s='terminee';iv._hFin=opts._closeTime||getHHMM(N());pushTL(iv,'terminee',CU.l,'',h);
     (iv.avisIds||[]).forEach(aid=>{const av=PILP_IVS.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';pushTL(av,'terminee',CU.l+' (fusion)','',h);}});
     if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
     saveData(true);
@@ -12404,7 +12459,7 @@ function showSuperAdminDirectClosureModal(id){
     +'<div class="fg"><div class="fgl">Heure de retour <span class="req">*</span></div><input class="fi" type="time" id="superadmin-direct-end-time" value="'+getHHMM(N())+'"/></div>'
     +'<div class="fg"><div class="fgl">Véhicule <span class="req">*</span></div><select class="fi" id="superadmin-depart-vehicle" onchange="refreshSuperAdminDepartureCrew()">'+superAdminVehicleOptions(initialVehicle)+'</select></div>'
     +'<div style="font-size:12px;font-weight:700;margin:12px 0 8px;">Équipage complet selon les places du véhicule</div><div id="superadmin-depart-crew"></div>'
-    +'<div class="brow" style="margin-top:12px;"><button class="btn gn sm" onclick="confirmerClotureSuperAdminDirecte(\''+id+'\')">🛡️ Enregistrer et clôturer</button><button class="btn sm" onclick="cM()">Annuler</button></div>';
+    +'<div class="brow" style="margin-top:12px;"><button class="btn gn sm" onclick="confirmerClotureSuperAdminDirecte(\''+id+'\')">🛡️ Vérifier avant de clôturer</button><button class="btn sm" onclick="cM()">Annuler</button></div>';
   document.getElementById('mo').style.display='flex';
   // Une saisie rétroactive doit proposer tout le personnel, y compris les agents
   // actuellement engagés. Le contrôle porte ensuite sur la plage horaire saisie.
@@ -12468,16 +12523,16 @@ function findManualOperationalIntervalConflict(iv,startTime,endTime,vehicles,per
   }
   return null;
 }
-function confirmerClotureSuperAdminDirecte(id){
+function confirmerClotureSuperAdminDirecte(id,validated){
   const iv=interventionById(id);if(!iv)return;
   if(operationalActionInProgress(iv,'cloture-directe')){showToast('Cette clôture est déjà en cours d’enregistrement.','warn');return;}
   if(!canSuperAdminOperateForAnotherChief()){cM();showToast('Le pouvoir superadmin n’est plus actif.','warn');return;}
-  const chief=document.getElementById('superadmin-depart-chief')?.value||'';
-  const operationalDate=String(document.getElementById('superadmin-direct-date')?.value||'').replace(/\D/g,'').slice(0,8);
-  const returnDate=String(document.getElementById('superadmin-direct-end-date')?.value||'').replace(/\D/g,'').slice(0,8);
-  const time=document.getElementById('superadmin-depart-time')?.value||'';
-  const endTime=document.getElementById('superadmin-direct-end-time')?.value||'';
-  const vehicle=document.getElementById('superadmin-depart-vehicle')?.value||'';
+  const chief=validated?validated.chief:document.getElementById('superadmin-depart-chief')?.value||'';
+  const operationalDate=validated?validated.operationalDate:String(document.getElementById('superadmin-direct-date')?.value||'').replace(/\D/g,'').slice(0,8);
+  const returnDate=validated?validated.returnDate:String(document.getElementById('superadmin-direct-end-date')?.value||'').replace(/\D/g,'').slice(0,8);
+  const time=validated?validated.time:document.getElementById('superadmin-depart-time')?.value||'';
+  const endTime=validated?validated.endTime:document.getElementById('superadmin-direct-end-time')?.value||'';
+  const vehicle=validated?validated.vehicle:document.getElementById('superadmin-depart-vehicle')?.value||'';
   const chiefUser=USERS.find(function(user){return user.l===chief;});
   if(!chiefUser||!isChefAgresByGrade(chiefUser)){showToast('Sélectionnez obligatoirement un chef d’agrès qualifié.','warn');return;}
   if(!/^\d{8}$/.test(operationalDate)){showToast('Sélectionnez obligatoirement la date réelle de l’intervention.','warn');return;}
@@ -12488,7 +12543,7 @@ function confirmerClotureSuperAdminDirecte(id){
   const directEnd=interventionCompactStampMillis(returnDate+'_'+endTime.replace(':',''));
   if(!Number.isFinite(directStart)||!Number.isFinite(directEnd)||directEnd<=directStart){showToast('Le retour doit être postérieur au départ. Vérifiez les dates et les heures.','warn');return;}
   if(!vehicle){showToast('Sélectionnez obligatoirement le véhicule.','warn');return;}
-  const crew=readDepartureCrewFields(vehicle,'saeq',chief);
+  const crew=validated?validated.crew:readDepartureCrewFields(vehicle,'saeq',chief);
   const driver=crew.find(function(member){return member&&interventionRoleKey(member.role)==='conducteur'&&member.login;});
   if(!driver){showToast('Sélectionnez obligatoirement le conducteur. Les autres membres de l’équipage sont optionnels.','warn');return;}
   const logins=crew.map(function(member){return member.login;}).filter(Boolean);
@@ -12497,6 +12552,12 @@ function confirmerClotureSuperAdminDirecte(id){
   if(intervalConflict){
     if(intervalConflict.active)showOperationalConflict(intervalConflict.kind,intervalConflict.value,intervalConflict.iv);
     else showStartCorrectionOperationalConflict(intervalConflict);
+    return;
+  }
+  if(!validated){
+    const captured={chief:chief,operationalDate:operationalDate,returnDate:returnDate,time:time,endTime:endTime,vehicle:vehicle,crew:JSON.parse(JSON.stringify(crew))};
+    requestOperationalCloseConfirmation(iv,'Saisie directe superadmin · Véhicule : '+vehicle+' · Chef d’agrès : '+chief+' · Départ : '+time+' · Retour : '+endTime,
+      function(){confirmerClotureSuperAdminDirecte(id,captured);});
     return;
   }
   if(!beginOperationalAction(iv,'cloture-directe',['en-attente','selectionne']))return;
@@ -12514,7 +12575,7 @@ function confirmerClotureSuperAdminDirecte(id){
   iv._superAdminOperationalEdits=Array.isArray(iv._superAdminOperationalEdits)?iv._superAdminOperationalEdits:[];
   iv._superAdminOperationalEdits.push({action:'saisie-directe',at:getH(N()),by:CU.l,chef:chief,dateIntervention:operationalDate,dateRetour:returnDate,heureDepart:time,heureRetour:endTime,engin:vehicle,equipage:crew.map(function(member){return {role:member.role,login:member.login};})});
   assignInterventionNumbersAtStart(iv);syncInternalReinforcementSource(iv);markOperationalInterventionDirty(iv);
-  clot(id,{superAdminManual:true,endTime:endTime,directClosure:true});
+  clot(id,{superAdminManual:true,endTime:endTime,directClosure:true,_closeConfirmed:true});
 }
 
 function confirmerDepart(id){
@@ -13392,12 +13453,20 @@ function confirmerRenfortEquipage(cid,renfortId,confirmed){
   showToast('\u00c9quipage de renfort en route !','success');
 }
 
-function cloturerRenfort(cid,renfortId){
+function cloturerRenfort(cid,renfortId,confirmed){
   const r=CASERNE_DATA[cid]?.renforts?.find(function(x){return x.id===renfortId;});if(!r)return;
+  if(r.statut==='termine'){showToast('Ce renfort est déjà clôturé.','warn');return;}
+  const ivLocale=(CASERNE_DATA[cid]?.ivs||[]).find(function(iv){return iv._renfortId===renfortId;});
+  if(!confirmed){
+    if(!ivLocale){showToast('Fiche de renfort introuvable : clôture impossible.','warn');return;}
+    requestOperationalCloseConfirmation(ivLocale,'Renfort · Véhicule : '+(ivLocale.eng||ivLocale._engin1||'non renseigné')+' · Retour : '+getHHMM(N()),
+      function(snapshot){cloturerRenfort(cid,renfortId,snapshot);});
+    return;
+  }
+  if(!ivLocale||confirmed!==operationalCloseSnapshot(ivLocale)){showToast('La fiche du renfort a changé : rouvrez-la avant de clôturer.','warn');return;}
   r.statut='termine';
   r.hFin=getHHMM(N());
   // Clôturer aussi l'IV de renfort locale (sinon elle reste affichée "en-cours")
-  const ivLocale=(CASERNE_DATA[cid]?.ivs||[]).find(function(iv){return iv._renfortId===renfortId;});
   if(ivLocale){
     ivLocale.s='terminee';
     ivLocale._hFin=r.hFin;
@@ -15890,7 +15959,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202609_0014';
+const APP_VERSION='V202609_0015';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;

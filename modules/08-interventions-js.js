@@ -1523,7 +1523,7 @@ function oM(id){
       const renfortCloBtn=iv._isRenfort&&!isInternalReinforcement?`<div style="background:#EDE9FE;border-radius:10px;padding:12px;margin-bottom:10px;border:2px solid #7C3AED;">
         <div style="font-size:12px;font-weight:600;color:#7C3AED;margin-bottom:6px;">&#x1F692; Renfort UT — ${iv._caserneSourceNom||''}</div>
         <div style="font-size:11px;color:var(--t2);margin-bottom:8px;">Clôturez votre partie quand votre équipage rentre à la caserne. L'intervention principale reste ouverte chez la caserne demandeuse.</div>
-        <button class="btn gn" style="width:100%;" onclick="cloturerRenfort('${CURRENT_CASERNE_ID}','${iv._renfortId}')">&#x2705; Clôturer ma partie renfort</button>
+        <button class="btn gn" style="width:100%;" onclick="cloturerRenfort('${CURRENT_CASERNE_ID}','${iv._renfortId}')">Vérifier la clôture du renfort</button>
       </div>`:'';
       const _natExclus=["Sauvetage et capture d'animaux","Sauvetage de personne"];
       const _isOwnAgres=(iv.agr===CU.l||iv._agr2===CU.l);
@@ -1553,8 +1553,8 @@ function oM(id){
         ${canCurrentUserCloseIntervention(iv)?(canSuperAdminOperateForAnotherChief()?`<div style="background:#EEF2FF;border:1px solid #A5B4FC;border-radius:9px;padding:10px;margin-bottom:10px;">
           <label for="superadmin-end-time" style="display:block;font-size:11px;font-weight:700;color:#3730A3;margin-bottom:5px;">Heure de retour saisie manuellement *</label>
           <input class="fi" type="time" id="superadmin-end-time" value="${getHHMM(N())}" style="width:100%;margin-bottom:8px;"/>
-          <button class="btn gn" style="width:100%;" onclick="clotSuperAdmin('${iv.id}')">🛡️ Clôturer pour ${escHtml(iv.agr||'le chef d’agrès')}</button>
-        </div>`:`<button class="btn gn" style="width:100%;margin-bottom:10px;" onclick="clot('${iv.id}')">✅ Confirmer la clôture</button>`):`<div style="font-size:12px;color:#991B1B;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:8px;margin-bottom:10px;">🔒 Clôture réservée au chef d'agrès assigné ou à un administrateur.</div>`}
+          <button class="btn gn" style="width:100%;" onclick="clotSuperAdmin('${iv.id}')">🛡️ Vérifier avant de clôturer pour ${escHtml(iv.agr||'le chef d’agrès')}</button>
+        </div>`:`<button class="btn gn" style="width:100%;margin-bottom:10px;" onclick="clot('${iv.id}')">Vérifier avant de clôturer</button>`):`<div style="font-size:12px;color:#991B1B;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:8px;margin-bottom:10px;">🔒 Clôture réservée au chef d'agrès assigné ou à un administrateur.</div>`}
         <div style="border-top:1px solid var(--brd);padding-top:10px;margin-bottom:6px;">
           <div style="font-size:10px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Gestion de l'équipage</div>
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:5px;">
@@ -2234,16 +2234,26 @@ function clot(id,options){
   const collection=interventionCollection(iv);
   // Ne pas re-clôturer une intervention déjà liée à une PILP
   if(iv._lienPilp&&iv.s==='terminee'){showToast('Cette intervention est déjà clôturée (liée à une PILP).','warn');cM();return;}
-  const avis=document.getElementById('chk-av')&&document.getElementById('chk-av').checked;
-  const avisHeure=avis&&document.getElementById('avis-passage-hour')?document.getElementById('avis-passage-hour').value:'';
+  const avis=opts._closeConfirmed?opts._closeAvis===true:!!(document.getElementById('chk-av')&&document.getElementById('chk-av').checked);
+  const avisHeure=opts._closeConfirmed?opts._closeAvisHeure||'':avis&&document.getElementById('avis-passage-hour')?document.getElementById('avis-passage-hour').value:'';
   if(avis&&!/^([01]\d|2[0-3]):[0-5]\d$/.test(avisHeure)){
     showToast('Renseignez l’heure à laquelle l’avis de passage a été déposé.','warn');
     const field=document.getElementById('avis-passage-hour');if(field){field.focus();field.scrollIntoView({behavior:'smooth',block:'center'});}
     return;
   }
+  if(!['en-cours','avis-passage'].includes(iv.s)){showToast('Cette intervention n’est plus en cours.','warn');return;}
+  if(!opts._closeConfirmed){
+    const capturedTime=getHHMM(N()),capturedStamp=getH(N());
+    requestOperationalCloseConfirmation(iv,
+      'Véhicule : '+(iv.eng||iv._engin1||'non renseigné')+' · Chef d’agrès : '+(iv.agr||'non renseigné')
+      +' · Retour : '+(opts.superAdminManual?opts.endTime:capturedTime)+(avis?' · Avis de passage à '+avisHeure:''),
+      function(snapshot){clot(id,Object.assign({},opts,{_closeConfirmed:true,_closeSnapshot:snapshot,_closeAvis:avis,_closeAvisHeure:avisHeure,_closeTime:capturedTime,_closeStamp:capturedStamp}));});
+    return;
+  }
+  if(!opts.directClosure&&opts._closeSnapshot!==operationalCloseSnapshot(iv)){showToast('La fiche a changé : rouvrez-la avant de clôturer.','warn');return;}
   if(!beginOperationalAction(iv,'cloture',['en-cours','avis-passage']))return;
-  const endTime=opts.superAdminManual?opts.endTime:getHHMM(N());
-  const h=opts.superAdminManual?manualOperationalTimelineStamp(iv,endTime,true):getH(N());
+  const endTime=opts.superAdminManual?opts.endTime:opts._closeTime||getHHMM(N());
+  const h=opts.superAdminManual?manualOperationalTimelineStamp(iv,endTime,true):opts._closeStamp||getH(N());
   const agr2Lbl=iv._agr2?(()=>{const u=USERS.find(u=>u.l===iv._agr2);return u?' + '+fullName(u)+' (2\u00e8me)':' + '+iv._agr2;})():'';
   if(avis){
     // Avis de passage : le requérant était absent. L'intervention de CETTE équipe

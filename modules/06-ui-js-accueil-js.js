@@ -357,6 +357,42 @@ function confirmModal(msg, onOk, onCancel){
   document.getElementById('confirm-ok-btn').onclick=function(){cM();if(onOk)onOk();};
 }
 
+// Une clôture exige deux gestes volontaires, distincts du défilement de la fiche.
+function operationalCloseSnapshot(iv){
+  return JSON.stringify([iv&&iv.s,iv&&iv._statusRevision,iv&&iv._serverRevision,iv&&iv.agr,iv&&iv._hDebut,iv&&iv.eng]);
+}
+function requestOperationalCloseConfirmation(iv,details,onConfirm){
+  if(!iv||typeof onConfirm!=='function')return;
+  const snapshot=operationalCloseSnapshot(iv);
+  const mo=document.getElementById('mo'),title=document.getElementById('mt'),info=document.getElementById('mi'),body=document.getElementById('mb');
+  if(!mo||!title||!info||!body)return;
+  title.textContent='Vérifier avant de clôturer';
+  info.textContent='Aucune clôture ne sera enregistrée sans votre confirmation.';
+  body.innerHTML='<div style="padding:8px 0;line-height:1.5;">'
+    +'<div style="font-weight:700;margin-bottom:8px;">'+escHtml(iv.n||'Intervention')+'</div>'
+    +'<div style="font-size:12px;margin-bottom:12px;">'+escHtml(interventionDisplayCallNumber(iv)||iv.id||'')+' · '+escHtml(iv.addr||'')+'</div>'
+    +'<div id="operational-close-details" style="font-size:12px;background:#F8FAFC;border:1px solid #CBD5E1;border-radius:8px;padding:10px;margin-bottom:14px;"></div>'
+    +'<label style="display:flex;align-items:flex-start;gap:9px;padding:12px;border:1px solid #F59E0B;border-radius:8px;margin-bottom:14px;cursor:pointer;">'
+    +'<input type="checkbox" id="operational-close-check" style="margin-top:3px;accent-color:#B91C1C;">'
+    +'<span>J’ai vérifié l’intervention, le véhicule et l’heure de retour. Je veux réellement la clôturer.</span></label>'
+    +'<div class="brow" style="gap:8px;"><button type="button" class="btn sm" id="operational-close-cancel">Annuler — ne rien changer</button>'
+    +'<button type="button" class="btn sm" id="operational-close-confirm" disabled style="background:#B91C1C;color:#fff;opacity:.45;">Clôturer définitivement</button></div></div>';
+  document.getElementById('operational-close-details').textContent=String(details||'');
+  mo.style.display='flex';
+  const panel=mo.querySelector('.mod');if(panel)panel.scrollTop=0;
+  const check=document.getElementById('operational-close-check'),confirm=document.getElementById('operational-close-confirm');
+  confirm.disabled=true;
+  check.onchange=function(){confirm.disabled=!check.checked;confirm.style.opacity=check.checked?'1':'.45';};
+  document.getElementById('operational-close-cancel').onclick=function(){cM();};
+  confirm.onclick=function(){
+    if(confirm.disabled||!check.checked)return;
+    confirm.disabled=true;
+    const current=interventionById(iv.id);
+    if(!current||operationalCloseSnapshot(current)!==snapshot){cM();showToast('La fiche a changé : rouvrez-la avant de clôturer.','warn');return;}
+    cM();onConfirm(snapshot);
+  };
+}
+
 // ────────────────── TABS ──────────────────
 function showT(id,btn){
   if(id==='formation'&&!hasFormationRight()){

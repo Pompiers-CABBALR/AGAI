@@ -307,7 +307,7 @@ function oPilp(id){
           <label for="pilp-avis-passage-hour" style="display:block;font-size:11px;font-weight:700;color:#6B21A8;margin-bottom:5px;">Heure de dépôt dans la boîte aux lettres *</label>
           <input class="fi" type="time" id="pilp-avis-passage-hour" value="${getHHMM(N())}" style="width:100%;"/>
         </div>
-        <button class="btn gn" style="width:100%;" onclick="clotPilp('${id}')">✅ Confirmer la clôture</button>
+        <button class="btn gn" style="width:100%;" onclick="clotPilp('${id}')">Vérifier avant de clôturer</button>
       </div>
       <div class="brow" style="margin-top:8px;"><button class="btn sm danger" onclick="cSPilp('${id}','en-attente')">↩ En attente</button></div>`;
     } else if(iv.s==='avis-passage'&&(chef||ag)){
@@ -373,19 +373,28 @@ function cSPilp(id,s,confirmed){
   saveData(true);
   rPilp();oPilp(id);
 }
-function clotPilp(id){
+function clotPilp(id,options){
   const iv=PILP_IVS.find(v=>v.id===id);if(!iv)return;
+  const opts=options||{};
   if(!canOperatePilp()){showToast('La clôture d’une intervention PILP est réservée aux tireurs PILP, aux administrateurs actifs et au superadmin.','warn');return;}
   if(!canCurrentUserCloseIntervention(iv)){showToast('Seul le chef d’agrès affecté à cette intervention peut la clôturer.','warn');return;}
-  const avis=document.getElementById('chk-pilp-avis')&&document.getElementById('chk-pilp-avis').checked;
-  const avisHeure=avis&&document.getElementById('pilp-avis-passage-hour')?document.getElementById('pilp-avis-passage-hour').value:'';
+  const avis=opts._closeConfirmed?opts._closeAvis===true:!!(document.getElementById('chk-pilp-avis')&&document.getElementById('chk-pilp-avis').checked);
+  const avisHeure=opts._closeConfirmed?opts._closeAvisHeure||'':avis&&document.getElementById('pilp-avis-passage-hour')?document.getElementById('pilp-avis-passage-hour').value:'';
   if(avis&&!/^([01]\d|2[0-3]):[0-5]\d$/.test(avisHeure)){
     showToast('Renseignez l’heure à laquelle l’avis de passage a été déposé.','warn');
     const field=document.getElementById('pilp-avis-passage-hour');if(field){field.focus();field.scrollIntoView({behavior:'smooth',block:'center'});}
     return;
   }
+  if(iv.s!=='en-cours'){showToast('Cette intervention n’est plus en cours.','warn');return;}
+  if(!opts._closeConfirmed){
+    const capturedTime=getHHMM(N()),capturedStamp=getH(N());
+    requestOperationalCloseConfirmation(iv,'PILP · Chef d’agrès : '+(iv.agr||'non renseigné')+' · Retour : '+capturedTime+(avis?' · Avis de passage à '+avisHeure:''),
+      function(snapshot){clotPilp(id,{_closeConfirmed:true,_closeSnapshot:snapshot,_closeAvis:avis,_closeAvisHeure:avisHeure,_closeTime:capturedTime,_closeStamp:capturedStamp});});
+    return;
+  }
+  if(opts._closeSnapshot!==operationalCloseSnapshot(iv)){showToast('La fiche a changé : rouvrez-la avant de clôturer.','warn');return;}
   if(!beginOperationalAction(iv,'cloture-pilp',['en-cours']))return;
-  const h=getH(N());
+  const h=opts._closeStamp||getH(N());
   if(avis){
     iv.s='avis-passage';iv.rappels=(iv.rappels||0)+1;
     iv._avisPassage=true;iv._avisEnAttente=true;
@@ -396,7 +405,7 @@ function clotPilp(id){
     saveData(true);
     rPilp();oPilp(id);
   } else {
-    iv.s='terminee';iv._hFin=getHHMM(N());pushTL(iv,'terminee',CU.l,'',h);
+    iv.s='terminee';iv._hFin=opts._closeTime||getHHMM(N());pushTL(iv,'terminee',CU.l,'',h);
     (iv.avisIds||[]).forEach(aid=>{const av=PILP_IVS.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';pushTL(av,'terminee',CU.l+' (fusion)','',h);}});
     if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
     saveData(true);

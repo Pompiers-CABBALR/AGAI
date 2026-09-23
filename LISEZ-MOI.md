@@ -39,9 +39,12 @@ passerelle serveur sécurisée.
 
 ## Authentification actuelle
 
-Les identifiants AGAI existants sont conservés. Dans la V202609_0014, la liaison
+Les identifiants AGAI existants sont conservés. Dans la V202609_0015, la liaison
 technique Supabase Auth reste désactivée dans `runtime-config.js`. Cette livraison
-prépare la numérotation provisoire au départ et définitive à la clôture. Chaque
+prépare la numérotation provisoire au départ et définitive à la clôture, ainsi
+qu'une confirmation à deux gestes pour éviter une clôture accidentelle. Elle
+n'est pas encore déployée en production et doit être validée avec le script SQL
+de numérotation sur une copie de la base. Chaque
 compte possède un `caserneId` et un `appRole` maintenus par l’application.
 
 Cette association organise les droits dans AGAI, mais ne permet pas à Supabase

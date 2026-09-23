@@ -3063,7 +3063,7 @@ function showSuperAdminDirectClosureModal(id){
     +'<div class="fg"><div class="fgl">Heure de retour <span class="req">*</span></div><input class="fi" type="time" id="superadmin-direct-end-time" value="'+getHHMM(N())+'"/></div>'
     +'<div class="fg"><div class="fgl">Véhicule <span class="req">*</span></div><select class="fi" id="superadmin-depart-vehicle" onchange="refreshSuperAdminDepartureCrew()">'+superAdminVehicleOptions(initialVehicle)+'</select></div>'
     +'<div style="font-size:12px;font-weight:700;margin:12px 0 8px;">Équipage complet selon les places du véhicule</div><div id="superadmin-depart-crew"></div>'
-    +'<div class="brow" style="margin-top:12px;"><button class="btn gn sm" onclick="confirmerClotureSuperAdminDirecte(\''+id+'\')">🛡️ Enregistrer et clôturer</button><button class="btn sm" onclick="cM()">Annuler</button></div>';
+    +'<div class="brow" style="margin-top:12px;"><button class="btn gn sm" onclick="confirmerClotureSuperAdminDirecte(\''+id+'\')">🛡️ Vérifier avant de clôturer</button><button class="btn sm" onclick="cM()">Annuler</button></div>';
   document.getElementById('mo').style.display='flex';
   // Une saisie rétroactive doit proposer tout le personnel, y compris les agents
   // actuellement engagés. Le contrôle porte ensuite sur la plage horaire saisie.
@@ -3127,16 +3127,16 @@ function findManualOperationalIntervalConflict(iv,startTime,endTime,vehicles,per
   }
   return null;
 }
-function confirmerClotureSuperAdminDirecte(id){
+function confirmerClotureSuperAdminDirecte(id,validated){
   const iv=interventionById(id);if(!iv)return;
   if(operationalActionInProgress(iv,'cloture-directe')){showToast('Cette clôture est déjà en cours d’enregistrement.','warn');return;}
   if(!canSuperAdminOperateForAnotherChief()){cM();showToast('Le pouvoir superadmin n’est plus actif.','warn');return;}
-  const chief=document.getElementById('superadmin-depart-chief')?.value||'';
-  const operationalDate=String(document.getElementById('superadmin-direct-date')?.value||'').replace(/\D/g,'').slice(0,8);
-  const returnDate=String(document.getElementById('superadmin-direct-end-date')?.value||'').replace(/\D/g,'').slice(0,8);
-  const time=document.getElementById('superadmin-depart-time')?.value||'';
-  const endTime=document.getElementById('superadmin-direct-end-time')?.value||'';
-  const vehicle=document.getElementById('superadmin-depart-vehicle')?.value||'';
+  const chief=validated?validated.chief:document.getElementById('superadmin-depart-chief')?.value||'';
+  const operationalDate=validated?validated.operationalDate:String(document.getElementById('superadmin-direct-date')?.value||'').replace(/\D/g,'').slice(0,8);
+  const returnDate=validated?validated.returnDate:String(document.getElementById('superadmin-direct-end-date')?.value||'').replace(/\D/g,'').slice(0,8);
+  const time=validated?validated.time:document.getElementById('superadmin-depart-time')?.value||'';
+  const endTime=validated?validated.endTime:document.getElementById('superadmin-direct-end-time')?.value||'';
+  const vehicle=validated?validated.vehicle:document.getElementById('superadmin-depart-vehicle')?.value||'';
   const chiefUser=USERS.find(function(user){return user.l===chief;});
   if(!chiefUser||!isChefAgresByGrade(chiefUser)){showToast('Sélectionnez obligatoirement un chef d’agrès qualifié.','warn');return;}
   if(!/^\d{8}$/.test(operationalDate)){showToast('Sélectionnez obligatoirement la date réelle de l’intervention.','warn');return;}
@@ -3147,7 +3147,7 @@ function confirmerClotureSuperAdminDirecte(id){
   const directEnd=interventionCompactStampMillis(returnDate+'_'+endTime.replace(':',''));
   if(!Number.isFinite(directStart)||!Number.isFinite(directEnd)||directEnd<=directStart){showToast('Le retour doit être postérieur au départ. Vérifiez les dates et les heures.','warn');return;}
   if(!vehicle){showToast('Sélectionnez obligatoirement le véhicule.','warn');return;}
-  const crew=readDepartureCrewFields(vehicle,'saeq',chief);
+  const crew=validated?validated.crew:readDepartureCrewFields(vehicle,'saeq',chief);
   const driver=crew.find(function(member){return member&&interventionRoleKey(member.role)==='conducteur'&&member.login;});
   if(!driver){showToast('Sélectionnez obligatoirement le conducteur. Les autres membres de l’équipage sont optionnels.','warn');return;}
   const logins=crew.map(function(member){return member.login;}).filter(Boolean);
@@ -3156,6 +3156,12 @@ function confirmerClotureSuperAdminDirecte(id){
   if(intervalConflict){
     if(intervalConflict.active)showOperationalConflict(intervalConflict.kind,intervalConflict.value,intervalConflict.iv);
     else showStartCorrectionOperationalConflict(intervalConflict);
+    return;
+  }
+  if(!validated){
+    const captured={chief:chief,operationalDate:operationalDate,returnDate:returnDate,time:time,endTime:endTime,vehicle:vehicle,crew:JSON.parse(JSON.stringify(crew))};
+    requestOperationalCloseConfirmation(iv,'Saisie directe superadmin · Véhicule : '+vehicle+' · Chef d’agrès : '+chief+' · Départ : '+time+' · Retour : '+endTime,
+      function(){confirmerClotureSuperAdminDirecte(id,captured);});
     return;
   }
   if(!beginOperationalAction(iv,'cloture-directe',['en-attente','selectionne']))return;
@@ -3173,7 +3179,7 @@ function confirmerClotureSuperAdminDirecte(id){
   iv._superAdminOperationalEdits=Array.isArray(iv._superAdminOperationalEdits)?iv._superAdminOperationalEdits:[];
   iv._superAdminOperationalEdits.push({action:'saisie-directe',at:getH(N()),by:CU.l,chef:chief,dateIntervention:operationalDate,dateRetour:returnDate,heureDepart:time,heureRetour:endTime,engin:vehicle,equipage:crew.map(function(member){return {role:member.role,login:member.login};})});
   assignInterventionNumbersAtStart(iv);syncInternalReinforcementSource(iv);markOperationalInterventionDirty(iv);
-  clot(id,{superAdminManual:true,endTime:endTime,directClosure:true});
+  clot(id,{superAdminManual:true,endTime:endTime,directClosure:true,_closeConfirmed:true});
 }
 
 function confirmerDepart(id){
@@ -4051,12 +4057,20 @@ function confirmerRenfortEquipage(cid,renfortId,confirmed){
   showToast('\u00c9quipage de renfort en route !','success');
 }
 
-function cloturerRenfort(cid,renfortId){
+function cloturerRenfort(cid,renfortId,confirmed){
   const r=CASERNE_DATA[cid]?.renforts?.find(function(x){return x.id===renfortId;});if(!r)return;
+  if(r.statut==='termine'){showToast('Ce renfort est déjà clôturé.','warn');return;}
+  const ivLocale=(CASERNE_DATA[cid]?.ivs||[]).find(function(iv){return iv._renfortId===renfortId;});
+  if(!confirmed){
+    if(!ivLocale){showToast('Fiche de renfort introuvable : clôture impossible.','warn');return;}
+    requestOperationalCloseConfirmation(ivLocale,'Renfort · Véhicule : '+(ivLocale.eng||ivLocale._engin1||'non renseigné')+' · Retour : '+getHHMM(N()),
+      function(snapshot){cloturerRenfort(cid,renfortId,snapshot);});
+    return;
+  }
+  if(!ivLocale||confirmed!==operationalCloseSnapshot(ivLocale)){showToast('La fiche du renfort a changé : rouvrez-la avant de clôturer.','warn');return;}
   r.statut='termine';
   r.hFin=getHHMM(N());
   // Clôturer aussi l'IV de renfort locale (sinon elle reste affichée "en-cours")
-  const ivLocale=(CASERNE_DATA[cid]?.ivs||[]).find(function(iv){return iv._renfortId===renfortId;});
   if(ivLocale){
     ivLocale.s='terminee';
     ivLocale._hFin=r.hFin;
