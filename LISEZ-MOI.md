@@ -20,6 +20,8 @@ le code afin de faciliter les prochaines corrections.
   liaison invisible et progressive des comptes AGAI à Supabase Auth ;
 - `DIAGNOSTIC-LIAISON-V202609-0019.sql` : vérification en lecture seule avant
   tout essai du pilote manuel ;
+- `DIAGNOSTIC-PILOTE-BRIAN-V202609-0021.sql` : contrôle en lecture seule avant
+  le rattachement limité à Brian ;
 - `DEPLOIEMENT-SECURISE.md` : procédure d’installation et de vérification.
 
 ## Utilisation
@@ -42,9 +44,10 @@ passerelle serveur sécurisée.
 ## Authentification actuelle
 
 Les identifiants AGAI existants sont conservés. Le mot de passe demandé pour la
-vérification est celui d'AGAI, jamais celui du tableau de bord Supabase. Dans la V202609_0020, la liaison
-technique Supabase Auth est limitée à la **vérification manuelle d'un compte déjà lié** ;
-aucune requête Auth n'est lancée à la connexion. Cette livraison
+vérification est celui d'AGAI, jamais celui du tableau de bord Supabase. Dans la V202609_0021, la liaison
+technique Supabase Auth permet la vérification manuelle du compte déjà lié
+`dacheville.thibaut` et un seul rattachement manuel nouveau pour `lericque.brian`.
+Aucune requête Auth n'est lancée à la connexion. Cette livraison
 prépare la numérotation provisoire au départ et définitive à la clôture, ainsi
 qu'une confirmation à deux gestes pour éviter une clôture accidentelle. Elle
 signale aussi les chevauchements entre interventions et activités, en laissant

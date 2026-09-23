@@ -203,6 +203,7 @@ const AUTH_LINK_MODE = ['off','canary','on'].includes(AGAI_RUNTIME_CONFIG.accoun
   : (AGAI_RUNTIME_CONFIG.accountLinkEnabled===true?'on':'off');
 const AUTH_LINK_ENABLED = AUTH_LINK_MODE!=='off';
 const AUTH_LINK_CANARY_LOGINS = new Set((Array.isArray(AGAI_RUNTIME_CONFIG.accountLinkCanaryLogins)?AGAI_RUNTIME_CONFIG.accountLinkCanaryLogins:[]).map(function(login){return String(login||'').trim().toLowerCase();}));
+const AUTH_LINK_NEW_CANARY_LOGIN=String(AGAI_RUNTIME_CONFIG.accountLinkNewCanaryLogin||'').trim().toLowerCase();
 const AUTH_LINK_ENDPOINT = AGAI_RUNTIME_CONFIG.accountLinkEndpoint||SB_URL+'/functions/v1/agai-account-link';
 const AUTH_LINK_SESSION_KEY='agai_supabase_auth_v239';
 let _agaiAuthSession=null;
@@ -213,6 +214,9 @@ let _agaiAuthRefreshTimer=null;
 let _agaiAuthRefreshFailureCount=0;
 let _agaiAuthLinkRetryAfter=0;
 let _agaiAuthPilotInFlight=false;
+let _agaiPilotCreateOnlyAvailable=false;
+let _agaiPilotCreateOnlyCheckedAt=0;
+let _agaiPilotNewLinkComplete=false;
 if(AUTH_LINK_MODE==='canary')try{localStorage.removeItem(AUTH_LINK_SESSION_KEY);}catch(error){}
 let _agaiLastDataSnapshot=null;
 const AGAI_SERVER_CIRCUIT_KEY='agai_server_circuit_v1';

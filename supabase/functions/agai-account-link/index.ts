@@ -48,7 +48,7 @@ function technicalEmail(login: string, caserneId: string) {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-  if (req.method === 'GET') return json({ status: 'ready', version: 'v239' })
+  if (req.method === 'GET') return json({ status: 'ready', version: 'v239.1', pilotCreateOnlyLogin: 'lericque.brian' })
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405)
 
   const url = Deno.env.get('SUPABASE_URL') ?? ''
@@ -61,9 +61,11 @@ Deno.serve(async (req) => {
   try { payload = await req.json() } catch { return json({ error: 'invalid_json' }, 400) }
   const mode = String(payload.mode ?? 'login')
 
-  if (mode === 'login') {
+  if (mode === 'login' || mode === 'pilot_link') {
+    const createOnly = mode === 'pilot_link'
     const login = normalizeLogin(payload.login)
     const password = String(payload.password ?? '')
+    if (createOnly && login !== 'lericque.brian') return json({ error: 'pilot_not_allowed' }, 403)
     if (!login || !password || password.length > 256) return json({ error: 'invalid_credentials' }, 400)
 
     const { data: attempt } = await admin.from('agai_auth_attempts').select('*').eq('login', login).maybeSingle()
@@ -81,6 +83,8 @@ Deno.serve(async (req) => {
     const email = technicalEmail(login, credential.caserne_id)
     let { data: link } = await admin.from('agai_auth_links').select('*').eq('login', login).maybeSingle()
     let authUserId = link?.auth_user_id as string | undefined
+    // Le pilote ne doit jamais modifier le mot de passe ou les métadonnées d'un compte déjà lié.
+    if (createOnly && authUserId) return json({ error: 'already_linked' }, 409)
     if (!authUserId) {
       const created = await admin.auth.admin.createUser({
         email,
@@ -94,6 +98,10 @@ Deno.serve(async (req) => {
       const inserted = await admin.from('agai_auth_links').insert({ login, auth_user_id: authUserId, caserne_id: credential.caserne_id, app_role: credential.app_role }).select('*').single()
       if (inserted.error) {
         const existing = await admin.from('agai_auth_links').select('*').eq('login', login).single()
+        if (createOnly) {
+          if (existing.data?.auth_user_id !== authUserId) await admin.auth.admin.deleteUser(authUserId)
+          return json({ error: existing.data ? 'already_linked' : 'identity_link_failed' }, existing.data ? 409 : 503)
+        }
         if (existing.error || !existing.data) return json({ error: 'identity_link_failed' }, 503)
         if (existing.data.auth_user_id !== authUserId) await admin.auth.admin.deleteUser(authUserId)
         authUserId = existing.data.auth_user_id
@@ -101,9 +109,12 @@ Deno.serve(async (req) => {
       } else link = inserted.data
     }
 
-    const metadata = { agai_login: login, caserne_id: credential.caserne_id, app_role: credential.app_role }
-    const updated = await admin.auth.admin.updateUserById(authUserId, { password, email, email_confirm: true, app_metadata: metadata, user_metadata: { first_name: credential.first_name, last_name: credential.last_name } })
-    if (updated.error) return json({ error: 'identity_update_failed' }, 503)
+    // createUser a déjà posé ces champs pour le pilote. L'ancien mode conserve sa mise à jour habituelle.
+    if (!createOnly) {
+      const metadata = { agai_login: login, caserne_id: credential.caserne_id, app_role: credential.app_role }
+      const updated = await admin.auth.admin.updateUserById(authUserId, { password, email, email_confirm: true, app_metadata: metadata, user_metadata: { first_name: credential.first_name, last_name: credential.last_name } })
+      if (updated.error) return json({ error: 'identity_update_failed' }, 503)
+    }
     const publicClient = createClient(url, anonKey, { auth: { persistSession: false, autoRefreshToken: false } })
     const signed = await publicClient.auth.signInWithPassword({ email, password })
     if (signed.error || !signed.data.session) return json({ error: 'session_creation_failed' }, 503)

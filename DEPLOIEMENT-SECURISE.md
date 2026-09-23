@@ -1,5 +1,40 @@
 # AGAI — déploiement sécurisé
 
+## Préparation V202609_0021 — pilote Brian, création unique
+
+**Préparée localement, non déployée par Codex.** La V20 reste la version en place
+tant que les contrôles ci-dessous ne sont pas terminés. `lericque.brian` est le
+seul nouveau compte admis au pilote ; `dacheville.thibaut` conserve uniquement
+son bouton de vérification. La connexion AGAI n'effectue aucun appel Auth.
+
+1. Exécuter `DIAGNOSTIC-PILOTE-BRIAN-V202609-0021.sql` dans l'éditeur SQL
+   Supabase. Il ne retourne ni mot de passe ni empreinte. Attendre une seule
+   ligne avec `actif=true`, `deja_lie=false`,
+   `identite_auth_deja_presente=false` et `mot_de_passe_agai_aligne=true`.
+   Si un résultat diffère, arrêter : ne pas relancer le SQL v239 et ne pas
+   créer de compte à la main.
+2. Déployer **uniquement** la fonction Edge `supabase/functions/agai-account-link`
+   fournie avec ce paquet. Son GET doit répondre `version: v239.1` et
+   `pilotCreateOnlyLogin: lericque.brian` avant la publication de l'application.
+   L'ancien mode `login` reste intact ; le nouveau mode `pilot_link` n'accepte
+   que Brian et refuse (`409`) toute identité déjà liée sans la modifier.
+3. Publier ensuite **tous** les fichiers de la V202609_0021 sur l'hébergement,
+   y compris `runtime-config.js` et `version.json`. Sur un seul appareil, Brian
+   se connecte lui-même à AGAI et attend une file vide, une réception récente
+   et la santé du service pilote « prêt ». Il ouvre ⚙️ → « Mon profil », puis
+   déclenche une seule fois « Rattacher mon compte » avec son mot de passe AGAI.
+   Ne jamais saisir le mot de passe du tableau de bord Supabase.
+4. Vérifier que la liaison passe de 11/24 à 12/24, que la file reste vide et
+   que les derniers envoi/réception restent récents. En cas de résultat incertain,
+   ne pas répéter l'essai : relancer uniquement le diagnostic en lecture seule.
+
+Le compte technique créé n'est **pas utilisé pour la synchronisation**. Sa
+session de test est révoquée localement et aucun jeton n'est conservé. Ne pas
+passer `accountLinkMode` à `on` et ne pas activer les RLS restrictives. Pour
+arrêter le pilote, mettre `accountLinkMode: 'off'` dans `runtime-config.js` et
+republier ce fichier ; cela ne supprime ni file locale ni compte déjà créé.
+Ne pas redémarrer Supabase pour ce pilote.
+
 ## Préparation V202609_0020 — vérification du compte Supabase déjà lié
 
 **Non déployée en production par cette préparation.** Le diagnostic de production
@@ -23,9 +58,9 @@ Après la vérification, contrôler la file, les derniers envoi/réception et le
 logs Auth. Le retour arrière demeure `accountLinkMode: 'off'` dans
 `runtime-config.js` ; ne pas activer le mode `on` ni les RLS restrictives.
 
-## Préparation V202609_0019 — reprise manuelle de la liaison Supabase Auth
+## Archive V202609_0019 — remplacée, ne pas déployer
 
-**Non déployée en production par cette préparation.** Le dossier modulaire est
+**Historique uniquement : utiliser la V202609_0020 ci-dessus.** Le dossier modulaire était
 configuré en mode `canary`, limité au compte pilote `dacheville.thibaut`.
 Contrairement à l'ancien essai, aucune requête Auth n'est envoyée à la connexion
 AGAI. Le pilote démarre uniquement par le bouton « Tester ma liaison sur cet

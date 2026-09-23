@@ -321,6 +321,12 @@ function rProfil(){
   // Bouton d'édition réservé au chef de corps (il modifie son compte global lui-même)
   const ccBtn=document.getElementById('prof-cc-edit-btn');
   if(ccBtn)ccBtn.style.display='none';
+  const pilotPanel=document.getElementById('agai-auth-pilot-profile');
+  if(pilotPanel){
+    const isBrianPilot=AUTH_LINK_MODE==='canary'&&CU.l===AUTH_LINK_NEW_CANARY_LOGIN;
+    pilotPanel.style.display=isBrianPilot?'':'none';
+    if(isBrianPilot)refreshBrianPilotProfile();
+  }
 }
 async function saveProfil(){
   const mdp=document.getElementById('prof-mdp').value;

@@ -356,6 +356,7 @@ const AUTH_LINK_MODE = ['off','canary','on'].includes(AGAI_RUNTIME_CONFIG.accoun
   : (AGAI_RUNTIME_CONFIG.accountLinkEnabled===true?'on':'off');
 const AUTH_LINK_ENABLED = AUTH_LINK_MODE!=='off';
 const AUTH_LINK_CANARY_LOGINS = new Set((Array.isArray(AGAI_RUNTIME_CONFIG.accountLinkCanaryLogins)?AGAI_RUNTIME_CONFIG.accountLinkCanaryLogins:[]).map(function(login){return String(login||'').trim().toLowerCase();}));
+const AUTH_LINK_NEW_CANARY_LOGIN=String(AGAI_RUNTIME_CONFIG.accountLinkNewCanaryLogin||'').trim().toLowerCase();
 const AUTH_LINK_ENDPOINT = AGAI_RUNTIME_CONFIG.accountLinkEndpoint||SB_URL+'/functions/v1/agai-account-link';
 const AUTH_LINK_SESSION_KEY='agai_supabase_auth_v239';
 let _agaiAuthSession=null;
@@ -366,6 +367,9 @@ let _agaiAuthRefreshTimer=null;
 let _agaiAuthRefreshFailureCount=0;
 let _agaiAuthLinkRetryAfter=0;
 let _agaiAuthPilotInFlight=false;
+let _agaiPilotCreateOnlyAvailable=false;
+let _agaiPilotCreateOnlyCheckedAt=0;
+let _agaiPilotNewLinkComplete=false;
 if(AUTH_LINK_MODE==='canary')try{localStorage.removeItem(AUTH_LINK_SESSION_KEY);}catch(error){}
 let _agaiLastDataSnapshot=null;
 const AGAI_SERVER_CIRCUIT_KEY='agai_server_circuit_v1';
@@ -1285,7 +1289,8 @@ function _agaiAuthOperationalReady(){
 }
 function _agaiAuthPilotReady(){
   return AUTH_LINK_MODE==='canary'&&!!CU&&_agaiAuthLinkEligible(CU)&&!_agaiAuthPilotInFlight
-    &&_agaiAuthBridgeState==='active'&&_agaiAuthOperationalReady();
+    &&_agaiAuthBridgeState==='active'&&_agaiAuthOperationalReady()&&Date.now()>=_agaiAuthLinkRetryAfter
+    &&(CU.l!==AUTH_LINK_NEW_CANARY_LOGIN||(_agaiPilotCreateOnlyAvailable&&!_agaiPilotNewLinkComplete));
 }
 async function _agaiLinkSupabaseAccount(account,password,loginSessionToken){
   if(AUTH_LINK_MODE!=='on'||!_agaiAuthLinkEligible(account)||Date.now()<_agaiAuthLinkRetryAfter)return false;
@@ -1350,6 +1355,42 @@ async function _agaiVerifyExistingAuthAccount(account,password,loginSessionToken
   if(!cleanupOk)_agaiAuthLinkRetryAfter=Date.now()+5*60*1000;
   return verified&&cleanupOk;
 }
+async function _agaiCreateNewAuthAccount(account,password,loginSessionToken){
+  if(!_agaiAuthPilotReady()||!account||account.l!==AUTH_LINK_NEW_CANARY_LOGIN||!loginSessionToken
+    ||!CU||CU.l!==account.l||CU.caserneId!==account.caserneId)return 'deferred';
+  _agaiAuthPilotInFlight=true;
+  let accessToken='',outcome='deferred',cleanupOk=true;
+  try{
+    const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{
+      method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','x-device-id':agaiDeviceId()},
+      body:JSON.stringify({mode:'pilot_link',login:account.l,password:password})
+    },6000);
+    const result=await response.json().catch(function(){return{};});
+    if(response.status===409&&result.error==='already_linked')outcome='already_linked';
+    else if(!response.ok)throw new Error('Rattachement refusé (HTTP '+response.status+')');
+    else if(result.status!=='linked'||result.login!==account.l||result.caserneId!==account.caserneId)outcome='uncertain';
+    else{
+      accessToken=String(result.session&&result.session.access_token||'');
+      outcome=accessToken?'linked':'uncertain';
+      _agaiPilotNewLinkComplete=true;
+    }
+  }catch(error){console.warn('[AGAI][AUTH] Pilote de création différé :',error);}
+  finally{
+    if(accessToken){
+      try{
+        const logout=await _agaiAuthFetchWithTimeout(SB_URL+'/auth/v1/logout?scope=local',{
+          method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+accessToken}
+        },6000);
+        if(!logout.ok)throw new Error('HTTP '+logout.status);
+      }catch(error){cleanupOk=false;console.warn('[AGAI][AUTH] Session de test non révoquée :',error);}
+    }
+    _agaiAuthPilotInFlight=false;
+  }
+  if(outcome!=='linked'||!cleanupOk)_agaiAuthLinkRetryAfter=Date.now()+5*60*1000;
+  if(outcome==='linked'&&!cleanupOk)outcome='linked_cleanup_failed';
+  if(SESSION_TOKEN!==loginSessionToken&&outcome==='linked')outcome='linked_session_changed';
+  return outcome;
+}
 async function _agaiLinkedPasswordChange(mode,login,newPassword){
   if(AUTH_LINK_MODE==='canary')return true; // Aucune opération courante ne dépend du pilote.
   if(!_agaiAuthLinkLoginEligible(login))return true;
@@ -1390,23 +1431,64 @@ async function _agaiDeactivateLinkedAccount(login){
     return response.ok;
   }catch(error){return false;}
 }
+function _agaiUpdatePilotProfileState(){
+  if(!CU||CU.l!==AUTH_LINK_NEW_CANARY_LOGIN)return;
+  const state=document.getElementById('agai-auth-pilot-profile-state');
+  const button=document.getElementById('agai-auth-pilot-profile-launch');
+  if(state)state.textContent=_agaiPilotNewLinkComplete?'Compte technique rattaché. Aucun nouvel essai nécessaire.'
+    :!_agaiAuthOperationalReady()?'Attendez Sync OK, une réception récente et une file vide.'
+    :_agaiAuthBridgeState!=='active'?'Service de liaison indisponible.'
+    :!_agaiPilotCreateOnlyAvailable?'Fonction pilote V21 non disponible.':'Service pilote prêt pour une seule tentative.';
+  if(button)button.disabled=!_agaiAuthPilotReady();
+}
+function refreshBrianPilotProfile(){
+  _agaiUpdatePilotProfileState();
+  _agaiCheckAccountLinkServer(true);
+}
+async function _agaiCheckPilotCreateOnlyServer(force){
+  if(AUTH_LINK_MODE!=='canary'||!CU||CU.l!==AUTH_LINK_NEW_CANARY_LOGIN)return false;
+  if(!_agaiAuthOperationalReady()||_agaiAuthBridgeState!=='active'){
+    _agaiPilotCreateOnlyAvailable=false;
+    const button=document.getElementById('agai-auth-pilot-launch');if(button)button.disabled=true;
+    _agaiUpdatePilotProfileState();
+    return false;
+  }
+  if(!_agaiPilotCreateOnlyCheckedAt||force||Date.now()-_agaiPilotCreateOnlyCheckedAt>=60000){
+    _agaiPilotCreateOnlyCheckedAt=Date.now();
+    try{
+      const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{
+        method:'GET',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY}
+      },6000);
+      const result=await response.json().catch(function(){return{};});
+      _agaiPilotCreateOnlyAvailable=response.ok&&result.status==='ready'&&result.pilotCreateOnlyLogin===AUTH_LINK_NEW_CANARY_LOGIN;
+    }catch(error){_agaiPilotCreateOnlyAvailable=false;}
+  }
+  const state=document.getElementById('agai-pilot-server-state');
+  if(state)state.textContent=_agaiPilotCreateOnlyAvailable?'Service pilote prêt':'Fonction pilote V21 non disponible';
+  const button=document.getElementById('agai-auth-pilot-launch');if(button)button.disabled=!_agaiAuthPilotReady();
+  _agaiUpdatePilotProfileState();
+  return _agaiPilotCreateOnlyAvailable;
+}
 async function _agaiCheckAccountLinkServer(force){
   if(!AUTH_LINK_ENABLED){_agaiAuthBridgeState='disabled';return false;}
   const target=document.getElementById('sa-auth-link-state');
   const pilotButton=document.getElementById('agai-auth-pilot-launch');
   if(AUTH_LINK_MODE==='canary'&&!_agaiAuthOperationalReady()){
     _agaiAuthBridgeState='deferred';_agaiAuthBridgeHealth=null;
+    _agaiPilotCreateOnlyAvailable=false;
     if(target){target.textContent='En attente de Sync OK';target.style.color='#B45309';}
     if(pilotButton)pilotButton.disabled=true;
+    _agaiUpdatePilotProfileState();
     return false;
   }
-  if(_agaiAuthBridgeCheckedAt&&Date.now()-_agaiAuthBridgeCheckedAt<60000){
+  if(!force&&_agaiAuthBridgeCheckedAt&&Date.now()-_agaiAuthBridgeCheckedAt<60000){
     if(target){
       const health=_agaiAuthBridgeHealth||{},linked=Number(health.linkedAccounts)||0,total=Number(health.eligibleAccounts)||0;
       target.textContent=_agaiAuthBridgeState==='active'?(linked+' / '+total+' compte(s) rattaché(s)'):_agaiAuthBridgeState==='missing'?'Script v239 à installer':'Vérification impossible';
       target.style.color=_agaiAuthBridgeState==='active'&&total&&linked===total?'#047857':_agaiAuthBridgeState==='error'?'#B91C1C':'#B45309';
     }
     if(pilotButton)pilotButton.disabled=!_agaiAuthPilotReady();
+    if(CU&&CU.l===AUTH_LINK_NEW_CANARY_LOGIN)await _agaiCheckPilotCreateOnlyServer(false);
     return _agaiAuthBridgeState==='active';
   }
   _agaiAuthBridgeCheckedAt=Date.now();
@@ -1421,6 +1503,8 @@ async function _agaiCheckAccountLinkServer(force){
     target.style.color=_agaiAuthBridgeState==='active'&&total&&linked===total?'#047857':_agaiAuthBridgeState==='error'?'#B91C1C':'#B45309';
   }
   if(pilotButton)pilotButton.disabled=!_agaiAuthPilotReady();
+  if(CU&&CU.l===AUTH_LINK_NEW_CANARY_LOGIN)await _agaiCheckPilotCreateOnlyServer(force);
+  _agaiUpdatePilotProfileState();
   return _agaiAuthBridgeState==='active';
 }
 function startManualAccountLinkPilot(){
@@ -1432,13 +1516,16 @@ function startManualAccountLinkPilot(){
     ||(CASERNE_DATA[CURRENT_CASERNE_ID]&&CASERNE_DATA[CURRENT_CASERNE_ID].users||[]).find(function(account){return account&&account.l===CU.l;});
   if(!source||!source.p){showToast('Compte pilote introuvable sur cet appareil.','error');return;}
   const pilotAccount=CU,pilotSessionToken=SESSION_TOKEN;
+  const createNew=pilotAccount.l===AUTH_LINK_NEW_CANARY_LOGIN;
   const title=document.getElementById('mt'),info=document.getElementById('mi'),body=document.getElementById('mb'),modal=document.getElementById('mo');
   if(!title||!info||!body||!modal)return;
-  title.textContent='Identité technique AGAI — cet appareil uniquement';
-  info.textContent='Le compte technique AGAI dans Supabase Auth est distinct de votre accès au tableau de bord Supabase. Cette vérification ne crée ni ne modifie de compte et ne change pas la synchronisation.';
+  title.textContent=createNew?'Pilote Brian — rattachement technique unique':'Identité technique AGAI — cet appareil uniquement';
+  info.textContent=createNew
+    ?'Cette action crée uniquement le compte technique Supabase Auth de Brian, s’il n’existe pas déjà. Elle ne change ni son accès AGAI ni la synchronisation. Brian doit saisir lui-même son mot de passe AGAI.'
+    :'Le compte technique AGAI dans Supabase Auth est distinct de votre accès au tableau de bord Supabase. Cette vérification ne crée ni ne modifie de compte et ne change pas la synchronisation.';
   body.innerHTML='<div style="padding:8px 0;"><label for="agai-auth-pilot-password" style="display:block;font-size:12px;margin-bottom:6px;">Mot de passe AGAI (jamais celui du tableau de bord Supabase)</label>'
     +'<input class="fi" type="password" id="agai-auth-pilot-password" autocomplete="current-password" style="width:100%;margin-bottom:12px;">'
-    +'<div class="brow"><button type="button" class="btn pr sm" id="agai-auth-pilot-confirm">Vérifier mon compte existant</button>'
+    +'<div class="brow"><button type="button" class="btn pr sm" id="agai-auth-pilot-confirm">'+(createNew?'Rattacher le compte de Brian':'Vérifier mon compte existant')+'</button>'
     +'<button type="button" class="btn sm" onclick="cM()">Annuler</button></div></div>';
   modal.style.display='flex';
   const field=document.getElementById('agai-auth-pilot-password');
@@ -1450,9 +1537,18 @@ function startManualAccountLinkPilot(){
     }
     cM();
     if(!CU||SESSION_TOKEN!==pilotSessionToken||CU.l!==pilotAccount.l)return;
-    const linked=await _agaiVerifyExistingAuthAccount(pilotAccount,password,pilotSessionToken);
+    const result=createNew?await _agaiCreateNewAuthAccount(pilotAccount,password,pilotSessionToken)
+      :await _agaiVerifyExistingAuthAccount(pilotAccount,password,pilotSessionToken);
     if(!CU||SESSION_TOKEN!==pilotSessionToken)return;
-    showToast(linked?'Compte Supabase existant vérifié. La synchronisation reste inchangée.':'Vérification différée. L’application reste utilisable.',linked?'success':'warn');
+    if(createNew){
+      const message=result==='linked'?'Compte technique de Brian rattaché. La synchronisation reste inchangée.'
+        :result==='already_linked'?'Compte déjà rattaché : aucune identité existante modifiée.'
+        :result==='linked_cleanup_failed'?'Compte rattaché, mais déconnexion de la session test non confirmée : arrêter le pilote.'
+        :result==='uncertain'?'Résultat incertain : vérifier la liste des comptes avant tout nouvel essai.'
+        :'Rattachement différé. Aucune modification de la synchronisation.';
+      showToast(message,result==='linked'?'success':result==='already_linked'?'info':'warn');
+    }else showToast(result?'Compte Supabase existant vérifié. La synchronisation reste inchangée.':'Vérification différée. L’application reste utilisable.',result?'success':'warn');
+    _agaiUpdatePilotProfileState();
     refreshOperationalHealthPanel();
   };
   field.focus();
@@ -2053,7 +2149,7 @@ function renderOperationalHealthPanel(){
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">UTILISATEURS EN LIGNE</div><strong style="font-size:18px;">'+report.online.length+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">FICHES ANCIENNES PROTÉGÉES</div><strong style="font-size:18px;color:#047857;">'+report.legacyProtected+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">PROTECTION SERVEUR V238</div><strong id="sa-atomic-state" style="font-size:11px;color:'+(report.atomicState==='active'?'#047857':report.atomicState==='missing'?'#B45309':'#64748B')+';">'+(report.atomicState==='active'?'Active':report.atomicState==='missing'?'Script v238 à installer':report.atomicState==='error'?'Vérification impossible':'Vérification…')+'</strong></div>'
-    +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">LIAISON DES COMPTES V239</div><strong id="sa-auth-link-state" style="font-size:11px;color:#B45309;">'+(report.authBridgeState==='disabled'?'Suspendue pour stabilité':report.authBridgeState==='deferred'?'En attente de Sync OK':report.authBridgeState==='missing'?'Script v239 à installer':report.authBridgeState==='error'?'Vérification impossible':'Vérification…')+'</strong>'+(AUTH_LINK_MODE==='canary'&&CU&&_agaiAuthLinkEligible(CU)?'<div style="margin-top:6px;"><button type="button" class="btn sm" id="agai-auth-pilot-launch" onclick="startManualAccountLinkPilot()"'+(_agaiAuthPilotReady()?'':' disabled')+'>Vérifier mon compte existant</button></div>':'')+'</div>'
+    +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">LIAISON DES COMPTES V239</div><strong id="sa-auth-link-state" style="font-size:11px;color:#B45309;">'+(report.authBridgeState==='disabled'?'Suspendue pour stabilité':report.authBridgeState==='deferred'?'En attente de Sync OK':report.authBridgeState==='missing'?'Script v239 à installer':report.authBridgeState==='error'?'Vérification impossible':'Vérification…')+'</strong>'+(AUTH_LINK_MODE==='canary'&&CU&&_agaiAuthLinkEligible(CU)?'<div style="margin-top:6px;"><button type="button" class="btn sm" id="agai-auth-pilot-launch" onclick="startManualAccountLinkPilot()"'+(_agaiAuthPilotReady()?'':' disabled')+'>'+(CU.l===AUTH_LINK_NEW_CANARY_LOGIN?'Rattacher mon compte':'Vérifier mon compte existant')+'</button>'+(CU.l===AUTH_LINK_NEW_CANARY_LOGIN?'<div id="agai-pilot-server-state" style="font-size:10px;color:#64748B;margin-top:4px;">Vérification du service pilote…</div>':'')+'</div>':'')+'</div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">DERNIER ENVOI RÉUSSI</div><strong style="font-size:11px;">'+escHtml(fmt(report.lastPushOkAt))+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">DERNIÈRE RÉCEPTION RÉUSSIE</div><strong style="font-size:11px;">'+escHtml(fmt(report.lastPullOkAt))+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">PROTECTION ANTI-SATURATION</div><strong style="font-size:11px;color:'+(report.serverCircuitUntil>Date.now()?'#B45309':'#047857')+';">'+(report.serverCircuitUntil>Date.now()?'Pause jusqu’à '+new Date(report.serverCircuitUntil).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):'Disponible')+'</strong></div>'
@@ -9356,6 +9452,12 @@ function rProfil(){
   // Bouton d'édition réservé au chef de corps (il modifie son compte global lui-même)
   const ccBtn=document.getElementById('prof-cc-edit-btn');
   if(ccBtn)ccBtn.style.display='none';
+  const pilotPanel=document.getElementById('agai-auth-pilot-profile');
+  if(pilotPanel){
+    const isBrianPilot=AUTH_LINK_MODE==='canary'&&CU.l===AUTH_LINK_NEW_CANARY_LOGIN;
+    pilotPanel.style.display=isBrianPilot?'':'none';
+    if(isBrianPilot)refreshBrianPilotProfile();
+  }
 }
 async function saveProfil(){
   const mdp=document.getElementById('prof-mdp').value;
@@ -16277,7 +16379,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202609_0020';
+const APP_VERSION='V202609_0021';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
