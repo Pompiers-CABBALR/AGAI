@@ -37,13 +37,15 @@ passerelle serveur sécurisée.
 
 ## Authentification actuelle
 
-Les identifiants AGAI existants sont conservés. Les utilisateurs ne sont pas créés
-dans Supabase Auth. Chaque compte possède toutefois un `caserneId` et un `appRole`
-maintenus automatiquement par l’application.
+Les identifiants AGAI existants sont conservés. Dans la V202609_0013, la liaison
+technique Supabase Auth reste désactivée dans `runtime-config.js`. Cette livraison
+ne traite que les faux conflits de révision d'interventions historiques. Chaque
+compte possède un `caserneId` et un `appRole` maintenus par l’application.
 
 Cette association organise les droits dans AGAI, mais ne permet pas à Supabase
-d’identifier de manière forte l’utilisateur connecté. Les règles RLS prévues pour
-Supabase Auth ne doivent donc pas être activées dans cette configuration.
+d’identifier de manière forte tous les utilisateurs connectés. Les règles RLS
+prévues pour une migration complète Supabase Auth ne doivent donc pas être activées
+dans cette configuration. Lire `DEPLOIEMENT-SECURISE.md` avant toute publication.
 
 ## Écrans mobiles
 

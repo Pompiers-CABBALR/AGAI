@@ -4,9 +4,10 @@
 window.AGAI_CONFIG = Object.freeze({
   supabaseUrl: 'https://lpzblzqxmoiwghvkhqnt.supabase.co',
   supabasePublishableKey: 'sb_publishable_dkzyaOmA-FeBhL4c1z_KZw_nOdOTWuL',
-  // Mode secours v247 : la liaison des comptes reste installée côté serveur,
-  // mais elle est neutralisée dans le navigateur jusqu'à validation complète.
-  accountLinkEnabled: false,
+  // Correctif opérationnel V202609_0013 : liaison des comptes en pause.
+  // Ne pas activer le pilote Auth tant que la synchronisation n'est pas stable.
+  accountLinkMode: 'off',
+  accountLinkCanaryLogins: ['dacheville.thibaut'],
   accountLinkEndpoint: '',
   mailEndpoint: ''
 });

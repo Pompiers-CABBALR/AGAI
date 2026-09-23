@@ -143,20 +143,20 @@ begin
   incoming_revision := coalesce(nullif(p_data->>'_statusRevision','')::bigint,0);
 
   if current_revision <> coalesce(p_expected_revision,0) then
-    raise exception using errcode='40001',
+    raise exception using errcode='PT409',
       message='AGAI_REVISION_CONFLICT',
       detail='expected='||coalesce(p_expected_revision,0)||';current='||current_revision||';record='||p_id;
   end if;
   if current_record_revision <> coalesce(p_expected_record_revision,0) then
-    raise exception using errcode='40001',
+    raise exception using errcode='PT409',
       message='AGAI_RECORD_REVISION_CONFLICT',
       detail='expected='||coalesce(p_expected_record_revision,0)||';current='||current_record_revision||';record='||p_id;
   end if;
   if incoming_revision < current_revision then
-    raise exception using errcode='40001', message='AGAI_STALE_STATUS_REVISION';
+    raise exception using errcode='PT409', message='AGAI_STALE_STATUS_REVISION';
   end if;
   if current_exists and current_status is distinct from incoming_status and incoming_revision <= current_revision then
-    raise exception using errcode='40001', message='AGAI_STATUS_REVISION_REQUIRED';
+    raise exception using errcode='PT409', message='AGAI_STATUS_REVISION_REQUIRED';
   end if;
 
   if incoming_status='en-cours' and not p_deleted then

@@ -55,7 +55,6 @@ async function doLogin(){
     }
     if(gaFound){
       const ga=gaFound;
-      await _agaiLinkSupabaseAccount(ga,p);
       GLOBAL_ROLE=ga.role;
       _loginAttempts=0;_loginLocked=false;
       if(_loginLockTimer){clearTimeout(_loginLockTimer);_loginLockTimer=null;}
@@ -80,6 +79,8 @@ async function doLogin(){
       document.getElementById('t2r').textContent=CU.rl;
       GRADES.forEach(g=>{['prof-grade-sel','nu-grade'].forEach(id=>{const el=document.getElementById(id);if(el&&!el.querySelector(`option[value="${g}"]`)&&![...el.options].find(o=>o.textContent===g)){const o=document.createElement('option');o.textContent=g;el.appendChild(o);}});});
       _createSession(); // P2
+      // La liaison technique n'attend jamais avant de rendre l'application utilisable.
+      _agaiLinkSupabaseAccount(ga,p,SESSION_TOKEN);
       if(ga.role==='chef_corps'){showGlobalView('chef_corps');return;}
       const hopEl=document.getElementById('hop');if(hopEl)hopEl.textContent='Opérateur : '+CU.l;
       doLoginSuccess();
@@ -118,7 +119,6 @@ async function doLogin(){
     }
 
     // ── Connexion réussie ──
-    await _agaiLinkSupabaseAccount(foundUser,p);
     _loginAttempts=0;_loginLocked=false;
     if(_loginLockTimer){clearTimeout(_loginLockTimer);_loginLockTimer=null;}
     lerr.style.display='none';
@@ -135,6 +135,7 @@ async function doLogin(){
     const hopEl2=document.getElementById('hop');if(hopEl2)hopEl2.textContent='Opérateur : '+CU.l;
     GRADES.forEach(g=>{['prof-grade-sel','nu-grade'].forEach(id=>{const el=document.getElementById(id);if(el&&![...el.options].find(o=>o.textContent===g)){const o=document.createElement('option');o.textContent=g;el.appendChild(o);}});});
     _createSession(); // P2
+    _agaiLinkSupabaseAccount(foundUser,p,SESSION_TOKEN);
     doLoginSuccess();
 
   } finally {

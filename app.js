@@ -351,13 +351,19 @@ const SB_URL  = AGAI_RUNTIME_CONFIG.supabaseUrl||'https://lpzblzqxmoiwghvkhqnt.s
 const SB_KEY  = AGAI_RUNTIME_CONFIG.supabasePublishableKey||'sb_publishable_dkzyaOmA-FeBhL4c1z_KZw_nOdOTWuL';
 const SB_REST = SB_URL + '/rest/v1';
 const SB_GLOBAL_ROW = '_GLOBAL';
-const AUTH_LINK_ENABLED = AGAI_RUNTIME_CONFIG.accountLinkEnabled===true;
+const AUTH_LINK_MODE = ['off','canary','on'].includes(AGAI_RUNTIME_CONFIG.accountLinkMode)
+  ? AGAI_RUNTIME_CONFIG.accountLinkMode
+  : (AGAI_RUNTIME_CONFIG.accountLinkEnabled===true?'on':'off');
+const AUTH_LINK_ENABLED = AUTH_LINK_MODE!=='off';
+const AUTH_LINK_CANARY_LOGINS = new Set((Array.isArray(AGAI_RUNTIME_CONFIG.accountLinkCanaryLogins)?AGAI_RUNTIME_CONFIG.accountLinkCanaryLogins:[]).map(function(login){return String(login||'').trim().toLowerCase();}));
 const AUTH_LINK_ENDPOINT = AGAI_RUNTIME_CONFIG.accountLinkEndpoint||SB_URL+'/functions/v1/agai-account-link';
 const AUTH_LINK_SESSION_KEY='agai_supabase_auth_v239';
 let _agaiAuthSession=null;
 let _agaiAuthBridgeState=AUTH_LINK_ENABLED?'unknown':'disabled';
 let _agaiAuthBridgeHealth=null;
 let _agaiAuthRefreshTimer=null;
+let _agaiAuthRefreshFailureCount=0;
+let _agaiAuthLinkRetryAfter=0;
 let _agaiLastDataSnapshot=null;
 const AGAI_SERVER_CIRCUIT_KEY='agai_server_circuit_v1';
 const AGAI_SERVER_CIRCUIT_MS=5*60*1000;
@@ -1184,19 +1190,24 @@ function _isHashed(p){return typeof p==='string'&&/^[0-9a-f]{32}:[0-9a-f]{64}$/.
 
 function _agaiReadAuthSession(){
   if(_agaiAuthSession)return _agaiAuthSession;
-  try{_agaiAuthSession=JSON.parse(localStorage.getItem(AUTH_LINK_SESSION_KEY)||'null');}catch(error){_agaiAuthSession=null;}
+  if(!CU||!_agaiAuthLinkEligible(CU))return null;
+  try{
+    const saved=JSON.parse(localStorage.getItem(AUTH_LINK_SESSION_KEY)||'null');
+    _agaiAuthSession=saved&&saved._agai_link_login===CU.l?saved:null;
+  }catch(error){_agaiAuthSession=null;}
   if(_agaiAuthSession&&!_agaiAuthRefreshTimer)setTimeout(_agaiScheduleAuthRefresh,0);
   return _agaiAuthSession;
 }
 function _agaiAuthAccessToken(){
   const session=_agaiReadAuthSession();
-  if(!session||!session.access_token)return'';
+  if(!CU||!_agaiAuthLinkEligible(CU)||!session||session._agai_link_login!==CU.l||!session.access_token)return'';
   const expires=Number(session.expires_at)||0;
   if(expires&&expires*1000<Date.now()+30000)return'';
   return String(session.access_token);
 }
 function _agaiStoreAuthSession(session){
   _agaiAuthSession=session&&session.access_token?session:null;
+  if(!_agaiAuthSession)_agaiAuthRefreshFailureCount=0;
   try{
     if(_agaiAuthSession)localStorage.setItem(AUTH_LINK_SESSION_KEY,JSON.stringify(_agaiAuthSession));
     else localStorage.removeItem(AUTH_LINK_SESSION_KEY);
@@ -1205,77 +1216,102 @@ function _agaiStoreAuthSession(session){
 }
 function _agaiScheduleAuthRefresh(){
   if(_agaiAuthRefreshTimer){clearTimeout(_agaiAuthRefreshTimer);_agaiAuthRefreshTimer=null;}
-  const session=_agaiAuthSession;if(!session||!session.refresh_token||!session.expires_at)return;
+  const session=_agaiAuthSession;if(!CU||!_agaiAuthLinkEligible(CU)||!session||session._agai_link_login!==CU.l||!session.refresh_token||!session.expires_at)return;
   const delay=Math.max(5000,Number(session.expires_at)*1000-Date.now()-90000);
   _agaiAuthRefreshTimer=setTimeout(_agaiRefreshAuthSession,delay);
 }
-async function _agaiRefreshAuthSession(){
-  const session=_agaiReadAuthSession();if(!session||!session.refresh_token)return false;
-  try{
-    const response=await fetch(SB_URL+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{'apikey':SB_KEY,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:session.refresh_token})});
-    const refreshed=await response.json();if(!response.ok||!refreshed.access_token)throw new Error('HTTP '+response.status);
-    _agaiStoreAuthSession(refreshed);return true;
-  }catch(error){console.warn('[AGAI][AUTH] Renouvellement de session différé :',error);_agaiAuthRefreshTimer=setTimeout(_agaiRefreshAuthSession,30000);return false;}
+async function _agaiAuthFetchWithTimeout(url,options,timeoutMs){
+  // L'authentification auxiliaire ne touche jamais au coupe-circuit de la
+  // synchronisation opérationnelle, même si la fonction Edge est indisponible.
+  const controller=new AbortController();
+  const timer=setTimeout(function(){controller.abort();},Math.max(1000,Number(timeoutMs)||6000));
+  try{return await fetch(url,Object.assign({},options||{},{signal:controller.signal}));}
+  finally{clearTimeout(timer);}
 }
-async function _agaiLinkSupabaseAccount(account,password){
-  if(!AUTH_LINK_ENABLED||!account||!account.l)return false;
+async function _agaiRefreshAuthSession(){
+  const session=_agaiReadAuthSession();if(!CU||!_agaiAuthLinkEligible(CU)||!session||session._agai_link_login!==CU.l||!session.refresh_token)return false;
   try{
-    const response=await _agaiFetchWithTimeout(AUTH_LINK_ENDPOINT,{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','x-device-id':agaiDeviceId()},body:JSON.stringify({mode:'login',login:account.l,password:password})},12000);
+    const response=await _agaiAuthFetchWithTimeout(SB_URL+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{'apikey':SB_KEY,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:session.refresh_token})},6000);
+    const refreshed=await response.json();if(!response.ok||!refreshed.access_token)throw new Error('HTTP '+response.status);
+    if(_agaiAuthSession!==session)return false;
+    _agaiAuthRefreshFailureCount=0;_agaiStoreAuthSession(Object.assign(refreshed,{_agai_link_login:session._agai_link_login}));return true;
+  }catch(error){
+    if(_agaiAuthSession!==session)return false;
+    _agaiAuthRefreshFailureCount=Math.min(6,_agaiAuthRefreshFailureCount+1);
+    const wait=Math.min(15*60*1000,30000*Math.pow(2,_agaiAuthRefreshFailureCount-1));
+    console.warn('[AGAI][AUTH] Renouvellement de session différé :',error);
+    _agaiAuthRefreshTimer=setTimeout(_agaiRefreshAuthSession,wait);
+    return false;
+  }
+}
+function _agaiAuthLinkLoginEligible(login){
+  if(!AUTH_LINK_ENABLED||!login)return false;
+  return AUTH_LINK_MODE==='on'||AUTH_LINK_CANARY_LOGINS.has(String(login).trim().toLowerCase());
+}
+function _agaiAuthLinkEligible(account){
+  return !!(account&&_agaiAuthLinkLoginEligible(account.l));
+}
+async function _agaiLinkSupabaseAccount(account,password,loginSessionToken){
+  if(!_agaiAuthLinkEligible(account)||Date.now()<_agaiAuthLinkRetryAfter)return false;
+  try{
+    const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','x-device-id':agaiDeviceId()},body:JSON.stringify({mode:'login',login:account.l,password:password})},6000);
     const result=await response.json().catch(function(){return{};});
     if(!response.ok||!result.session||!result.authUserId)throw new Error(result.error||('HTTP '+response.status));
-    _agaiStoreAuthSession(result.session);
-    account._supabaseAuthId=String(result.authUserId);
-    account._supabaseLinkedAt=new Date().toISOString();
-    account.caserneId=result.caserneId||account.caserneId;
-    account.appRole=result.appRole||account.appRole;
+    if(String(result.login||'').trim().toLowerCase()!==String(account.l).trim().toLowerCase()
+       ||(account.caserneId&&result.caserneId&&result.caserneId!==account.caserneId))throw new Error('Identité liée incohérente');
+    // Une déconnexion pendant l'appel réseau ne doit pas recréer une session Auth.
+    if(!loginSessionToken||SESSION_TOKEN!==loginSessionToken||!CU||CU.l!==account.l)return false;
+    _agaiStoreAuthSession(Object.assign({},result.session,{_agai_link_login:account.l}));
+    _agaiAuthLinkRetryAfter=0;
     _agaiAuthBridgeState='active';
     return true;
   }catch(error){
     _agaiAuthBridgeState='error';
+    _agaiAuthLinkRetryAfter=Date.now()+5*60*1000;
     console.warn('[AGAI][AUTH] Liaison Supabase différée :',error);
     return false;
   }
 }
 async function _agaiLinkedPasswordChange(mode,login,newPassword){
-  if(!AUTH_LINK_ENABLED)return true;
+  if(!_agaiAuthLinkLoginEligible(login))return true;
   const token=_agaiAuthAccessToken();
   if(!token)return false;
   try{
-    const response=await fetch(AUTH_LINK_ENDPOINT,{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+token,'Content-Type':'application/json','x-device-id':agaiDeviceId()},body:JSON.stringify({mode:mode,login:login,newPassword:newPassword})});
+    const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+token,'Content-Type':'application/json','x-device-id':agaiDeviceId()},body:JSON.stringify({mode:mode,login:login,newPassword:newPassword})},6000);
     if(!response.ok){const detail=await response.json().catch(function(){return{};});throw new Error(detail.error||('HTTP '+response.status));}
     return true;
   }catch(error){console.warn('[AGAI][AUTH] Mot de passe non synchronisé :',error);return false;}
 }
 async function _agaiProvisionLinkedAccount(account,password){
-  if(!AUTH_LINK_ENABLED)return true;
+  if(!_agaiAuthLinkEligible(account))return true;
   const token=_agaiAuthAccessToken();if(!token)return false;
   try{
-    const response=await fetch(AUTH_LINK_ENDPOINT,{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+token,'Content-Type':'application/json','x-device-id':agaiDeviceId()},body:JSON.stringify({mode:'admin_provision',login:account.l,newPassword:password,caserneId:account.caserneId,appRole:account.appRole||deriveAccountRole(account),firstName:account.prenom||'',lastName:account.nom||''})});
+    const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+token,'Content-Type':'application/json','x-device-id':agaiDeviceId()},body:JSON.stringify({mode:'admin_provision',login:account.l,newPassword:password,caserneId:account.caserneId,appRole:account.appRole||deriveAccountRole(account),firstName:account.prenom||'',lastName:account.nom||''})},6000);
     if(!response.ok){const detail=await response.json().catch(function(){return{};});throw new Error(detail.error||('HTTP '+response.status));}
     return true;
   }catch(error){console.warn('[AGAI][AUTH] Création du compte lié impossible :',error);return false;}
 }
 async function _agaiSyncLinkedAccount(account){
-  if(!AUTH_LINK_ENABLED||!account||!account.l)return true;
+  if(!_agaiAuthLinkEligible(account))return true;
   const token=_agaiAuthAccessToken();if(!token)return false;
   try{
-    const response=await fetch(AUTH_LINK_ENDPOINT,{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+token,'Content-Type':'application/json','x-device-id':agaiDeviceId()},body:JSON.stringify({mode:'admin_sync',login:account.l,caserneId:account.caserneId||CURRENT_CASERNE_ID,appRole:account.appRole||deriveAccountRole(account),firstName:account.prenom||'',lastName:account.nom||''})});
+    const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+token,'Content-Type':'application/json','x-device-id':agaiDeviceId()},body:JSON.stringify({mode:'admin_sync',login:account.l,caserneId:account.caserneId||CURRENT_CASERNE_ID,appRole:account.appRole||deriveAccountRole(account),firstName:account.prenom||'',lastName:account.nom||''})},6000);
     if(!response.ok)throw new Error('HTTP '+response.status);
     return true;
   }catch(error){console.warn('[AGAI][AUTH] Métadonnées du compte à resynchroniser :',error);return false;}
 }
 async function _agaiDeactivateLinkedAccount(login){
-  if(!AUTH_LINK_ENABLED)return true;
+  if(!_agaiAuthLinkLoginEligible(login))return true;
   const token=_agaiAuthAccessToken();if(!token)return false;
   try{
-    const response=await fetch(AUTH_LINK_ENDPOINT,{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({mode:'admin_deactivate',login:login})});
+    const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({mode:'admin_deactivate',login:login})},6000);
     return response.ok;
   }catch(error){return false;}
 }
 async function _agaiCheckAccountLinkServer(force){
   if(!AUTH_LINK_ENABLED){_agaiAuthBridgeState='disabled';return false;}
   try{
-    const response=await _agaiFetchWithTimeout(SB_REST+'/rpc/agai_account_link_health',{method:'POST',headers:_sbHeaders,body:'{}'},10000);
+    const response=await _agaiAuthFetchWithTimeout(SB_REST+'/rpc/agai_account_link_health',{method:'POST',headers:_sbHeaders,body:'{}'},6000);
     _agaiAuthBridgeState=response.ok?'active':response.status===404?'missing':'error';
     _agaiAuthBridgeHealth=response.ok?await response.json():null;
   }catch(error){_agaiAuthBridgeState='error';_agaiAuthBridgeHealth=null;}
@@ -1481,7 +1517,6 @@ async function doLogin(){
     }
     if(gaFound){
       const ga=gaFound;
-      await _agaiLinkSupabaseAccount(ga,p);
       GLOBAL_ROLE=ga.role;
       _loginAttempts=0;_loginLocked=false;
       if(_loginLockTimer){clearTimeout(_loginLockTimer);_loginLockTimer=null;}
@@ -1506,6 +1541,8 @@ async function doLogin(){
       document.getElementById('t2r').textContent=CU.rl;
       GRADES.forEach(g=>{['prof-grade-sel','nu-grade'].forEach(id=>{const el=document.getElementById(id);if(el&&!el.querySelector(`option[value="${g}"]`)&&![...el.options].find(o=>o.textContent===g)){const o=document.createElement('option');o.textContent=g;el.appendChild(o);}});});
       _createSession(); // P2
+      // La liaison technique n'attend jamais avant de rendre l'application utilisable.
+      _agaiLinkSupabaseAccount(ga,p,SESSION_TOKEN);
       if(ga.role==='chef_corps'){showGlobalView('chef_corps');return;}
       const hopEl=document.getElementById('hop');if(hopEl)hopEl.textContent='Opérateur : '+CU.l;
       doLoginSuccess();
@@ -1544,7 +1581,6 @@ async function doLogin(){
     }
 
     // ── Connexion réussie ──
-    await _agaiLinkSupabaseAccount(foundUser,p);
     _loginAttempts=0;_loginLocked=false;
     if(_loginLockTimer){clearTimeout(_loginLockTimer);_loginLockTimer=null;}
     lerr.style.display='none';
@@ -1561,6 +1597,7 @@ async function doLogin(){
     const hopEl2=document.getElementById('hop');if(hopEl2)hopEl2.textContent='Opérateur : '+CU.l;
     GRADES.forEach(g=>{['prof-grade-sel','nu-grade'].forEach(id=>{const el=document.getElementById(id);if(el&&![...el.options].find(o=>o.textContent===g)){const o=document.createElement('option');o.textContent=g;el.appendChild(o);}});});
     _createSession(); // P2
+    _agaiLinkSupabaseAccount(foundUser,p,SESSION_TOKEN);
     doLoginSuccess();
 
   } finally {
@@ -15839,7 +15876,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202609_0011';
+const APP_VERSION='V202609_0013';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -19805,9 +19842,14 @@ async function _rcProtectOperationalStatusRows(rows){
   (Array.isArray(remoteRows)?remoteRows:[]).forEach(function(row){if(row&&row.id&&!row.deleted)remoteById[row.id]=row;});
   operational.forEach(function(row){
     const remote=remoteById[row.id];if(!remote||!remote.data)return;
+    // La révision attendue est celle réellement stockée par Supabase. Une
+    // ancienne fiche peut ne pas avoir _statusRevision : la normalisation
+    // ci-dessous lui en attribue une localement, sans l'avoir encore écrite.
+    const storedStatusRevision=Number(remote.data._statusRevision)||0;
+    const storedRecordRevision=Number(remote.data._serverRevision)||0;
     ensureOperationalStatusMetadata(remote.data);
-    row._expectedStatusRevision=Number(remote.data._statusRevision)||0;
-    row._expectedRecordRevision=Number(remote.data._serverRevision)||0;
+    row._expectedStatusRevision=storedStatusRevision;
+    row._expectedRecordRevision=storedRecordRevision;
     const resolved=_rcMergeOperationalInterventionVersions(remote.data,row.data);
     row.data=resolved.value;
     if(resolved.keptCurrentStatus)_rcReplaceLocalOperationalRecord(row.caserne,row.type,resolved.value);
@@ -20478,8 +20520,8 @@ async function _rcResolveAtomicRejection(failure){
     AGAI_UT_NUMBER_CONFLICT:'Départ refusé : le numéro UT venait d’être attribué. La fiche a été actualisée.',
     AGAI_GLOBAL_NUMBER_CONFLICT:'Départ refusé : le numéro intercommunal venait d’être attribué. La fiche a été actualisée.',
     AGAI_MONTH_NUMBER_CONFLICT:'Départ refusé : le numéro mensuel venait d’être attribué. La fiche a été actualisée.',
-    AGAI_REVISION_CONFLICT:'Cette intervention venait d’être modifiée sur un autre appareil. La fiche a été actualisée.',
-    AGAI_RECORD_REVISION_CONFLICT:'Cette fiche venait d’être enregistrée sur un autre appareil. Les dernières données ont été rechargées.',
+    AGAI_REVISION_CONFLICT:'Conflit de version : votre modification n’a pas été enregistrée. La fiche a été actualisée.',
+    AGAI_RECORD_REVISION_CONFLICT:'Conflit de version : votre modification n’a pas été enregistrée. Les dernières données ont été rechargées.',
     AGAI_STALE_STATUS_REVISION:'Une version plus récente de cette intervention existe déjà. La fiche a été actualisée.',
     AGAI_STATUS_REVISION_REQUIRED:'Le changement de statut a été refusé car une version plus récente existe déjà.'
   };

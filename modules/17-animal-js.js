@@ -2292,9 +2292,14 @@ async function _rcProtectOperationalStatusRows(rows){
   (Array.isArray(remoteRows)?remoteRows:[]).forEach(function(row){if(row&&row.id&&!row.deleted)remoteById[row.id]=row;});
   operational.forEach(function(row){
     const remote=remoteById[row.id];if(!remote||!remote.data)return;
+    // La révision attendue est celle réellement stockée par Supabase. Une
+    // ancienne fiche peut ne pas avoir _statusRevision : la normalisation
+    // ci-dessous lui en attribue une localement, sans l'avoir encore écrite.
+    const storedStatusRevision=Number(remote.data._statusRevision)||0;
+    const storedRecordRevision=Number(remote.data._serverRevision)||0;
     ensureOperationalStatusMetadata(remote.data);
-    row._expectedStatusRevision=Number(remote.data._statusRevision)||0;
-    row._expectedRecordRevision=Number(remote.data._serverRevision)||0;
+    row._expectedStatusRevision=storedStatusRevision;
+    row._expectedRecordRevision=storedRecordRevision;
     const resolved=_rcMergeOperationalInterventionVersions(remote.data,row.data);
     row.data=resolved.value;
     if(resolved.keptCurrentStatus)_rcReplaceLocalOperationalRecord(row.caserne,row.type,resolved.value);
@@ -2965,8 +2970,8 @@ async function _rcResolveAtomicRejection(failure){
     AGAI_UT_NUMBER_CONFLICT:'Départ refusé : le numéro UT venait d’être attribué. La fiche a été actualisée.',
     AGAI_GLOBAL_NUMBER_CONFLICT:'Départ refusé : le numéro intercommunal venait d’être attribué. La fiche a été actualisée.',
     AGAI_MONTH_NUMBER_CONFLICT:'Départ refusé : le numéro mensuel venait d’être attribué. La fiche a été actualisée.',
-    AGAI_REVISION_CONFLICT:'Cette intervention venait d’être modifiée sur un autre appareil. La fiche a été actualisée.',
-    AGAI_RECORD_REVISION_CONFLICT:'Cette fiche venait d’être enregistrée sur un autre appareil. Les dernières données ont été rechargées.',
+    AGAI_REVISION_CONFLICT:'Conflit de version : votre modification n’a pas été enregistrée. La fiche a été actualisée.',
+    AGAI_RECORD_REVISION_CONFLICT:'Conflit de version : votre modification n’a pas été enregistrée. Les dernières données ont été rechargées.',
     AGAI_STALE_STATUS_REVISION:'Une version plus récente de cette intervention existe déjà. La fiche a été actualisée.',
     AGAI_STATUS_REVISION_REQUIRED:'Le changement de statut a été refusé car une version plus récente existe déjà.'
   };

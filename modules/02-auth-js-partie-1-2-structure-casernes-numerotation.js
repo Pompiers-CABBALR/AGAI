@@ -198,13 +198,19 @@ const SB_URL  = AGAI_RUNTIME_CONFIG.supabaseUrl||'https://lpzblzqxmoiwghvkhqnt.s
 const SB_KEY  = AGAI_RUNTIME_CONFIG.supabasePublishableKey||'sb_publishable_dkzyaOmA-FeBhL4c1z_KZw_nOdOTWuL';
 const SB_REST = SB_URL + '/rest/v1';
 const SB_GLOBAL_ROW = '_GLOBAL';
-const AUTH_LINK_ENABLED = AGAI_RUNTIME_CONFIG.accountLinkEnabled===true;
+const AUTH_LINK_MODE = ['off','canary','on'].includes(AGAI_RUNTIME_CONFIG.accountLinkMode)
+  ? AGAI_RUNTIME_CONFIG.accountLinkMode
+  : (AGAI_RUNTIME_CONFIG.accountLinkEnabled===true?'on':'off');
+const AUTH_LINK_ENABLED = AUTH_LINK_MODE!=='off';
+const AUTH_LINK_CANARY_LOGINS = new Set((Array.isArray(AGAI_RUNTIME_CONFIG.accountLinkCanaryLogins)?AGAI_RUNTIME_CONFIG.accountLinkCanaryLogins:[]).map(function(login){return String(login||'').trim().toLowerCase();}));
 const AUTH_LINK_ENDPOINT = AGAI_RUNTIME_CONFIG.accountLinkEndpoint||SB_URL+'/functions/v1/agai-account-link';
 const AUTH_LINK_SESSION_KEY='agai_supabase_auth_v239';
 let _agaiAuthSession=null;
 let _agaiAuthBridgeState=AUTH_LINK_ENABLED?'unknown':'disabled';
 let _agaiAuthBridgeHealth=null;
 let _agaiAuthRefreshTimer=null;
+let _agaiAuthRefreshFailureCount=0;
+let _agaiAuthLinkRetryAfter=0;
 let _agaiLastDataSnapshot=null;
 const AGAI_SERVER_CIRCUIT_KEY='agai_server_circuit_v1';
 const AGAI_SERVER_CIRCUIT_MS=5*60*1000;

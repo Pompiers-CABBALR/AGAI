@@ -1,9 +1,28 @@
 # AGAI — déploiement sécurisé
 
-## Décision actuelle
+## Décision actuelle — V202609_0013
 
-Les identifiants AGAI existants sont conservés. Les comptes ne sont pas créés dans
-Supabase Auth et aucun changement obligatoire de mot de passe n’est activé.
+La V202609_0013 corrige uniquement le faux conflit de révision des interventions
+historiques : la comparaison avec Supabase utilise désormais la révision réellement
+stockée avant toute normalisation locale. Le cas observé en production était
+`_statusRevision = NULL` et `_serverRevision = 1`. Un ajout d'information ou une
+sélection pouvait être refusé avec le message trompeur « modifiée sur un autre
+appareil ». Les véritables conflits simultanés restent refusés par le serveur.
+
+La liaison technique des comptes reste **désactivée** dans `runtime-config.js`.
+Ne pas publier l'ancien paquet `AGAI-V202609_0012-PILOTE.zip` pendant la correction
+opérationnelle. Ce correctif ne demande aucun SQL, aucune suppression de cache et
+aucun redémarrage Supabase. Avant publication, conserver une sauvegarde et vérifier
+que la file d'attente de l'appareil est connue ; après publication, contrôler une
+fiche ancienne par ajout non critique puis une sélection, avec confirmation du
+statut depuis un second appareil. Si un conflit réel survient, le message précise
+désormais que la modification refusée n'a pas été enregistrée.
+
+## Contexte de sécurité
+
+Les identifiants AGAI existants sont conservés. Le pilote de liaison technique du
+compte `dacheville.thibaut` à Supabase Auth reste préparé mais suspendu ; aucun
+changement obligatoire de mot de passe n’est activé.
 
 Chaque compte possède désormais un `caserneId` et un `appRole` maintenus
 automatiquement par l’application. Cette association structure correctement les
@@ -28,13 +47,37 @@ protection par elle-même : la sécurité dépend des règles RLS.
 
 ### Liaison invisible des comptes v239 — déploiement progressif
 
-**Mode de secours v239.3 :** la liaison des comptes est temporairement désactivée
-dans `runtime-config.js`. La reprise commence obligatoirement par une réception et
-un rapprochement avec Supabase. Les actions restant réellement à envoyer sont
-traitées par lots de 25 au maximum afin que plusieurs casernes puissent continuer
-à utiliser l’application pendant la résorption d’une ancienne file volumineuse.
-Ne pas réactiver `accountLinkEnabled` avant une validation séparée de la future
-version.
+**Mode pilote V202609_0012 :** `accountLinkMode: 'canary'` n'essaie la liaison que
+pour `dacheville.thibaut`. Les autres agents ne lancent aucune requête Auth à la
+connexion. La liaison du pilote se déroule après l'ouverture de l'application,
+avec un délai maximal de 6 secondes et une pause de 5 minutes en cas d'échec. Son
+renouvellement recule progressivement jusqu'à 15 minutes. Ces requêtes sont
+séparées du coupe-circuit de la synchronisation des interventions, qui garde la
+clé publique historique. Ne pas passer en mode `on` lors de ce pilote.
+
+Avant toute publication :
+
+1. constater **Sync OK**, aucune action en attente et Supabase sain pendant une
+   période d'utilisation normale ;
+2. conserver une sauvegarde vérifiée des données et de la version actuellement en
+   ligne ; ne pas effacer les données locales des appareils ;
+3. vérifier que `supabase-account-link-v239.sql` et la fonction Edge
+   `agai-account-link` sont déjà installés et répondent correctement ; ne pas
+   rejouer à l'aveugle un script SQL en production ;
+4. publier V202609_0012 avec le mode `canary` ; seul le compte pilote effectue
+   la liaison technique, même si tous les agents reçoivent la nouvelle version.
+   Contrôler sa connexion, la création de sa liaison, puis l'envoi et la réception
+   d'une modification non critique ; les autres agents continuent leur usage normal ;
+5. surveiller pendant au moins une journée les actions en attente, les dates du
+   dernier envoi et de la dernière réception, les erreurs 5xx/409 et la charge
+   Supabase. Arrêter le pilote dès qu'un de ces indicateurs se dégrade.
+
+**Retour arrière immédiat :** remettre `accountLinkMode: 'off'` dans
+`runtime-config.js`, republier ce seul fichier et faire actualiser l'application
+au pilote. Ne pas supprimer les données du navigateur, les interventions, les
+comptes ou les files d'attente. Le retour arrière ne nécessite pas de redémarrer
+Supabase. Il désactive les nouvelles liaisons, sans annuler les identités déjà
+créées côté serveur.
 
 **Mode API dégradée v239.4 :** la réception est découpée en pages de 100 lignes au
 lieu de 500 et le délai réseau est porté à 45 secondes. Cette adaptation évite qu’un
@@ -87,11 +130,13 @@ Ordre obligatoire :
    conservant le fichier `supabase/config.toml` fourni : la fonction vérifie elle-même
    les identifiants AGAI et applique son propre blocage des tentatives ;
 5. vérifier l’adresse `https://<projet>.supabase.co/functions/v1/agai-account-link`, qui doit répondre avec la version `v239` ;
-6. dans `runtime-config.js`, passer `accountLinkEnabled` à `true` et laisser
-   `accountLinkEndpoint` vide pour utiliser automatiquement le projet configuré ;
-7. publier l’application, puis contrôler **Liaison des comptes v239** dans la maintenance.
+6. pour le pilote seulement, conserver `accountLinkMode: 'canary'` avec le seul
+   identifiant prévu ; laisser `accountLinkEndpoint` vide pour utiliser le projet
+   configuré ;
+7. publier l’application selon la procédure pilote ci-dessus, puis contrôler
+   **Liaison des comptes v239** dans la maintenance.
 
-Le compteur augmente au fil des connexions ordinaires. Les agents n’ont aucune
+Après une éventuelle extension validée, le compteur augmente au fil des connexions ordinaires. Les agents n’ont aucune
 inscription à effectuer et ne voient jamais l’interface Supabase. Les mots de passe
 importés sont placés dans une table privée inaccessible aux navigateurs. Les
 créations et changements de mot de passe réalisés ensuite depuis AGAI passent par
@@ -362,3 +407,9 @@ sans suppression de disponibilité ni nettoyage de l'historique Safari.
 - Les reconnexions en temps réel ralentissent progressivement si Supabase ne répond pas.
 
 Le graphique « Postgres errors » ne permet pas d'identifier seul l'origine des erreurs. Pour la diagnostiquer sans redémarrer Supabase, ouvrir **Logs & Analytics → Logs**, sélectionner **Postgres** et les 15 dernières minutes, puis consulter les messages d'erreur les plus fréquents. Dans l'éditeur SQL des journaux, la source doit être **Logs** et non **Database**.
+
+## Correctif serveur urgent — conflits de révision en boucle
+
+Les journaux du 22/09/2026 montrent environ 100 erreurs `AGAI_REVISION_CONFLICT` par seconde. La fonction atomique utilisait `40001`, que PostgREST interprète comme une erreur transitoire à réessayer automatiquement. Exécuter `supabase-hotfix-revision-conflict.sql` dans le **SQL Editor** de la base Supabase, puis vérifier que les deux colonnes de résultat valent `true`. Cette intervention ne supprime ni fiche ni action en attente et ne nécessite pas de nouvelle version de l'application. Les conflits restent bloqués, avec une réponse HTTP 409.
+
+Après la correction, surveiller les journaux Postgres et l'état de synchronisation. Si les anciennes boucles continuent, identifier leurs `process_id` dans les détails des logs avant de terminer uniquement les sessions correspondantes ; ne redémarrer le projet qu'en dernier recours, à un moment compatible avec les interventions en cours. Ne pas supprimer le cache, la file locale ou l'historique du navigateur.
