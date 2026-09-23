@@ -1010,7 +1010,7 @@ function renderInterventionRow(iv, ag, tireur) {
       ? (iv._numGlobal || iv._numRenfort
           ? ` · ${iv._numGlobal ? `<span style="color:#1A6B1A;font-weight:600;font-size:10px;">C:${escHtml(String(iv._numGlobal))}</span> ` : ''}${iv._numRenfort ? `<span style="color:#7C3AED;font-weight:600;font-size:10px;">Renfort:${escHtml(String(iv._numRenfort))}</span>` : ''}` : '')
       : (iv._numGlobal || iv._numCaserne || iv._numMois
-          ? ` · <span style="font-size:10px;">${iv._numGlobal ? `<span style="color:#1A6B1A;font-weight:600;">C:${escHtml(String(iv._numGlobal))}</span> ` : ''}${iv._numCaserne ? `<span style="color:#6A0DAD;font-weight:600;">UT:${escHtml(String(iv._numCaserne))}</span> ` : ''}${iv._numMois ? `<span style="color:#C0392B;font-weight:600;">M:${escHtml(String(iv._numMois))}</span>` : ''}${iv._numSDIS ? ` <span style="color:#003399;font-weight:600;">S:${escHtml(String(iv._numSDIS))}</span>` : ''}</span>` : '')
+          ? ` · <span style="font-size:10px;">${iv._numGlobal ? `<span style="color:#1A6B1A;font-weight:600;">C:${escHtml(String(iv._numGlobal))}</span> ` : ''}${iv._numCaserne ? `<span style="color:#6A0DAD;font-weight:600;">UT:${escHtml(interventionDisplayUTNumber(iv))}</span> ` : ''}${iv._numMois ? `<span style="color:#C0392B;font-weight:600;">M:${escHtml(String(iv._numMois))}</span>` : ''}${iv._numSDIS ? ` <span style="color:#003399;font-weight:600;">S:${escHtml(String(iv._numSDIS))}</span>` : ''}</span>` : '')
   ) : '';
 
   return `<div class="ivr ${iv.s}${isPilp ? ' pilp' : ''}${iv._isRenfort ? ' renfort-ut' : ''}${iv._urgence ? ' urgence' : ''}">
@@ -1446,7 +1446,7 @@ function oM(id){
   const dispTransfert=iv._transfertDe?` ↩ transféré de ${CASERNES.find(cas=>cas.id===iv._transfertDe)?.nom||iv._transfertDe}`:'';
   const dispUt=iv._numberingScheme==='dual-v1'&&iv.s==='terminee'&&iv._numberFinalized!==true
     ?' · numéro définitif en attente de synchronisation'
-    :iv._numCaserne?' · UT '+iv._numCaserne+(iv._numberingScheme==='dual-v1'&&iv.s==='en-cours'?' (provisoire)':''):'';
+    :iv._numCaserne?' · UT '+interventionDisplayUTNumber(iv)+(iv._numberingScheme==='dual-v1'&&iv.s==='en-cours'?' (provisoire)':''):'';
   document.getElementById('mi').textContent=dispApl+dispUt+dispTransfert;
    const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis de passage'],'avis-classe':['bp','Avis classé'],'avis-restaure':['binfo','Avis remis en attente'],'modif':['bgr','Modification'],'modif-adresse':['bgr','Adresse corrigée'],'modif-heure':['binfo','Horaire corrigé'],'modif-equipier':['binfo','Équipage corrigé'],'modif-engin':['binfo','Véhicule corrigé'],'reclasse':['bgr','Reclasé'],'releve':['binfo','Relève'],'info-compl':['binfo','ℹ️ Complément d\u2019info']};
   const[bc,bt]=bm[iv.s]||['bgr','—'];

@@ -587,7 +587,7 @@ function interventionStartCorrectionHTML(iv){
   if(neighborLock){
     return '<div style="background:#F8FAFC;border:1px solid #CBD5E1;border-radius:8px;padding:10px 12px;margin-bottom:10px;">'
       +'<div style="font-size:12px;font-weight:700;color:#334155;">&#x23F1; Horaires de l’intervention : '+escHtml(iv._hDebut)+' — '+escHtml(iv._hFin)+'</div>'
-      +'<div style="font-size:11px;color:#92400E;margin-top:5px;">Intervention enchaînée entre l’UT '+escHtml(String(neighborLock.previous._numCaserne||''))+' et l’UT '+escHtml(String(neighborLock.next._numCaserne||''))+' : les heures de début et de fin sont automatiques et ne peuvent pas être modifiées.</div>'
+      +'<div style="font-size:11px;color:#92400E;margin-top:5px;">Intervention enchaînée entre l’UT '+escHtml(interventionDisplayUTNumber(neighborLock.previous))+' et l’UT '+escHtml(interventionDisplayUTNumber(neighborLock.next))+' : les heures de début et de fin sont automatiques et ne peuvent pas être modifiées.</div>'
       +'</div>';
   }
   if(following){
@@ -929,7 +929,7 @@ function genRapportInterventionHTML(ivId) {
     const y=parseInt(iv.h.slice(0,4)),mo=parseInt(iv.h.slice(4,6))-1,d=parseInt(iv.h.slice(6,8));
     dateLongue='Le '+JOURS_FR[new Date(y,mo,d).getDay()]+' '+d+' '+MOIS_FR[mo]+' '+y;
   }
-  const numCas=iv._numCaserne?String(iv._numCaserne):'';
+  const numCas=interventionDisplayUTNumber(iv);
   const engin=interventionVehicleNames(iv).join(' + ');
   const hDebut=iv._hDebut||'';
   const hFin=iv._hFin||'';
@@ -1021,7 +1021,7 @@ function genRapportInterventionHTML(ivId) {
   const B='1px solid #000';
   const _numRf=iv._numRenfort?String(iv._numRenfort):'';
   const numInterco=iv._isRenfort?_numRf:(iv._numGlobal?String(iv._numGlobal):'');
-  const numUT=iv._isRenfort?_numRf:(iv._numCaserne?String(iv._numCaserne):'');
+  const numUT=iv._isRenfort?_numRf:interventionDisplayUTNumber(iv);
   const numSDIS=iv._isRenfort?'':(iv._numSDIS||'');
   const numMois=iv._isRenfort?_numRf:(iv._numMois?String(iv._numMois):'');
 

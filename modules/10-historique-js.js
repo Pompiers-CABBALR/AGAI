@@ -55,12 +55,12 @@ function rHistLegacy(){
       const tm=Object.values(grp[y][m]).reduce((s,d)=>s+d.length,0);
       return `<div class="hsub" onclick="tg('hm${y}${m}','am${y}${m}')">${MO[parseInt(m)]}<span class="bdg bgr" style="margin-left:6px;">${tm}</span><span id="am${y}${m}" style="margin-left:auto;">▼</span></div>
       <div id="hm${y}${m}">${ds.map(d=>{const ivd=grp[y][m][d];return `<div class="hdl">${d}/${m}/${y} — ${ivd.length} intervention(s)</div>${ivd.map(iv=>`<div class="hm${iv._crValide&&iv._impressions&&iv._impressions.length?' report-complete':''}" onclick="${iv._isPilp?`oPilp('${iv.id}')`:`oM('${iv.id}')`}">
-  <span style="font-family:monospace;font-size:10px;color:var(--t3);">${iv._numCaserne||interventionDisplayCallNumber(iv)}</span>
+  <span style="font-family:monospace;font-size:10px;color:var(--t3);">${escHtml(interventionDisplayUTNumber(iv)||interventionDisplayCallNumber(iv))}</span>
   <span style="flex:1;font-size:12px;color:var(--t);${iv.s==='annulee'?'text-decoration:line-through;color:#999;':''}">
     ${iv.n}
     ${iv._numGlobal||iv._numCaserne||iv._numMois||iv._numRenfort?`<span style="font-size:10px;font-weight:600;margin-left:6px;">
       ${iv._numGlobal?`<span style="color:#1A6B1A;">C:${iv._numGlobal}</span> `:''}
-      ${iv._isRenfort?(iv._numRenfort?`<span style="color:#7C3AED;">Renfort:${iv._numRenfort}</span>`:''):(iv._numCaserne?`<span class="hist-num-ut" style="color:#6A0DAD;">UT:${iv._numCaserne}</span> `:'')}
+      ${iv._isRenfort?(iv._numRenfort?`<span style="color:#7C3AED;">Renfort:${iv._numRenfort}</span>`:''):(iv._numCaserne?`<span class="hist-num-ut" style="color:#6A0DAD;">UT:${escHtml(interventionDisplayUTNumber(iv))}</span> `:'')}
       ${!iv._isRenfort&&iv._numMois?`<span class="hist-num-m" style="color:#C0392B;">M:${iv._numMois}</span>`:''}
       ${iv._numSDIS?`<span style="color:#003399;"> S:${iv._numSDIS}</span>`:''}
     </span>`:''}
@@ -145,7 +145,7 @@ function historySearchBlob(iv){
   const crew=historyCrewMembers(iv).map(function(member){return member.name+' '+member.login;});
   const vehicles=interventionVehicleNames(iv);
   return historyNormalizeSearch([
-    iv.id,iv.n,iv.addr,iv.com,iv.req,iv.tel,iv.s,iv._numCaserne,iv._numGlobal,iv._numMois,iv._numRenfort,iv._numSDIS,
+    iv.id,iv.n,iv.addr,iv.com,iv.req,iv.tel,iv.s,iv._numCaserne,interventionDisplayUTNumber(iv),iv._numGlobal,iv._numMois,iv._numRenfort,iv._numSDIS,
     iv._hDebut,iv._hFin,iv._crTexte,iv._compteRendu,vehicles.join(' '),crew.join(' ')
   ].join(' '));
 }
@@ -161,12 +161,12 @@ function historyRowHTML(iv){
   const click=iv._isPilp?"oPilp('"+escHtml(iv.id)+"')":"oM('"+escHtml(iv.id)+"')";
   const crewLogins=historyCrewMembers(iv).map(function(member){return member.login;}).join('|');
   return `<div class="hm hist-entry${iv._crValide&&iv._impressions&&iv._impressions.length?' report-complete':''}" data-hsearch="${escHtml(historySearchBlob(iv))}" data-hdate="${historyInterventionDayKey(iv)}" data-hcrew="${escHtml(crewLogins)}" onclick="${click}">
-  <span style="font-family:monospace;font-size:10px;color:var(--t3);">${iv._numberingScheme==='dual-v1'&&iv.s==='terminee'&&iv._numberFinalized!==true?'N° en attente':escHtml(iv._numCaserne||interventionDisplayCallNumber(iv))}</span>
+  <span style="font-family:monospace;font-size:10px;color:var(--t3);">${iv._numberingScheme==='dual-v1'&&iv.s==='terminee'&&iv._numberFinalized!==true?'N° en attente':escHtml(interventionDisplayUTNumber(iv)||interventionDisplayCallNumber(iv))}</span>
   <span style="flex:1;font-size:12px;color:var(--t);${iv.s==='annulee'?'text-decoration:line-through;color:#999;':''}">
     ${escHtml(iv.n||'Intervention')}
     ${iv._numberingScheme==='dual-v1'&&iv.s==='terminee'&&iv._numberFinalized!==true?' <span style="font-size:10px;color:#92400E;">Numérotation en attente de synchronisation</span>':iv._numGlobal||iv._numCaserne||iv._numMois||iv._numRenfort?`<span style="font-size:10px;font-weight:600;margin-left:6px;">
       ${iv._numGlobal?`<span style="color:#1A6B1A;">C:${escHtml(iv._numGlobal)}</span> `:''}
-      ${iv._isRenfort?(iv._numRenfort?`<span style="color:#7C3AED;">Renfort:${escHtml(iv._numRenfort)}</span>`:''):(iv._numCaserne?`<span class="hist-num-ut" style="color:#6A0DAD;">UT:${escHtml(iv._numCaserne)}</span> `:'')}
+      ${iv._isRenfort?(iv._numRenfort?`<span style="color:#7C3AED;">Renfort:${escHtml(iv._numRenfort)}</span>`:''):(iv._numCaserne?`<span class="hist-num-ut" style="color:#6A0DAD;">UT:${escHtml(interventionDisplayUTNumber(iv))}</span> `:'')}
       ${!iv._isRenfort&&iv._numMois?`<span class="hist-num-m" style="color:#C0392B;">M:${escHtml(iv._numMois)}</span>`:''}
       ${iv._numSDIS?`<span style="color:#003399;"> S:${escHtml(iv._numSDIS)}</span>`:''}
     </span>`:''}

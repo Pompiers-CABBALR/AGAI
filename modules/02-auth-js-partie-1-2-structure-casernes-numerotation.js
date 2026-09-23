@@ -475,6 +475,20 @@ function interventionDisplayCallNumber(iv){
   return match?match[1]:(technical||'\u2014');
 }
 
+// Indices purement visuels pour des doublons historiques précisément audités.
+// _numCaserne reste numérique pour les compteurs et la synchronisation.
+const HISTORICAL_UT_DISPLAY_SUFFIXES=Object.freeze({
+  'CIS05__iv__APL_2026_000338-Rmtr4pr8v-b8a0ee910e':{number:'276',suffix:'1'}, // départ 09/09/2026 14:41
+  'CIS05__iv__APL_2026_000354-Rmtsdguwz-fecf1988d8':{number:'278',suffix:'1'}  // départ 09/09/2026 15:45
+});
+function interventionDisplayUTNumber(iv){
+  const value=iv&&iv._numCaserne;
+  if(value===undefined||value===null||value==='')return '';
+  const base=String(value);
+  const historical=iv&&iv.s==='terminee'?HISTORICAL_UT_DISPLAY_SUFFIXES[String(iv.id||'')]:null;
+  return historical&&historical.number===base?base+'-'+historical.suffix:base;
+}
+
 // Compteur Inter Renfort : par caserne, depuis début d'année
 function nextRenfortNum(annee){
   const y=String(annee);

@@ -628,6 +628,20 @@ function interventionDisplayCallNumber(iv){
   return match?match[1]:(technical||'\u2014');
 }
 
+// Indices purement visuels pour des doublons historiques précisément audités.
+// _numCaserne reste numérique pour les compteurs et la synchronisation.
+const HISTORICAL_UT_DISPLAY_SUFFIXES=Object.freeze({
+  'CIS05__iv__APL_2026_000338-Rmtr4pr8v-b8a0ee910e':{number:'276',suffix:'1'}, // départ 09/09/2026 14:41
+  'CIS05__iv__APL_2026_000354-Rmtsdguwz-fecf1988d8':{number:'278',suffix:'1'}  // départ 09/09/2026 15:45
+});
+function interventionDisplayUTNumber(iv){
+  const value=iv&&iv._numCaserne;
+  if(value===undefined||value===null||value==='')return '';
+  const base=String(value);
+  const historical=iv&&iv.s==='terminee'?HISTORICAL_UT_DISPLAY_SUFFIXES[String(iv.id||'')]:null;
+  return historical&&historical.number===base?base+'-'+historical.suffix:base;
+}
+
 // Compteur Inter Renfort : par caserne, depuis début d'année
 function nextRenfortNum(annee){
   const y=String(annee);
@@ -6532,7 +6546,7 @@ function renderInterventionRow(iv, ag, tireur) {
       ? (iv._numGlobal || iv._numRenfort
           ? ` · ${iv._numGlobal ? `<span style="color:#1A6B1A;font-weight:600;font-size:10px;">C:${escHtml(String(iv._numGlobal))}</span> ` : ''}${iv._numRenfort ? `<span style="color:#7C3AED;font-weight:600;font-size:10px;">Renfort:${escHtml(String(iv._numRenfort))}</span>` : ''}` : '')
       : (iv._numGlobal || iv._numCaserne || iv._numMois
-          ? ` · <span style="font-size:10px;">${iv._numGlobal ? `<span style="color:#1A6B1A;font-weight:600;">C:${escHtml(String(iv._numGlobal))}</span> ` : ''}${iv._numCaserne ? `<span style="color:#6A0DAD;font-weight:600;">UT:${escHtml(String(iv._numCaserne))}</span> ` : ''}${iv._numMois ? `<span style="color:#C0392B;font-weight:600;">M:${escHtml(String(iv._numMois))}</span>` : ''}${iv._numSDIS ? ` <span style="color:#003399;font-weight:600;">S:${escHtml(String(iv._numSDIS))}</span>` : ''}</span>` : '')
+          ? ` · <span style="font-size:10px;">${iv._numGlobal ? `<span style="color:#1A6B1A;font-weight:600;">C:${escHtml(String(iv._numGlobal))}</span> ` : ''}${iv._numCaserne ? `<span style="color:#6A0DAD;font-weight:600;">UT:${escHtml(interventionDisplayUTNumber(iv))}</span> ` : ''}${iv._numMois ? `<span style="color:#C0392B;font-weight:600;">M:${escHtml(String(iv._numMois))}</span>` : ''}${iv._numSDIS ? ` <span style="color:#003399;font-weight:600;">S:${escHtml(String(iv._numSDIS))}</span>` : ''}</span>` : '')
   ) : '';
 
   return `<div class="ivr ${iv.s}${isPilp ? ' pilp' : ''}${iv._isRenfort ? ' renfort-ut' : ''}${iv._urgence ? ' urgence' : ''}">
@@ -6968,7 +6982,7 @@ function oM(id){
   const dispTransfert=iv._transfertDe?` ↩ transféré de ${CASERNES.find(cas=>cas.id===iv._transfertDe)?.nom||iv._transfertDe}`:'';
   const dispUt=iv._numberingScheme==='dual-v1'&&iv.s==='terminee'&&iv._numberFinalized!==true
     ?' · numéro définitif en attente de synchronisation'
-    :iv._numCaserne?' · UT '+iv._numCaserne+(iv._numberingScheme==='dual-v1'&&iv.s==='en-cours'?' (provisoire)':''):'';
+    :iv._numCaserne?' · UT '+interventionDisplayUTNumber(iv)+(iv._numberingScheme==='dual-v1'&&iv.s==='en-cours'?' (provisoire)':''):'';
   document.getElementById('mi').textContent=dispApl+dispUt+dispTransfert;
    const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis de passage'],'avis-classe':['bp','Avis classé'],'avis-restaure':['binfo','Avis remis en attente'],'modif':['bgr','Modification'],'modif-adresse':['bgr','Adresse corrigée'],'modif-heure':['binfo','Horaire corrigé'],'modif-equipier':['binfo','Équipage corrigé'],'modif-engin':['binfo','Véhicule corrigé'],'reclasse':['bgr','Reclasé'],'releve':['binfo','Relève'],'info-compl':['binfo','ℹ️ Complément d\u2019info']};
   const[bc,bt]=bm[iv.s]||['bgr','—'];
@@ -8147,7 +8161,7 @@ function oPilp(id){
   document.getElementById('mt').textContent=iv.n;
     // Numéro affiché : id temporaire PILP ou APL si clôturé
   const pApl=iv._numApl||'';
-  const pilpUt=iv._numCaserne?' · UT '+iv._numCaserne:'';
+  const pilpUt=iv._numCaserne?' · UT '+interventionDisplayUTNumber(iv):'';
   document.getElementById('mi').textContent=(iv.s==='terminee'?(pApl||iv.id):iv.id)+pilpUt;
   const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis passage'],'avis-classe':['bp','Avis classé'],'avis-restaure':['binfo','Avis remis en attente']};
   const[bc,bt]=bm[iv.s]||['bgr','—'];
@@ -8961,12 +8975,12 @@ function rHistLegacy(){
       const tm=Object.values(grp[y][m]).reduce((s,d)=>s+d.length,0);
       return `<div class="hsub" onclick="tg('hm${y}${m}','am${y}${m}')">${MO[parseInt(m)]}<span class="bdg bgr" style="margin-left:6px;">${tm}</span><span id="am${y}${m}" style="margin-left:auto;">▼</span></div>
       <div id="hm${y}${m}">${ds.map(d=>{const ivd=grp[y][m][d];return `<div class="hdl">${d}/${m}/${y} — ${ivd.length} intervention(s)</div>${ivd.map(iv=>`<div class="hm${iv._crValide&&iv._impressions&&iv._impressions.length?' report-complete':''}" onclick="${iv._isPilp?`oPilp('${iv.id}')`:`oM('${iv.id}')`}">
-  <span style="font-family:monospace;font-size:10px;color:var(--t3);">${iv._numCaserne||interventionDisplayCallNumber(iv)}</span>
+  <span style="font-family:monospace;font-size:10px;color:var(--t3);">${escHtml(interventionDisplayUTNumber(iv)||interventionDisplayCallNumber(iv))}</span>
   <span style="flex:1;font-size:12px;color:var(--t);${iv.s==='annulee'?'text-decoration:line-through;color:#999;':''}">
     ${iv.n}
     ${iv._numGlobal||iv._numCaserne||iv._numMois||iv._numRenfort?`<span style="font-size:10px;font-weight:600;margin-left:6px;">
       ${iv._numGlobal?`<span style="color:#1A6B1A;">C:${iv._numGlobal}</span> `:''}
-      ${iv._isRenfort?(iv._numRenfort?`<span style="color:#7C3AED;">Renfort:${iv._numRenfort}</span>`:''):(iv._numCaserne?`<span class="hist-num-ut" style="color:#6A0DAD;">UT:${iv._numCaserne}</span> `:'')}
+      ${iv._isRenfort?(iv._numRenfort?`<span style="color:#7C3AED;">Renfort:${iv._numRenfort}</span>`:''):(iv._numCaserne?`<span class="hist-num-ut" style="color:#6A0DAD;">UT:${escHtml(interventionDisplayUTNumber(iv))}</span> `:'')}
       ${!iv._isRenfort&&iv._numMois?`<span class="hist-num-m" style="color:#C0392B;">M:${iv._numMois}</span>`:''}
       ${iv._numSDIS?`<span style="color:#003399;"> S:${iv._numSDIS}</span>`:''}
     </span>`:''}
@@ -9051,7 +9065,7 @@ function historySearchBlob(iv){
   const crew=historyCrewMembers(iv).map(function(member){return member.name+' '+member.login;});
   const vehicles=interventionVehicleNames(iv);
   return historyNormalizeSearch([
-    iv.id,iv.n,iv.addr,iv.com,iv.req,iv.tel,iv.s,iv._numCaserne,iv._numGlobal,iv._numMois,iv._numRenfort,iv._numSDIS,
+    iv.id,iv.n,iv.addr,iv.com,iv.req,iv.tel,iv.s,iv._numCaserne,interventionDisplayUTNumber(iv),iv._numGlobal,iv._numMois,iv._numRenfort,iv._numSDIS,
     iv._hDebut,iv._hFin,iv._crTexte,iv._compteRendu,vehicles.join(' '),crew.join(' ')
   ].join(' '));
 }
@@ -9067,12 +9081,12 @@ function historyRowHTML(iv){
   const click=iv._isPilp?"oPilp('"+escHtml(iv.id)+"')":"oM('"+escHtml(iv.id)+"')";
   const crewLogins=historyCrewMembers(iv).map(function(member){return member.login;}).join('|');
   return `<div class="hm hist-entry${iv._crValide&&iv._impressions&&iv._impressions.length?' report-complete':''}" data-hsearch="${escHtml(historySearchBlob(iv))}" data-hdate="${historyInterventionDayKey(iv)}" data-hcrew="${escHtml(crewLogins)}" onclick="${click}">
-  <span style="font-family:monospace;font-size:10px;color:var(--t3);">${iv._numberingScheme==='dual-v1'&&iv.s==='terminee'&&iv._numberFinalized!==true?'N° en attente':escHtml(iv._numCaserne||interventionDisplayCallNumber(iv))}</span>
+  <span style="font-family:monospace;font-size:10px;color:var(--t3);">${iv._numberingScheme==='dual-v1'&&iv.s==='terminee'&&iv._numberFinalized!==true?'N° en attente':escHtml(interventionDisplayUTNumber(iv)||interventionDisplayCallNumber(iv))}</span>
   <span style="flex:1;font-size:12px;color:var(--t);${iv.s==='annulee'?'text-decoration:line-through;color:#999;':''}">
     ${escHtml(iv.n||'Intervention')}
     ${iv._numberingScheme==='dual-v1'&&iv.s==='terminee'&&iv._numberFinalized!==true?' <span style="font-size:10px;color:#92400E;">Numérotation en attente de synchronisation</span>':iv._numGlobal||iv._numCaserne||iv._numMois||iv._numRenfort?`<span style="font-size:10px;font-weight:600;margin-left:6px;">
       ${iv._numGlobal?`<span style="color:#1A6B1A;">C:${escHtml(iv._numGlobal)}</span> `:''}
-      ${iv._isRenfort?(iv._numRenfort?`<span style="color:#7C3AED;">Renfort:${escHtml(iv._numRenfort)}</span>`:''):(iv._numCaserne?`<span class="hist-num-ut" style="color:#6A0DAD;">UT:${escHtml(iv._numCaserne)}</span> `:'')}
+      ${iv._isRenfort?(iv._numRenfort?`<span style="color:#7C3AED;">Renfort:${escHtml(iv._numRenfort)}</span>`:''):(iv._numCaserne?`<span class="hist-num-ut" style="color:#6A0DAD;">UT:${escHtml(interventionDisplayUTNumber(iv))}</span> `:'')}
       ${!iv._isRenfort&&iv._numMois?`<span class="hist-num-m" style="color:#C0392B;">M:${escHtml(iv._numMois)}</span>`:''}
       ${iv._numSDIS?`<span style="color:#003399;"> S:${escHtml(iv._numSDIS)}</span>`:''}
     </span>`:''}
@@ -16079,7 +16093,7 @@ function exportAdminMonthlyExcel(){
       const rapportAuteur=adminExportInterventionChef(iv);
       const isSdis=adminExportReportType(iv)==='SDIS';
       return [
-        iv._numMois||'',iv._numCaserne||interventionDisplayCallNumber(iv),iv._numSDIS||'',iv._numGlobal||'',
+        iv._numMois||'',interventionDisplayUTNumber(iv)||interventionDisplayCallNumber(iv),iv._numSDIS||'',iv._numGlobal||'',
         adminExportDateCompact(adminExportInterventionStartDate(iv)),adminExportReportType(iv),
         rates.taux1,rates.heures1,rates.taux2,rates.heures2,iv._km||'',
         iv.n||'',iv.req||'',[(iv.addr||''),(iv.addrComp||'')].filter(Boolean).join(' — '),iv.com||'',
@@ -16148,7 +16162,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202609_0016';
+const APP_VERSION='V202609_0017';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -17192,7 +17206,7 @@ function interventionStartCorrectionHTML(iv){
   if(neighborLock){
     return '<div style="background:#F8FAFC;border:1px solid #CBD5E1;border-radius:8px;padding:10px 12px;margin-bottom:10px;">'
       +'<div style="font-size:12px;font-weight:700;color:#334155;">&#x23F1; Horaires de l’intervention : '+escHtml(iv._hDebut)+' — '+escHtml(iv._hFin)+'</div>'
-      +'<div style="font-size:11px;color:#92400E;margin-top:5px;">Intervention enchaînée entre l’UT '+escHtml(String(neighborLock.previous._numCaserne||''))+' et l’UT '+escHtml(String(neighborLock.next._numCaserne||''))+' : les heures de début et de fin sont automatiques et ne peuvent pas être modifiées.</div>'
+      +'<div style="font-size:11px;color:#92400E;margin-top:5px;">Intervention enchaînée entre l’UT '+escHtml(interventionDisplayUTNumber(neighborLock.previous))+' et l’UT '+escHtml(interventionDisplayUTNumber(neighborLock.next))+' : les heures de début et de fin sont automatiques et ne peuvent pas être modifiées.</div>'
       +'</div>';
   }
   if(following){
@@ -17534,7 +17548,7 @@ function genRapportInterventionHTML(ivId) {
     const y=parseInt(iv.h.slice(0,4)),mo=parseInt(iv.h.slice(4,6))-1,d=parseInt(iv.h.slice(6,8));
     dateLongue='Le '+JOURS_FR[new Date(y,mo,d).getDay()]+' '+d+' '+MOIS_FR[mo]+' '+y;
   }
-  const numCas=iv._numCaserne?String(iv._numCaserne):'';
+  const numCas=interventionDisplayUTNumber(iv);
   const engin=interventionVehicleNames(iv).join(' + ');
   const hDebut=iv._hDebut||'';
   const hFin=iv._hFin||'';
@@ -17626,7 +17640,7 @@ function genRapportInterventionHTML(ivId) {
   const B='1px solid #000';
   const _numRf=iv._numRenfort?String(iv._numRenfort):'';
   const numInterco=iv._isRenfort?_numRf:(iv._numGlobal?String(iv._numGlobal):'');
-  const numUT=iv._isRenfort?_numRf:(iv._numCaserne?String(iv._numCaserne):'');
+  const numUT=iv._isRenfort?_numRf:interventionDisplayUTNumber(iv);
   const numSDIS=iv._isRenfort?'':(iv._numSDIS||'');
   const numMois=iv._isRenfort?_numRf:(iv._numMois?String(iv._numMois):'');
 

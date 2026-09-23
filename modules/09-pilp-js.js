@@ -285,7 +285,7 @@ function oPilp(id){
   document.getElementById('mt').textContent=iv.n;
     // Numéro affiché : id temporaire PILP ou APL si clôturé
   const pApl=iv._numApl||'';
-  const pilpUt=iv._numCaserne?' · UT '+iv._numCaserne:'';
+  const pilpUt=iv._numCaserne?' · UT '+interventionDisplayUTNumber(iv):'';
   document.getElementById('mi').textContent=(iv.s==='terminee'?(pApl||iv.id):iv.id)+pilpUt;
   const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis passage'],'avis-classe':['bp','Avis classé'],'avis-restaure':['binfo','Avis remis en attente']};
   const[bc,bt]=bm[iv.s]||['bgr','—'];

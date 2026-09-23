@@ -1,5 +1,25 @@
 # AGAI — déploiement sécurisé
 
+## Préparation V202609_0017 — indices d'affichage des doublons UT historiques
+
+**Non déployée en production.** Les quatre interventions terminées du 9 septembre
+2026 concernées par les deux doublons UT de CIS05 restent enregistrées sans
+modification. La fiche M59 conserve l'affichage **UT 276** et la fiche M62
+(départ à 14 h 41) affiche **UT 276-1**. La fiche M60 conserve **UT 278** et
+la fiche M64 (départ à 15 h 45 selon l'horodatage de départ) affiche
+**UT 278-1**. L'indice est attaché à l'identifiant exact de la fiche, et
+seulement si son numéro technique est encore 276 ou 278.
+
+Il s'agit uniquement d'un affichage dans la liste, le détail, l'historique,
+les recherches, l'export et les nouveaux PDF. Les champs numériques stockés
+dans Supabase, les compteurs, la synchronisation et les anciens PDF restent
+inchangés. Le contrôle serveur continuera donc de signaler **2 groupes de
+doublons historiques** : ne pas interpréter cette alerte comme un échec de
+la V202609_0017. Aucun nouveau SQL ni redémarrage Supabase n'est requis.
+Tous les appareils doivent recevoir la même version pour voir les indices.
+Vérifier les quatre fiches, l'export et un nouveau PDF sur une copie avant
+toute publication. Ne pas modifier les anciennes fiches pour supprimer l'alerte.
+
 ## Préparation V202609_0016 — conflits entre interventions et activités
 
 **Non déployée en production.** Lors d'un départ réel (intervention ou renfort),
