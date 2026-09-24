@@ -3,6 +3,10 @@
 Cette variante conserve les fonctionnalités de `AGAI-securise.html`, mais sépare
 le code afin de faciliter les prochaines corrections.
 
+La V202609_0024 permet de reprendre un avis de passage dans une prise
+d'appel préremplie, et de clôturer une intervention dont l'adresse est
+introuvable tout en créant une nouvelle fiche en attente liée à l'ancienne.
+
 La V202609_0023 ajoute plusieurs contacts PILP, une destination GPS facultative,
 la séparation de l'adresse et de son complément pour Maps, et l'effacement
 explicite des disponibilités du requérant. Une PILP liée ne recopie plus les

@@ -1,5 +1,22 @@
 # AGAI — déploiement sécurisé
 
+## Préparation V202609_0024 — rappel d'avis et suite après adresse introuvable
+
+**Préparée localement, non déployée par Codex.** « Reprendre cet avis »
+préremplit un nouvel appel à partir d'un avis encore en attente de rappel.
+L'opérateur vérifie les informations avec le requérant avant l'enregistrement ;
+les anciennes disponibilités ne sont pas recopiées. L'avis est relié au nouvel
+appel lors de l'enregistrement, même si l'adresse a été corrigée.
+
+Pour une intervention en cours, le chef d'agrès autorisé peut choisir
+« Adresse introuvable : clôturer et créer une suite ». Le motif et les
+précisions sont obligatoires, puis la confirmation habituelle de clôture
+reste nécessaire. L'intervention initiale conserve son numéro et ses heures ;
+la suite est créée en attente, sans équipage, horaires opérationnels ni numéro
+d'intervention. Vérifier ces deux parcours sur un appareil de test et contrôler
+la file de synchronisation avant publication. Aucun changement SQL ni Edge
+Function n'est requis. Publier tous les fichiers V202609_0024 ensemble.
+
 ## Préparation V202609_0023 — contacts PILP, GPS, adresse et disponibilités
 
 **Préparée localement, non déployée par Codex.** Une PILP liée reprend

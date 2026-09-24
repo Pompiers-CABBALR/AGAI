@@ -851,6 +851,7 @@ let GLOBAL_ROLE=null;
 window._adminRoleDisabled=true;  // admin inactif par defaut (mode normal)
 window._superAdminDisabled=true; // superadmin inactif par defaut (mode normal)
 let CU=null,selNat=null,selC2=null,hoA=null,cddi=-1,selEng=null,flt='all',fltPilp='all',parcConfirmed=new Set(),nidSize=null;
+let appelResumeAvisId=null;
 
 function pad(n){return String(n).padStart(2,'0');}
 function getH(d){return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;}

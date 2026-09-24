@@ -1004,6 +1004,7 @@ let GLOBAL_ROLE=null;
 window._adminRoleDisabled=true;  // admin inactif par defaut (mode normal)
 window._superAdminDisabled=true; // superadmin inactif par defaut (mode normal)
 let CU=null,selNat=null,selC2=null,hoA=null,cddi=-1,selEng=null,flt='all',fltPilp='all',parcConfirmed=new Set(),nidSize=null;
+let appelResumeAvisId=null;
 
 function pad(n){return String(n).padStart(2,'0');}
 function getH(d){return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;}
@@ -5245,6 +5246,76 @@ function getAppelPhones(){
   const seen=new Set();
   return [...document.querySelectorAll('#appel-phones [data-appel-phone]')].map(e=>e.value.trim()).filter(v=>v&&!seen.has(v)&&seen.add(v));
 }
+function reprendreAvisPassage(id){
+  if(!hasRight('Prise d\'appel')){showToast('La reprise d’un avis est réservée à la prise d’appel.','warn');return;}
+  const source=interventionById(id);
+  if(!source||!source._avisEnAttente||source.s==='annulee'){
+    showToast('Cet avis n’est plus en attente de rappel. Actualisez la liste.','warn');return;
+  }
+  showT('appel',document.getElementById('nav-appel'));
+  appelResumeAvisId=id;
+  selNat=String(source._natureAppelInitiale||source.n||'').replace(/\s*[—-]\s*PILP\s*$/i,'').trim();
+  hoA=new Date();
+  document.getElementById('bn').disabled=false;
+  gS(2);
+  sC(source.com);
+  const base=interventionBaseAddressForDuplicate(source),parts=String(source.addr||'').split(/\s+—\s+/);
+  document.getElementById('fa').value=formatInterventionStreetAddress(base);
+  document.getElementById('fa2').value=source.addrComp||parts.slice(1).join(' — ');
+  document.getElementById('fr').value=source.req||'';
+  document.getElementById('fo').value=source.det||source.obs||'';
+  const phones=getInterventionPhones(source);
+  if(phones.length)document.getElementById('ft').value=phones[0];
+  phones.slice(1).forEach(function(phone){addAppelPhone();const fields=document.querySelectorAll('#appel-phones [data-appel-phone]');fields[fields.length-1].value=phone;});
+  renderAdditionalRequesterFields('appel-extra-req',source._additionalRequesters||[]);
+  if(Array.isArray(source._gpsCoordinates)&&source._gpsCoordinates.length===2){
+    document.getElementById('fa-lat').value=source._gpsCoordinates[0];
+    document.getElementById('fa-lon').value=source._gpsCoordinates[1];
+  }
+  addrSelectedCoords=Array.isArray(source._addressCoordinates)?source._addressCoordinates.slice():null;
+  const primary=Array.isArray(source._nidsAppel)?source._nidsAppel[0]:null;
+  const host=selNat==='Nid de frelons asiatiques'?'f':selNat==='Nid de guêpes et frelons'?'g':selNat==="Essaim d'abeilles"?'a':'';
+  if(primary&&host){
+    const group=document.getElementById(host==='g'?'lg':host==='f'?'lf':'la');
+    let location=String(primary.localisation||'');
+    let option=[...group.querySelectorAll('.smopt')].find(el=>el.getAttribute('onclick')?.includes("'"+location+"'"));
+    if(!option&&location){option=[...group.querySelectorAll('.smopt')].find(el=>el.getAttribute('onclick')?.includes("'Autre'"));}
+    if(option){sr(group.id,option,option.getAttribute('onclick')?.includes("'Autre'")?'Autre':location);if(option.getAttribute('onclick')?.includes("'Autre'")){const other=document.getElementById(host==='g'?'lg-autre-txt':host==='f'?'lf-autre-txt':'la-autre-txt');if(other)other.value=location;}}
+    const height=document.getElementById(host==='g'?'hg-val':host==='f'?'hf-val':'ha-val');if(height)height.value=parseFloat(primary.hauteur)||'';
+    const rain=document.querySelector('#sm-'+host+' [data-rain-value="'+rainCompatibilityState(primary.pluie)+'"]');if(rain)selectPrimaryNidRain(rain,rain.dataset.rainValue);
+    if(host==='f'&&primary.taille){const size=[...document.querySelectorAll('#sm-f .szo')].find(el=>el.getAttribute('onclick')?.includes("'"+primary.taille+"'"));if(size)sz(size,primary.taille);}
+    source._nidsAppel.slice(1).forEach(function(nid){
+      addAppelExtraNid(host);
+      const rows=document.querySelectorAll('#extra-nids-'+host+' .appel-extra-nid-row'),row=rows[rows.length-1];if(!row)return;
+      const text=String(nid.nature||''),natureValue=/asiat/i.test(text)?'Frelons asiatiques':/europ/i.test(text)?'Frelons européens':/abeill/i.test(text)?'Abeilles':/gu[eê]p/i.test(text)?'Guêpes':text;
+      const nature=[...row.querySelectorAll('[data-extra-nid-nature-choice]')].find(el=>el.getAttribute('onclick')?.includes("'"+natureValue+"'"));
+      if(!nature){row.remove();return;}
+      selectExtraNidOption(nature,'nature',natureValue);
+      let location=[...row.querySelectorAll('[data-extra-nid-location-choice]')].find(el=>el.getAttribute('onclick')?.includes("'"+nid.localisation+"'"));
+      if(!location)location=[...row.querySelectorAll('[data-extra-nid-location-choice]')].find(el=>el.getAttribute('onclick')?.includes("'Autre'"));
+      if(location){const value=location.getAttribute('onclick')?.includes("'Autre'")?'Autre':nid.localisation;selectExtraNidOption(location,'location',value);if(value==='Autre'){const other=row.querySelector('[data-extra-nid-other]');if(other)other.value=nid.localisation||'';}}
+      const height=row.querySelector('[data-extra-nid-height]');if(height)height.value=parseFloat(nid.hauteur)||'';
+      const size=[...row.querySelectorAll('[data-extra-nid-size-choice]')].find(el=>el.getAttribute('onclick')?.includes("'"+nid.taille+"'"));if(size)selectExtraNidOption(size,'size',nid.taille);
+      const rain=row.querySelector('[data-extra-nid-rain-choice="'+rainCompatibilityState(nid.pluie)+'"]');if(rain)selectExtraNidRain(rain,rainCompatibilityState(nid.pluie));
+    });
+  }
+  const banner=document.getElementById('appel-reprise-avis');
+  banner.style.display='block';
+  banner.innerHTML='<strong>Reprise de l’avis '+escHtml(interventionDisplayCallNumber(source)||source.id)+'</strong><br>Adresse, contacts et informations préremplis. Vérifiez-les avec le requérant ; les disponibilités anciennes ne sont pas reprises.<label style="display:block;margin-top:8px;"><input type="checkbox" id="appel-reprise-verifie"> J’ai vérifié les informations avant le nouvel appel.</label>';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function finaliserAvisRappeles(avis,nouvelAppel,h){
+  (avis||[]).forEach(function(source){
+    if(!source||source.id===nouvelAppel.id||!source._avisEnAttente)return;
+    source._avisEnAttente=false;source._avisRappele=true;source._avisRappelNouvelAppelId=nouvelAppel.id;
+    source.rappels=(Number(source.rappels)||0)+1;
+    if(isPilpIntervention(source)&&source.s==='avis-passage')source.s='terminee';
+    if(!Array.isArray(source.tl))source.tl=[];
+    source.tl.push(Object.assign(mkTL(source.s,h,CU.l),{note:'Rappel du requérant — nouvel appel '+(nouvelAppel._numApl||nouvelAppel.id)}));
+    markOperationalInterventionDirty(source);
+  });
+  markOperationalInterventionDirty(nouvelAppel);
+}
 function resetAppelPhones(){
   const box=document.getElementById('appel-phones');if(!box)return;
   box.querySelectorAll('.appel-phone-row').forEach((row,i)=>{if(i>0)row.remove();});
@@ -5602,7 +5673,7 @@ function toggleErpUrgence(){
   const msg=document.getElementById('erp-urgence-msg');if(msg)msg.style.display=checked?'block':'none';
 }
 function getInterventionPhones(iv){
-  const vals=Array.isArray(iv&&iv.tels)?iv.tels:iv&&iv.tel?[iv.tel]:[];
+  const vals=Array.isArray(iv&&iv.tels)&&iv.tels.length?iv.tels:iv&&iv.tel?[iv.tel]:[];
   return [...new Set(vals.map(v=>String(v||'').trim()).filter(Boolean))];
 }
 function vF(){let ok=true;[['a','ea'],['r','er'],['t','et']].forEach(([id,eid])=>{const el=document.getElementById('f'+id);if(!el.value.trim()){ok=false;el.classList.add('err');document.getElementById(eid).style.display='block';}});if(!selC2){ok=false;document.getElementById('ci').classList.add('err');document.getElementById('ec').style.display='block';}if(!validateReqAvailability())ok=false;if(!validateAppelAnimals())ok=false;if(!validateAppelNids())ok=false;if(!ok)document.getElementById('vb2').style.display='block';return ok;}
@@ -5655,6 +5726,9 @@ function _captureAppelDetails(){
 
 function enr(){
   if(!vF())return;
+  const avisCible=appelResumeAvisId?interventionById(appelResumeAvisId):null;
+  if(appelResumeAvisId&&(!avisCible||!avisCible._avisEnAttente||avisCible.s==='annulee')){showToast('Cet avis a déjà été traité. Actualisez la liste avant de reprendre un appel.','warn');return;}
+  if(avisCible&&!document.getElementById('appel-reprise-verifie')?.checked){showToast('Vérifiez les informations reprises avec le requérant.','warn');return;}
   const gps=readInterventionGpsFields(document.getElementById('fa-lat')?.value,document.getElementById('fa-lon')?.value);
   const gpsError=document.getElementById('fa-gps-error');if(gpsError)gpsError.style.display=gps.valid?'none':'block';
   if(!gps.valid)return;
@@ -5662,7 +5736,7 @@ function enr(){
   const annee=new Date().getFullYear();
   const addrBase=formatInterventionStreetAddress(document.getElementById('fa').value),addrComp=document.getElementById('fa2').value.trim(),addr=addrComp?addrBase+' — '+addrComp:addrBase,com=selC2;
   document.getElementById('fa').value=addrBase;
-  const pilpDirect=document.getElementById('chk-pilp-direct')&&document.getElementById('chk-pilp-direct').checked;
+  const pilpDirect=!!(avisCible&&isPilpIntervention(avisCible))||!!(document.getElementById('chk-pilp-direct')&&document.getElementById('chk-pilp-direct').checked);
   // Avis en attente de rappel pour CETTE adresse et CE type : le requérant rappelle.
   const _adr=document.getElementById('fa')?document.getElementById('fa').value.trim():'';
   const nidsAppel=getAppelNids();
@@ -5672,11 +5746,8 @@ function enr(){
     showActiveDuplicateCallModal(activeDuplicate);
     return;
   }
-  const exIv=findMatchingPendingAvisPassages(IVS,_adr,natureAppel,com).filter(iv=>!iv._isPilip);
-  const exPilp=findMatchingPendingAvisPassages(PILP_IVS,_adr,natureAppel,com);
-  // Lever l'indicateur "en attente" sur ces interventions (le requérant a rappelé).
-  exIv.concat(exPilp).forEach(iv=>{iv._avisEnAttente=false;iv._avisRappele=true;});
-  exPilp.forEach(iv=>iv.rappels=(iv.rappels||0)+1);
+  const exIv=avisCible?(isPilpIntervention(avisCible)?[]:[avisCible]):findMatchingPendingAvisPassages(IVS,_adr,natureAppel,com).filter(iv=>!iv._isPilip);
+  const exPilp=avisCible?(isPilpIntervention(avisCible)?[avisCible]:[]):findMatchingPendingAvisPassages(PILP_IVS,_adr,natureAppel,com);
   // Seul l'appel reçoit son numéro ici. Les numéros d'intervention sont attribués au passage En cours.
   const numApl=nextAplNum(annee);
   let det=document.getElementById('fo').value.trim();
@@ -5690,7 +5761,7 @@ function enr(){
   incCallCounter();
 
   if(pilpDirect&&natureAppel==='Nid de frelons asiatiques'){
-    PILP_IVS.unshift({
+    const newPilp={
       id:nextPilpId(annee),ivRef:null,_numApl:numApl,
       // Aucun numéro d'intervention tant que la PILP reste en attente.
       n:'Nid de frelons asiatiques — PILP',addr,_addrBase:addrBase,_addressCoordinates:addrSelectedCoords?addrSelectedCoords.slice():null,_gpsCoordinates:gps.coordinates,com,h,
@@ -5698,13 +5769,15 @@ function enr(){
       localisation:null,hauteur:null,reconnaissanceFaite:false,axeTir:null,_axeTirEtat:'a-verifier',_pilpPeriode:'a-determiner',_pilpPeriodePrecision:'',_pilpPlanningUpdatedAt:Date.now(),_pilpPlanningUpdatedBy:CU.l,obs:det,
       // Une PILP en attente reste libre : l'opérateur qui prend l'appel
       // n'est pas automatiquement le chef d'agrès ni le tireur.
-      s:'en-attente',agr:null,tireur:null,rappels:exPilp.length,
-      avisIds:exPilp.map(iv=>iv.id),tl:[mkTL('en-attente',h,CU.l)]
-    });
+      s:'en-attente',agr:null,tireur:null,rappels:exIv.length+exPilp.length,
+      avisIds:exIv.concat(exPilp).map(iv=>iv.id),tl:[mkTL('en-attente',h,CU.l)]
+    };
+    PILP_IVS.unshift(newPilp);
+    finaliserAvisRappeles(exIv.concat(exPilp),newPilp,h);
     if(CD())CD().pilpIvs=PILP_IVS;
     if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
     const cm=document.getElementById('cm');cm.style.display='block';
-    cm.innerHTML='&#x1F3AF; PILP créée — <strong>'+numsInt.numCas+'</strong><br><span style="font-family:monospace;font-size:11px;">'+numApl+'</span>';
+    cm.innerHTML='&#x1F3AF; PILP créée — <strong>'+escHtml(newPilp.id)+'</strong><br><span style="font-family:monospace;font-size:11px;">'+escHtml(numApl)+'</span>';
     saveData(true);
     rF();rI();rAccueil();gS(1);
     setTimeout(()=>{cm.style.display='none';},5000);
@@ -5714,9 +5787,10 @@ function enr(){
   const newIv={id:makeInterventionRecordId(numApl),_numApl:numApl,
     n:natureAppel,_natureAppelInitiale:selNat,addr,_addrBase:addrBase,_addressCoordinates:addrSelectedCoords?addrSelectedCoords.slice():null,_gpsCoordinates:gps.coordinates,com,h,op:CU.l,s:'en-attente',det,eng:null,_sdis:document.getElementById('chk-sdis')?.checked||false,_erp:erp,_urgence:erp,_animauxAppel:animauxAppel,_nidsAppel:nidsAppel,
     req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,_additionalRequesters:additionalRequesters,reqDispo,
-    obs:'',agr:null,rappels:exIv.length,avisIds:exIv.map(iv=>iv.id),_appelDetails:appelDetails,
+    obs:'',agr:null,rappels:exIv.length+exPilp.length,avisIds:exIv.concat(exPilp).map(iv=>iv.id),_appelDetails:appelDetails,
     tl:[mkTL('en-attente',h,CU.l)]};
   IVS.unshift(newIv);
+  finaliserAvisRappeles(exIv.concat(exPilp),newIv,h);
   if(CD())CD().ivs=IVS;
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true); // push immédiat : sinon un pull peut écraser le nouvel appel avant sauvegarde
@@ -5761,6 +5835,8 @@ function confirmerAnnulationAppel(ivId){
   cM();rF();gS(1);rI();rAccueil();
 }
 function rF(){
+  appelResumeAvisId=null;
+  const resumeBanner=document.getElementById('appel-reprise-avis');if(resumeBanner){resumeBanner.style.display='none';resumeBanner.innerHTML='';}
   selNat=null;selC2=null;hoA=null;nidSize=null;addrSelected=false;addrSelectedValue='';addrSelectedCoords=null;
   _natureLastTapLabel='';_natureLastTapAt=0;
   document.getElementById('bn').disabled=true;
@@ -6811,6 +6887,7 @@ function renderInterventionRow(iv, ag, tireur) {
       <div class="ivrh">&#x1F4C5; ${(iv.h || '').slice(0, 8)}${isRenfortUT ? ' <span style="background:#7C3AED;color:#fff;border-radius:4px;padding:0 5px;font-size:9px;font-weight:700;margin-left:4px;">RENFORT UT</span>' : isRenfortInternal ? ' <span style="background:#047857;color:#fff;border-radius:4px;padding:0 5px;font-size:9px;font-weight:700;margin-left:4px;">RENFORT INTERNE</span>' : ''}</div>
       <div class="ivrn">${isPilp ? '&#x1F3AF; ' : ''}${escHtml(iv.n)}${isRenfortUT ? ` <span style="font-size:10px;color:#7C3AED;font-weight:400;">— ${escHtml(iv._caserneSourceNom || '')}</span>` : isRenfortInternal ? ` <span style="font-size:10px;color:#047857;font-weight:400;">— pour ${escHtml(iv._sourceInterventionNumber || iv._ivSourceId || '')}</span>` : ''}${iv._avisPassage ? ' <span style="background:#9B59B6;color:#fff;border-radius:4px;padding:0 5px;font-size:9px;font-weight:700;margin-left:4px;">🟣 Avis passage</span>' : ''}</div>
       <div class="ivrc">&#x1F4CD; ${escHtml(interventionAddressLabel(iv))}${iv.eng ? ' · ' + escHtml(iv.eng) : ''}${isRenfortUT && iv._hDebut ? ' · depuis ' + escHtml(iv._hDebut) : ''}${numBadges}</div>
+      ${iv._followupSourceId?`<div class="ivrc" style="color:#9A3412;font-weight:700;">⚠️ Suite à vérifier : ${escHtml(iv._followupReason||'adresse à confirmer')}</div>`:''}
       ${isPilp?`<div class="ivrc" style="display:flex;gap:5px;flex-wrap:wrap;margin-top:3px;">
         <span style="padding:2px 6px;border-radius:6px;background:${iv.reconnaissanceFaite===true?'#DCFCE7':'#FEE2E2'};color:${iv.reconnaissanceFaite===true?'#166534':'#991B1B'};font-weight:600;">${iv.reconnaissanceFaite===true?'✅ Reconnaissance réalisée':'❌ Reconnaissance non réalisée'}</span>
         <span style="padding:2px 6px;border-radius:6px;background:${pilpAxeEtat(iv)==='disponible'?'#DCFCE7':pilpAxeEtat(iv)==='indisponible'?'#FEE2E2':'#FEF3C7'};color:${pilpAxeEtat(iv)==='disponible'?'#166534':pilpAxeEtat(iv)==='indisponible'?'#991B1B':'#92400E'};font-weight:600;">${pilpAxeEtat(iv)==='disponible'?'🎯':'⚠️'} ${escHtml(pilpAxeLabel(iv))}</span>
@@ -6983,7 +7060,7 @@ function rI(){
       <div id="av-detail" style="display:${avExpanded?'block':'none'};">
         ${avis.map(iv=>`<div class="ivr avis-passage" onclick="oM('${iv.id}')">
           <div class="ivrl"><div class="ivrh">&#x1F4C5; ${escHtml(getAvisPassageDateTimeLabel(iv)||'Date non renseignée')}</div><div class="ivrn">${escHtml(iv.n)}</div><div class="ivrc">&#x1F4CD; ${escHtml(interventionAddressLabel(iv))}${iv.rappels?' · '+Number(iv.rappels)+' rappel(s)':''}</div></div>
-          <div class="ivrr"><span class="bdg bp">Avis passage</span>${isAdminModeActive()?`<button class="btn sm" style="font-size:10px;padding:3px 8px;background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="event.stopPropagation();classerAvisPassage('${iv.id}','standard')">&#x1F5C3;&#xFE0F; Classer</button>`:''}</div></div>`).join('')}
+          <div class="ivrr"><span class="bdg bp">Avis passage</span>${hasRight('Prise d\'appel')?`<button class="btn sm" style="font-size:10px;padding:3px 8px;background:#1D4ED8;color:#fff;border-color:#1D4ED8;" onclick="event.stopPropagation();reprendreAvisPassage('${iv.id}')">Reprendre cet avis</button>`:''}${isAdminModeActive()?`<button class="btn sm" style="font-size:10px;padding:3px 8px;background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="event.stopPropagation();classerAvisPassage('${iv.id}','standard')">&#x1F5C3;&#xFE0F; Classer</button>`:''}</div></div>`).join('')}
       </div>`;
   } else as.style.display='none';
   // Les avis classés restent accessibles aux administrateurs afin qu'un
@@ -7356,6 +7433,7 @@ function oM(id){
           <input class="fi" type="time" id="superadmin-end-time" value="${getHHMM(N())}" style="width:100%;margin-bottom:8px;"/>
           <button class="btn gn" style="width:100%;" onclick="clotSuperAdmin('${iv.id}')">🛡️ Vérifier avant de clôturer pour ${escHtml(iv.agr||'le chef d’agrès')}</button>
         </div>`:`<button class="btn gn" style="width:100%;margin-bottom:10px;" onclick="clot('${iv.id}')">Vérifier avant de clôturer</button>`):`<div style="font-size:12px;color:#991B1B;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:8px;margin-bottom:10px;">🔒 Clôture réservée au chef d'agrès assigné ou à un administrateur.</div>`}
+        ${canCurrentUserCloseIntervention(iv)&&!iv._followupNewId&&!iv._isRenfort?`<button class="btn sm" style="width:100%;margin-bottom:10px;background:#FFF7ED;color:#9A3412;border-color:#FDBA74;" onclick="ouvrirSuiteAdresseIntrouvable('${iv.id}')">Adresse introuvable : clôturer et créer une suite</button>`:''}
         <div style="border-top:1px solid var(--brd);padding-top:10px;margin-bottom:6px;">
           <div style="font-size:10px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Gestion de l'équipage</div>
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:5px;">
@@ -8022,6 +8100,61 @@ function clotSuperAdmin(id){
   if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)){showToast('Saisissez une heure de retour valide.','warn');return;}
   clot(id,{superAdminManual:true,endTime:time});
 }
+function ouvrirSuiteAdresseIntrouvable(id){
+  const iv=interventionById(id);
+  if(!iv||iv.s!=='en-cours'||iv._followupNewId||!canCurrentUserCloseIntervention(iv)||isPilpReadOnlyForCurrentUser(iv)){
+    showToast('Cette intervention ne peut plus être clôturée et dupliquée.','warn');return;
+  }
+  document.getElementById('mt').textContent='Clôturer et créer une suite';
+  document.getElementById('mi').textContent='L’intervention actuelle conservera ses heures et son numéro. Une nouvelle fiche restera en attente, sans équipage ni numéro d’intervention.';
+  document.getElementById('mb').innerHTML='<div style="font-size:12px;margin-bottom:12px;">'+escHtml(iv.n||'Intervention')+' · '+escHtml(iv.addr||'')+'</div>'
+    +'<label class="fgl" for="suite-adresse-motif">Motif *</label><select class="fi" id="suite-adresse-motif"><option value="">Choisir…</option><option value="Adresse erronée ou introuvable">Adresse erronée ou introuvable</option><option value="Requérant injoignable">Requérant injoignable</option><option value="Autre difficulté de localisation">Autre difficulté de localisation</option></select>'
+    +'<label class="fgl" for="suite-adresse-detail" style="margin-top:10px;">Précisions pour la prochaine équipe *</label><textarea class="fta" id="suite-adresse-detail" placeholder="Adresse recherchée, appels tentés, éléments à vérifier…" style="height:85px;"></textarea>'
+    +'<div style="font-size:11px;color:#92400E;margin:8px 0 14px;">La nouvelle fiche reprendra les contacts et les informations d’appel, mais pas les anciens horaires, disponibilités ni l’équipage. L’adresse devra être vérifiée avant un nouveau départ.</div>'
+    +'<div class="brow"><button type="button" class="btn sm" onclick="cM()">Annuler</button><button type="button" class="btn sm" style="background:#9A3412;color:#fff;" onclick="verifierSuiteAdresseIntrouvable(\''+id+'\')">Vérifier la clôture et la suite</button></div>';
+  document.getElementById('mo').style.display='flex';
+}
+function verifierSuiteAdresseIntrouvable(id){
+  const motif=document.getElementById('suite-adresse-motif')?.value||'',detail=document.getElementById('suite-adresse-detail')?.value.trim()||'';
+  if(!motif||detail.length<5){showToast('Choisissez un motif et indiquez des précisions utiles (au moins 5 caractères).','warn');return;}
+  const iv=interventionById(id);if(!iv||iv.s!=='en-cours'||iv._followupNewId){showToast('La fiche a changé. Recommencez après actualisation.','warn');return;}
+  cM();
+  const followup={motif,detail};
+  if(isPilpIntervention(iv))clotPilp(id,{_followup:followup});else clot(id,{_followup:followup});
+}
+function creerSuiteApresCloture(iv,followup,h){
+  if(!followup||iv._followupNewId)return null;
+  const annee=new Date().getFullYear(),apl=nextAplNum(annee),pilp=isPilpIntervention(iv);
+  const note='Suite de '+(interventionDisplayCallNumber(iv)||iv.id)+' — '+followup.motif+' : '+followup.detail;
+  const tels=getInterventionPhones(iv);
+  const base={id:pilp?nextPilpId(annee):makeInterventionRecordId(apl),_numApl:apl,
+    n:iv.n,_natureAppelInitiale:iv._natureAppelInitiale||iv.n,
+    addr:iv.addr,_addrBase:interventionBaseAddressForDuplicate(iv),_addressCoordinates:Array.isArray(iv._addressCoordinates)?iv._addressCoordinates.slice():null,
+    _gpsCoordinates:Array.isArray(iv._gpsCoordinates)?iv._gpsCoordinates.slice():null,com:iv.com,h,op:CU.l,s:'en-attente',
+    req:iv.req||'',tel:tels[0]||'',tels,_additionalRequesters:Array.isArray(iv._additionalRequesters)?iv._additionalRequesters.slice():[],
+    reqDispo:null,_nidsAppel:Array.isArray(iv._nidsAppel)?JSON.parse(JSON.stringify(iv._nidsAppel)):[],
+    _appelDetails:iv._appelDetails?JSON.parse(JSON.stringify(iv._appelDetails)):null,
+    _erp:!!iv._erp,_urgence:!!iv._urgence,agr:null,eng:null,
+    _followupSourceId:iv.id,_followupReason:followup.motif,_followupDetails:followup.detail,
+    avisIds:[],rappels:0,tl:[Object.assign(mkTL('en-attente',h,CU.l),{note})]};
+  if(pilp){
+    Object.assign(base,{ivRef:null,obs:note,localisation:iv.localisation||null,hauteur:iv.hauteur||null,
+      reconnaissanceFaite:false,axeTir:null,_axeTirEtat:'a-verifier',_pilpPeriode:'a-determiner',
+      _pilpPeriodePrecision:'',_pilpPlanningUpdatedAt:Date.now(),_pilpPlanningUpdatedBy:CU.l,tireur:null});
+    PILP_IVS.unshift(base);
+  }else{
+    Object.assign(base,{det:[iv.det,note].filter(Boolean).join('\n'),obs:'',_sdis:!!iv._sdis,
+      _animauxAppel:Array.isArray(iv._animauxAppel)?JSON.parse(JSON.stringify(iv._animauxAppel)):[]});
+    IVS.unshift(base);
+  }
+  iv._followupNewId=base.id;iv._followupReason=followup.motif;
+  if(!Array.isArray(iv.tl))iv.tl=[];
+  const last=iv.tl[iv.tl.length-1],followupNote='Suite créée : '+apl+' — '+followup.motif+' : '+followup.detail;
+  if(last&&last.s==='terminee'&&last.h===h)last.note=[last.note,followupNote].filter(Boolean).join(' · ');
+  else iv.tl.push(Object.assign(mkTL('terminee',h,CU.l),{note:followupNote}));
+  markOperationalInterventionDirty(iv);markOperationalInterventionDirty(base);
+  return base;
+}
 function clot(id,options){
   const iv=interventionById(id);if(!iv)return;
   if(isPilpReadOnlyForCurrentUser(iv)){
@@ -8044,11 +8177,13 @@ function clot(id,options){
     return;
   }
   if(!['en-cours','avis-passage'].includes(iv.s)){showToast('Cette intervention n’est plus en cours.','warn');return;}
+  if(opts._followup&&iv._followupNewId){showToast('Une suite existe déjà pour cette intervention.','warn');return;}
   if(!opts._closeConfirmed){
     const capturedTime=getHHMM(N()),capturedStamp=getH(N());
     requestOperationalCloseConfirmation(iv,
       'Véhicule : '+(iv.eng||iv._engin1||'non renseigné')+' · Chef d’agrès : '+(iv.agr||'non renseigné')
-      +' · Retour : '+(opts.superAdminManual?opts.endTime:capturedTime)+(avis?' · Avis de passage à '+avisHeure:''),
+      +' · Retour : '+(opts.superAdminManual?opts.endTime:capturedTime)+(avis?' · Avis de passage à '+avisHeure:'')
+      +(opts._followup?' · Clôture avec suite : '+opts._followup.motif+' — '+opts._followup.detail:''),
       function(snapshot){clot(id,Object.assign({},opts,{_closeConfirmed:true,_closeSnapshot:snapshot,_closeAvis:avis,_closeAvisHeure:avisHeure,_closeTime:capturedTime,_closeStamp:capturedStamp}));});
     return;
   }
@@ -8095,6 +8230,7 @@ function clot(id,options){
     iv._pdfAttestation=iv._pdfAttestations[0]||'';
   }
   if(!iv.eng&&selEng)iv.eng=selEng;
+  if(opts._followup)creerSuiteApresCloture(iv,opts._followup,h);
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);cM();refreshOperationalInterventionViews();rAccueil();rStatsHeader(); // push immédiat : clôture d'intervention
   setTimeout(function(){showNextSelectedInterventionModal(iv);},80);
@@ -8402,7 +8538,7 @@ function rPilp(){
       <div id="pilp-av-detail" style="display:${apExpanded?'block':'none'};">
         ${avisP.map(iv=>`<div class="ivr avis-passage" style="cursor:pointer;" onclick="oPilp('${iv.id}')">
           <div class="ivrl"><div class="ivrh">&#x1F4C5; ${escHtml(getAvisPassageDateTimeLabel(iv)||'Date non renseignée')}</div><div class="ivrn">&#x1F3AF; ${escHtml(iv.n)}</div><div class="ivrc">&#x1F4CD; ${escHtml(iv.com)}${iv.rappels?' · '+Number(iv.rappels)+' rappel(s)':''}</div></div>
-          <div class="ivrr"><span class="bdg bp">Avis PILP</span>${isAdminModeActive()?`<button class="btn sm" style="font-size:10px;padding:3px 8px;background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="event.stopPropagation();classerAvisPassage('${iv.id}','pilp')">&#x1F5C3;&#xFE0F; Classer</button>`:''}</div></div>`).join('')}
+          <div class="ivrr"><span class="bdg bp">Avis PILP</span>${hasRight('Prise d\'appel')?`<button class="btn sm" style="font-size:10px;padding:3px 8px;background:#1D4ED8;color:#fff;border-color:#1D4ED8;" onclick="event.stopPropagation();reprendreAvisPassage('${iv.id}')">Reprendre cet avis</button>`:''}${isAdminModeActive()?`<button class="btn sm" style="font-size:10px;padding:3px 8px;background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="event.stopPropagation();classerAvisPassage('${iv.id}','pilp')">&#x1F5C3;&#xFE0F; Classer</button>`:''}</div></div>`).join('')}
       </div>`;
   } else pas.style.display='none';
   const avisPClasses=isAdminModeActive()?PILP_IVS.filter(iv=>iv._avisPassageClasse===true&&!iv._avisEnAttente&&iv.s!=='annulee'):[];
@@ -8476,6 +8612,7 @@ function oPilp(id){
           <input class="fi" type="time" id="pilp-avis-passage-hour" value="${getHHMM(N())}" style="width:100%;"/>
         </div>
         <button class="btn gn" style="width:100%;" onclick="clotPilp('${id}')">Vérifier avant de clôturer</button>
+        ${canCurrentUserCloseIntervention(iv)&&!iv._followupNewId?`<button class="btn sm" style="width:100%;margin-top:8px;background:#FFF7ED;color:#9A3412;border-color:#FDBA74;" onclick="ouvrirSuiteAdresseIntrouvable('${id}')">Adresse introuvable : clôturer et créer une suite</button>`:''}
       </div>
       <div class="brow" style="margin-top:8px;"><button class="btn sm danger" onclick="cSPilp('${id}','en-attente')">↩ En attente</button></div>`;
     } else if(iv.s==='avis-passage'&&(chef||ag)){
@@ -8554,10 +8691,12 @@ function clotPilp(id,options){
     return;
   }
   if(iv.s!=='en-cours'){showToast('Cette intervention n’est plus en cours.','warn');return;}
+  if(opts._followup&&iv._followupNewId){showToast('Une suite existe déjà pour cette intervention.','warn');return;}
   if(!opts._closeConfirmed){
     const capturedTime=getHHMM(N()),capturedStamp=getH(N());
-    requestOperationalCloseConfirmation(iv,'PILP · Chef d’agrès : '+(iv.agr||'non renseigné')+' · Retour : '+capturedTime+(avis?' · Avis de passage à '+avisHeure:''),
-      function(snapshot){clotPilp(id,{_closeConfirmed:true,_closeSnapshot:snapshot,_closeAvis:avis,_closeAvisHeure:avisHeure,_closeTime:capturedTime,_closeStamp:capturedStamp});});
+    requestOperationalCloseConfirmation(iv,'PILP · Chef d’agrès : '+(iv.agr||'non renseigné')+' · Retour : '+capturedTime+(avis?' · Avis de passage à '+avisHeure:'')
+      +(opts._followup?' · Clôture avec suite : '+opts._followup.motif+' — '+opts._followup.detail:''),
+      function(snapshot){clotPilp(id,{_closeConfirmed:true,_closeSnapshot:snapshot,_closeAvis:avis,_closeAvisHeure:avisHeure,_closeTime:capturedTime,_closeStamp:capturedStamp,_followup:opts._followup});});
     return;
   }
   if(opts._closeSnapshot!==operationalCloseSnapshot(iv)){showToast('La fiche a changé : rouvrez-la avant de clôturer.','warn');return;}
@@ -8575,6 +8714,7 @@ function clotPilp(id,options){
   } else {
     iv.s='terminee';iv._hFin=opts._closeTime||getHHMM(N());pushTL(iv,'terminee',CU.l,'',h);
     (iv.avisIds||[]).forEach(aid=>{const av=PILP_IVS.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';pushTL(av,'terminee',CU.l+' (fusion)','',h);}});
+    if(opts._followup)creerSuiteApresCloture(iv,opts._followup,h);
     if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
     saveData(true);
     cM();rPilp();rI();rAccueil();
@@ -16473,7 +16613,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202609_0023';
+const APP_VERSION='V202609_0024';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;

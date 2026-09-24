@@ -269,7 +269,7 @@ function rPilp(){
       <div id="pilp-av-detail" style="display:${apExpanded?'block':'none'};">
         ${avisP.map(iv=>`<div class="ivr avis-passage" style="cursor:pointer;" onclick="oPilp('${iv.id}')">
           <div class="ivrl"><div class="ivrh">&#x1F4C5; ${escHtml(getAvisPassageDateTimeLabel(iv)||'Date non renseignée')}</div><div class="ivrn">&#x1F3AF; ${escHtml(iv.n)}</div><div class="ivrc">&#x1F4CD; ${escHtml(iv.com)}${iv.rappels?' · '+Number(iv.rappels)+' rappel(s)':''}</div></div>
-          <div class="ivrr"><span class="bdg bp">Avis PILP</span>${isAdminModeActive()?`<button class="btn sm" style="font-size:10px;padding:3px 8px;background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="event.stopPropagation();classerAvisPassage('${iv.id}','pilp')">&#x1F5C3;&#xFE0F; Classer</button>`:''}</div></div>`).join('')}
+          <div class="ivrr"><span class="bdg bp">Avis PILP</span>${hasRight('Prise d\'appel')?`<button class="btn sm" style="font-size:10px;padding:3px 8px;background:#1D4ED8;color:#fff;border-color:#1D4ED8;" onclick="event.stopPropagation();reprendreAvisPassage('${iv.id}')">Reprendre cet avis</button>`:''}${isAdminModeActive()?`<button class="btn sm" style="font-size:10px;padding:3px 8px;background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="event.stopPropagation();classerAvisPassage('${iv.id}','pilp')">&#x1F5C3;&#xFE0F; Classer</button>`:''}</div></div>`).join('')}
       </div>`;
   } else pas.style.display='none';
   const avisPClasses=isAdminModeActive()?PILP_IVS.filter(iv=>iv._avisPassageClasse===true&&!iv._avisEnAttente&&iv.s!=='annulee'):[];
@@ -343,6 +343,7 @@ function oPilp(id){
           <input class="fi" type="time" id="pilp-avis-passage-hour" value="${getHHMM(N())}" style="width:100%;"/>
         </div>
         <button class="btn gn" style="width:100%;" onclick="clotPilp('${id}')">Vérifier avant de clôturer</button>
+        ${canCurrentUserCloseIntervention(iv)&&!iv._followupNewId?`<button class="btn sm" style="width:100%;margin-top:8px;background:#FFF7ED;color:#9A3412;border-color:#FDBA74;" onclick="ouvrirSuiteAdresseIntrouvable('${id}')">Adresse introuvable : clôturer et créer une suite</button>`:''}
       </div>
       <div class="brow" style="margin-top:8px;"><button class="btn sm danger" onclick="cSPilp('${id}','en-attente')">↩ En attente</button></div>`;
     } else if(iv.s==='avis-passage'&&(chef||ag)){
@@ -421,10 +422,12 @@ function clotPilp(id,options){
     return;
   }
   if(iv.s!=='en-cours'){showToast('Cette intervention n’est plus en cours.','warn');return;}
+  if(opts._followup&&iv._followupNewId){showToast('Une suite existe déjà pour cette intervention.','warn');return;}
   if(!opts._closeConfirmed){
     const capturedTime=getHHMM(N()),capturedStamp=getH(N());
-    requestOperationalCloseConfirmation(iv,'PILP · Chef d’agrès : '+(iv.agr||'non renseigné')+' · Retour : '+capturedTime+(avis?' · Avis de passage à '+avisHeure:''),
-      function(snapshot){clotPilp(id,{_closeConfirmed:true,_closeSnapshot:snapshot,_closeAvis:avis,_closeAvisHeure:avisHeure,_closeTime:capturedTime,_closeStamp:capturedStamp});});
+    requestOperationalCloseConfirmation(iv,'PILP · Chef d’agrès : '+(iv.agr||'non renseigné')+' · Retour : '+capturedTime+(avis?' · Avis de passage à '+avisHeure:'')
+      +(opts._followup?' · Clôture avec suite : '+opts._followup.motif+' — '+opts._followup.detail:''),
+      function(snapshot){clotPilp(id,{_closeConfirmed:true,_closeSnapshot:snapshot,_closeAvis:avis,_closeAvisHeure:avisHeure,_closeTime:capturedTime,_closeStamp:capturedStamp,_followup:opts._followup});});
     return;
   }
   if(opts._closeSnapshot!==operationalCloseSnapshot(iv)){showToast('La fiche a changé : rouvrez-la avant de clôturer.','warn');return;}
@@ -442,6 +445,7 @@ function clotPilp(id,options){
   } else {
     iv.s='terminee';iv._hFin=opts._closeTime||getHHMM(N());pushTL(iv,'terminee',CU.l,'',h);
     (iv.avisIds||[]).forEach(aid=>{const av=PILP_IVS.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';pushTL(av,'terminee',CU.l+' (fusion)','',h);}});
+    if(opts._followup)creerSuiteApresCloture(iv,opts._followup,h);
     if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
     saveData(true);
     cM();rPilp();rI();rAccueil();

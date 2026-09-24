@@ -541,6 +541,76 @@ function getAppelPhones(){
   const seen=new Set();
   return [...document.querySelectorAll('#appel-phones [data-appel-phone]')].map(e=>e.value.trim()).filter(v=>v&&!seen.has(v)&&seen.add(v));
 }
+function reprendreAvisPassage(id){
+  if(!hasRight('Prise d\'appel')){showToast('La reprise d’un avis est réservée à la prise d’appel.','warn');return;}
+  const source=interventionById(id);
+  if(!source||!source._avisEnAttente||source.s==='annulee'){
+    showToast('Cet avis n’est plus en attente de rappel. Actualisez la liste.','warn');return;
+  }
+  showT('appel',document.getElementById('nav-appel'));
+  appelResumeAvisId=id;
+  selNat=String(source._natureAppelInitiale||source.n||'').replace(/\s*[—-]\s*PILP\s*$/i,'').trim();
+  hoA=new Date();
+  document.getElementById('bn').disabled=false;
+  gS(2);
+  sC(source.com);
+  const base=interventionBaseAddressForDuplicate(source),parts=String(source.addr||'').split(/\s+—\s+/);
+  document.getElementById('fa').value=formatInterventionStreetAddress(base);
+  document.getElementById('fa2').value=source.addrComp||parts.slice(1).join(' — ');
+  document.getElementById('fr').value=source.req||'';
+  document.getElementById('fo').value=source.det||source.obs||'';
+  const phones=getInterventionPhones(source);
+  if(phones.length)document.getElementById('ft').value=phones[0];
+  phones.slice(1).forEach(function(phone){addAppelPhone();const fields=document.querySelectorAll('#appel-phones [data-appel-phone]');fields[fields.length-1].value=phone;});
+  renderAdditionalRequesterFields('appel-extra-req',source._additionalRequesters||[]);
+  if(Array.isArray(source._gpsCoordinates)&&source._gpsCoordinates.length===2){
+    document.getElementById('fa-lat').value=source._gpsCoordinates[0];
+    document.getElementById('fa-lon').value=source._gpsCoordinates[1];
+  }
+  addrSelectedCoords=Array.isArray(source._addressCoordinates)?source._addressCoordinates.slice():null;
+  const primary=Array.isArray(source._nidsAppel)?source._nidsAppel[0]:null;
+  const host=selNat==='Nid de frelons asiatiques'?'f':selNat==='Nid de guêpes et frelons'?'g':selNat==="Essaim d'abeilles"?'a':'';
+  if(primary&&host){
+    const group=document.getElementById(host==='g'?'lg':host==='f'?'lf':'la');
+    let location=String(primary.localisation||'');
+    let option=[...group.querySelectorAll('.smopt')].find(el=>el.getAttribute('onclick')?.includes("'"+location+"'"));
+    if(!option&&location){option=[...group.querySelectorAll('.smopt')].find(el=>el.getAttribute('onclick')?.includes("'Autre'"));}
+    if(option){sr(group.id,option,option.getAttribute('onclick')?.includes("'Autre'")?'Autre':location);if(option.getAttribute('onclick')?.includes("'Autre'")){const other=document.getElementById(host==='g'?'lg-autre-txt':host==='f'?'lf-autre-txt':'la-autre-txt');if(other)other.value=location;}}
+    const height=document.getElementById(host==='g'?'hg-val':host==='f'?'hf-val':'ha-val');if(height)height.value=parseFloat(primary.hauteur)||'';
+    const rain=document.querySelector('#sm-'+host+' [data-rain-value="'+rainCompatibilityState(primary.pluie)+'"]');if(rain)selectPrimaryNidRain(rain,rain.dataset.rainValue);
+    if(host==='f'&&primary.taille){const size=[...document.querySelectorAll('#sm-f .szo')].find(el=>el.getAttribute('onclick')?.includes("'"+primary.taille+"'"));if(size)sz(size,primary.taille);}
+    source._nidsAppel.slice(1).forEach(function(nid){
+      addAppelExtraNid(host);
+      const rows=document.querySelectorAll('#extra-nids-'+host+' .appel-extra-nid-row'),row=rows[rows.length-1];if(!row)return;
+      const text=String(nid.nature||''),natureValue=/asiat/i.test(text)?'Frelons asiatiques':/europ/i.test(text)?'Frelons européens':/abeill/i.test(text)?'Abeilles':/gu[eê]p/i.test(text)?'Guêpes':text;
+      const nature=[...row.querySelectorAll('[data-extra-nid-nature-choice]')].find(el=>el.getAttribute('onclick')?.includes("'"+natureValue+"'"));
+      if(!nature){row.remove();return;}
+      selectExtraNidOption(nature,'nature',natureValue);
+      let location=[...row.querySelectorAll('[data-extra-nid-location-choice]')].find(el=>el.getAttribute('onclick')?.includes("'"+nid.localisation+"'"));
+      if(!location)location=[...row.querySelectorAll('[data-extra-nid-location-choice]')].find(el=>el.getAttribute('onclick')?.includes("'Autre'"));
+      if(location){const value=location.getAttribute('onclick')?.includes("'Autre'")?'Autre':nid.localisation;selectExtraNidOption(location,'location',value);if(value==='Autre'){const other=row.querySelector('[data-extra-nid-other]');if(other)other.value=nid.localisation||'';}}
+      const height=row.querySelector('[data-extra-nid-height]');if(height)height.value=parseFloat(nid.hauteur)||'';
+      const size=[...row.querySelectorAll('[data-extra-nid-size-choice]')].find(el=>el.getAttribute('onclick')?.includes("'"+nid.taille+"'"));if(size)selectExtraNidOption(size,'size',nid.taille);
+      const rain=row.querySelector('[data-extra-nid-rain-choice="'+rainCompatibilityState(nid.pluie)+'"]');if(rain)selectExtraNidRain(rain,rainCompatibilityState(nid.pluie));
+    });
+  }
+  const banner=document.getElementById('appel-reprise-avis');
+  banner.style.display='block';
+  banner.innerHTML='<strong>Reprise de l’avis '+escHtml(interventionDisplayCallNumber(source)||source.id)+'</strong><br>Adresse, contacts et informations préremplis. Vérifiez-les avec le requérant ; les disponibilités anciennes ne sont pas reprises.<label style="display:block;margin-top:8px;"><input type="checkbox" id="appel-reprise-verifie"> J’ai vérifié les informations avant le nouvel appel.</label>';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function finaliserAvisRappeles(avis,nouvelAppel,h){
+  (avis||[]).forEach(function(source){
+    if(!source||source.id===nouvelAppel.id||!source._avisEnAttente)return;
+    source._avisEnAttente=false;source._avisRappele=true;source._avisRappelNouvelAppelId=nouvelAppel.id;
+    source.rappels=(Number(source.rappels)||0)+1;
+    if(isPilpIntervention(source)&&source.s==='avis-passage')source.s='terminee';
+    if(!Array.isArray(source.tl))source.tl=[];
+    source.tl.push(Object.assign(mkTL(source.s,h,CU.l),{note:'Rappel du requérant — nouvel appel '+(nouvelAppel._numApl||nouvelAppel.id)}));
+    markOperationalInterventionDirty(source);
+  });
+  markOperationalInterventionDirty(nouvelAppel);
+}
 function resetAppelPhones(){
   const box=document.getElementById('appel-phones');if(!box)return;
   box.querySelectorAll('.appel-phone-row').forEach((row,i)=>{if(i>0)row.remove();});
@@ -898,7 +968,7 @@ function toggleErpUrgence(){
   const msg=document.getElementById('erp-urgence-msg');if(msg)msg.style.display=checked?'block':'none';
 }
 function getInterventionPhones(iv){
-  const vals=Array.isArray(iv&&iv.tels)?iv.tels:iv&&iv.tel?[iv.tel]:[];
+  const vals=Array.isArray(iv&&iv.tels)&&iv.tels.length?iv.tels:iv&&iv.tel?[iv.tel]:[];
   return [...new Set(vals.map(v=>String(v||'').trim()).filter(Boolean))];
 }
 function vF(){let ok=true;[['a','ea'],['r','er'],['t','et']].forEach(([id,eid])=>{const el=document.getElementById('f'+id);if(!el.value.trim()){ok=false;el.classList.add('err');document.getElementById(eid).style.display='block';}});if(!selC2){ok=false;document.getElementById('ci').classList.add('err');document.getElementById('ec').style.display='block';}if(!validateReqAvailability())ok=false;if(!validateAppelAnimals())ok=false;if(!validateAppelNids())ok=false;if(!ok)document.getElementById('vb2').style.display='block';return ok;}
@@ -951,6 +1021,9 @@ function _captureAppelDetails(){
 
 function enr(){
   if(!vF())return;
+  const avisCible=appelResumeAvisId?interventionById(appelResumeAvisId):null;
+  if(appelResumeAvisId&&(!avisCible||!avisCible._avisEnAttente||avisCible.s==='annulee')){showToast('Cet avis a déjà été traité. Actualisez la liste avant de reprendre un appel.','warn');return;}
+  if(avisCible&&!document.getElementById('appel-reprise-verifie')?.checked){showToast('Vérifiez les informations reprises avec le requérant.','warn');return;}
   const gps=readInterventionGpsFields(document.getElementById('fa-lat')?.value,document.getElementById('fa-lon')?.value);
   const gpsError=document.getElementById('fa-gps-error');if(gpsError)gpsError.style.display=gps.valid?'none':'block';
   if(!gps.valid)return;
@@ -958,7 +1031,7 @@ function enr(){
   const annee=new Date().getFullYear();
   const addrBase=formatInterventionStreetAddress(document.getElementById('fa').value),addrComp=document.getElementById('fa2').value.trim(),addr=addrComp?addrBase+' — '+addrComp:addrBase,com=selC2;
   document.getElementById('fa').value=addrBase;
-  const pilpDirect=document.getElementById('chk-pilp-direct')&&document.getElementById('chk-pilp-direct').checked;
+  const pilpDirect=!!(avisCible&&isPilpIntervention(avisCible))||!!(document.getElementById('chk-pilp-direct')&&document.getElementById('chk-pilp-direct').checked);
   // Avis en attente de rappel pour CETTE adresse et CE type : le requérant rappelle.
   const _adr=document.getElementById('fa')?document.getElementById('fa').value.trim():'';
   const nidsAppel=getAppelNids();
@@ -968,11 +1041,8 @@ function enr(){
     showActiveDuplicateCallModal(activeDuplicate);
     return;
   }
-  const exIv=findMatchingPendingAvisPassages(IVS,_adr,natureAppel,com).filter(iv=>!iv._isPilip);
-  const exPilp=findMatchingPendingAvisPassages(PILP_IVS,_adr,natureAppel,com);
-  // Lever l'indicateur "en attente" sur ces interventions (le requérant a rappelé).
-  exIv.concat(exPilp).forEach(iv=>{iv._avisEnAttente=false;iv._avisRappele=true;});
-  exPilp.forEach(iv=>iv.rappels=(iv.rappels||0)+1);
+  const exIv=avisCible?(isPilpIntervention(avisCible)?[]:[avisCible]):findMatchingPendingAvisPassages(IVS,_adr,natureAppel,com).filter(iv=>!iv._isPilip);
+  const exPilp=avisCible?(isPilpIntervention(avisCible)?[avisCible]:[]):findMatchingPendingAvisPassages(PILP_IVS,_adr,natureAppel,com);
   // Seul l'appel reçoit son numéro ici. Les numéros d'intervention sont attribués au passage En cours.
   const numApl=nextAplNum(annee);
   let det=document.getElementById('fo').value.trim();
@@ -986,7 +1056,7 @@ function enr(){
   incCallCounter();
 
   if(pilpDirect&&natureAppel==='Nid de frelons asiatiques'){
-    PILP_IVS.unshift({
+    const newPilp={
       id:nextPilpId(annee),ivRef:null,_numApl:numApl,
       // Aucun numéro d'intervention tant que la PILP reste en attente.
       n:'Nid de frelons asiatiques — PILP',addr,_addrBase:addrBase,_addressCoordinates:addrSelectedCoords?addrSelectedCoords.slice():null,_gpsCoordinates:gps.coordinates,com,h,
@@ -994,13 +1064,15 @@ function enr(){
       localisation:null,hauteur:null,reconnaissanceFaite:false,axeTir:null,_axeTirEtat:'a-verifier',_pilpPeriode:'a-determiner',_pilpPeriodePrecision:'',_pilpPlanningUpdatedAt:Date.now(),_pilpPlanningUpdatedBy:CU.l,obs:det,
       // Une PILP en attente reste libre : l'opérateur qui prend l'appel
       // n'est pas automatiquement le chef d'agrès ni le tireur.
-      s:'en-attente',agr:null,tireur:null,rappels:exPilp.length,
-      avisIds:exPilp.map(iv=>iv.id),tl:[mkTL('en-attente',h,CU.l)]
-    });
+      s:'en-attente',agr:null,tireur:null,rappels:exIv.length+exPilp.length,
+      avisIds:exIv.concat(exPilp).map(iv=>iv.id),tl:[mkTL('en-attente',h,CU.l)]
+    };
+    PILP_IVS.unshift(newPilp);
+    finaliserAvisRappeles(exIv.concat(exPilp),newPilp,h);
     if(CD())CD().pilpIvs=PILP_IVS;
     if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
     const cm=document.getElementById('cm');cm.style.display='block';
-    cm.innerHTML='&#x1F3AF; PILP créée — <strong>'+numsInt.numCas+'</strong><br><span style="font-family:monospace;font-size:11px;">'+numApl+'</span>';
+    cm.innerHTML='&#x1F3AF; PILP créée — <strong>'+escHtml(newPilp.id)+'</strong><br><span style="font-family:monospace;font-size:11px;">'+escHtml(numApl)+'</span>';
     saveData(true);
     rF();rI();rAccueil();gS(1);
     setTimeout(()=>{cm.style.display='none';},5000);
@@ -1010,9 +1082,10 @@ function enr(){
   const newIv={id:makeInterventionRecordId(numApl),_numApl:numApl,
     n:natureAppel,_natureAppelInitiale:selNat,addr,_addrBase:addrBase,_addressCoordinates:addrSelectedCoords?addrSelectedCoords.slice():null,_gpsCoordinates:gps.coordinates,com,h,op:CU.l,s:'en-attente',det,eng:null,_sdis:document.getElementById('chk-sdis')?.checked||false,_erp:erp,_urgence:erp,_animauxAppel:animauxAppel,_nidsAppel:nidsAppel,
     req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,_additionalRequesters:additionalRequesters,reqDispo,
-    obs:'',agr:null,rappels:exIv.length,avisIds:exIv.map(iv=>iv.id),_appelDetails:appelDetails,
+    obs:'',agr:null,rappels:exIv.length+exPilp.length,avisIds:exIv.concat(exPilp).map(iv=>iv.id),_appelDetails:appelDetails,
     tl:[mkTL('en-attente',h,CU.l)]};
   IVS.unshift(newIv);
+  finaliserAvisRappeles(exIv.concat(exPilp),newIv,h);
   if(CD())CD().ivs=IVS;
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true); // push immédiat : sinon un pull peut écraser le nouvel appel avant sauvegarde
@@ -1057,6 +1130,8 @@ function confirmerAnnulationAppel(ivId){
   cM();rF();gS(1);rI();rAccueil();
 }
 function rF(){
+  appelResumeAvisId=null;
+  const resumeBanner=document.getElementById('appel-reprise-avis');if(resumeBanner){resumeBanner.style.display='none';resumeBanner.innerHTML='';}
   selNat=null;selC2=null;hoA=null;nidSize=null;addrSelected=false;addrSelectedValue='';addrSelectedCoords=null;
   _natureLastTapLabel='';_natureLastTapAt=0;
   document.getElementById('bn').disabled=true;
