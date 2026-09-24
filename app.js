@@ -1021,6 +1021,8 @@ function normalizeInterventionAddressForMatch(value){
   return nm(String(value||''))
     .replace(/[’']/g,' ')
     .replace(/[\-‐‑‒–—―,.;:()]/g,' ')
+    .replace(/(\d)(?=[a-z])/g,'$1 ')
+    .replace(/\b(\d+)\s*(bis|ter|quater)(?=(?:rue|avenue|av|route|chemin|impasse|boulevard|place|allee|residence|cite|faubourg)\b)/g,'$1$2 ')
     .replace(/\b(\d+)\s*b(?:is)?\b/g,'$1bis')
     .replace(/\b(\d+)\s*t(?:er)?\b/g,'$1ter')
     .replace(/\b(\d+)\s*q(?:uater)?\b/g,'$1quater')
@@ -1040,6 +1042,17 @@ function interventionBaseAddressForDuplicate(interventionOrAddress){
 }
 function interventionNatureForDuplicate(value){
   return nm(String(value||'').replace(/\s*[—-]\s*PILP\s*$/i,'').trim());
+}
+function findMatchingPendingAvisPassages(interventions,address,nature,commune){
+  const base=interventionBaseAddressForDuplicate(address);
+  const normalizedNature=interventionNatureForDuplicate(nature),normalizedCommune=nm(commune);
+  if(!base||!normalizedNature||!normalizedCommune)return [];
+  return (interventions||[]).filter(function(iv){
+    return iv&&iv._avisEnAttente&&iv.s!=='annulee'
+      &&sameInterventionAddress(interventionBaseAddressForDuplicate(iv),base)
+      &&nm(iv.com)===normalizedCommune
+      &&interventionNatureForDuplicate(iv.n)===normalizedNature;
+  });
 }
 function findActiveDuplicateIntervention(nature,address,commune,excludeId){
   const normalizedNature=interventionNatureForDuplicate(nature),normalizedCommune=nm(commune),baseAddress=interventionBaseAddressForDuplicate(address);
@@ -5630,8 +5643,8 @@ function enr(){
     showActiveDuplicateCallModal(activeDuplicate);
     return;
   }
-  const exIv=IVS.filter(iv=>iv._avisEnAttente&&!iv._isPilip&&sameInterventionAddress(iv.addr,_adr)&&nm(iv.n)===nm(natureAppel));
-  const exPilp=PILP_IVS.filter(iv=>iv._avisEnAttente&&sameInterventionAddress(iv.addr,_adr)&&nm(iv.n)===nm(natureAppel));
+  const exIv=findMatchingPendingAvisPassages(IVS,_adr,natureAppel,com).filter(iv=>!iv._isPilip);
+  const exPilp=findMatchingPendingAvisPassages(PILP_IVS,_adr,natureAppel,com);
   // Lever l'indicateur "en attente" sur ces interventions (le requérant a rappelé).
   exIv.concat(exPilp).forEach(iv=>{iv._avisEnAttente=false;iv._avisRappele=true;});
   exPilp.forEach(iv=>iv.rappels=(iv.rappels||0)+1);
@@ -16379,7 +16392,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202609_0021';
+const APP_VERSION='V202609_0022';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;

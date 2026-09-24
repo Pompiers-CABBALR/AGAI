@@ -942,8 +942,8 @@ function enr(){
     showActiveDuplicateCallModal(activeDuplicate);
     return;
   }
-  const exIv=IVS.filter(iv=>iv._avisEnAttente&&!iv._isPilip&&sameInterventionAddress(iv.addr,_adr)&&nm(iv.n)===nm(natureAppel));
-  const exPilp=PILP_IVS.filter(iv=>iv._avisEnAttente&&sameInterventionAddress(iv.addr,_adr)&&nm(iv.n)===nm(natureAppel));
+  const exIv=findMatchingPendingAvisPassages(IVS,_adr,natureAppel,com).filter(iv=>!iv._isPilip);
+  const exPilp=findMatchingPendingAvisPassages(PILP_IVS,_adr,natureAppel,com);
   // Lever l'indicateur "en attente" sur ces interventions (le requérant a rappelé).
   exIv.concat(exPilp).forEach(iv=>{iv._avisEnAttente=false;iv._avisRappele=true;});
   exPilp.forEach(iv=>iv.rappels=(iv.rappels||0)+1);

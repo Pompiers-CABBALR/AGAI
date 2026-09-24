@@ -1,5 +1,25 @@
 # AGAI — déploiement sécurisé
 
+## Préparation V202609_0022 — rappel après avis de passage
+
+**Préparée localement, non déployée par Codex.** Cette version corrige le
+rapprochement d'une adresse saisie sans espace entre le numéro et la rue
+(par exemple `12Rue` et `12 Rue`). Il reste strict sur le numéro, la rue,
+la commune et la nature de l'intervention. À la création d'un nouvel appel,
+l'avis correspondant est retiré des avis en attente et relié à cet appel.
+
+Publier tous les fichiers de l'application V202609_0022 ensemble, y compris
+`runtime-config.js` et `version.json`. Aucun changement SQL ou Edge Function
+n'est requis ; la liaison technique pilote des comptes reste inchangée.
+Vérifier avec un appel d'essai non opérationnel seulement si un environnement
+de test est disponible, puis contrôler que la file de synchronisation reste
+vide et que l'envoi et la réception restent récents.
+
+Un avis déjà resté affiché avant cette version n'est pas corrigé
+automatiquement : il faut identifier précisément l'ancien avis et le nouvel
+appel avant toute régularisation. Ne pas supprimer ou modifier des fiches en
+production sur la seule base d'une ressemblance d'adresse.
+
 ## Préparation V202609_0021 — pilote Brian, création unique
 
 **Préparée localement, non déployée par Codex.** La V20 reste la version en place

@@ -868,6 +868,8 @@ function normalizeInterventionAddressForMatch(value){
   return nm(String(value||''))
     .replace(/[’']/g,' ')
     .replace(/[\-‐‑‒–—―,.;:()]/g,' ')
+    .replace(/(\d)(?=[a-z])/g,'$1 ')
+    .replace(/\b(\d+)\s*(bis|ter|quater)(?=(?:rue|avenue|av|route|chemin|impasse|boulevard|place|allee|residence|cite|faubourg)\b)/g,'$1$2 ')
     .replace(/\b(\d+)\s*b(?:is)?\b/g,'$1bis')
     .replace(/\b(\d+)\s*t(?:er)?\b/g,'$1ter')
     .replace(/\b(\d+)\s*q(?:uater)?\b/g,'$1quater')
@@ -887,6 +889,17 @@ function interventionBaseAddressForDuplicate(interventionOrAddress){
 }
 function interventionNatureForDuplicate(value){
   return nm(String(value||'').replace(/\s*[—-]\s*PILP\s*$/i,'').trim());
+}
+function findMatchingPendingAvisPassages(interventions,address,nature,commune){
+  const base=interventionBaseAddressForDuplicate(address);
+  const normalizedNature=interventionNatureForDuplicate(nature),normalizedCommune=nm(commune);
+  if(!base||!normalizedNature||!normalizedCommune)return [];
+  return (interventions||[]).filter(function(iv){
+    return iv&&iv._avisEnAttente&&iv.s!=='annulee'
+      &&sameInterventionAddress(interventionBaseAddressForDuplicate(iv),base)
+      &&nm(iv.com)===normalizedCommune
+      &&interventionNatureForDuplicate(iv.n)===normalizedNature;
+  });
 }
 function findActiveDuplicateIntervention(nature,address,commune,excludeId){
   const normalizedNature=interventionNatureForDuplicate(nature),normalizedCommune=nm(commune),baseAddress=interventionBaseAddressForDuplicate(address);

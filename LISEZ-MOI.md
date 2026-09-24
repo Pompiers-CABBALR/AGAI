@@ -3,6 +3,11 @@
 Cette variante conserve les fonctionnalités de `AGAI-securise.html`, mais sépare
 le code afin de faciliter les prochaines corrections.
 
+La V202609_0022 corrige le rappel d'un avis de passage lorsque l'espace entre
+le numéro d'habitation et le nom de rue diffère d'une saisie à l'autre.
+Les avis déjà restés ouverts avant cette correction nécessitent une
+régularisation ciblée après vérification des deux fiches concernées.
+
 ## Fichiers principaux
 
 - `index.html` : structure de l’application ;
