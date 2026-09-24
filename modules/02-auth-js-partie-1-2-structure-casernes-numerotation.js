@@ -734,7 +734,7 @@ function agaiRepairNumberingByStartOrder(){
   const records=[];
   const seen=new Set();
   [...(data.ivs||[]),...(data.pilpIvs||[])].forEach(function(iv){
-    if(!iv||iv._isRenfort||iv._refugeAnimalier)return;
+    if(!iv||iv._isRenfort||iv._refugeAnimalier||iv._lienPilpSourceId)return;
     if(iv.s==='en-attente'||iv.s==='selectionne'){
       if(iv._numGlobal||iv._numCaserne||iv._numMois)clearInterventionNumbersForPending(iv);
       return;
@@ -787,7 +787,7 @@ function agaiCheckNumberingConflicts(notify){
     if(cid.startsWith('_'))return;
     const data=CASERNE_DATA[cid]||{};
     [...(data.ivs||[]),...(data.pilpIvs||[])].forEach(function(iv){
-      if(!iv||iv._isRenfort||iv._lienPilp||iv._numberingScheme==='dual-v1'&&iv._numberFinalized!==true)return;
+      if(!iv||iv._isRenfort||iv._lienPilpSourceId||iv._numberingScheme==='dual-v1'&&iv._numberFinalized!==true)return;
       const identity=cid+'|'+String(iv.id||'');
       if(seenRecords.has(identity))return;
       seenRecords.add(identity);

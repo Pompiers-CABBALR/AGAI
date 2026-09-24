@@ -1,5 +1,43 @@
 # AGAI — déploiement sécurisé
 
+## Préparation V202609_0025 — numérotation de l'intervention source PILP
+
+**Préparée localement, non déployée et non exécutée par Codex.** Le cas
+`APL_2026_000441` montre une intervention réelle terminée avec
+`_lienPilp=true`, mais `_numberFinalized=false`. L'ancienne règle serveur
+exclut cette intervention de la numérotation. La V25 exclut uniquement les
+copies techniques d'historique (`_lienPilpSourceId`), tout en conservant les
+numéros provisoires hors des maxima définitifs et des contrôles de doublons.
+Le client refuse désormais d'acquitter une telle clôture si Supabase ne
+confirme pas son numéro. « Non confirmé » remplace le message ambigu
+« en attente de synchronisation ».
+
+Ordre de préparation avant toute production :
+
+1. Sauvegarder l'état actuel de la base et exporter séparément les deux lignes
+   concernées, les compteurs `agai_number_counters` et la définition des
+   fonctions atomiques. Ne pas publier ni exécuter en pleine intervention.
+2. Tester `supabase-pilp-linked-numbering-v202609-0025.sql` sur une **copie**
+   de la base, puis les parcours clôture normale, clôture avec PILP liée et
+   PILP terminée. Le correctif SQL ne modifie aucune fiche existante.
+3. Après validation, appliquer le correctif serveur avant l'application V25.
+   Vérifier que `correctif_pilp_actif=true` puis publier tous les fichiers
+   de l'application V25 ensemble. Ne pas rejouer V238 ou V0014.
+4. Lancer `DIAGNOSTIC-NUMEROTATION-PILP-V202609-0025.sql` en lecture seule.
+   Le fichier `REGULARISATION-PILP-APL_2026_000441-APERCU.sql` est un essai
+   transactionnel : il se termine obligatoirement par `ROLLBACK`. Vérifier
+   que la fiche reste `numero_confirme=false` après cet essai.
+5. **Aucune régularisation persistante n'est incluse.** Elle nécessitera une
+   nouvelle validation explicite après examen de l'aperçu et des autres
+   éventuelles fiches touchées.
+
+Le numéro définitif attribué tardivement peut être différent des anciens
+numéros provisoires UT 394 / M 176 et ne suivra pas forcément l'ordre
+chronologique des départs. Ne pas forcer ces valeurs ni renuméroter les
+interventions déjà clôturées : cela pourrait créer des doublons ou modifier
+les rapports existants. Après une régularisation approuvée, contrôler la
+nouvelle fiche depuis deux appareils et l'état de la file de synchronisation.
+
 ## Préparation V202609_0024 — rappel d'avis et suite après adresse introuvable
 
 **Préparée localement, non déployée par Codex.** « Reprendre cet avis »

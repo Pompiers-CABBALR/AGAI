@@ -1172,7 +1172,7 @@ function voirRapportIntervention(ivId) {
   if(!requireInterventionPdfDesktop())return;
   const iv=interventionById(ivId);
   if(iv&&iv._numberingScheme==='dual-v1'&&iv.s==='terminee'&&iv._numberFinalized!==true){
-    showToast('Attendez la synchronisation du numéro définitif avant d’ouvrir le rapport.','warn');
+    showToast('Le numéro définitif n’est pas confirmé par le serveur. Si cela persiste, contactez un administrateur.','warn');
     return;
   }
   const html = genRapportInterventionHTML(ivId);

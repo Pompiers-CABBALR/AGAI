@@ -3,6 +3,11 @@
 Cette variante conserve les fonctionnalités de `AGAI-securise.html`, mais sépare
 le code afin de faciliter les prochaines corrections.
 
+La V202609_0025 corrige le cas où l'intervention d'origine, liée à une PILP,
+restait sans numéro définitif après sa clôture. Le correctif serveur V25 doit
+être validé sur une copie avant publication de l'application ; la
+régularisation historique reste séparée et n'est pas appliquée automatiquement.
+
 La V202609_0024 permet de reprendre un avis de passage dans une prise
 d'appel préremplie, et de clôturer une intervention dont l'adresse est
 introuvable tout en créant une nouvelle fiche en attente liée à l'ancienne.

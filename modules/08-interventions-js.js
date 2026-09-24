@@ -1002,7 +1002,7 @@ function renderInterventionRow(iv, ag, tireur) {
   const pendingFinalNumber=dualNumbering&&iv.s==='terminee'&&iv._numberFinalized!==true;
   const provisionalNumber=dualNumbering&&iv.s==='en-cours';
   const numBadges = pendingFinalNumber
-    ? ' · <span style="font-size:10px;color:#92400E;font-weight:700;">Numéro définitif en attente de synchronisation</span>'
+    ? ' · <span style="font-size:10px;color:#92400E;font-weight:700;">Numéro définitif non confirmé</span>'
     : provisionalNumber
     ? ` · <span style="font-size:10px;color:#92400E;font-weight:700;">Provisoire ${iv._numCaserne?'UT:'+escHtml(String(iv._numCaserne))+' ':''}${iv._numMois?'M:'+escHtml(String(iv._numMois)):''}</span>`
     : iv.s === 'terminee' ? (
@@ -1446,7 +1446,7 @@ function oM(id){
   const dispApl=interventionDisplayCallNumber(iv);
   const dispTransfert=iv._transfertDe?` ↩ transféré de ${CASERNES.find(cas=>cas.id===iv._transfertDe)?.nom||iv._transfertDe}`:'';
   const dispUt=iv._numberingScheme==='dual-v1'&&iv.s==='terminee'&&iv._numberFinalized!==true
-    ?' · numéro définitif en attente de synchronisation'
+    ?' · numéro définitif non confirmé'
     :iv._numCaserne?' · UT '+interventionDisplayUTNumber(iv)+(iv._numberingScheme==='dual-v1'&&iv.s==='en-cours'?' (provisoire)':''):'';
   document.getElementById('mi').textContent=dispApl+dispUt+dispTransfert;
    const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis de passage'],'avis-classe':['bp','Avis classé'],'avis-restaure':['binfo','Avis remis en attente'],'modif':['bgr','Modification'],'modif-adresse':['bgr','Adresse corrigée'],'modif-heure':['binfo','Horaire corrigé'],'modif-equipier':['binfo','Équipage corrigé'],'modif-engin':['binfo','Véhicule corrigé'],'reclasse':['bgr','Reclasé'],'releve':['binfo','Relève'],'info-compl':['binfo','ℹ️ Complément d\u2019info']};

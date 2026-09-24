@@ -2941,7 +2941,7 @@ async function _rcSendAtomicOperationalRow(row,currentUser){
         _rcReplaceLocalOperationalRecord(row.caserne,row.type,result.data);
       }
     }catch(error){}
-    if(row.data&&row.data._numberingScheme==='dual-v1'&&row.data.s==='terminee'&&row.data._isRenfort!==true&&row.data._lienPilp!==true
+    if(row.data&&row.data._numberingScheme==='dual-v1'&&row.data.s==='terminee'&&row.data._isRenfort!==true&&!row.data._lienPilpSourceId
        &&(!confirmedData||confirmedData._numberFinalized!==true)){
       // Si le SQL V0014 n'est pas encore installé, l'ancienne fonction peut
       // accepter la clôture sans numéro définitif. Ne pas acquitter la file.

@@ -887,7 +887,7 @@ function agaiRepairNumberingByStartOrder(){
   const records=[];
   const seen=new Set();
   [...(data.ivs||[]),...(data.pilpIvs||[])].forEach(function(iv){
-    if(!iv||iv._isRenfort||iv._refugeAnimalier)return;
+    if(!iv||iv._isRenfort||iv._refugeAnimalier||iv._lienPilpSourceId)return;
     if(iv.s==='en-attente'||iv.s==='selectionne'){
       if(iv._numGlobal||iv._numCaserne||iv._numMois)clearInterventionNumbersForPending(iv);
       return;
@@ -940,7 +940,7 @@ function agaiCheckNumberingConflicts(notify){
     if(cid.startsWith('_'))return;
     const data=CASERNE_DATA[cid]||{};
     [...(data.ivs||[]),...(data.pilpIvs||[])].forEach(function(iv){
-      if(!iv||iv._isRenfort||iv._lienPilp||iv._numberingScheme==='dual-v1'&&iv._numberFinalized!==true)return;
+      if(!iv||iv._isRenfort||iv._lienPilpSourceId||iv._numberingScheme==='dual-v1'&&iv._numberFinalized!==true)return;
       const identity=cid+'|'+String(iv.id||'');
       if(seenRecords.has(identity))return;
       seenRecords.add(identity);
@@ -6870,7 +6870,7 @@ function renderInterventionRow(iv, ag, tireur) {
   const pendingFinalNumber=dualNumbering&&iv.s==='terminee'&&iv._numberFinalized!==true;
   const provisionalNumber=dualNumbering&&iv.s==='en-cours';
   const numBadges = pendingFinalNumber
-    ? ' · <span style="font-size:10px;color:#92400E;font-weight:700;">Numéro définitif en attente de synchronisation</span>'
+    ? ' · <span style="font-size:10px;color:#92400E;font-weight:700;">Numéro définitif non confirmé</span>'
     : provisionalNumber
     ? ` · <span style="font-size:10px;color:#92400E;font-weight:700;">Provisoire ${iv._numCaserne?'UT:'+escHtml(String(iv._numCaserne))+' ':''}${iv._numMois?'M:'+escHtml(String(iv._numMois)):''}</span>`
     : iv.s === 'terminee' ? (
@@ -7314,7 +7314,7 @@ function oM(id){
   const dispApl=interventionDisplayCallNumber(iv);
   const dispTransfert=iv._transfertDe?` ↩ transféré de ${CASERNES.find(cas=>cas.id===iv._transfertDe)?.nom||iv._transfertDe}`:'';
   const dispUt=iv._numberingScheme==='dual-v1'&&iv.s==='terminee'&&iv._numberFinalized!==true
-    ?' · numéro définitif en attente de synchronisation'
+    ?' · numéro définitif non confirmé'
     :iv._numCaserne?' · UT '+interventionDisplayUTNumber(iv)+(iv._numberingScheme==='dual-v1'&&iv.s==='en-cours'?' (provisoire)':''):'';
   document.getElementById('mi').textContent=dispApl+dispUt+dispTransfert;
    const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis de passage'],'avis-classe':['bp','Avis classé'],'avis-restaure':['binfo','Avis remis en attente'],'modif':['bgr','Modification'],'modif-adresse':['bgr','Adresse corrigée'],'modif-heure':['binfo','Horaire corrigé'],'modif-equipier':['binfo','Équipage corrigé'],'modif-engin':['binfo','Véhicule corrigé'],'reclasse':['bgr','Reclasé'],'releve':['binfo','Relève'],'info-compl':['binfo','ℹ️ Complément d\u2019info']};
@@ -9514,10 +9514,10 @@ function historyRowHTML(iv){
   const click=iv._isPilp?"oPilp('"+escHtml(iv.id)+"')":"oM('"+escHtml(iv.id)+"')";
   const crewLogins=historyCrewMembers(iv).map(function(member){return member.login;}).join('|');
   return `<div class="hm hist-entry${iv._crValide&&iv._impressions&&iv._impressions.length?' report-complete':''}" data-hsearch="${escHtml(historySearchBlob(iv))}" data-hdate="${historyInterventionDayKey(iv)}" data-hcrew="${escHtml(crewLogins)}" onclick="${click}">
-  <span style="font-family:monospace;font-size:10px;color:var(--t3);">${iv._numberingScheme==='dual-v1'&&iv.s==='terminee'&&iv._numberFinalized!==true?'N° en attente':escHtml(interventionDisplayUTNumber(iv)||interventionDisplayCallNumber(iv))}</span>
+  <span style="font-family:monospace;font-size:10px;color:var(--t3);">${iv._numberingScheme==='dual-v1'&&iv.s==='terminee'&&iv._numberFinalized!==true?'N° non confirmé':escHtml(interventionDisplayUTNumber(iv)||interventionDisplayCallNumber(iv))}</span>
   <span style="flex:1;font-size:12px;color:var(--t);${iv.s==='annulee'?'text-decoration:line-through;color:#999;':''}">
     ${escHtml(iv.n||'Intervention')}
-    ${iv._numberingScheme==='dual-v1'&&iv.s==='terminee'&&iv._numberFinalized!==true?' <span style="font-size:10px;color:#92400E;">Numérotation en attente de synchronisation</span>':iv._numGlobal||iv._numCaserne||iv._numMois||iv._numRenfort?`<span style="font-size:10px;font-weight:600;margin-left:6px;">
+    ${iv._numberingScheme==='dual-v1'&&iv.s==='terminee'&&iv._numberFinalized!==true?' <span style="font-size:10px;color:#92400E;">Numérotation non confirmée</span>':iv._numGlobal||iv._numCaserne||iv._numMois||iv._numRenfort?`<span style="font-size:10px;font-weight:600;margin-left:6px;">
       ${iv._numGlobal?`<span style="color:#1A6B1A;">C:${escHtml(iv._numGlobal)}</span> `:''}
       ${iv._isRenfort?(iv._numRenfort?`<span style="color:#7C3AED;">Renfort:${escHtml(iv._numRenfort)}</span>`:''):(iv._numCaserne?`<span class="hist-num-ut" style="color:#6A0DAD;">UT:${escHtml(interventionDisplayUTNumber(iv))}</span> `:'')}
       ${!iv._isRenfort&&iv._numMois?`<span class="hist-num-m" style="color:#C0392B;">M:${escHtml(iv._numMois)}</span>`:''}
@@ -16613,7 +16613,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202609_0024';
+const APP_VERSION='V202609_0025';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -18242,7 +18242,7 @@ function voirRapportIntervention(ivId) {
   if(!requireInterventionPdfDesktop())return;
   const iv=interventionById(ivId);
   if(iv&&iv._numberingScheme==='dual-v1'&&iv.s==='terminee'&&iv._numberFinalized!==true){
-    showToast('Attendez la synchronisation du numéro définitif avant d’ouvrir le rapport.','warn');
+    showToast('Le numéro définitif n’est pas confirmé par le serveur. Si cela persiste, contactez un administrateur.','warn');
     return;
   }
   const html = genRapportInterventionHTML(ivId);
@@ -21244,7 +21244,7 @@ async function _rcSendAtomicOperationalRow(row,currentUser){
         _rcReplaceLocalOperationalRecord(row.caserne,row.type,result.data);
       }
     }catch(error){}
-    if(row.data&&row.data._numberingScheme==='dual-v1'&&row.data.s==='terminee'&&row.data._isRenfort!==true&&row.data._lienPilp!==true
+    if(row.data&&row.data._numberingScheme==='dual-v1'&&row.data.s==='terminee'&&row.data._isRenfort!==true&&!row.data._lienPilpSourceId
        &&(!confirmedData||confirmedData._numberFinalized!==true)){
       // Si le SQL V0014 n'est pas encore installé, l'ancienne fonction peut
       // accepter la clôture sans numéro définitif. Ne pas acquitter la file.
