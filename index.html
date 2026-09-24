@@ -9,7 +9,7 @@
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
 <title>AGAI</title>
-<link rel="stylesheet" href="style.css?v=V202609_0022"/>
+<link rel="stylesheet" href="style.css?v=V202609_0023"/>
 </head>
 <body>
 
@@ -149,7 +149,7 @@
         <div class="fg">
           <div class="fgl">Adresse <span class="req">*</span></div>
           <div style="position:relative;">
-            <input class="fi" type="text" id="fa" placeholder="Sélectionnez d'abord une commune…" oninput="ce('a');addrAutocomplete(this.value);checkDejaIntervenu()" autocomplete="off" style="padding-right:30px;"/>
+            <input class="fi" type="text" id="fa" placeholder="Sélectionnez d'abord une commune…" oninput="ce('a');addrAutocomplete(this.value);checkDejaIntervenu()" onblur="this.value=formatInterventionStreetAddress(this.value)" autocomplete="off" style="padding-right:30px;"/>
             <span id="fa-spinner" style="display:none;position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:14px;">⏳</span>
             <div id="fa-dd" style="display:none;position:absolute;z-index:100;width:100%;background:#fff;border:1px solid var(--brd);border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.1);max-height:200px;overflow-y:auto;margin-top:2px;"></div>
           </div>
@@ -157,6 +157,7 @@
           <div id="deja-intervenu-alert" style="display:none;background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:12px;color:#92400E;"></div>
         </div>
         <div class="fg"><div class="fgl">Complément d'adresse <span style="font-size:10px;color:var(--t2);">(optionnel)</span></div><input class="fi" type="text" id="fa2" placeholder="Bât. B, apt. 12, lieu-dit…"/></div>
+        <div class="fg"><div class="fgl">Coordonnées GPS <span style="font-size:10px;color:var(--t2);">(optionnel, point précis hors voie)</span></div><div class="appel-requerant-grid"><input class="fi" type="text" id="fa-lat" inputmode="decimal" placeholder="Latitude, ex. 50,5281" aria-label="Latitude"/><input class="fi" type="text" id="fa-lon" inputmode="decimal" placeholder="Longitude, ex. 2,4769" aria-label="Longitude"/></div><div class="ferr" id="fa-gps-error">Indiquez une latitude et une longitude valides, ou laissez les deux champs vides.</div></div>
         <div class="appel-requerant-grid">
           <div class="fg"><div class="fgl">Requérant <span class="req">*</span></div><input class="fi" type="text" id="fr" placeholder="Nom" oninput="ce('r')"/><div class="ferr" id="er">Obligatoire.</div></div>
           <div class="fg">
@@ -167,6 +168,7 @@
             <div class="ferr" id="et">Au moins un numéro est obligatoire.</div>
           </div>
         </div>
+        <div class="fg"><div class="fgl">Autres requérants <span style="font-size:10px;color:var(--t2);">(optionnel, notamment pour PILP)</span></div><div id="appel-extra-req"></div><button type="button" class="btn sm" onclick="addAdditionalRequesterField('appel-extra-req')">+ Ajouter un requérant</button></div>
         <div class="fg">
           <div class="fgl">Disponibilité du requérant <span style="font-size:10px;color:var(--t2);">(optionnel)</span></div>
           <div id="req-dispo-periods">
@@ -202,6 +204,7 @@
               </div>
             </div>
           </div>
+          <button type="button" class="btn sm" onclick="resetReqAvailability()">Effacer toutes les disponibilités / indisponibilités</button>
           <div class="ferr" id="req-dispo-error">Renseigner au moins un jour.</div>
         </div>
         <label class="appel-erp">
@@ -821,28 +824,28 @@
   <div class="mod"><div class="mhan"></div><div class="mtit" id="mt">—</div><div class="mid2" id="mi">—</div><div id="mb"></div><button class="mclose" onclick="cM()">Fermer</button></div>
 </div>
 
-<script src="runtime-config.js?v=V202609_0022"></script>
-<script src="modules/00-preambule.js?v=V202609_0022" defer></script>
-<script src="modules/01-config-js.js?v=V202609_0022" defer></script>
-<script src="modules/02-auth-js-partie-1-2-structure-casernes-numerotation.js?v=V202609_0022" defer></script>
-<script src="modules/03-security-js.js?v=V202609_0022" defer></script>
-<script src="modules/04-auth-js-partie-2-2-login-session-droits.js?v=V202609_0022" defer></script>
-<script src="modules/05-admin-js-partie-1-2-vues-globales-superadmin.js?v=V202609_0022" defer></script>
-<script src="modules/06-ui-js-accueil-js.js?v=V202609_0022" defer></script>
-<script src="modules/07-appel-js.js?v=V202609_0022" defer></script>
-<script src="modules/08-interventions-js.js?v=V202609_0022" defer></script>
-<script src="modules/09-pilp-js.js?v=V202609_0022" defer></script>
-<script src="modules/10-historique-js.js?v=V202609_0022" defer></script>
-<script src="modules/11-admin-js-partie-2-2-gestion-utilisateurs.js?v=V202609_0022" defer></script>
-<script src="modules/12-astreintes-js.js?v=V202609_0022" defer></script>
-<script src="modules/13-autorisation-js.js?v=V202609_0022" defer></script>
-<script src="modules/14-stats-js.js?v=V202609_0022" defer></script>
-<script src="modules/15-storage-js.js?v=V202609_0022" defer></script>
-<script src="modules/16-email-js.js?v=V202609_0022" defer></script>
-<script src="modules/17-animal-js.js?v=V202609_0022" defer></script>
-<script src="modules/18-planning-annuel-js.js?v=V202609_0022" defer></script>
-<script src="modules/19-onedrive-sync-js.js?v=V202609_0022" defer></script>
-<script src="modules/20-formations-js.js?v=V202609_0022" defer></script>
-<script src="modules/21-astreinte-tel-js.js?v=V202609_0022" defer></script>
+<script src="runtime-config.js?v=V202609_0023"></script>
+<script src="modules/00-preambule.js?v=V202609_0023" defer></script>
+<script src="modules/01-config-js.js?v=V202609_0023" defer></script>
+<script src="modules/02-auth-js-partie-1-2-structure-casernes-numerotation.js?v=V202609_0023" defer></script>
+<script src="modules/03-security-js.js?v=V202609_0023" defer></script>
+<script src="modules/04-auth-js-partie-2-2-login-session-droits.js?v=V202609_0023" defer></script>
+<script src="modules/05-admin-js-partie-1-2-vues-globales-superadmin.js?v=V202609_0023" defer></script>
+<script src="modules/06-ui-js-accueil-js.js?v=V202609_0023" defer></script>
+<script src="modules/07-appel-js.js?v=V202609_0023" defer></script>
+<script src="modules/08-interventions-js.js?v=V202609_0023" defer></script>
+<script src="modules/09-pilp-js.js?v=V202609_0023" defer></script>
+<script src="modules/10-historique-js.js?v=V202609_0023" defer></script>
+<script src="modules/11-admin-js-partie-2-2-gestion-utilisateurs.js?v=V202609_0023" defer></script>
+<script src="modules/12-astreintes-js.js?v=V202609_0023" defer></script>
+<script src="modules/13-autorisation-js.js?v=V202609_0023" defer></script>
+<script src="modules/14-stats-js.js?v=V202609_0023" defer></script>
+<script src="modules/15-storage-js.js?v=V202609_0023" defer></script>
+<script src="modules/16-email-js.js?v=V202609_0023" defer></script>
+<script src="modules/17-animal-js.js?v=V202609_0023" defer></script>
+<script src="modules/18-planning-annuel-js.js?v=V202609_0023" defer></script>
+<script src="modules/19-onedrive-sync-js.js?v=V202609_0023" defer></script>
+<script src="modules/20-formations-js.js?v=V202609_0023" defer></script>
+<script src="modules/21-astreinte-tel-js.js?v=V202609_0023" defer></script>
 </body>
 </html>

@@ -188,22 +188,36 @@ function interventionCommunePostalCode(commune){
 }
 function mapsDestinationLabel(address,commune,postalCode){
   const code=String(postalCode||interventionCommunePostalCode(commune)||'').trim();
-  return [String(address||'').trim(),code,String(commune||'').trim(),'Pas-de-Calais','Hauts-de-France','France'].filter(Boolean).join(', ');
+  const street=formatInterventionStreetAddress(interventionBaseAddressForDuplicate(address));
+  return [street,code,String(commune||'').trim(),'Pas-de-Calais','Hauts-de-France','France'].filter(Boolean).join(', ');
 }
 function mapsDirectionsUrl(address,commune,postalCode){
   return 'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination='+encodeURIComponent(mapsDestinationLabel(address,commune,postalCode));
+}
+function interventionGpsCoordinates(iv){
+  const pair=iv&&iv._gpsCoordinates;
+  if(!Array.isArray(pair)||pair.length!==2)return null;
+  const latitude=Number(pair[0]),longitude=Number(pair[1]);
+  return Number.isFinite(latitude)&&Number.isFinite(longitude)&&Math.abs(latitude)<=90&&Math.abs(longitude)<=180?[latitude,longitude]:null;
+}
+function interventionMapsDestination(iv){
+  const gps=interventionGpsCoordinates(iv);
+  return gps?gps.join(','):mapsDestinationLabel(iv&&iv.addr,iv&&iv.com,iv&&(iv.cp||iv.codePostal));
+}
+function interventionMapsDirectionsUrl(iv){
+  return 'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination='+encodeURIComponent(interventionMapsDestination(iv));
 }
 // Ouvre une adresse dans Google Maps (navigation vers ce point).
 function openMaps(id){
   const iv=IVS.find(v=>v.id===id)||PILP_IVS.find(v=>v.id===id);
   if(!iv){showToast('Intervention introuvable.','warn');return;}
   if(!iv.addr||!iv.com){showToast('Adresse manquante.','warn');return;}
-  window.open(mapsDirectionsUrl(iv.addr,iv.com,iv.cp||iv.codePostal),'_blank','noopener');
+  window.open(interventionMapsDirectionsUrl(iv),'_blank','noopener');
 }
 // Construit un itinéraire multi-points avec les interventions actives sélectionnées.
 function openMapsItineraire(ids){
   const cibles=(ids||[]).map(id=>IVS.find(v=>v.id===id)||PILP_IVS.find(v=>v.id===id)).filter(Boolean);
-  const points=cibles.map(iv=>mapsDestinationLabel(iv.addr,iv.com,iv.cp||iv.codePostal)).filter(Boolean);
+  const points=cibles.map(interventionMapsDestination).filter(Boolean);
   if(!points.length){showToast('Aucune adresse à ajouter à l\u2019itinéraire.','warn');return;}
   // Google Maps : destination = dernier point, waypoints = points intermédiaires.
   const destination=encodeURIComponent(points[points.length-1]);
@@ -858,6 +872,14 @@ function getReqAvailability(){
   const states=[...new Set(periods.map(p=>p.state))],first=periods[0];
   return{state:states.length===1?states[0]:'mixte',days:periods.map(p=>p.day),mode:first.mode,h1:first.h1,h2:first.h2,periods,label:periods.map(reqAvailabilityPeriodLabel).join(' ; ')};
 }
+function readInterventionGpsFields(latitudeValue,longitudeValue){
+  const latText=String(latitudeValue||'').trim().replace(',','.'),lonText=String(longitudeValue||'').trim().replace(',','.');
+  if(!latText&&!lonText)return {valid:true,coordinates:null};
+  if(!latText||!lonText)return {valid:false,coordinates:null};
+  const latitude=Number(latText),longitude=Number(lonText);
+  return Number.isFinite(latitude)&&Number.isFinite(longitude)&&Math.abs(latitude)<=90&&Math.abs(longitude)<=180
+    ?{valid:true,coordinates:[latitude,longitude]}:{valid:false,coordinates:null};
+}
 function validateReqAvailability(){
   const periods=readReqAvailabilityPeriods(),started=periods.filter(p=>p.state||p.day||p.h1||p.h2);let message='';
   for(let i=0;i<started.length&&!message;i++){
@@ -929,9 +951,13 @@ function _captureAppelDetails(){
 
 function enr(){
   if(!vF())return;
+  const gps=readInterventionGpsFields(document.getElementById('fa-lat')?.value,document.getElementById('fa-lon')?.value);
+  const gpsError=document.getElementById('fa-gps-error');if(gpsError)gpsError.style.display=gps.valid?'none':'block';
+  if(!gps.valid)return;
   const h=hoA?getH(hoA):getH(N());
   const annee=new Date().getFullYear();
-  const addrBase=document.getElementById('fa').value.trim(),addrComp=document.getElementById('fa2').value.trim(),addr=addrComp?addrBase+' — '+addrComp:addrBase,com=selC2;
+  const addrBase=formatInterventionStreetAddress(document.getElementById('fa').value),addrComp=document.getElementById('fa2').value.trim(),addr=addrComp?addrBase+' — '+addrComp:addrBase,com=selC2;
+  document.getElementById('fa').value=addrBase;
   const pilpDirect=document.getElementById('chk-pilp-direct')&&document.getElementById('chk-pilp-direct').checked;
   // Avis en attente de rappel pour CETTE adresse et CE type : le requérant rappelle.
   const _adr=document.getElementById('fa')?document.getElementById('fa').value.trim():'';
@@ -953,6 +979,7 @@ function enr(){
   const appelDetails=_captureAppelDetails();
   const tels=getAppelPhones();
   const reqDispo=getReqAvailability();
+  const additionalRequesters=readAdditionalRequesterFields('appel-extra-req');
   const erp=!!document.getElementById('chk-erp')?.checked;
   const animauxAppel=getAppelAnimals();
   // Incrémenter compteur appels
@@ -962,8 +989,8 @@ function enr(){
     PILP_IVS.unshift({
       id:nextPilpId(annee),ivRef:null,_numApl:numApl,
       // Aucun numéro d'intervention tant que la PILP reste en attente.
-      n:'Nid de frelons asiatiques — PILP',addr,_addrBase:addrBase,_addressCoordinates:addrSelectedCoords?addrSelectedCoords.slice():null,com,h,
-      req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,reqDispo,_nidsAppel:nidsAppel,_erp:erp,_urgence:erp,
+      n:'Nid de frelons asiatiques — PILP',addr,_addrBase:addrBase,_addressCoordinates:addrSelectedCoords?addrSelectedCoords.slice():null,_gpsCoordinates:gps.coordinates,com,h,
+      req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,_additionalRequesters:additionalRequesters,reqDispo,_nidsAppel:nidsAppel,_erp:erp,_urgence:erp,
       localisation:null,hauteur:null,reconnaissanceFaite:false,axeTir:null,_axeTirEtat:'a-verifier',_pilpPeriode:'a-determiner',_pilpPeriodePrecision:'',_pilpPlanningUpdatedAt:Date.now(),_pilpPlanningUpdatedBy:CU.l,obs:det,
       // Une PILP en attente reste libre : l'opérateur qui prend l'appel
       // n'est pas automatiquement le chef d'agrès ni le tireur.
@@ -981,8 +1008,8 @@ function enr(){
   }
   // Enregistrement normal — id = numéro APL, numéro INT attribué à la clôture
   const newIv={id:makeInterventionRecordId(numApl),_numApl:numApl,
-    n:natureAppel,_natureAppelInitiale:selNat,addr,_addrBase:addrBase,_addressCoordinates:addrSelectedCoords?addrSelectedCoords.slice():null,com,h,op:CU.l,s:'en-attente',det,eng:null,_sdis:document.getElementById('chk-sdis')?.checked||false,_erp:erp,_urgence:erp,_animauxAppel:animauxAppel,_nidsAppel:nidsAppel,
-    req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,reqDispo,
+    n:natureAppel,_natureAppelInitiale:selNat,addr,_addrBase:addrBase,_addressCoordinates:addrSelectedCoords?addrSelectedCoords.slice():null,_gpsCoordinates:gps.coordinates,com,h,op:CU.l,s:'en-attente',det,eng:null,_sdis:document.getElementById('chk-sdis')?.checked||false,_erp:erp,_urgence:erp,_animauxAppel:animauxAppel,_nidsAppel:nidsAppel,
+    req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,_additionalRequesters:additionalRequesters,reqDispo,
     obs:'',agr:null,rappels:exIv.length,avisIds:exIv.map(iv=>iv.id),_appelDetails:appelDetails,
     tl:[mkTL('en-attente',h,CU.l)]};
   IVS.unshift(newIv);
@@ -1034,7 +1061,9 @@ function rF(){
   _natureLastTapLabel='';_natureLastTapAt=0;
   document.getElementById('bn').disabled=true;
   document.getElementById('sn').value='';
-  ['fa','fa2','fr','fo'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  ['fa','fa2','fa-lat','fa-lon','fr','fo'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  renderAdditionalRequesterFields('appel-extra-req',[]);
+  const gpsError=document.getElementById('fa-gps-error');if(gpsError)gpsError.style.display='none';
   resetAppelPhones();
   resetReqAvailability();
   resetAppelAnimals();

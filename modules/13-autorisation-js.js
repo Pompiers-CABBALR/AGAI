@@ -757,7 +757,7 @@ function editAdresse(ivId){
       </div>
       <div class="fg"><div class="fgl">Adresse <span class="req">*</span></div>
         <div style="position:relative;">
-          <input class="fi" type="text" id="edit-addr-val" value="${escHtml(iv.addr||'')}" placeholder="${editCommuneSelected?'ex. 12 rue des Lilas':'Sélectionnez d’abord une commune…'}" oninput="editAddrAutocomplete(this.value)" autocomplete="off" style="padding-right:30px;" ${editCommuneSelected?'':'disabled'}/>
+          <input class="fi" type="text" id="edit-addr-val" value="${escHtml(iv.addr||'')}" placeholder="${editCommuneSelected?'ex. 12 rue des Lilas':'Sélectionnez d’abord une commune…'}" oninput="editAddrAutocomplete(this.value)" onblur="this.value=formatInterventionStreetAddress(this.value)" autocomplete="off" style="padding-right:30px;" ${editCommuneSelected?'':'disabled'}/>
           <span id="edit-addr-spinner" style="display:none;position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:14px;">⏳</span>
           <div id="edit-addr-dd" style="display:none;position:absolute;z-index:100;width:100%;background:#fff;border:1px solid var(--brd);border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.1);max-height:200px;overflow-y:auto;margin-top:2px;"></div>
         </div>
@@ -777,7 +777,7 @@ function editAdresse(ivId){
 function saveAdresse(ivId){
   const iv=interventionById(ivId);if(!iv)return;
   const commune=String(editCommuneSelected||'').trim();
-  const addr=document.getElementById('edit-addr-val').value.trim();
+  const addr=formatInterventionStreetAddress(document.getElementById('edit-addr-val').value);
   const comp=document.getElementById('edit-addr-comp').value.trim();
   const err=document.getElementById('edit-addr-err');
   if(!commune||!addr){err.style.display='block';err.textContent='La commune et l’adresse sont obligatoires.';return;}
@@ -787,6 +787,7 @@ function saveAdresse(ivId){
   if((iv.addrComp||'')!==comp)notes.push('Compl. adresse : '+(iv.addrComp||'—')+' → '+(comp||'—'));
   iv.com=commune;
   iv.addr=addr;
+  iv._addrBase=interventionBaseAddressForDuplicate(addr);
   iv.addrComp=comp;
   pushTL(iv,'modif-adresse',CU.l);
   if(notes.length)iv.tl[iv.tl.length-1].note=notes.join(' ; ');

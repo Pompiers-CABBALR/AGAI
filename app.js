@@ -1013,6 +1013,9 @@ const TODAY=N(),TDP=getDS(TODAY);
 function isTdy(iv){return (iv.h||'').startsWith(TDP);}
 function hO(h){const d=new Date(TODAY);d.setHours(d.getHours()-h);return getH(d);}
 function nm(s){return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
+function formatInterventionStreetAddress(value){
+  return String(value||'').trim().replace(/^(\d+\s*(?:bis|ter|quater|b|t|q)?)(?=[a-zà-ÿ])/i,'$1 ').replace(/\s+/g,' ').trim();
+}
 // Comparaison tolérante des adresses saisies manuellement : « 12 bis »,
 // « 12bis », « 12 BIS » et « 12 Bis » désignent la même adresse.
 // Les autres éléments de l'adresse restent obligatoires afin de ne pas
@@ -4889,22 +4892,36 @@ function interventionCommunePostalCode(commune){
 }
 function mapsDestinationLabel(address,commune,postalCode){
   const code=String(postalCode||interventionCommunePostalCode(commune)||'').trim();
-  return [String(address||'').trim(),code,String(commune||'').trim(),'Pas-de-Calais','Hauts-de-France','France'].filter(Boolean).join(', ');
+  const street=formatInterventionStreetAddress(interventionBaseAddressForDuplicate(address));
+  return [street,code,String(commune||'').trim(),'Pas-de-Calais','Hauts-de-France','France'].filter(Boolean).join(', ');
 }
 function mapsDirectionsUrl(address,commune,postalCode){
   return 'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination='+encodeURIComponent(mapsDestinationLabel(address,commune,postalCode));
+}
+function interventionGpsCoordinates(iv){
+  const pair=iv&&iv._gpsCoordinates;
+  if(!Array.isArray(pair)||pair.length!==2)return null;
+  const latitude=Number(pair[0]),longitude=Number(pair[1]);
+  return Number.isFinite(latitude)&&Number.isFinite(longitude)&&Math.abs(latitude)<=90&&Math.abs(longitude)<=180?[latitude,longitude]:null;
+}
+function interventionMapsDestination(iv){
+  const gps=interventionGpsCoordinates(iv);
+  return gps?gps.join(','):mapsDestinationLabel(iv&&iv.addr,iv&&iv.com,iv&&(iv.cp||iv.codePostal));
+}
+function interventionMapsDirectionsUrl(iv){
+  return 'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination='+encodeURIComponent(interventionMapsDestination(iv));
 }
 // Ouvre une adresse dans Google Maps (navigation vers ce point).
 function openMaps(id){
   const iv=IVS.find(v=>v.id===id)||PILP_IVS.find(v=>v.id===id);
   if(!iv){showToast('Intervention introuvable.','warn');return;}
   if(!iv.addr||!iv.com){showToast('Adresse manquante.','warn');return;}
-  window.open(mapsDirectionsUrl(iv.addr,iv.com,iv.cp||iv.codePostal),'_blank','noopener');
+  window.open(interventionMapsDirectionsUrl(iv),'_blank','noopener');
 }
 // Construit un itinéraire multi-points avec les interventions actives sélectionnées.
 function openMapsItineraire(ids){
   const cibles=(ids||[]).map(id=>IVS.find(v=>v.id===id)||PILP_IVS.find(v=>v.id===id)).filter(Boolean);
-  const points=cibles.map(iv=>mapsDestinationLabel(iv.addr,iv.com,iv.cp||iv.codePostal)).filter(Boolean);
+  const points=cibles.map(interventionMapsDestination).filter(Boolean);
   if(!points.length){showToast('Aucune adresse à ajouter à l\u2019itinéraire.','warn');return;}
   // Google Maps : destination = dernier point, waypoints = points intermédiaires.
   const destination=encodeURIComponent(points[points.length-1]);
@@ -5559,6 +5576,14 @@ function getReqAvailability(){
   const states=[...new Set(periods.map(p=>p.state))],first=periods[0];
   return{state:states.length===1?states[0]:'mixte',days:periods.map(p=>p.day),mode:first.mode,h1:first.h1,h2:first.h2,periods,label:periods.map(reqAvailabilityPeriodLabel).join(' ; ')};
 }
+function readInterventionGpsFields(latitudeValue,longitudeValue){
+  const latText=String(latitudeValue||'').trim().replace(',','.'),lonText=String(longitudeValue||'').trim().replace(',','.');
+  if(!latText&&!lonText)return {valid:true,coordinates:null};
+  if(!latText||!lonText)return {valid:false,coordinates:null};
+  const latitude=Number(latText),longitude=Number(lonText);
+  return Number.isFinite(latitude)&&Number.isFinite(longitude)&&Math.abs(latitude)<=90&&Math.abs(longitude)<=180
+    ?{valid:true,coordinates:[latitude,longitude]}:{valid:false,coordinates:null};
+}
 function validateReqAvailability(){
   const periods=readReqAvailabilityPeriods(),started=periods.filter(p=>p.state||p.day||p.h1||p.h2);let message='';
   for(let i=0;i<started.length&&!message;i++){
@@ -5630,9 +5655,13 @@ function _captureAppelDetails(){
 
 function enr(){
   if(!vF())return;
+  const gps=readInterventionGpsFields(document.getElementById('fa-lat')?.value,document.getElementById('fa-lon')?.value);
+  const gpsError=document.getElementById('fa-gps-error');if(gpsError)gpsError.style.display=gps.valid?'none':'block';
+  if(!gps.valid)return;
   const h=hoA?getH(hoA):getH(N());
   const annee=new Date().getFullYear();
-  const addrBase=document.getElementById('fa').value.trim(),addrComp=document.getElementById('fa2').value.trim(),addr=addrComp?addrBase+' — '+addrComp:addrBase,com=selC2;
+  const addrBase=formatInterventionStreetAddress(document.getElementById('fa').value),addrComp=document.getElementById('fa2').value.trim(),addr=addrComp?addrBase+' — '+addrComp:addrBase,com=selC2;
+  document.getElementById('fa').value=addrBase;
   const pilpDirect=document.getElementById('chk-pilp-direct')&&document.getElementById('chk-pilp-direct').checked;
   // Avis en attente de rappel pour CETTE adresse et CE type : le requérant rappelle.
   const _adr=document.getElementById('fa')?document.getElementById('fa').value.trim():'';
@@ -5654,6 +5683,7 @@ function enr(){
   const appelDetails=_captureAppelDetails();
   const tels=getAppelPhones();
   const reqDispo=getReqAvailability();
+  const additionalRequesters=readAdditionalRequesterFields('appel-extra-req');
   const erp=!!document.getElementById('chk-erp')?.checked;
   const animauxAppel=getAppelAnimals();
   // Incrémenter compteur appels
@@ -5663,8 +5693,8 @@ function enr(){
     PILP_IVS.unshift({
       id:nextPilpId(annee),ivRef:null,_numApl:numApl,
       // Aucun numéro d'intervention tant que la PILP reste en attente.
-      n:'Nid de frelons asiatiques — PILP',addr,_addrBase:addrBase,_addressCoordinates:addrSelectedCoords?addrSelectedCoords.slice():null,com,h,
-      req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,reqDispo,_nidsAppel:nidsAppel,_erp:erp,_urgence:erp,
+      n:'Nid de frelons asiatiques — PILP',addr,_addrBase:addrBase,_addressCoordinates:addrSelectedCoords?addrSelectedCoords.slice():null,_gpsCoordinates:gps.coordinates,com,h,
+      req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,_additionalRequesters:additionalRequesters,reqDispo,_nidsAppel:nidsAppel,_erp:erp,_urgence:erp,
       localisation:null,hauteur:null,reconnaissanceFaite:false,axeTir:null,_axeTirEtat:'a-verifier',_pilpPeriode:'a-determiner',_pilpPeriodePrecision:'',_pilpPlanningUpdatedAt:Date.now(),_pilpPlanningUpdatedBy:CU.l,obs:det,
       // Une PILP en attente reste libre : l'opérateur qui prend l'appel
       // n'est pas automatiquement le chef d'agrès ni le tireur.
@@ -5682,8 +5712,8 @@ function enr(){
   }
   // Enregistrement normal — id = numéro APL, numéro INT attribué à la clôture
   const newIv={id:makeInterventionRecordId(numApl),_numApl:numApl,
-    n:natureAppel,_natureAppelInitiale:selNat,addr,_addrBase:addrBase,_addressCoordinates:addrSelectedCoords?addrSelectedCoords.slice():null,com,h,op:CU.l,s:'en-attente',det,eng:null,_sdis:document.getElementById('chk-sdis')?.checked||false,_erp:erp,_urgence:erp,_animauxAppel:animauxAppel,_nidsAppel:nidsAppel,
-    req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,reqDispo,
+    n:natureAppel,_natureAppelInitiale:selNat,addr,_addrBase:addrBase,_addressCoordinates:addrSelectedCoords?addrSelectedCoords.slice():null,_gpsCoordinates:gps.coordinates,com,h,op:CU.l,s:'en-attente',det,eng:null,_sdis:document.getElementById('chk-sdis')?.checked||false,_erp:erp,_urgence:erp,_animauxAppel:animauxAppel,_nidsAppel:nidsAppel,
+    req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,_additionalRequesters:additionalRequesters,reqDispo,
     obs:'',agr:null,rappels:exIv.length,avisIds:exIv.map(iv=>iv.id),_appelDetails:appelDetails,
     tl:[mkTL('en-attente',h,CU.l)]};
   IVS.unshift(newIv);
@@ -5735,7 +5765,9 @@ function rF(){
   _natureLastTapLabel='';_natureLastTapAt=0;
   document.getElementById('bn').disabled=true;
   document.getElementById('sn').value='';
-  ['fa','fa2','fr','fo'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  ['fa','fa2','fa-lat','fa-lon','fr','fo'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  renderAdditionalRequesterFields('appel-extra-req',[]);
+  const gpsError=document.getElementById('fa-gps-error');if(gpsError)gpsError.style.display='none';
   resetAppelPhones();
   resetReqAvailability();
   resetAppelAnimals();
@@ -7372,9 +7404,10 @@ function oM(id){
     ${iv._avisPassage?'<div style="background:#F3EAF8;border:2px solid #9B59B6;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;color:#6C3483;margin-bottom:10px;text-align:center;">🟣 Un avis de passage a été laissé'+(getAvisPassageDateTimeLabel(iv)?' le '+escHtml(getAvisPassageDateTimeLabel(iv)):'')+(iv._avisPassageClasse?' — classé':'')+' pour cette intervention</div>':''}
     ${iv._echelleToiture?'<div style="background:#FEF3C7;border:2px solid #F59E0B;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:700;color:#92400E;margin-bottom:10px;text-align:center;">&#x26A0;&#xFE0F; INTERVENTION À FAIRE AVEC ÉCHELLE DE TOIT</div>':''}
     ${iv._epa?'<div style="background:#F3EAF8;border:2px solid #8E44AD;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:700;color:#6C3483;margin-bottom:10px;text-align:center;">&#x1F9F0; INTERVENTION À FAIRE AVEC EPA</div>':''}
-    <div class="mr"><div class="ml">Adresse</div><div class="mv2" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">&#x1F4CD; ${escHtml(iv.addr)}, ${escHtml(iv.com)}${iv.addrComp?' · '+escHtml(iv.addrComp):''}${!pilpReadOnly&&(isAgres()||isChef()||hasRight('Administration'))&&iv.s!=='terminee'?`<button class="btn sm" style="font-size:10px;padding:2px 7px;" onclick="editAdresse('${iv.id}')">✏️ Corriger</button>`:''}<a class="btn sm" style="font-size:10px;padding:2px 7px;background:#4285F4;color:#fff;border-color:#4285F4;text-decoration:none;" href="${escHtml(mapsDirectionsUrl(iv.addr,iv.com,iv.cp||iv.codePostal))}" target="_blank" rel="noopener noreferrer">🗺️ Maps</a></div></div>
+    <div class="mr"><div class="ml">Adresse</div><div class="mv2" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">&#x1F4CD; ${escHtml(iv.addr)}, ${escHtml(iv.com)}${iv.addrComp?' · '+escHtml(iv.addrComp):''}${!pilpReadOnly&&(isAgres()||isChef()||hasRight('Administration'))&&iv.s!=='terminee'?`<button class="btn sm" style="font-size:10px;padding:2px 7px;" onclick="editAdresse('${iv.id}')">✏️ Corriger</button>`:''}<a class="btn sm" style="font-size:10px;padding:2px 7px;background:#4285F4;color:#fff;border-color:#4285F4;text-decoration:none;" href="${escHtml(interventionMapsDirectionsUrl(iv))}" target="_blank" rel="noopener noreferrer">🗺️ Maps</a>${interventionGpsCoordinates(iv)?`<span style="font-size:11px;color:var(--t2);">GPS : ${escHtml(interventionGpsCoordinates(iv).join(', '))}</span>`:''}</div></div>
     <div class="mr"><div class="ml">Requérant</div><div class="mv2" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
       <span>${escHtml(iv.req||'—')}${getInterventionPhones(iv).length?' · '+getInterventionPhones(iv).map(escHtml).join(' · '):''}</span>
+      ${Array.isArray(iv._additionalRequesters)&&iv._additionalRequesters.length?`<span style="font-size:12px;color:var(--t2);">Autres requérants : ${iv._additionalRequesters.map(escHtml).join(' · ')}</span>`:''}
       ${getInterventionPhones(iv).map((phone,index)=>`<button class="btn sm" style="font-size:10px;padding:2px 7px;background:#16A34A;color:#fff;border-color:#16A34A;" onclick="callRequerantMasque('${iv.id}',${index})" title="Appeler ${escHtml(phone)} en numéro masqué (non garanti selon téléphone)">📞 ${escHtml(phone)}</button>`).join('')}
       ${(iv._reqInit||iv._telInit)?`<span style="font-size:10px;color:var(--t2);font-style:italic;">(initial : ${escHtml(iv._reqInit||'')}${iv._telInit?' · '+escHtml(iv._telInit):''})</span>`:''}
       ${canEditInterventionRequester(iv)?`<button class="btn sm" style="font-size:10px;padding:2px 7px;" onclick="editRequerant('${iv.id}')">✏️ Corriger</button>`:''}
@@ -8104,6 +8137,33 @@ function linkedPilpForSource(iv){
   if(!iv)return null;
   return (PILP_IVS||[]).find(function(pilp){return pilp&&(pilp.ivRef===iv.id||(iv._pilpId&&pilp.id===iv._pilpId));})||null;
 }
+function readAdditionalRequesterFields(containerId){
+  const box=document.getElementById(containerId);
+  return box?Array.from(box.querySelectorAll('[data-additional-requester]')).map(input=>input.value.trim()).filter(Boolean):[];
+}
+function renderAdditionalRequesterFields(containerId,values){
+  const box=document.getElementById(containerId);if(!box)return;
+  box.innerHTML=(values||[]).map(function(name,index){return '<div class="appel-phone-row"><input class="fi" type="text" data-additional-requester value="'+escHtml(name)+'" placeholder="Nom du requérant supplémentaire"><button type="button" class="appel-phone-remove" onclick="removeAdditionalRequesterField(\''+containerId+'\','+index+')" aria-label="Supprimer ce requérant">−</button></div>';}).join('');
+  registerMobileModalFields(box);
+}
+function addAdditionalRequesterField(containerId){
+  const values=readAdditionalRequesterFields(containerId);values.push('');renderAdditionalRequesterFields(containerId,values);
+  const box=document.getElementById(containerId);const fields=box&&box.querySelectorAll('[data-additional-requester]');if(fields&&fields.length)fields[fields.length-1].focus();
+}
+function removeAdditionalRequesterField(containerId,index){
+  const box=document.getElementById(containerId);if(!box)return;
+  const values=Array.from(box.querySelectorAll('[data-additional-requester]')).map(input=>input.value);
+  values.splice(index,1);renderAdditionalRequesterFields(containerId,values);
+}
+function readPilpPhoneFields(){return Array.from(document.querySelectorAll('#pf-phone-list [data-pilp-phone]')).map(input=>input.value.trim()).filter(Boolean);}
+function renderPilpPhoneFields(values){
+  const box=document.getElementById('pf-phone-list');if(!box)return;
+  const phones=Array.isArray(values)&&values.length?values:[''];
+  box.innerHTML=phones.map(function(phone,index){return '<div class="appel-phone-row"><input class="fi" type="tel" data-pilp-phone value="'+escHtml(phone)+'" placeholder="06 XX XX XX XX">'+(index===0?'<button type="button" class="appel-phone-add" onclick="addPilpPhoneField()" aria-label="Ajouter un numéro">+</button>':'<button type="button" class="appel-phone-remove" onclick="removePilpPhoneField('+index+')" aria-label="Supprimer ce numéro">−</button>')+'</div>';}).join('');
+  registerMobileModalFields(box);
+}
+function addPilpPhoneField(){const values=Array.from(document.querySelectorAll('#pf-phone-list [data-pilp-phone]')).map(input=>input.value);values.push('');renderPilpPhoneFields(values);}
+function removePilpPhoneField(index){const values=Array.from(document.querySelectorAll('#pf-phone-list [data-pilp-phone]')).map(input=>input.value);values.splice(index,1);renderPilpPhoneFields(values);}
 function showPilpForm(ivId){
   const iv=IVS.find(v=>v.id===ivId);if(!iv)return;
   const creationApresCloture=iv.s==='terminee';
@@ -8112,14 +8172,17 @@ function showPilpForm(ivId){
   }else if(!requireCurrentUserOperationalManager(iv,'La création PILP'))return;
   const existing=linkedPilpForSource(iv);
   if(existing||iv._lienPilp){showToast('Une intervention PILP est déjà liée à cette intervention.','warn');return;}
+  const initialGps=interventionGpsCoordinates(iv)||[];
   document.getElementById('mb').innerHTML+=`
     <div id="pilp-form" style="margin-top:12px;border:1.5px solid var(--pilp);border-radius:12px;padding:14px;background:var(--pilpl);">
       <div style="font-size:14px;font-weight:700;color:var(--pilp);margin-bottom:6px;">&#x1F3AF; Créer une intervention PILP${creationApresCloture?' après clôture':''}</div>
       ${creationApresCloture?'<div style="font-size:11px;color:var(--t2);margin-bottom:12px;">L’intervention d’origine restera terminée. La PILP sera créée séparément avec le statut « En attente ».</div>':''}
-      <div class="fg"><div class="fgl">Adresse confirmée <span class="req">*</span></div><input class="fi" type="text" id="pf-addr" value="${escHtml(iv.addr)}"/></div>
+      <div class="fg"><div class="fgl">Adresse confirmée <span class="req">*</span></div><input class="fi" type="text" id="pf-addr" value="${escHtml(formatInterventionStreetAddress(interventionBaseAddressForDuplicate(iv)))}" onblur="this.value=formatInterventionStreetAddress(this.value)"/></div>
       <div class="fg"><div class="fgl">Commune</div><input class="fi" type="text" id="pf-com" value="${escHtml(iv.com)}" disabled style="background:#f9f9f9;"/></div>
-      <div class="fg"><div class="fgl">Requérant <span class="req">*</span></div><input class="fi" type="text" id="pf-req" value="${iv.req}"/></div>
-      <div class="fg"><div class="fgl">Téléphone <span class="req">*</span></div><input class="fi" type="tel" id="pf-tel" value="${iv.tel}"/></div>
+      <div class="fg"><div class="fgl">Requérant principal <span class="req">*</span></div><input class="fi" type="text" id="pf-req" value="${escHtml(iv.req||'')}"/></div>
+      <div class="fg"><div class="fgl">Autres requérants</div><div id="pf-extra-req"></div><button type="button" class="btn sm" onclick="addAdditionalRequesterField('pf-extra-req')">+ Ajouter un requérant</button></div>
+      <div class="fg"><div class="fgl">Téléphone(s) <span class="req">*</span></div><div id="pf-phone-list"></div></div>
+      <div class="fg"><div class="fgl">Coordonnées GPS du nid <span style="font-size:10px;color:var(--t2);">(optionnel : bois, pâture…)</span></div><div class="appel-requerant-grid"><input class="fi" type="text" id="pf-lat" inputmode="decimal" value="${escHtml(initialGps[0]??'')}" placeholder="Latitude" aria-label="Latitude GPS"/><input class="fi" type="text" id="pf-lon" inputmode="decimal" value="${escHtml(initialGps[1]??'')}" placeholder="Longitude" aria-label="Longitude GPS"/></div></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div class="fg"><div class="fgl">Localisation</div><select class="fi" id="pf-loc"><option>Arbre</option><option>Toiture</option><option>Nichoir à oiseaux</option><option>Haie</option><option>Façade</option><option>Autre</option></select></div>
         <div class="fg"><div class="fgl">Hauteur (m)</div><input class="fi" type="number" id="pf-haut" min="0" placeholder="ex. 8"/></div>
@@ -8134,6 +8197,8 @@ function showPilpForm(ivId){
       <div id="pf-err" style="font-size:12px;color:#E24B4A;display:none;margin-bottom:8px;"></div>
       <button class="btn pilp-btn" style="width:100%;" onclick="creerPILP('${ivId}')">&#x1F3AF; Créer la PILP</button>
     </div>`;
+  renderAdditionalRequesterFields('pf-extra-req',iv._additionalRequesters||[]);
+  renderPilpPhoneFields(getInterventionPhones(iv));
 }
 
 function creerPILP(ivId){
@@ -8143,9 +8208,11 @@ function creerPILP(ivId){
     if(!isAdminModeActive()){showToast('Activez les pouvoirs administrateur pour créer une PILP après clôture.','warn');return;}
   }else if(!requireCurrentUserOperationalManager(iv,'La création PILP'))return;
   if(linkedPilpForSource(iv)||iv._lienPilp){showToast('Une intervention PILP est déjà liée à cette intervention.','warn');return;}
-  const addr=document.getElementById('pf-addr').value.trim(),req=document.getElementById('pf-req').value.trim(),tel=document.getElementById('pf-tel').value.trim();
+  const addr=formatInterventionStreetAddress(document.getElementById('pf-addr').value),req=document.getElementById('pf-req').value.trim(),tels=readPilpPhoneFields(),tel=tels[0]||'';
+  const gps=readInterventionGpsFields(document.getElementById('pf-lat').value,document.getElementById('pf-lon').value);
   const err=document.getElementById('pf-err');
   if(!addr||!req||!tel){err.style.display='block';err.textContent='Adresse, requérant et téléphone obligatoires.';return;}
+  if(!gps.valid){err.style.display='block';err.textContent='Coordonnées GPS invalides : renseignez latitude et longitude, ou laissez les deux champs vides.';return;}
   err.style.display='none';
   const h=getH(N());
   const annee=new Date().getFullYear();
@@ -8163,14 +8230,15 @@ function creerPILP(ivId){
   const nouvellePilp={
     id:pilpId,ivRef:iv.id,_numApl:interventionDisplayCallNumber(iv),
     // Pas de _numCaserne ni _numGlobal ici — attribués au passage En cours
-    n:'Nid de frelons asiatiques — PILP',addr,addrComp:iv.addrComp||'',com:iv.com,h,req,tel,tels:Array.isArray(iv.tels)?iv.tels.slice():[tel],
-    op:iv.op||iv.agr||CU.l,reqDispo:iv.reqDispo?JSON.parse(JSON.stringify(iv.reqDispo)):null,
+    n:'Nid de frelons asiatiques — PILP',addr,addrComp:iv.addrComp||'',_addrBase:addr,_gpsCoordinates:gps.coordinates,com:iv.com,h,req,tel,tels,_additionalRequesters:readAdditionalRequesterFields('pf-extra-req'),
+    op:iv.op||iv.agr||CU.l,reqDispo:null,_pilpIndependentAvailability:true,
     localisation:localisation,hauteur:hauteur,reconnaissanceFaite:reconnaissanceFaite,axeTir:axeTir,_axeTirEtat:axeTirEtat,_pilpPeriode:pilpPeriode,_pilpPeriodePrecision:pilpPeriodePrecision,_pilpPlanningUpdatedAt:Date.now(),_pilpPlanningUpdatedBy:CU.l,obs:observations,det:observations,
     _appelDetails:Object.assign({},iv._appelDetails||{},{'Localisation du nid':localisation,'Hauteur':hauteur?hauteur+' m':'Non renseignée','Reconnaissance':reconnaissanceFaite?'Réalisée':'Non réalisée','Axe de tir':axeTirEtat==='disponible'?'Disponible':axeTirEtat==='indisponible'?'Non satisfaisant':'À vérifier','Période PILP':pilpPeriodeLabel({_pilpPeriode:pilpPeriode,_pilpPeriodePrecision:pilpPeriodePrecision})}),
     _nidsAppel:Array.isArray(iv._nidsAppel)?JSON.parse(JSON.stringify(iv._nidsAppel)):undefined,
     _createdAfterClosure:creationApresCloture,_sourceStatusAtCreation:iv.s,
     s:'en-attente',agr:null,tireur:null,rappels:0,avisIds:[],tl:[mkTL('en-attente',h,CU.l)]
   };
+  delete nouvellePilp._appelDetails['Disponibilité du requérant'];
   PILP_IVS.unshift(nouvellePilp);
   if(CD())CD().pilpIvs=PILP_IVS;
   // Marquer le lien PILP sans modifier le statut de l'intervention d'origine.
@@ -8267,9 +8335,9 @@ function agaiRepairLegacyPilpDetails(){
       }
     };
     if(source){
-      ['op','addrComp','det','reqDispo','_reqInit','_telInit','_natureAppelInitiale'].forEach(function(key){copyIfMissing(key,source[key],key==='reqDispo');});
+      ['op','addrComp','det','_reqInit','_telInit','_natureAppelInitiale'].forEach(function(key){copyIfMissing(key,source[key],false);});
       ['tels','_nidsAppel'].forEach(function(key){if((!Array.isArray(iv[key])||!iv[key].length)&&Array.isArray(source[key])&&source[key].length){iv[key]=JSON.parse(JSON.stringify(source[key]));changed=true;}});
-      if(!iv._appelDetails&&source._appelDetails){iv._appelDetails=JSON.parse(JSON.stringify(source._appelDetails));changed=true;}
+      if(!iv._appelDetails&&source._appelDetails){iv._appelDetails=JSON.parse(JSON.stringify(source._appelDetails));delete iv._appelDetails['Disponibilité du requérant'];changed=true;}
       const sameOperationalChef=!!(iv.agr&&(source.agr===iv.agr||source._agr2===iv.agr||(typeof interventionReportParticipants==='function'&&interventionReportParticipants(source).some(function(member){return member.login===iv.agr;}))));
       if(sameOperationalChef){
         ['eng','_engin1','_engin2','_equipage1','_equipage2','_engin1RoleConfig','_engin2RoleConfig'].forEach(function(key){copyIfMissing(key,source[key],true);});
@@ -8519,8 +8587,8 @@ function clotAvisPilp(id){
   const h=getH(N());iv.s='terminee';pushTL(iv,'terminee',CU.l,'',h);
   if(iv._numCaserne&&!IVS.some(function(item){return item&&item._lienPilpSourceId===iv.id;})){
     IVS.unshift({id:String(iv.id)+'_historique',_numApl:interventionDisplayCallNumber(iv),_numCaserne:iv._numCaserne,_numGlobal:iv._numGlobal,_numMois:iv._numMois,
-      n:iv.n.replace(' — PILP',''),addr:iv.addr,com:iv.com,h:iv.h,op:iv.agr||CU.l,
-      s:'terminee',det:iv.obs||'',eng:null,req:iv.req||'',tel:iv.tel||'',obs:'',agr:CU.l,
+      n:iv.n.replace(' — PILP',''),addr:iv.addr,_addrBase:iv._addrBase||interventionBaseAddressForDuplicate(iv),_gpsCoordinates:interventionGpsCoordinates(iv),com:iv.com,h:iv.h,op:iv.agr||CU.l,
+      s:'terminee',det:iv.obs||'',eng:null,req:iv.req||'',tel:iv.tel||'',tels:getInterventionPhones(iv),_additionalRequesters:(iv._additionalRequesters||[]).slice(),obs:'',agr:CU.l,
       rappels:0,avisIds:[],_lienPilp:true,_lienPilpSourceId:iv.id,tl:[...iv.tl],
       _avisPassage:iv._avisPassage===true,_avisEnAttente:iv._avisEnAttente===true,
       _avisPassageHeure:iv._avisPassageHeure||'',_avisPassageDate:iv._avisPassageDate||'',_avisPassageAt:iv._avisPassageAt||'',
@@ -9051,16 +9119,17 @@ document.addEventListener('pointerup',routePointerEnd);
 document.addEventListener('pointercancel',routePointerEnd);
 
 function interventionRouteCoordinates(iv){
+  const gps=interventionGpsCoordinates(iv);if(gps)return gps;
   const stored=iv&&iv._addressCoordinates;
   if(Array.isArray(stored)&&stored.length>=2&&Number.isFinite(Number(stored[0]))&&Number.isFinite(Number(stored[1])))return [Number(stored[0]),Number(stored[1])];
   return gc(iv&&iv.com);
 }
 async function hydrateInterventionRouteCoordinates(selected){
-  const missing=(selected||[]).filter(function(iv){return !Array.isArray(iv&&iv._addressCoordinates)&&iv&&iv.com&&(iv._addrBase||iv.addr);});
+  const missing=(selected||[]).filter(function(iv){return !interventionGpsCoordinates(iv)&&!Array.isArray(iv&&iv._addressCoordinates)&&iv&&iv.com&&(iv._addrBase||iv.addr);});
   if(!missing.length)return;
   await Promise.all(missing.map(async function(iv){
     try{
-      const query=String(iv._addrBase||iv.addr||'').split(' — ')[0].trim();
+      const query=formatInterventionStreetAddress(interventionBaseAddressForDuplicate(iv));
       const controller=new AbortController();
       const timeout=setTimeout(function(){controller.abort();},4500);
       const results=await addressSuggestions(query,iv.com,controller.signal);
@@ -13277,13 +13346,16 @@ function reqAvailabilityFromPeriods(periods){
 function showComplementModal(id){
   const iv=interventionById(id);if(!iv)return;
   if(!(hasRight('Interventions')||isAgres()||isChef()||isAdminModeActive())){showToast('Action réservée aux personnes ayant le droit Interventions.','warn');return;}
+  const gps=interventionGpsCoordinates(iv)||[];
   document.getElementById('mt').textContent='Complément d\u2019information';
   document.getElementById('mi').textContent=iv.n+' — '+(iv.com||'');
   document.getElementById('mb').innerHTML=
     '<div>'
     +'<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Mettez à jour les informations transmises après l\u2019enregistrement de l\u2019appel. Les changements seront horodatés.</div>'
     +'<div class="fg"><div class="fgl">Téléphone(s)</div><div id="compl-phone-list"></div></div>'
-    +'<div class="fg"><div class="fgl">Disponibilité du requérant <span style="font-size:10px;color:var(--t2);">(optionnel)</span></div><div id="compl-dispo-list"></div></div>'
+    +(isPilpIntervention(iv)?'<div class="fg"><div class="fgl">Autres requérants PILP</div><div id="compl-extra-req"></div><button type="button" class="btn sm" onclick="addAdditionalRequesterField(\'compl-extra-req\')">+ Ajouter un requérant</button></div>':'')
+    +'<div class="fg"><div class="fgl">Disponibilité du requérant <span style="font-size:10px;color:var(--t2);">(optionnel)</span></div><div id="compl-dispo-list"></div><button type="button" class="btn sm" onclick="renderComplementAvailabilityPeriods([])">Effacer toutes les disponibilités / indisponibilités</button></div>'
+    +'<div class="fg"><div class="fgl">Coordonnées GPS <span style="font-size:10px;color:var(--t2);">(optionnel, point précis pour Maps)</span></div><div class="appel-requerant-grid"><input class="fi" id="compl-lat" type="text" inputmode="decimal" value="'+escHtml(gps[0]??'')+'" placeholder="Latitude" aria-label="Latitude GPS"><input class="fi" id="compl-lon" type="text" inputmode="decimal" value="'+escHtml(gps[1]??'')+'" placeholder="Longitude" aria-label="Longitude GPS"></div></div>'
     +'<label class="appel-erp" style="margin-bottom:10px;"><input type="checkbox" id="compl-erp"'+((iv._erp||iv._urgence)?' checked':'')+'><span><strong>Établissement recevant du public (ERP)</strong><br><span style="font-size:11px;color:var(--t2);">L\u2019intervention sera signalée comme prioritaire dans les listes et sur sa fiche.</span></span></label>'
     +'<div class="fg"><div class="fgl">Information complémentaire <span style="font-size:10px;color:var(--t2);">(optionnel)</span></div>'
     +'<textarea class="fi" id="compl-info-val" rows="4" placeholder="ex. Le requérant signale que le nid est en hauteur, prévoir une échelle."></textarea></div>'
@@ -13292,6 +13364,7 @@ function showComplementModal(id){
     +'<button class="btn pr sm" onclick="saveComplementInfo(\''+id+'\')">&#x1F4BE; Enregistrer les informations</button>'
     +'<button class="btn sm" onclick="deactivateMobileModalField();oM(\''+id+'\')">Retour</button></div></div>';
   renderComplementPhones(getInterventionPhones(iv));
+  if(isPilpIntervention(iv))renderAdditionalRequesterFields('compl-extra-req',iv._additionalRequesters||[]);
   renderComplementAvailabilityPeriods(complementAvailabilityPeriods(iv));
   openModalAtTop('compl-info-val');
   activateMobileModalField('compl-info-val');
@@ -13303,24 +13376,31 @@ function saveComplementInfo(id){
   const err=document.getElementById('compl-info-err');
   const phones=readComplementPhones();
   if(!phones.length){err.style.display='block';err.textContent='Conservez au moins un numéro de téléphone.';return;}
+  const gps=readInterventionGpsFields(document.getElementById('compl-lat')?.value,document.getElementById('compl-lon')?.value);
+  if(!gps.valid){err.style.display='block';err.textContent='Coordonnées GPS invalides : renseignez latitude et longitude, ou laissez les deux champs vides.';return;}
   const periods=readComplementAvailabilityPeriods(),availabilityError=validateComplementAvailability(periods);
   if(availabilityError){err.style.display='block';err.textContent=availabilityError;return;}
   const reqDispo=reqAvailabilityFromPeriods(periods),oldPhones=getInterventionPhones(iv),oldLabel=iv.reqDispo&&iv.reqDispo.label||'',newLabel=reqDispo&&reqDispo.label||'';
   const erp=!!document.getElementById('compl-erp')?.checked,oldErp=!!(iv._erp||iv._urgence);
+  const additional=isPilpIntervention(iv)?readAdditionalRequesterFields('compl-extra-req'):(iv._additionalRequesters||[]);
   const phonesChanged=JSON.stringify(oldPhones)!==JSON.stringify(phones),availabilityChanged=oldLabel!==newLabel,erpChanged=oldErp!==erp;
-  if(!txt&&!phonesChanged&&!availabilityChanged&&!erpChanged){err.style.display='block';err.textContent='Aucune nouvelle information à enregistrer.';return;}
+  const requestersChanged=JSON.stringify(iv._additionalRequesters||[])!==JSON.stringify(additional),gpsChanged=JSON.stringify(interventionGpsCoordinates(iv))!==JSON.stringify(gps.coordinates);
+  if(!txt&&!phonesChanged&&!availabilityChanged&&!erpChanged&&!requestersChanged&&!gpsChanged){err.style.display='block';err.textContent='Aucune nouvelle information à enregistrer.';return;}
   const notes=[];
   if(txt)notes.push(txt);
   if(phonesChanged)notes.push('Téléphone(s) mis à jour : '+phones.join(' · '));
   if(availabilityChanged)notes.push(reqDispo?'Disponibilité du requérant : '+reqDispo.label:'Disponibilité du requérant supprimée');
+  if(requestersChanged)notes.push('Autres requérants : '+(additional.join(' · ')||'aucun'));
+  if(gpsChanged)notes.push(gps.coordinates?'Position GPS mise à jour : '+gps.coordinates.join(', '):'Position GPS supprimée');
   if(erpChanged)notes.push(erp?'Intervention signalée comme prioritaire — ERP':'Signalement ERP retiré');
-  iv.tel=phones[0]||'';iv.tels=phones;iv.reqDispo=reqDispo;iv._erp=erp;iv._urgence=erp;
+  iv.tel=phones[0]||'';iv.tels=phones;iv.reqDispo=reqDispo;iv._additionalRequesters=additional;iv._gpsCoordinates=gps.coordinates;iv._erp=erp;iv._urgence=erp;
   if(!iv._appelDetails||typeof iv._appelDetails!=='object')iv._appelDetails={};
   if(reqDispo)iv._appelDetails['Disponibilité du requérant']=reqDispo.label;else delete iv._appelDetails['Disponibilité du requérant'];
   if(erp)iv._appelDetails['Établissement recevant du public']='Oui — prioritaire';else delete iv._appelDetails['Établissement recevant du public'];
   if(!Array.isArray(iv.tl))iv.tl=[];
   iv.tl.push({s:'info-compl',h:getH(N()),who:CU.l,note:notes.join(' ; ')});
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  markOperationalInterventionDirty(iv);
   saveData(true);
   cM();refreshOperationalInterventionViews();
   setTimeout(function(){oM(id);},80);
@@ -14697,7 +14777,7 @@ function editAdresse(ivId){
       </div>
       <div class="fg"><div class="fgl">Adresse <span class="req">*</span></div>
         <div style="position:relative;">
-          <input class="fi" type="text" id="edit-addr-val" value="${escHtml(iv.addr||'')}" placeholder="${editCommuneSelected?'ex. 12 rue des Lilas':'Sélectionnez d’abord une commune…'}" oninput="editAddrAutocomplete(this.value)" autocomplete="off" style="padding-right:30px;" ${editCommuneSelected?'':'disabled'}/>
+          <input class="fi" type="text" id="edit-addr-val" value="${escHtml(iv.addr||'')}" placeholder="${editCommuneSelected?'ex. 12 rue des Lilas':'Sélectionnez d’abord une commune…'}" oninput="editAddrAutocomplete(this.value)" onblur="this.value=formatInterventionStreetAddress(this.value)" autocomplete="off" style="padding-right:30px;" ${editCommuneSelected?'':'disabled'}/>
           <span id="edit-addr-spinner" style="display:none;position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:14px;">⏳</span>
           <div id="edit-addr-dd" style="display:none;position:absolute;z-index:100;width:100%;background:#fff;border:1px solid var(--brd);border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.1);max-height:200px;overflow-y:auto;margin-top:2px;"></div>
         </div>
@@ -14717,7 +14797,7 @@ function editAdresse(ivId){
 function saveAdresse(ivId){
   const iv=interventionById(ivId);if(!iv)return;
   const commune=String(editCommuneSelected||'').trim();
-  const addr=document.getElementById('edit-addr-val').value.trim();
+  const addr=formatInterventionStreetAddress(document.getElementById('edit-addr-val').value);
   const comp=document.getElementById('edit-addr-comp').value.trim();
   const err=document.getElementById('edit-addr-err');
   if(!commune||!addr){err.style.display='block';err.textContent='La commune et l’adresse sont obligatoires.';return;}
@@ -14727,6 +14807,7 @@ function saveAdresse(ivId){
   if((iv.addrComp||'')!==comp)notes.push('Compl. adresse : '+(iv.addrComp||'—')+' → '+(comp||'—'));
   iv.com=commune;
   iv.addr=addr;
+  iv._addrBase=interventionBaseAddressForDuplicate(addr);
   iv.addrComp=comp;
   pushTL(iv,'modif-adresse',CU.l);
   if(notes.length)iv.tl[iv.tl.length-1].note=notes.join(' ; ');
@@ -16392,7 +16473,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202609_0022';
+const APP_VERSION='V202609_0023';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;

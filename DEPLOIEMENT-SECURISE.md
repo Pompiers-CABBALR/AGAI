@@ -1,5 +1,24 @@
 # AGAI — déploiement sécurisé
 
+## Préparation V202609_0023 — contacts PILP, GPS, adresse et disponibilités
+
+**Préparée localement, non déployée par Codex.** Une PILP liée reprend
+le requérant et les téléphones de l'intervention d'origine, mais pas ses
+anciennes dates de disponibilité. Son formulaire permet d'ajouter d'autres
+requérants, plusieurs téléphones et un point GPS. Ces éléments restent
+modifiables dans « Compléter » sur la fiche. Les disponibilités et
+indisponibilités peuvent y être effacées explicitement.
+
+La prise d'appel sépare automatiquement le numéro d'habitation de la rue.
+Les liens Maps utilisent l'adresse de base, sans complément ; un point GPS
+manuel, lorsqu'il est renseigné, devient la destination prioritaire.
+Publier tous les fichiers V202609_0023 ensemble, notamment
+`runtime-config.js` et `version.json`. Aucun SQL ou déploiement Edge n'est
+nécessaire. Tester d'abord sur un appareil de test, puis vérifier la file de
+synchronisation avant d'élargir la publication. Les disponibilités déjà
+copiées dans des PILP anciennes ne sont pas effacées automatiquement : les
+retirer fiche par fiche après vérification.
+
 ## Préparation V202609_0022 — rappel après avis de passage
 
 **Préparée localement, non déployée par Codex.** Cette version corrige le

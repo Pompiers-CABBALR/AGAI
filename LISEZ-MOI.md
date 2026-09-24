@@ -3,6 +3,11 @@
 Cette variante conserve les fonctionnalités de `AGAI-securise.html`, mais sépare
 le code afin de faciliter les prochaines corrections.
 
+La V202609_0023 ajoute plusieurs contacts PILP, une destination GPS facultative,
+la séparation de l'adresse et de son complément pour Maps, et l'effacement
+explicite des disponibilités du requérant. Une PILP liée ne recopie plus les
+dates de disponibilité de sa fiche d'origine.
+
 La V202609_0022 corrige le rappel d'un avis de passage lorsque l'espace entre
 le numéro d'habitation et le nom de rue diffère d'une saisie à l'autre.
 Les avis déjà restés ouverts avant cette correction nécessitent une

@@ -3464,13 +3464,16 @@ function reqAvailabilityFromPeriods(periods){
 function showComplementModal(id){
   const iv=interventionById(id);if(!iv)return;
   if(!(hasRight('Interventions')||isAgres()||isChef()||isAdminModeActive())){showToast('Action réservée aux personnes ayant le droit Interventions.','warn');return;}
+  const gps=interventionGpsCoordinates(iv)||[];
   document.getElementById('mt').textContent='Complément d\u2019information';
   document.getElementById('mi').textContent=iv.n+' — '+(iv.com||'');
   document.getElementById('mb').innerHTML=
     '<div>'
     +'<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Mettez à jour les informations transmises après l\u2019enregistrement de l\u2019appel. Les changements seront horodatés.</div>'
     +'<div class="fg"><div class="fgl">Téléphone(s)</div><div id="compl-phone-list"></div></div>'
-    +'<div class="fg"><div class="fgl">Disponibilité du requérant <span style="font-size:10px;color:var(--t2);">(optionnel)</span></div><div id="compl-dispo-list"></div></div>'
+    +(isPilpIntervention(iv)?'<div class="fg"><div class="fgl">Autres requérants PILP</div><div id="compl-extra-req"></div><button type="button" class="btn sm" onclick="addAdditionalRequesterField(\'compl-extra-req\')">+ Ajouter un requérant</button></div>':'')
+    +'<div class="fg"><div class="fgl">Disponibilité du requérant <span style="font-size:10px;color:var(--t2);">(optionnel)</span></div><div id="compl-dispo-list"></div><button type="button" class="btn sm" onclick="renderComplementAvailabilityPeriods([])">Effacer toutes les disponibilités / indisponibilités</button></div>'
+    +'<div class="fg"><div class="fgl">Coordonnées GPS <span style="font-size:10px;color:var(--t2);">(optionnel, point précis pour Maps)</span></div><div class="appel-requerant-grid"><input class="fi" id="compl-lat" type="text" inputmode="decimal" value="'+escHtml(gps[0]??'')+'" placeholder="Latitude" aria-label="Latitude GPS"><input class="fi" id="compl-lon" type="text" inputmode="decimal" value="'+escHtml(gps[1]??'')+'" placeholder="Longitude" aria-label="Longitude GPS"></div></div>'
     +'<label class="appel-erp" style="margin-bottom:10px;"><input type="checkbox" id="compl-erp"'+((iv._erp||iv._urgence)?' checked':'')+'><span><strong>Établissement recevant du public (ERP)</strong><br><span style="font-size:11px;color:var(--t2);">L\u2019intervention sera signalée comme prioritaire dans les listes et sur sa fiche.</span></span></label>'
     +'<div class="fg"><div class="fgl">Information complémentaire <span style="font-size:10px;color:var(--t2);">(optionnel)</span></div>'
     +'<textarea class="fi" id="compl-info-val" rows="4" placeholder="ex. Le requérant signale que le nid est en hauteur, prévoir une échelle."></textarea></div>'
@@ -3479,6 +3482,7 @@ function showComplementModal(id){
     +'<button class="btn pr sm" onclick="saveComplementInfo(\''+id+'\')">&#x1F4BE; Enregistrer les informations</button>'
     +'<button class="btn sm" onclick="deactivateMobileModalField();oM(\''+id+'\')">Retour</button></div></div>';
   renderComplementPhones(getInterventionPhones(iv));
+  if(isPilpIntervention(iv))renderAdditionalRequesterFields('compl-extra-req',iv._additionalRequesters||[]);
   renderComplementAvailabilityPeriods(complementAvailabilityPeriods(iv));
   openModalAtTop('compl-info-val');
   activateMobileModalField('compl-info-val');
@@ -3490,24 +3494,31 @@ function saveComplementInfo(id){
   const err=document.getElementById('compl-info-err');
   const phones=readComplementPhones();
   if(!phones.length){err.style.display='block';err.textContent='Conservez au moins un numéro de téléphone.';return;}
+  const gps=readInterventionGpsFields(document.getElementById('compl-lat')?.value,document.getElementById('compl-lon')?.value);
+  if(!gps.valid){err.style.display='block';err.textContent='Coordonnées GPS invalides : renseignez latitude et longitude, ou laissez les deux champs vides.';return;}
   const periods=readComplementAvailabilityPeriods(),availabilityError=validateComplementAvailability(periods);
   if(availabilityError){err.style.display='block';err.textContent=availabilityError;return;}
   const reqDispo=reqAvailabilityFromPeriods(periods),oldPhones=getInterventionPhones(iv),oldLabel=iv.reqDispo&&iv.reqDispo.label||'',newLabel=reqDispo&&reqDispo.label||'';
   const erp=!!document.getElementById('compl-erp')?.checked,oldErp=!!(iv._erp||iv._urgence);
+  const additional=isPilpIntervention(iv)?readAdditionalRequesterFields('compl-extra-req'):(iv._additionalRequesters||[]);
   const phonesChanged=JSON.stringify(oldPhones)!==JSON.stringify(phones),availabilityChanged=oldLabel!==newLabel,erpChanged=oldErp!==erp;
-  if(!txt&&!phonesChanged&&!availabilityChanged&&!erpChanged){err.style.display='block';err.textContent='Aucune nouvelle information à enregistrer.';return;}
+  const requestersChanged=JSON.stringify(iv._additionalRequesters||[])!==JSON.stringify(additional),gpsChanged=JSON.stringify(interventionGpsCoordinates(iv))!==JSON.stringify(gps.coordinates);
+  if(!txt&&!phonesChanged&&!availabilityChanged&&!erpChanged&&!requestersChanged&&!gpsChanged){err.style.display='block';err.textContent='Aucune nouvelle information à enregistrer.';return;}
   const notes=[];
   if(txt)notes.push(txt);
   if(phonesChanged)notes.push('Téléphone(s) mis à jour : '+phones.join(' · '));
   if(availabilityChanged)notes.push(reqDispo?'Disponibilité du requérant : '+reqDispo.label:'Disponibilité du requérant supprimée');
+  if(requestersChanged)notes.push('Autres requérants : '+(additional.join(' · ')||'aucun'));
+  if(gpsChanged)notes.push(gps.coordinates?'Position GPS mise à jour : '+gps.coordinates.join(', '):'Position GPS supprimée');
   if(erpChanged)notes.push(erp?'Intervention signalée comme prioritaire — ERP':'Signalement ERP retiré');
-  iv.tel=phones[0]||'';iv.tels=phones;iv.reqDispo=reqDispo;iv._erp=erp;iv._urgence=erp;
+  iv.tel=phones[0]||'';iv.tels=phones;iv.reqDispo=reqDispo;iv._additionalRequesters=additional;iv._gpsCoordinates=gps.coordinates;iv._erp=erp;iv._urgence=erp;
   if(!iv._appelDetails||typeof iv._appelDetails!=='object')iv._appelDetails={};
   if(reqDispo)iv._appelDetails['Disponibilité du requérant']=reqDispo.label;else delete iv._appelDetails['Disponibilité du requérant'];
   if(erp)iv._appelDetails['Établissement recevant du public']='Oui — prioritaire';else delete iv._appelDetails['Établissement recevant du public'];
   if(!Array.isArray(iv.tl))iv.tl=[];
   iv.tl.push({s:'info-compl',h:getH(N()),who:CU.l,note:notes.join(' ; ')});
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  markOperationalInterventionDirty(iv);
   saveData(true);
   cM();refreshOperationalInterventionViews();
   setTimeout(function(){oM(id);},80);

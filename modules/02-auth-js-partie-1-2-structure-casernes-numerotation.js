@@ -860,6 +860,9 @@ const TODAY=N(),TDP=getDS(TODAY);
 function isTdy(iv){return (iv.h||'').startsWith(TDP);}
 function hO(h){const d=new Date(TODAY);d.setHours(d.getHours()-h);return getH(d);}
 function nm(s){return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
+function formatInterventionStreetAddress(value){
+  return String(value||'').trim().replace(/^(\d+\s*(?:bis|ter|quater|b|t|q)?)(?=[a-zà-ÿ])/i,'$1 ').replace(/\s+/g,' ').trim();
+}
 // Comparaison tolérante des adresses saisies manuellement : « 12 bis »,
 // « 12bis », « 12 BIS » et « 12 Bis » désignent la même adresse.
 // Les autres éléments de l'adresse restent obligatoires afin de ne pas
