@@ -1,5 +1,37 @@
 # AGAI — déploiement sécurisé
 
+## Préparation V202609_0028 — pilote Hervé Degryse
+
+**Préparée localement, non déployée et sans création de compte par Codex.**
+Le mode `canary` reste actif : aucune liaison automatique à la connexion AGAI
+et aucun changement de la synchronisation des données. Le nouveau compte pilote
+est uniquement `degryse.herve` (CIS05). Les comptes déjà liés restent limités
+à une vérification de leur identité technique ; le mode `pilot_link` ne peut
+créer que le compte d'Hervé.
+
+1. Exécuter `DIAGNOSTIC-PILOTE-HERVE-V202609-0028.sql` en lecture seule.
+   Attendre une ligne : compte actif, non rattaché, aucune identité Auth
+   préexistante, mot de passe AGAI aligné, aucun verrouillage. En cas de
+   résultat différent, arrêter le pilote.
+2. Vérifier une sauvegarde récente, `Sync OK`, une réception récente et une
+   file d'actions vide. Noter le nombre initial de comptes rattachés.
+3. Déployer la fonction Edge `agai-account-link` V239.3. Son GET doit répondre
+   `pilotCreateOnlyLogin: degryse.herve`. Avant cette réponse, ne pas publier
+   le nouveau client.
+4. Publier ensemble les fichiers de l'application V202609_0028, notamment
+   `runtime-config.js` et `version.json`. Garder `accountLinkMode: 'canary'`.
+5. Hervé se connecte à son propre compte AGAI et lance une seule fois
+   « Rattacher mon compte » depuis « Mon profil ». Il saisit lui-même son mot
+   de passe AGAI. Ne pas recueillir ni transmettre ce mot de passe.
+6. Refaire le diagnostic : `deja_rattache=true`,
+   `identite_auth_deja_presente=true`, `echecs=0`. Vérifier que le total a
+   augmenté d'une unité et que l'application continue à fonctionner.
+   En cas de résultat incertain, ne pas retenter sans vérifier la base.
+
+Pascal, Sébastien, Laurent, Mathis et Matthis sont préqualifiés seulement ;
+ils ne sont pas autorisés dans ce pilote. Enzo doit d'abord faire l'objet d'une
+resynchronisation ciblée de son empreinte AGAI, sans divulgation du mot de passe.
+
 ## Préparation V202609_0027 — pilote Léo Accoley
 
 **Préparée localement, non déployée et sans création de compte par Codex.**

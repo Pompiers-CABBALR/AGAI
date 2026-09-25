@@ -12,7 +12,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 })
 
 const normalizeLogin = (value: unknown) => String(value ?? '').trim().toLowerCase()
-const pilotCreateOnlyLogin = 'accoley.leo'
+const pilotCreateOnlyLogin = 'degryse.herve'
 
 const hexToBytes = (hex: string) => {
   if (!/^[0-9a-f]+$/i.test(hex) || hex.length % 2) throw new Error('invalid hash')
@@ -49,7 +49,7 @@ function technicalEmail(login: string, caserneId: string) {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-  if (req.method === 'GET') return json({ status: 'ready', version: 'v239.2', pilotCreateOnlyLogin })
+  if (req.method === 'GET') return json({ status: 'ready', version: 'v239.3', pilotCreateOnlyLogin })
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405)
 
   const url = Deno.env.get('SUPABASE_URL') ?? ''

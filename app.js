@@ -1455,7 +1455,7 @@ function _agaiUpdatePilotProfileState(){
   if(state)state.textContent=_agaiPilotNewLinkComplete?'Compte technique rattaché. Aucun nouvel essai nécessaire.'
     :!_agaiAuthOperationalReady()?'Attendez Sync OK, une réception récente et une file vide.'
     :_agaiAuthBridgeState!=='active'?'Service de liaison indisponible.'
-    :!_agaiPilotCreateOnlyAvailable?'Fonction pilote V21 non disponible.':'Service pilote prêt pour une seule tentative.';
+    :!_agaiPilotCreateOnlyAvailable?'Service pilote non disponible.':'Service pilote prêt pour une seule tentative.';
   if(button)button.disabled=!_agaiAuthPilotReady();
 }
 function refreshAccountLinkPilotProfile(){
@@ -1481,7 +1481,7 @@ async function _agaiCheckPilotCreateOnlyServer(force){
     }catch(error){_agaiPilotCreateOnlyAvailable=false;}
   }
   const state=document.getElementById('agai-pilot-server-state');
-  if(state)state.textContent=_agaiPilotCreateOnlyAvailable?'Service pilote prêt':'Fonction pilote V21 non disponible';
+  if(state)state.textContent=_agaiPilotCreateOnlyAvailable?'Service pilote prêt':'Service pilote non disponible';
   const button=document.getElementById('agai-auth-pilot-launch');if(button)button.disabled=!_agaiAuthPilotReady();
   _agaiUpdatePilotProfileState();
   return _agaiPilotCreateOnlyAvailable;
@@ -1534,15 +1534,16 @@ function startManualAccountLinkPilot(){
   if(!source||!source.p){showToast('Compte pilote introuvable sur cet appareil.','error');return;}
   const pilotAccount=CU,pilotSessionToken=SESSION_TOKEN;
   const createNew=pilotAccount.l===AUTH_LINK_NEW_CANARY_LOGIN;
+  const pilotName=String(pilotAccount.prenom||pilotAccount.l||'ce compte');
   const title=document.getElementById('mt'),info=document.getElementById('mi'),body=document.getElementById('mb'),modal=document.getElementById('mo');
   if(!title||!info||!body||!modal)return;
-  title.textContent=createNew?'Pilote Léo — rattachement technique unique':'Identité technique AGAI — cet appareil uniquement';
+  title.textContent=createNew?'Pilote '+pilotName+' — rattachement technique unique':'Identité technique AGAI — cet appareil uniquement';
   info.textContent=createNew
-    ?'Cette action crée uniquement le compte technique Supabase Auth de Léo, s’il n’existe pas déjà. Elle ne change ni son accès AGAI ni la synchronisation. Léo doit saisir lui-même son mot de passe AGAI.'
+    ?'Cette action crée uniquement le compte technique Supabase Auth de '+pilotName+', s’il n’existe pas déjà. Elle ne change ni son accès AGAI ni la synchronisation. Le titulaire doit saisir lui-même son mot de passe AGAI.'
     :'Le compte technique AGAI dans Supabase Auth est distinct de votre accès au tableau de bord Supabase. Cette vérification ne crée ni ne modifie de compte et ne change pas la synchronisation.';
   body.innerHTML='<div style="padding:8px 0;"><label for="agai-auth-pilot-password" style="display:block;font-size:12px;margin-bottom:6px;">Mot de passe AGAI (jamais celui du tableau de bord Supabase)</label>'
     +'<input class="fi" type="password" id="agai-auth-pilot-password" autocomplete="current-password" style="width:100%;margin-bottom:12px;">'
-    +'<div class="brow"><button type="button" class="btn pr sm" id="agai-auth-pilot-confirm">'+(createNew?'Rattacher le compte de Léo':'Vérifier mon compte existant')+'</button>'
+    +'<div class="brow"><button type="button" class="btn pr sm" id="agai-auth-pilot-confirm">'+(createNew?'Rattacher mon compte':'Vérifier mon compte existant')+'</button>'
     +'<button type="button" class="btn sm" onclick="cM()">Annuler</button></div></div>';
   modal.style.display='flex';
   const field=document.getElementById('agai-auth-pilot-password');
@@ -1558,7 +1559,7 @@ function startManualAccountLinkPilot(){
       :await _agaiVerifyExistingAuthAccount(pilotAccount,password,pilotSessionToken);
     if(!CU||SESSION_TOKEN!==pilotSessionToken)return;
     if(createNew){
-      const message=result==='linked'?'Compte technique de Léo rattaché. La synchronisation reste inchangée.'
+      const message=result==='linked'?'Compte technique de '+pilotName+' rattaché. La synchronisation reste inchangée.'
         :result==='already_linked'?'Compte déjà rattaché : aucune identité existante modifiée.'
         :result==='linked_cleanup_failed'?'Compte rattaché, mais déconnexion de la session test non confirmée : arrêter le pilote.'
         :result==='uncertain'?'Résultat incertain : vérifier la liste des comptes avant tout nouvel essai.'
@@ -16672,7 +16673,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202609_0027';
+const APP_VERSION='V202609_0028';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
