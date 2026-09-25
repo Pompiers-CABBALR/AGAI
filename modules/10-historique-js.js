@@ -323,7 +323,7 @@ function rProfil(){
   if(ccBtn)ccBtn.style.display='none';
   const pilotPanel=document.getElementById('agai-auth-pilot-profile');
   if(pilotPanel){
-    const isAccountLinkPilot=AUTH_LINK_MODE==='canary'&&CU.l===AUTH_LINK_NEW_CANARY_LOGIN;
+    const isAccountLinkPilot=AUTH_LINK_MODE==='canary'&&_agaiIsNewLinkPilot(CU.l);
     pilotPanel.style.display=isAccountLinkPilot?'':'none';
     if(isAccountLinkPilot)refreshAccountLinkPilotProfile();
   }

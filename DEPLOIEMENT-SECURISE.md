@@ -1,5 +1,42 @@
 # AGAI — déploiement sécurisé
 
+## Préparation V202609_0029 — six rattachements individuels, une publication
+
+**Préparée localement, non déployée et sans création de compte par Codex.**
+Hervé est confirmé rattaché par le diagnostic fourni par l'administrateur.
+Le mode `canary` reste actif : aucun rattachement automatique à la connexion
+AGAI et aucun changement de la synchronisation des données. Six nouveaux
+comptes CIS05 sont autorisés : Pascal Douvrin, Sébastien Dumoulin, Laurent
+François, Mathis Maerten, Matthis Marien et Enzo Smagliante. Chacun agit depuis sa propre
+session ; aucun administrateur ne saisit les mots de passe à leur place.
+L'empreinte AGAI d'Enzo a été resynchronisée de façon ciblée ; son état doit
+être revérifié avec les cinq autres avant déploiement.
+
+1. Exécuter `DIAGNOSTIC-PILOTES-CIS05-V202609-0029.sql` en lecture seule.
+   Attendre six lignes : comptes actifs, non rattachés, aucune identité Auth
+   préexistante, mots de passe AGAI alignés, aucun verrouillage. Si une ligne
+   diffère, arrêter et corriger la liste autorisée avant le déploiement.
+2. Vérifier une sauvegarde récente, `Sync OK`, une réception récente et une
+   file d'actions vide. Noter le nombre initial de comptes rattachés.
+3. Déployer la fonction Edge `agai-account-link` V239.4. Son GET doit retourner
+   `pilotCreateOnlyLogins` avec exactement les six logins ci-dessus. Avant
+   cette réponse, ne pas publier le nouveau client.
+4. Publier ensemble les fichiers de l'application V202609_0029, notamment
+   `runtime-config.js` et `version.json`. Garder `accountLinkMode: 'canary'`.
+5. Chaque titulaire se connecte à son compte AGAI et lance une seule fois
+   « Rattacher mon compte » depuis « Mon profil ». Il saisit lui-même son mot
+   de passe AGAI. Ne pas recueillir ni transmettre ce mot de passe. Les six
+   peuvent utiliser la même version, sans nouvelle publication entre eux.
+6. Après chaque essai, refaire le diagnostic : pour la ligne concernée,
+   `deja_rattache=true`, `identite_auth_deja_presente=true`, `echecs=0`.
+   Vérifier que le total a augmenté d'une unité et que l'application continue
+   à fonctionner. En cas de résultat incertain, ne pas retenter sans vérifier
+   la base. Les autres titulaires peuvent attendre ce contrôle.
+
+Il n'existe pas de bouton administrateur qui crée les six identités d'un
+seul coup : la fonction ne reçoit jamais les mots de passe AGAI en clair hors
+de la saisie du titulaire.
+
 ## Préparation V202609_0028 — pilote Hervé Degryse
 
 **Préparée localement, non déployée et sans création de compte par Codex.**

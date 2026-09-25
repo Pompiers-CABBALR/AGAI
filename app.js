@@ -356,7 +356,8 @@ const AUTH_LINK_MODE = ['off','canary','on'].includes(AGAI_RUNTIME_CONFIG.accoun
   : (AGAI_RUNTIME_CONFIG.accountLinkEnabled===true?'on':'off');
 const AUTH_LINK_ENABLED = AUTH_LINK_MODE!=='off';
 const AUTH_LINK_CANARY_LOGINS = new Set((Array.isArray(AGAI_RUNTIME_CONFIG.accountLinkCanaryLogins)?AGAI_RUNTIME_CONFIG.accountLinkCanaryLogins:[]).map(function(login){return String(login||'').trim().toLowerCase();}));
-const AUTH_LINK_NEW_CANARY_LOGIN=String(AGAI_RUNTIME_CONFIG.accountLinkNewCanaryLogin||'').trim().toLowerCase();
+const AUTH_LINK_NEW_CANARY_LOGINS=new Set((Array.isArray(AGAI_RUNTIME_CONFIG.accountLinkNewCanaryLogins)?AGAI_RUNTIME_CONFIG.accountLinkNewCanaryLogins:[]).map(function(login){return String(login||'').trim().toLowerCase();}));
+function _agaiIsNewLinkPilot(login){return AUTH_LINK_NEW_CANARY_LOGINS.has(String(login||'').trim().toLowerCase());}
 const AUTH_LINK_ENDPOINT = AGAI_RUNTIME_CONFIG.accountLinkEndpoint||SB_URL+'/functions/v1/agai-account-link';
 const AUTH_LINK_SESSION_KEY='agai_supabase_auth_v239';
 let _agaiAuthSession=null;
@@ -369,7 +370,8 @@ let _agaiAuthLinkRetryAfter=0;
 let _agaiAuthPilotInFlight=false;
 let _agaiPilotCreateOnlyAvailable=false;
 let _agaiPilotCreateOnlyCheckedAt=0;
-let _agaiPilotNewLinkComplete=false;
+let _agaiPilotCreateOnlyCheckedLogin='';
+const _agaiPilotNewLinkCompleteLogins=new Set();
 if(AUTH_LINK_MODE==='canary')try{localStorage.removeItem(AUTH_LINK_SESSION_KEY);}catch(error){}
 let _agaiLastDataSnapshot=null;
 const AGAI_SERVER_CIRCUIT_KEY='agai_server_circuit_v1';
@@ -1307,7 +1309,7 @@ function _agaiAuthOperationalReady(){
 function _agaiAuthPilotReady(){
   return AUTH_LINK_MODE==='canary'&&!!CU&&_agaiAuthLinkEligible(CU)&&!_agaiAuthPilotInFlight
     &&_agaiAuthBridgeState==='active'&&_agaiAuthOperationalReady()&&Date.now()>=_agaiAuthLinkRetryAfter
-    &&(CU.l!==AUTH_LINK_NEW_CANARY_LOGIN||(_agaiPilotCreateOnlyAvailable&&!_agaiPilotNewLinkComplete));
+    &&(!_agaiIsNewLinkPilot(CU.l)||(_agaiPilotCreateOnlyAvailable&&_agaiPilotCreateOnlyCheckedLogin===CU.l&&!_agaiPilotNewLinkCompleteLogins.has(CU.l)));
 }
 async function _agaiLinkSupabaseAccount(account,password,loginSessionToken){
   if(AUTH_LINK_MODE!=='on'||!_agaiAuthLinkEligible(account)||Date.now()<_agaiAuthLinkRetryAfter)return false;
@@ -1373,7 +1375,7 @@ async function _agaiVerifyExistingAuthAccount(account,password,loginSessionToken
   return verified&&cleanupOk;
 }
 async function _agaiCreateNewAuthAccount(account,password,loginSessionToken){
-  if(!_agaiAuthPilotReady()||!account||account.l!==AUTH_LINK_NEW_CANARY_LOGIN||!loginSessionToken
+  if(!_agaiAuthPilotReady()||!account||!_agaiIsNewLinkPilot(account.l)||!loginSessionToken
     ||!CU||CU.l!==account.l||CU.caserneId!==account.caserneId)return 'deferred';
   _agaiAuthPilotInFlight=true;
   let accessToken='',outcome='deferred',cleanupOk=true;
@@ -1389,7 +1391,7 @@ async function _agaiCreateNewAuthAccount(account,password,loginSessionToken){
     else{
       accessToken=String(result.session&&result.session.access_token||'');
       outcome=accessToken?'linked':'uncertain';
-      _agaiPilotNewLinkComplete=true;
+      _agaiPilotNewLinkCompleteLogins.add(account.l);
     }
   }catch(error){console.warn('[AGAI][AUTH] Pilote de création différé :',error);}
   finally{
@@ -1449,10 +1451,10 @@ async function _agaiDeactivateLinkedAccount(login){
   }catch(error){return false;}
 }
 function _agaiUpdatePilotProfileState(){
-  if(!CU||CU.l!==AUTH_LINK_NEW_CANARY_LOGIN)return;
+  if(!CU||!_agaiIsNewLinkPilot(CU.l))return;
   const state=document.getElementById('agai-auth-pilot-profile-state');
   const button=document.getElementById('agai-auth-pilot-profile-launch');
-  if(state)state.textContent=_agaiPilotNewLinkComplete?'Compte technique rattaché. Aucun nouvel essai nécessaire.'
+  if(state)state.textContent=_agaiPilotNewLinkCompleteLogins.has(CU.l)?'Compte technique rattaché. Aucun nouvel essai nécessaire.'
     :!_agaiAuthOperationalReady()?'Attendez Sync OK, une réception récente et une file vide.'
     :_agaiAuthBridgeState!=='active'?'Service de liaison indisponible.'
     :!_agaiPilotCreateOnlyAvailable?'Service pilote non disponible.':'Service pilote prêt pour une seule tentative.';
@@ -1463,21 +1465,22 @@ function refreshAccountLinkPilotProfile(){
   _agaiCheckAccountLinkServer(true);
 }
 async function _agaiCheckPilotCreateOnlyServer(force){
-  if(AUTH_LINK_MODE!=='canary'||!CU||CU.l!==AUTH_LINK_NEW_CANARY_LOGIN)return false;
+  if(AUTH_LINK_MODE!=='canary'||!CU||!_agaiIsNewLinkPilot(CU.l))return false;
   if(!_agaiAuthOperationalReady()||_agaiAuthBridgeState!=='active'){
     _agaiPilotCreateOnlyAvailable=false;
     const button=document.getElementById('agai-auth-pilot-launch');if(button)button.disabled=true;
     _agaiUpdatePilotProfileState();
     return false;
   }
-  if(!_agaiPilotCreateOnlyCheckedAt||force||Date.now()-_agaiPilotCreateOnlyCheckedAt>=60000){
+  if(!_agaiPilotCreateOnlyCheckedAt||_agaiPilotCreateOnlyCheckedLogin!==CU.l||force||Date.now()-_agaiPilotCreateOnlyCheckedAt>=60000){
     _agaiPilotCreateOnlyCheckedAt=Date.now();
+    _agaiPilotCreateOnlyCheckedLogin=CU.l;
     try{
       const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{
         method:'GET',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY}
       },6000);
       const result=await response.json().catch(function(){return{};});
-      _agaiPilotCreateOnlyAvailable=response.ok&&result.status==='ready'&&result.pilotCreateOnlyLogin===AUTH_LINK_NEW_CANARY_LOGIN;
+      _agaiPilotCreateOnlyAvailable=response.ok&&result.status==='ready'&&Array.isArray(result.pilotCreateOnlyLogins)&&result.pilotCreateOnlyLogins.includes(CU.l);
     }catch(error){_agaiPilotCreateOnlyAvailable=false;}
   }
   const state=document.getElementById('agai-pilot-server-state');
@@ -1505,7 +1508,7 @@ async function _agaiCheckAccountLinkServer(force){
       target.style.color=_agaiAuthBridgeState==='active'&&total&&linked===total?'#047857':_agaiAuthBridgeState==='error'?'#B91C1C':'#B45309';
     }
     if(pilotButton)pilotButton.disabled=!_agaiAuthPilotReady();
-    if(CU&&CU.l===AUTH_LINK_NEW_CANARY_LOGIN)await _agaiCheckPilotCreateOnlyServer(false);
+    if(CU&&_agaiIsNewLinkPilot(CU.l))await _agaiCheckPilotCreateOnlyServer(false);
     return _agaiAuthBridgeState==='active';
   }
   _agaiAuthBridgeCheckedAt=Date.now();
@@ -1520,7 +1523,7 @@ async function _agaiCheckAccountLinkServer(force){
     target.style.color=_agaiAuthBridgeState==='active'&&total&&linked===total?'#047857':_agaiAuthBridgeState==='error'?'#B91C1C':'#B45309';
   }
   if(pilotButton)pilotButton.disabled=!_agaiAuthPilotReady();
-  if(CU&&CU.l===AUTH_LINK_NEW_CANARY_LOGIN)await _agaiCheckPilotCreateOnlyServer(force);
+  if(CU&&_agaiIsNewLinkPilot(CU.l))await _agaiCheckPilotCreateOnlyServer(force);
   _agaiUpdatePilotProfileState();
   return _agaiAuthBridgeState==='active';
 }
@@ -1533,7 +1536,7 @@ function startManualAccountLinkPilot(){
     ||(CASERNE_DATA[CURRENT_CASERNE_ID]&&CASERNE_DATA[CURRENT_CASERNE_ID].users||[]).find(function(account){return account&&account.l===CU.l;});
   if(!source||!source.p){showToast('Compte pilote introuvable sur cet appareil.','error');return;}
   const pilotAccount=CU,pilotSessionToken=SESSION_TOKEN;
-  const createNew=pilotAccount.l===AUTH_LINK_NEW_CANARY_LOGIN;
+  const createNew=_agaiIsNewLinkPilot(pilotAccount.l);
   const pilotName=String(pilotAccount.prenom||pilotAccount.l||'ce compte');
   const title=document.getElementById('mt'),info=document.getElementById('mi'),body=document.getElementById('mb'),modal=document.getElementById('mo');
   if(!title||!info||!body||!modal)return;
@@ -2167,7 +2170,7 @@ function renderOperationalHealthPanel(){
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">UTILISATEURS EN LIGNE</div><strong style="font-size:18px;">'+report.online.length+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">FICHES ANCIENNES PROTÉGÉES</div><strong style="font-size:18px;color:#047857;">'+report.legacyProtected+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">PROTECTION SERVEUR V238</div><strong id="sa-atomic-state" style="font-size:11px;color:'+(report.atomicState==='active'?'#047857':report.atomicState==='missing'?'#B45309':'#64748B')+';">'+(report.atomicState==='active'?'Active':report.atomicState==='missing'?'Script v238 à installer':report.atomicState==='error'?'Vérification impossible':'Vérification…')+'</strong></div>'
-    +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">LIAISON DES COMPTES V239</div><strong id="sa-auth-link-state" style="font-size:11px;color:#B45309;">'+(report.authBridgeState==='disabled'?'Suspendue pour stabilité':report.authBridgeState==='deferred'?'En attente de Sync OK':report.authBridgeState==='missing'?'Script v239 à installer':report.authBridgeState==='error'?'Vérification impossible':'Vérification…')+'</strong>'+(AUTH_LINK_MODE==='canary'&&CU&&_agaiAuthLinkEligible(CU)?'<div style="margin-top:6px;"><button type="button" class="btn sm" id="agai-auth-pilot-launch" onclick="startManualAccountLinkPilot()"'+(_agaiAuthPilotReady()?'':' disabled')+'>'+(CU.l===AUTH_LINK_NEW_CANARY_LOGIN?'Rattacher mon compte':'Vérifier mon compte existant')+'</button>'+(CU.l===AUTH_LINK_NEW_CANARY_LOGIN?'<div id="agai-pilot-server-state" style="font-size:10px;color:#64748B;margin-top:4px;">Vérification du service pilote…</div>':'')+'</div>':'')+'</div>'
+    +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">LIAISON DES COMPTES V239</div><strong id="sa-auth-link-state" style="font-size:11px;color:#B45309;">'+(report.authBridgeState==='disabled'?'Suspendue pour stabilité':report.authBridgeState==='deferred'?'En attente de Sync OK':report.authBridgeState==='missing'?'Script v239 à installer':report.authBridgeState==='error'?'Vérification impossible':'Vérification…')+'</strong>'+(AUTH_LINK_MODE==='canary'&&CU&&_agaiAuthLinkEligible(CU)?'<div style="margin-top:6px;"><button type="button" class="btn sm" id="agai-auth-pilot-launch" onclick="startManualAccountLinkPilot()"'+(_agaiAuthPilotReady()?'':' disabled')+'>'+(_agaiIsNewLinkPilot(CU.l)?'Rattacher mon compte':'Vérifier mon compte existant')+'</button>'+(_agaiIsNewLinkPilot(CU.l)?'<div id="agai-pilot-server-state" style="font-size:10px;color:#64748B;margin-top:4px;">Vérification du service pilote…</div>':'')+'</div>':'')+'</div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">DERNIER ENVOI RÉUSSI</div><strong style="font-size:11px;">'+escHtml(fmt(report.lastPushOkAt))+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">DERNIÈRE RÉCEPTION RÉUSSIE</div><strong style="font-size:11px;">'+escHtml(fmt(report.lastPullOkAt))+'</strong></div>'
     +'<div style="background:#F8FAFC;border-radius:9px;padding:9px;"><div style="font-size:10px;color:#64748B;">PROTECTION ANTI-SATURATION</div><strong style="font-size:11px;color:'+(report.serverCircuitUntil>Date.now()?'#B45309':'#047857')+';">'+(report.serverCircuitUntil>Date.now()?'Pause jusqu’à '+new Date(report.serverCircuitUntil).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):'Disponible')+'</strong></div>'
@@ -9677,7 +9680,7 @@ function rProfil(){
   if(ccBtn)ccBtn.style.display='none';
   const pilotPanel=document.getElementById('agai-auth-pilot-profile');
   if(pilotPanel){
-    const isAccountLinkPilot=AUTH_LINK_MODE==='canary'&&CU.l===AUTH_LINK_NEW_CANARY_LOGIN;
+    const isAccountLinkPilot=AUTH_LINK_MODE==='canary'&&_agaiIsNewLinkPilot(CU.l);
     pilotPanel.style.display=isAccountLinkPilot?'':'none';
     if(isAccountLinkPilot)refreshAccountLinkPilotProfile();
   }
@@ -16673,7 +16676,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202609_0028';
+const APP_VERSION='V202609_0029';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;

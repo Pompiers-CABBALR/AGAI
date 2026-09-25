@@ -107,7 +107,7 @@ function _agaiAuthOperationalReady(){
 function _agaiAuthPilotReady(){
   return AUTH_LINK_MODE==='canary'&&!!CU&&_agaiAuthLinkEligible(CU)&&!_agaiAuthPilotInFlight
     &&_agaiAuthBridgeState==='active'&&_agaiAuthOperationalReady()&&Date.now()>=_agaiAuthLinkRetryAfter
-    &&(CU.l!==AUTH_LINK_NEW_CANARY_LOGIN||(_agaiPilotCreateOnlyAvailable&&!_agaiPilotNewLinkComplete));
+    &&(!_agaiIsNewLinkPilot(CU.l)||(_agaiPilotCreateOnlyAvailable&&_agaiPilotCreateOnlyCheckedLogin===CU.l&&!_agaiPilotNewLinkCompleteLogins.has(CU.l)));
 }
 async function _agaiLinkSupabaseAccount(account,password,loginSessionToken){
   if(AUTH_LINK_MODE!=='on'||!_agaiAuthLinkEligible(account)||Date.now()<_agaiAuthLinkRetryAfter)return false;
@@ -173,7 +173,7 @@ async function _agaiVerifyExistingAuthAccount(account,password,loginSessionToken
   return verified&&cleanupOk;
 }
 async function _agaiCreateNewAuthAccount(account,password,loginSessionToken){
-  if(!_agaiAuthPilotReady()||!account||account.l!==AUTH_LINK_NEW_CANARY_LOGIN||!loginSessionToken
+  if(!_agaiAuthPilotReady()||!account||!_agaiIsNewLinkPilot(account.l)||!loginSessionToken
     ||!CU||CU.l!==account.l||CU.caserneId!==account.caserneId)return 'deferred';
   _agaiAuthPilotInFlight=true;
   let accessToken='',outcome='deferred',cleanupOk=true;
@@ -189,7 +189,7 @@ async function _agaiCreateNewAuthAccount(account,password,loginSessionToken){
     else{
       accessToken=String(result.session&&result.session.access_token||'');
       outcome=accessToken?'linked':'uncertain';
-      _agaiPilotNewLinkComplete=true;
+      _agaiPilotNewLinkCompleteLogins.add(account.l);
     }
   }catch(error){console.warn('[AGAI][AUTH] Pilote de création différé :',error);}
   finally{
@@ -249,10 +249,10 @@ async function _agaiDeactivateLinkedAccount(login){
   }catch(error){return false;}
 }
 function _agaiUpdatePilotProfileState(){
-  if(!CU||CU.l!==AUTH_LINK_NEW_CANARY_LOGIN)return;
+  if(!CU||!_agaiIsNewLinkPilot(CU.l))return;
   const state=document.getElementById('agai-auth-pilot-profile-state');
   const button=document.getElementById('agai-auth-pilot-profile-launch');
-  if(state)state.textContent=_agaiPilotNewLinkComplete?'Compte technique rattaché. Aucun nouvel essai nécessaire.'
+  if(state)state.textContent=_agaiPilotNewLinkCompleteLogins.has(CU.l)?'Compte technique rattaché. Aucun nouvel essai nécessaire.'
     :!_agaiAuthOperationalReady()?'Attendez Sync OK, une réception récente et une file vide.'
     :_agaiAuthBridgeState!=='active'?'Service de liaison indisponible.'
     :!_agaiPilotCreateOnlyAvailable?'Service pilote non disponible.':'Service pilote prêt pour une seule tentative.';
@@ -263,21 +263,22 @@ function refreshAccountLinkPilotProfile(){
   _agaiCheckAccountLinkServer(true);
 }
 async function _agaiCheckPilotCreateOnlyServer(force){
-  if(AUTH_LINK_MODE!=='canary'||!CU||CU.l!==AUTH_LINK_NEW_CANARY_LOGIN)return false;
+  if(AUTH_LINK_MODE!=='canary'||!CU||!_agaiIsNewLinkPilot(CU.l))return false;
   if(!_agaiAuthOperationalReady()||_agaiAuthBridgeState!=='active'){
     _agaiPilotCreateOnlyAvailable=false;
     const button=document.getElementById('agai-auth-pilot-launch');if(button)button.disabled=true;
     _agaiUpdatePilotProfileState();
     return false;
   }
-  if(!_agaiPilotCreateOnlyCheckedAt||force||Date.now()-_agaiPilotCreateOnlyCheckedAt>=60000){
+  if(!_agaiPilotCreateOnlyCheckedAt||_agaiPilotCreateOnlyCheckedLogin!==CU.l||force||Date.now()-_agaiPilotCreateOnlyCheckedAt>=60000){
     _agaiPilotCreateOnlyCheckedAt=Date.now();
+    _agaiPilotCreateOnlyCheckedLogin=CU.l;
     try{
       const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{
         method:'GET',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY}
       },6000);
       const result=await response.json().catch(function(){return{};});
-      _agaiPilotCreateOnlyAvailable=response.ok&&result.status==='ready'&&result.pilotCreateOnlyLogin===AUTH_LINK_NEW_CANARY_LOGIN;
+      _agaiPilotCreateOnlyAvailable=response.ok&&result.status==='ready'&&Array.isArray(result.pilotCreateOnlyLogins)&&result.pilotCreateOnlyLogins.includes(CU.l);
     }catch(error){_agaiPilotCreateOnlyAvailable=false;}
   }
   const state=document.getElementById('agai-pilot-server-state');
@@ -305,7 +306,7 @@ async function _agaiCheckAccountLinkServer(force){
       target.style.color=_agaiAuthBridgeState==='active'&&total&&linked===total?'#047857':_agaiAuthBridgeState==='error'?'#B91C1C':'#B45309';
     }
     if(pilotButton)pilotButton.disabled=!_agaiAuthPilotReady();
-    if(CU&&CU.l===AUTH_LINK_NEW_CANARY_LOGIN)await _agaiCheckPilotCreateOnlyServer(false);
+    if(CU&&_agaiIsNewLinkPilot(CU.l))await _agaiCheckPilotCreateOnlyServer(false);
     return _agaiAuthBridgeState==='active';
   }
   _agaiAuthBridgeCheckedAt=Date.now();
@@ -320,7 +321,7 @@ async function _agaiCheckAccountLinkServer(force){
     target.style.color=_agaiAuthBridgeState==='active'&&total&&linked===total?'#047857':_agaiAuthBridgeState==='error'?'#B91C1C':'#B45309';
   }
   if(pilotButton)pilotButton.disabled=!_agaiAuthPilotReady();
-  if(CU&&CU.l===AUTH_LINK_NEW_CANARY_LOGIN)await _agaiCheckPilotCreateOnlyServer(force);
+  if(CU&&_agaiIsNewLinkPilot(CU.l))await _agaiCheckPilotCreateOnlyServer(force);
   _agaiUpdatePilotProfileState();
   return _agaiAuthBridgeState==='active';
 }
@@ -333,7 +334,7 @@ function startManualAccountLinkPilot(){
     ||(CASERNE_DATA[CURRENT_CASERNE_ID]&&CASERNE_DATA[CURRENT_CASERNE_ID].users||[]).find(function(account){return account&&account.l===CU.l;});
   if(!source||!source.p){showToast('Compte pilote introuvable sur cet appareil.','error');return;}
   const pilotAccount=CU,pilotSessionToken=SESSION_TOKEN;
-  const createNew=pilotAccount.l===AUTH_LINK_NEW_CANARY_LOGIN;
+  const createNew=_agaiIsNewLinkPilot(pilotAccount.l);
   const pilotName=String(pilotAccount.prenom||pilotAccount.l||'ce compte');
   const title=document.getElementById('mt'),info=document.getElementById('mi'),body=document.getElementById('mb'),modal=document.getElementById('mo');
   if(!title||!info||!body||!modal)return;
