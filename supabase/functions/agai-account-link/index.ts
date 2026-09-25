@@ -12,6 +12,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 })
 
 const normalizeLogin = (value: unknown) => String(value ?? '').trim().toLowerCase()
+const pilotCreateOnlyLogin = 'accoley.leo'
 
 const hexToBytes = (hex: string) => {
   if (!/^[0-9a-f]+$/i.test(hex) || hex.length % 2) throw new Error('invalid hash')
@@ -48,7 +49,7 @@ function technicalEmail(login: string, caserneId: string) {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-  if (req.method === 'GET') return json({ status: 'ready', version: 'v239.1', pilotCreateOnlyLogin: 'lericque.brian' })
+  if (req.method === 'GET') return json({ status: 'ready', version: 'v239.2', pilotCreateOnlyLogin })
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405)
 
   const url = Deno.env.get('SUPABASE_URL') ?? ''
@@ -65,7 +66,7 @@ Deno.serve(async (req) => {
     const createOnly = mode === 'pilot_link'
     const login = normalizeLogin(payload.login)
     const password = String(payload.password ?? '')
-    if (createOnly && login !== 'lericque.brian') return json({ error: 'pilot_not_allowed' }, 403)
+    if (createOnly && login !== pilotCreateOnlyLogin) return json({ error: 'pilot_not_allowed' }, 403)
     if (!login || !password || password.length > 256) return json({ error: 'invalid_credentials' }, 400)
 
     const { data: attempt } = await admin.from('agai_auth_attempts').select('*').eq('login', login).maybeSingle()

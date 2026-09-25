@@ -258,7 +258,7 @@ function _agaiUpdatePilotProfileState(){
     :!_agaiPilotCreateOnlyAvailable?'Fonction pilote V21 non disponible.':'Service pilote prêt pour une seule tentative.';
   if(button)button.disabled=!_agaiAuthPilotReady();
 }
-function refreshBrianPilotProfile(){
+function refreshAccountLinkPilotProfile(){
   _agaiUpdatePilotProfileState();
   _agaiCheckAccountLinkServer(true);
 }
@@ -336,13 +336,13 @@ function startManualAccountLinkPilot(){
   const createNew=pilotAccount.l===AUTH_LINK_NEW_CANARY_LOGIN;
   const title=document.getElementById('mt'),info=document.getElementById('mi'),body=document.getElementById('mb'),modal=document.getElementById('mo');
   if(!title||!info||!body||!modal)return;
-  title.textContent=createNew?'Pilote Brian — rattachement technique unique':'Identité technique AGAI — cet appareil uniquement';
+  title.textContent=createNew?'Pilote Léo — rattachement technique unique':'Identité technique AGAI — cet appareil uniquement';
   info.textContent=createNew
-    ?'Cette action crée uniquement le compte technique Supabase Auth de Brian, s’il n’existe pas déjà. Elle ne change ni son accès AGAI ni la synchronisation. Brian doit saisir lui-même son mot de passe AGAI.'
+    ?'Cette action crée uniquement le compte technique Supabase Auth de Léo, s’il n’existe pas déjà. Elle ne change ni son accès AGAI ni la synchronisation. Léo doit saisir lui-même son mot de passe AGAI.'
     :'Le compte technique AGAI dans Supabase Auth est distinct de votre accès au tableau de bord Supabase. Cette vérification ne crée ni ne modifie de compte et ne change pas la synchronisation.';
   body.innerHTML='<div style="padding:8px 0;"><label for="agai-auth-pilot-password" style="display:block;font-size:12px;margin-bottom:6px;">Mot de passe AGAI (jamais celui du tableau de bord Supabase)</label>'
     +'<input class="fi" type="password" id="agai-auth-pilot-password" autocomplete="current-password" style="width:100%;margin-bottom:12px;">'
-    +'<div class="brow"><button type="button" class="btn pr sm" id="agai-auth-pilot-confirm">'+(createNew?'Rattacher le compte de Brian':'Vérifier mon compte existant')+'</button>'
+    +'<div class="brow"><button type="button" class="btn pr sm" id="agai-auth-pilot-confirm">'+(createNew?'Rattacher le compte de Léo':'Vérifier mon compte existant')+'</button>'
     +'<button type="button" class="btn sm" onclick="cM()">Annuler</button></div></div>';
   modal.style.display='flex';
   const field=document.getElementById('agai-auth-pilot-password');
@@ -358,7 +358,7 @@ function startManualAccountLinkPilot(){
       :await _agaiVerifyExistingAuthAccount(pilotAccount,password,pilotSessionToken);
     if(!CU||SESSION_TOKEN!==pilotSessionToken)return;
     if(createNew){
-      const message=result==='linked'?'Compte technique de Brian rattaché. La synchronisation reste inchangée.'
+      const message=result==='linked'?'Compte technique de Léo rattaché. La synchronisation reste inchangée.'
         :result==='already_linked'?'Compte déjà rattaché : aucune identité existante modifiée.'
         :result==='linked_cleanup_failed'?'Compte rattaché, mais déconnexion de la session test non confirmée : arrêter le pilote.'
         :result==='uncertain'?'Résultat incertain : vérifier la liste des comptes avant tout nouvel essai.'

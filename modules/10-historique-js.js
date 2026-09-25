@@ -323,9 +323,9 @@ function rProfil(){
   if(ccBtn)ccBtn.style.display='none';
   const pilotPanel=document.getElementById('agai-auth-pilot-profile');
   if(pilotPanel){
-    const isBrianPilot=AUTH_LINK_MODE==='canary'&&CU.l===AUTH_LINK_NEW_CANARY_LOGIN;
-    pilotPanel.style.display=isBrianPilot?'':'none';
-    if(isBrianPilot)refreshBrianPilotProfile();
+    const isAccountLinkPilot=AUTH_LINK_MODE==='canary'&&CU.l===AUTH_LINK_NEW_CANARY_LOGIN;
+    pilotPanel.style.display=isAccountLinkPilot?'':'none';
+    if(isAccountLinkPilot)refreshAccountLinkPilotProfile();
   }
 }
 async function saveProfil(){

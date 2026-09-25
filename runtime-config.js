@@ -4,12 +4,12 @@
 window.AGAI_CONFIG = Object.freeze({
   supabaseUrl: 'https://lpzblzqxmoiwghvkhqnt.supabase.co',
   supabasePublishableKey: 'sb_publishable_dkzyaOmA-FeBhL4c1z_KZw_nOdOTWuL',
-  // Pilote manuel : vérification du compte déjà lié et création unique pour Brian.
+  // Pilote manuel : vérification des comptes déjà liés et création unique pour Léo.
   // Aucun appel Auth à la connexion AGAI, aucune incidence sur la synchronisation.
   // Remettre 'off' ici suffit à interrompre le pilote sans toucher aux données.
   accountLinkMode: 'canary',
-  accountLinkCanaryLogins: ['dacheville.thibaut', 'lericque.brian'],
-  accountLinkNewCanaryLogin: 'lericque.brian',
+  accountLinkCanaryLogins: ['dacheville.thibaut', 'lericque.brian', 'accoley.leo'],
+  accountLinkNewCanaryLogin: 'accoley.leo',
   accountLinkEndpoint: '',
   mailEndpoint: ''
 });

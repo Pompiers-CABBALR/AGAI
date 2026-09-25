@@ -3,6 +3,12 @@
 Cette variante conserve les fonctionnalités de `AGAI-securise.html`, mais sépare
 le code afin de faciliter les prochaines corrections.
 
+La V202609_0027 prépare le rattachement manuel de `accoley.leo`, après le
+contrôle `DIAGNOSTIC-PILOTE-LEO-V202609-0027.sql`. La fonction Edge doit être
+déployée en V239.2 avant l'application. Brian reste déjà rattaché ; seul Léo
+peut être créé par le nouveau pilote. Aucun compte n'est rattaché par la
+publication seule.
+
 La V202609_0025 corrige le cas où l'intervention d'origine, liée à une PILP,
 restait sans numéro définitif après sa clôture. Le correctif serveur V25 doit
 être validé sur une copie avant publication de l'application ; la
@@ -41,6 +47,8 @@ régularisation ciblée après vérification des deux fiches concernées.
   tout essai du pilote manuel ;
 - `DIAGNOSTIC-PILOTE-BRIAN-V202609-0021.sql` : contrôle en lecture seule avant
   le rattachement limité à Brian ;
+- `DIAGNOSTIC-PILOTE-LEO-V202609-0027.sql` : contrôle en lecture seule avant
+  le rattachement limité à Léo ;
 - `DEPLOIEMENT-SECURISE.md` : procédure d’installation et de vérification.
 
 ## Utilisation
@@ -63,9 +71,9 @@ passerelle serveur sécurisée.
 ## Authentification actuelle
 
 Les identifiants AGAI existants sont conservés. Le mot de passe demandé pour la
-vérification est celui d'AGAI, jamais celui du tableau de bord Supabase. Dans la V202609_0021, la liaison
-technique Supabase Auth permet la vérification manuelle du compte déjà lié
-`dacheville.thibaut` et un seul rattachement manuel nouveau pour `lericque.brian`.
+vérification est celui d'AGAI, jamais celui du tableau de bord Supabase. Dans la V202609_0027, la liaison
+technique Supabase Auth permet la vérification manuelle des comptes pilotes déjà liés
+et un seul rattachement manuel nouveau pour `accoley.leo`.
 Aucune requête Auth n'est lancée à la connexion. Cette livraison
 prépare la numérotation provisoire au départ et définitive à la clôture, ainsi
 qu'une confirmation à deux gestes pour éviter une clôture accidentelle. Elle

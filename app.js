@@ -1458,7 +1458,7 @@ function _agaiUpdatePilotProfileState(){
     :!_agaiPilotCreateOnlyAvailable?'Fonction pilote V21 non disponible.':'Service pilote prêt pour une seule tentative.';
   if(button)button.disabled=!_agaiAuthPilotReady();
 }
-function refreshBrianPilotProfile(){
+function refreshAccountLinkPilotProfile(){
   _agaiUpdatePilotProfileState();
   _agaiCheckAccountLinkServer(true);
 }
@@ -1536,13 +1536,13 @@ function startManualAccountLinkPilot(){
   const createNew=pilotAccount.l===AUTH_LINK_NEW_CANARY_LOGIN;
   const title=document.getElementById('mt'),info=document.getElementById('mi'),body=document.getElementById('mb'),modal=document.getElementById('mo');
   if(!title||!info||!body||!modal)return;
-  title.textContent=createNew?'Pilote Brian — rattachement technique unique':'Identité technique AGAI — cet appareil uniquement';
+  title.textContent=createNew?'Pilote Léo — rattachement technique unique':'Identité technique AGAI — cet appareil uniquement';
   info.textContent=createNew
-    ?'Cette action crée uniquement le compte technique Supabase Auth de Brian, s’il n’existe pas déjà. Elle ne change ni son accès AGAI ni la synchronisation. Brian doit saisir lui-même son mot de passe AGAI.'
+    ?'Cette action crée uniquement le compte technique Supabase Auth de Léo, s’il n’existe pas déjà. Elle ne change ni son accès AGAI ni la synchronisation. Léo doit saisir lui-même son mot de passe AGAI.'
     :'Le compte technique AGAI dans Supabase Auth est distinct de votre accès au tableau de bord Supabase. Cette vérification ne crée ni ne modifie de compte et ne change pas la synchronisation.';
   body.innerHTML='<div style="padding:8px 0;"><label for="agai-auth-pilot-password" style="display:block;font-size:12px;margin-bottom:6px;">Mot de passe AGAI (jamais celui du tableau de bord Supabase)</label>'
     +'<input class="fi" type="password" id="agai-auth-pilot-password" autocomplete="current-password" style="width:100%;margin-bottom:12px;">'
-    +'<div class="brow"><button type="button" class="btn pr sm" id="agai-auth-pilot-confirm">'+(createNew?'Rattacher le compte de Brian':'Vérifier mon compte existant')+'</button>'
+    +'<div class="brow"><button type="button" class="btn pr sm" id="agai-auth-pilot-confirm">'+(createNew?'Rattacher le compte de Léo':'Vérifier mon compte existant')+'</button>'
     +'<button type="button" class="btn sm" onclick="cM()">Annuler</button></div></div>';
   modal.style.display='flex';
   const field=document.getElementById('agai-auth-pilot-password');
@@ -1558,7 +1558,7 @@ function startManualAccountLinkPilot(){
       :await _agaiVerifyExistingAuthAccount(pilotAccount,password,pilotSessionToken);
     if(!CU||SESSION_TOKEN!==pilotSessionToken)return;
     if(createNew){
-      const message=result==='linked'?'Compte technique de Brian rattaché. La synchronisation reste inchangée.'
+      const message=result==='linked'?'Compte technique de Léo rattaché. La synchronisation reste inchangée.'
         :result==='already_linked'?'Compte déjà rattaché : aucune identité existante modifiée.'
         :result==='linked_cleanup_failed'?'Compte rattaché, mais déconnexion de la session test non confirmée : arrêter le pilote.'
         :result==='uncertain'?'Résultat incertain : vérifier la liste des comptes avant tout nouvel essai.'
@@ -9676,9 +9676,9 @@ function rProfil(){
   if(ccBtn)ccBtn.style.display='none';
   const pilotPanel=document.getElementById('agai-auth-pilot-profile');
   if(pilotPanel){
-    const isBrianPilot=AUTH_LINK_MODE==='canary'&&CU.l===AUTH_LINK_NEW_CANARY_LOGIN;
-    pilotPanel.style.display=isBrianPilot?'':'none';
-    if(isBrianPilot)refreshBrianPilotProfile();
+    const isAccountLinkPilot=AUTH_LINK_MODE==='canary'&&CU.l===AUTH_LINK_NEW_CANARY_LOGIN;
+    pilotPanel.style.display=isAccountLinkPilot?'':'none';
+    if(isAccountLinkPilot)refreshAccountLinkPilotProfile();
   }
 }
 async function saveProfil(){
@@ -9803,7 +9803,7 @@ function rAdm(){
         }
         return `<td style="text-align:center;"><input type="checkbox" ${u.rights.includes(r)?'checked':''} onchange="updateRight('${u.l}','${r.replace(/'/g,"\\'")}',this.checked)" ${isSA?'disabled':''}></td>`;
       }).join('');
-    const delCell=(isSA)?'<td></td>':`<td><button class="del-btn" onclick="delUser('${u.l}')" ${u.l===CU.l?'disabled':''}>✕</button></td>`;
+    const delCell=(!isSuperAdmin()||isSA)?'<td></td>':`<td><button class="del-btn" onclick="delUser('${u.l}')" ${u.l===CU.l?'disabled':''} title="Retirer une fiche créée par erreur — superadministrateur uniquement">✕</button></td>`;
     const matriculeCell=(isSA&&!saEditable)?`<td style="font-size:11px;color:var(--t2);">${u.matricule||'—'}</td>`:`<td><input type="text" value="${u.matricule||''}" data-login="${u.l}" data-field="matricule" onchange="updateUser(this.dataset.login,this.dataset.field,this.value)" placeholder="Matricule" style="width:70px;padding:3px 6px;border:1px solid var(--brd);border-radius:5px;font-size:12px;"/></td>`;
     // Cellule Fonctions formateur
     const ffList=u.fonctionsFormateur||[];
@@ -9897,9 +9897,68 @@ async function addUser(){
   document.getElementById('admin-add').style.display='none';
   rAdm();
 }
-function delUser(login){
+function personnelLoginAppearsInData(value,login){
+  if(value===null||value===undefined)return false;
+  try{return JSON.stringify(value).toLowerCase().includes(String(login).toLowerCase());}
+  catch(error){return true;} // En cas de données illisibles, ne pas autoriser l'effacement.
+}
+function personnelCreationErrorHasLocalUse(login){
+  if(GLOBAL_ACCOUNTS.some(account=>account&&account.l===login))return true;
+  if(personnelLoginAppearsInData(LOGIN_HISTORY,login)||personnelLoginAppearsInData(DISPOS_UNLOCKED,login)||personnelLoginAppearsInData(DISPO_REQUESTS,login))return true;
+  return Object.keys(CASERNE_DATA).some(function(caserneId){
+    const data=CASERNE_DATA[caserneId];if(!data||typeof data!=='object')return false;
+    if(caserneId!==CURRENT_CASERNE_ID&&personnelLoginAppearsInData(data.users,login))return true;
+    if(caserneId===CURRENT_CASERNE_ID&&personnelLoginAppearsInData((data.users||[]).filter(user=>user&&user.l!==login),login))return true;
+    return Object.keys(data).some(function(key){return key!=='users'&&personnelLoginAppearsInData(data[key],login);});
+  });
+}
+async function personnelCreationErrorHasServerUse(login){
+  if(!USE_RECORDS)return false;
+  // Une fiche créée par erreur ne doit avoir aucune autre ligne liée, même dans une autre caserne.
+  const rows=await _rcFetchAllActiveRows('');
+  return rows.some(function(row){
+    if(!row||row.deleted)return false;
+    if(row.type==='user'&&row.caserne===CURRENT_CASERNE_ID&&row.data&&row.data.l===login)return false;
+    return personnelLoginAppearsInData(row.data,login);
+  });
+}
+async function delUser(login){
+  if(!isSuperAdmin()){showToast('Suppression réservée au superadministrateur.','error');return;}
+  const user=login&&USERS.find(u=>u.l===login);
+  if(!user){showToast('Personnel introuvable.','error');return;}
+  if(CU&&CU.l===login){showToast('Vous ne pouvez pas supprimer votre propre compte.','error');return;}
   if(GLOBAL_ACCOUNTS.find(a=>a.l===login&&a.role==='superadmin')){showToast('Impossible de supprimer le Super Administrateur.','error');return;}
-  confirmModal('Supprimer cet utilisateur ?',async function(){if(!await _agaiDeactivateLinkedAccount(login)){showToast('Suppression annulée : liaison serveur indisponible.','error');return;}USERS=USERS.filter(u=>u.l!==login);saveData();rAdm();});
+  if(personnelCreationErrorHasLocalUse(login)){showToast('Ce personnel a déjà des données liées : archivez-le au lieu de le supprimer.','warn');return;}
+  try{
+    if(await personnelCreationErrorHasServerUse(login)){showToast('Ce personnel a déjà des données liées sur le serveur : suppression refusée.','warn');return;}
+  }catch(error){showToast('Vérification serveur impossible : suppression annulée.','error');return;}
+  confirmModal('Fiche créée par erreur : retirer définitivement '+escHtml(fullName(user))+' ? Vérifiez que cette personne n’a jamais été engagée ni planifiée.',async function(){
+    if(!isSuperAdmin()){showToast('Suppression réservée au superadministrateur.','error');return;}
+    if(personnelCreationErrorHasLocalUse(login)){showToast('Des données liées sont apparues : suppression annulée.','warn');return;}
+    try{
+      if(await personnelCreationErrorHasServerUse(login)){showToast('Des données liées sont apparues sur le serveur : suppression annulée.','warn');return;}
+    }catch(error){showToast('Vérification serveur impossible : suppression annulée.','error');return;}
+    if(!await _agaiDeactivateLinkedAccount(login)){showToast('Suppression annulée : liaison serveur indisponible.','error');return;}
+    if(USE_RECORDS){
+      const recordId=_rcId(CURRENT_CASERNE_ID,'user',login);
+      const tombstone={id:recordId,caserne:CURRENT_CASERNE_ID,type:'user',data:{id:login,_deleted:true},deleted:true};
+      const result=await _rcSendRowsWithIsolation([tombstone],CU.l);
+      if(!result.succeeded.some(row=>row.id===recordId)){
+        showToast('Suppression serveur impossible : fiche conservée.','error');return;
+      }
+      _rcPendingDirty.delete(recordId);
+      try{await _rcOutboxDelete([recordId]);}catch(error){console.warn('[AGAI] Nettoyage de file après suppression :',error);}
+      _rcPersistPendingDirty();
+    }
+    const data=CASERNE_DATA[CURRENT_CASERNE_ID];
+    if(data){
+      data.adminLogins=(data.adminLogins||[]).filter(item=>item!==login);
+      if(data.adminLogin===login)data.adminLogin=data.adminLogins[0]||'';
+      data.users=(data.users||[]).filter(item=>item.l!==login);
+      USERS=data.users;
+    }
+    saveData();rAdm();
+  });
 }
 function updateFormateurFn(login,fn,checked){
   const u=USERS.find(x=>x.l===login);if(!u)return;
@@ -16613,7 +16672,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202609_0025';
+const APP_VERSION='V202609_0027';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;

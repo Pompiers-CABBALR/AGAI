@@ -1,5 +1,40 @@
 # AGAI — déploiement sécurisé
 
+## Préparation V202609_0027 — pilote Léo Accoley
+
+**Préparée localement, non déployée et sans création de compte par Codex.**
+Le nouveau compte pilote est uniquement `accoley.leo` (CIS05). Brian et
+Thibaut restent dans la liste des comptes déjà testés, mais le mode
+`pilot_link` de la fonction Edge n'autorise la création que pour Léo.
+Le mode `canary` reste actif ; la synchronisation des données n'utilise
+toujours pas les sessions Supabase Auth. La V27 conserve également le
+verrou local de suppression des fiches de personnel créé précédemment ;
+la gestion des absences et des départs n'est pas incluse.
+
+Avant toute publication :
+
+1. Exécuter `DIAGNOSTIC-PILOTE-LEO-V202609-0027.sql` en lecture seule.
+   Continuer uniquement si le compte est actif, non rattaché, sans identité
+   Auth préexistante, sans verrouillage et avec mot de passe AGAI aligné.
+   Une ligne absente ou un résultat incertain arrête le pilote.
+2. Vérifier une sauvegarde récente, `Sync OK`, une réception récente et une
+   file d'actions vide. Noter le nombre initial de comptes rattachés.
+3. Déployer la fonction Edge `agai-account-link` V239.2 avant le client.
+   Son URL GET doit indiquer `pilotCreateOnlyLogin: accoley.leo`.
+4. Publier ensemble les fichiers de l'application V202609_0027, notamment
+   `runtime-config.js` et `version.json`, sur un appareil pilote. Ne pas
+   passer `accountLinkMode` à `on`.
+5. Léo se connecte avec son mot de passe AGAI, ouvre « Mon profil » et
+   déclenche lui-même « Rattacher mon compte ». Ne saisir ni transmettre ce
+   mot de passe à un administrateur. N'effectuer qu'un seul essai ; si le
+   résultat est incertain, contrôler la base avant tout nouvel essai.
+6. Vérifier que le nombre de comptes rattachés a augmenté d'un seul et que
+   les connexions AGAI, les interventions et la synchronisation restent
+   normales. Ne pas élargir le pilote le même jour si un contrôle échoue.
+
+Le bouton refuse de modifier un compte déjà lié et ne garde pas sa session
+Supabase Auth. Une panne du serveur ou une file non vide bloque le pilote.
+
 ## Préparation V202609_0025 — numérotation de l'intervention source PILP
 
 **Préparée localement, non déployée et non exécutée par Codex.** Le cas
