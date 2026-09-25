@@ -1,5 +1,43 @@
 # AGAI — déploiement sécurisé
 
+## Préparation V202609_0030 — trois comptes personnels, un compte générique exclu
+
+**Préparée localement, non déployée et sans création de compte par Codex.**
+Le pilote précédent a été confirmé rattaché par le contrôle fourni par
+l'administrateur. Le mode `canary` reste actif : aucun rattachement automatique
+à la connexion AGAI et aucun changement de la synchronisation des données.
+Les seuls nouveaux comptes autorisés sont Alicia Millecamps (`CIS02`), Eric
+Canneson et Valéry Leriche (`CIS05`). `cis04.admin` (`CIS04`) est volontairement
+exclu : aucun chef de centre nommé ne lui est actuellement associé. Son compte
+AGAI n'est ni supprimé ni désactivé par cette préparation.
+
+1. Exécuter `DIAGNOSTIC-PILOTES-FINAUX-V202609-0030.sql` en lecture seule.
+   Attendre trois lignes : comptes actifs, non rattachés, sans identité Auth
+   préexistante, mots de passe AGAI alignés, aucun verrouillage. Si une ligne
+   diffère, arrêter et corriger la liste autorisée avant le déploiement.
+2. Vérifier une sauvegarde récente, `Sync OK`, une réception récente et une
+   file d'actions vide sur les appareils pilotes. Noter le nombre initial de
+   comptes rattachés.
+3. Déployer la fonction Edge `agai-account-link` V239.5. Son GET doit retourner
+   `pilotCreateOnlyLogins` avec exactement les trois logins ci-dessus ;
+   `cis04.admin` ne doit pas y figurer. Avant cette réponse, ne pas publier le
+   nouveau client.
+4. Publier ensemble les fichiers de l'application V202609_0030, notamment
+   `runtime-config.js` et `version.json`. Garder `accountLinkMode: 'canary'`.
+5. Chaque titulaire se connecte à son compte AGAI et lance une seule fois
+   « Rattacher mon compte » depuis « Mon profil ». Il saisit lui-même son mot
+   de passe AGAI. Ne pas recueillir ni transmettre ce mot de passe. Les trois
+   utilisent la même version, sans nouvelle publication entre eux.
+6. Après chaque essai, refaire le diagnostic : pour la ligne concernée,
+   `deja_rattache=true`, `identite_auth_deja_presente=true`, `echecs=0`.
+   Vérifier que l'application continue à fonctionner. En cas de résultat
+   incertain, ne pas retenter sans vérifier la base.
+
+Après les trois rattachements, `cis04.admin` reste potentiellement le seul
+compte actif non rattaché. Ne pas activer de règles d'accès qui supposent que
+tous les comptes actifs sont liés tant que ce cas n'est pas résolu.
+
+
 ## Préparation V202609_0029 — six rattachements individuels, une publication
 
 **Préparée localement, non déployée et sans création de compte par Codex.**

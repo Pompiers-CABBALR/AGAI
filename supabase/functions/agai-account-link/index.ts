@@ -13,12 +13,9 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 
 const normalizeLogin = (value: unknown) => String(value ?? '').trim().toLowerCase()
 const pilotCreateOnlyLogins = new Set([
-  'douvrin.pascal',
-  'dumoulin.sebastien',
-  'francois.laurent',
-  'maerten.mathis',
-  'marien.matthis',
-  'smagliante.enzo',
+  'millecamps.alicia',
+  'canneson.eric',
+  'leriche.valery',
 ])
 
 const hexToBytes = (hex: string) => {
@@ -56,7 +53,7 @@ function technicalEmail(login: string, caserneId: string) {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-  if (req.method === 'GET') return json({ status: 'ready', version: 'v239.4', pilotCreateOnlyLogins: [...pilotCreateOnlyLogins] })
+  if (req.method === 'GET') return json({ status: 'ready', version: 'v239.5', pilotCreateOnlyLogins: [...pilotCreateOnlyLogins] })
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405)
 
   const url = Deno.env.get('SUPABASE_URL') ?? ''
