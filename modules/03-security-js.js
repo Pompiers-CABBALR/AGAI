@@ -99,7 +99,7 @@ function _agaiAuthLinkEligible(account){
 function _agaiAuthOperationalReady(){
   const health=window._agaiSyncHealth||{};
   return health.state==='ok'&&Number(health.lastPullOkAt)>Date.now()-15*60*1000
-    &&typeof _rcPendingDirty!=='undefined'&&_rcPendingDirty.size===0
+    &&typeof _rcPendingCountInScope==='function'&&_rcPendingCountInScope()===0
     &&typeof _agaiServerCircuitOpenUntil==='number'&&_agaiServerCircuitOpenUntil<=Date.now()
     &&typeof _rcSaving!=='undefined'&&!_rcSaving&&typeof _rcPulling!=='undefined'&&!_rcPulling
     &&typeof navigator!=='undefined'&&navigator.onLine!==false;

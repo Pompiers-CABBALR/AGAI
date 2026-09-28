@@ -958,9 +958,10 @@ window._agaiSyncHealth=window._agaiSyncHealth||{lastOkAt:null,lastErrorAt:null,l
 function _jbSetStatus(state){
   let el=document.getElementById('jb-status');
   if(!el){el=document.createElement('div');el.id='jb-status';document.body.appendChild(el);}
-  const queued=typeof _rcPendingDirty!=='undefined'?_rcPendingDirty.size:0;
-  // Une file différée reste une file non synchronisée. Elle ne doit jamais être
-  // présentée comme « Sync OK », même si sa reprise automatique est temporisée.
+  const queued=typeof _rcPendingCountInScope==='function'?_rcPendingCountInScope():0;
+  const queuedElsewhere=typeof _rcPendingDirty!=='undefined'?Math.max(0,_rcPendingDirty.size-queued):0;
+  // Une file différée de la caserne active reste non synchronisée. Une ligne
+  // d'une autre caserne est signalée, mais ne bloque pas la session courante.
   if(state==='ok'&&queued)state='pending';
   const cfg={ok:{txt:'☁️ Sync OK',bg:'#ECFDF5',color:'#065F46'},saving:{txt:'⏳ Sync...',bg:'#FFF7ED',color:'#92400E'},pending:{txt:'⏳ Sync en attente',bg:'#FFF7ED',color:'#92400E'},error:{txt:'⚠️ Sync KO',bg:'#FEF2F2',color:'#991B1B'},loading:{txt:'⏳ Chargement',bg:'#EFF6FF',color:'#1D4ED8'}};
   const c=cfg[state]||cfg.ok;
@@ -969,9 +970,9 @@ function _jbSetStatus(state){
   if(state==='ok'&&!queued){window._agaiSyncHealth.lastOkAt=Date.now();window._agaiSyncHealth.lastError='';}
   if(state==='error'){window._agaiSyncHealth.lastErrorAt=Date.now();window._agaiSyncHealth.lastError=syncError||'Erreur de synchronisation';}
   const lastOkLabel=state==='ok'&&window._agaiSyncHealth.lastOkAt?' · '+new Date(window._agaiSyncHealth.lastOkAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):'';
-  el.textContent=c.txt+lastOkLabel+((state==='pending'||state==='error')&&queued?' ('+queued+' en attente)':'');
+  el.textContent=c.txt+lastOkLabel+((state==='pending'||state==='error')&&queued?' ('+queued+' en attente)':'')+(queuedElsewhere?' · '+queuedElsewhere+' autre caserne en attente':'');
   el.style.cssText='position:fixed;bottom:8px;right:8px;z-index:9999;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;background:'+c.bg+';color:'+c.color+';box-shadow:0 1px 4px rgba(0,0,0,.15);cursor:pointer;';
-  el.title=state==='error'&&syncError?syncError:(state==='pending'?'Des actions restent à transmettre — cliquer pour les relancer maintenant':state==='ok'&&window._agaiLocalCacheLimited?'Supabase synchronisé — cache hors ligne limité sur cet appareil':'Dernière synchronisation réussie : '+(window._agaiSyncHealth.lastOkAt?new Date(window._agaiSyncHealth.lastOkAt).toLocaleString('fr-FR'):'—')+' — cliquer pour synchroniser maintenant');
+  el.title=(state==='error'&&syncError?syncError:(state==='pending'?'Des actions de cette caserne restent à transmettre — cliquer pour les relancer maintenant':state==='ok'&&window._agaiLocalCacheLimited?'Supabase synchronisé — cache hors ligne limité sur cet appareil':'Dernière synchronisation réussie : '+(window._agaiSyncHealth.lastOkAt?new Date(window._agaiSyncHealth.lastOkAt).toLocaleString('fr-FR'):'—')+' — cliquer pour synchroniser maintenant'))+(queuedElsewhere?' Une action d’une autre caserne reste conservée sur cet appareil ; revenir à cette caserne pour la transmettre.':'');
   el.onclick=function(){
     if(state==='error'&&syncError)alert('Diagnostic de synchronisation\n\n'+syncError+'\n\nVersion : '+APP_VERSION);
     jbSyncNow();
@@ -1308,10 +1309,10 @@ function _postLoadInit(){
 
 function jbSyncNow(){
   if(typeof _agaiAllowServerProbeNow==='function')_agaiAllowServerProbeNow();
-  if(USE_RECORDS&&typeof _rcPendingDirty!=='undefined'&&_rcPendingDirty.size){
+  if(USE_RECORDS&&typeof _rcPendingCountInScope==='function'&&_rcPendingCountInScope()){
     // Un clic utilisateur signifie « réessayer maintenant » : ne pas attendre
     // la fin du délai de cinq minutes des lignes temporairement isolées.
-    if(typeof _rcClearDeferred==='function')_rcClearDeferred(Array.from(_rcPendingDirty));
+    if(typeof _rcClearDeferred==='function')_rcClearDeferred(Array.from(_rcPendingDirty).filter(_rcPendingIdInScope));
     _jbSetStatus('pending');
     // Toujours recevoir et rapprocher avant le moindre renvoi. Une ancienne
     // file volumineuse ne doit jamais saturer le serveur ni les autres appareils.
@@ -1323,7 +1324,7 @@ function jbSyncNow(){
   }
   const puller = USE_RECORDS ? _rcPull : (USE_SUPABASE ? _sbPull : _jbPull);
   puller(false).then(function(ok){
-    if(ok)showToast('Données synchronisées ✓','success');
+    if(ok)showToast(USE_RECORDS&&_rcPendingDirty.size>_rcPendingCountInScope()?'Cette caserne est synchronisée ; une action d’une autre caserne reste en attente sur cet appareil.':'Données synchronisées ✓','success');
     else showToast('Erreur de synchronisation','error');
   });
 }
@@ -1964,6 +1965,9 @@ function _rcIsDeferred(id){
 }
 function _rcHasActivePending(){
   return Array.from(_rcPendingDirty).some(function(id){return _rcPendingIdInScope(id)&&!_rcIsDeferred(id);});
+}
+function _rcPendingCountInScope(){
+  return Array.from(_rcPendingDirty).filter(_rcPendingIdInScope).length;
 }
 function _rcClearDeferred(ids){
   let changed=false;
@@ -2989,7 +2993,10 @@ async function _rcResolveAtomicRejection(failure){
     AGAI_REVISION_CONFLICT:'Conflit de version : votre modification n’a pas été enregistrée. La fiche a été actualisée.',
     AGAI_RECORD_REVISION_CONFLICT:'Conflit de version : votre modification n’a pas été enregistrée. Les dernières données ont été rechargées.',
     AGAI_STALE_STATUS_REVISION:'Une version plus récente de cette intervention existe déjà. La fiche a été actualisée.',
-    AGAI_STATUS_REVISION_REQUIRED:'Le changement de statut a été refusé car une version plus récente existe déjà.'
+    AGAI_STATUS_REVISION_REQUIRED:'Le changement de statut a été refusé car une version plus récente existe déjà.',
+    AGAI_FINAL_NUMBER_IMMUTABLE:'Suppression ou modification refusée : cette intervention terminée conserve son numéro définitif.',
+    AGAI_FINAL_NUMBER_NOT_CONFIRMED:'Clôture en attente : le numéro définitif n’a pas été confirmé.',
+    AGAI_FINAL_NUMBER_SEQUENCE_CONFLICT:'Clôture en attente : les numéros et les compteurs doivent être vérifiés.'
   };
   const code=(detail.match(/AGAI_[A-Z_]+/)||[])[0]||'';
   showToast(messages[code]||'Action refusée par la protection serveur. La fiche a été actualisée.','warn');
@@ -3555,5 +3562,4 @@ async function _rcMigrate(){
 
 function saveAndRefresh(){saveData();}
 function _odSyncAfterSave(){if(typeof odScheduleSync==='function')odScheduleSync();}
-
 

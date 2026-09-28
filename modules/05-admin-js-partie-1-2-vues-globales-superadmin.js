@@ -1061,9 +1061,19 @@ function saSaveFourriereEmail(){
   showToast('Email fourrière sauvegardé','success');
 }
 
+function saIsCompletedNumberedIv(iv){
+  return !!iv&&iv.s==='terminee'
+    && ((Number.isInteger(Number(iv._numCaserne))&&Number(iv._numCaserne)>0)
+      || (Number.isInteger(Number(iv._numMois))&&Number(iv._numMois)>0));
+}
+
 async function saResetIvs(cid){
-  if(!window.confirm('⚠️ Supprimer TOUTES les interventions de cette caserne ? Cette action est irréversible.')){return;}
   const d=CASERNE_DATA[cid];if(!d)return;
+  if([...(d.ivs||[]),...(d.pilpIvs||[])].some(saIsCompletedNumberedIv)){
+    showToast('Suppression bloquée : cette caserne contient des interventions terminées et numérotées.','warn');
+    return;
+  }
+  if(!window.confirm('⚠️ Supprimer TOUTES les interventions de cette caserne ? Cette action est irréversible.')){return;}
   if(!await agaiRequireRecoveryCheckpoint('Avant remise à zéro des interventions de '+((CASERNES.find(function(item){return item.id===cid;})||{}).nom||cid)))return;
   const allIvIds=(d.ivs||[]).map(function(iv){return iv.id;});
   const allPilpIds=(d.pilpIvs||[]).map(function(iv){return iv.id;});
@@ -1137,6 +1147,10 @@ async function saConfirmDeleteIvs(cid){
   const checked=Array.from(document.querySelectorAll('.sa-iv-chk:checked')).map(function(c){return c.value;});
   if(!checked.length){showToast('Aucune intervention sélectionnée.','warn');return;}
   const d=CASERNE_DATA[cid];if(!d)return;
+  if([...(d.ivs||[]),...(d.pilpIvs||[])].some(function(iv){return checked.includes(iv.id)&&saIsCompletedNumberedIv(iv);})){
+    showToast('Suppression bloquée : une intervention terminée et numérotée figure dans la sélection.','warn');
+    return;
+  }
   if(!window.confirm('Supprimer '+checked.length+' intervention(s) ? Cette action est irréversible.')){return;}
   if(!await agaiRequireRecoveryCheckpoint('Avant suppression de '+checked.length+' intervention(s)'))return;
   // Séparer ivs et pilpIvs supprimées pour marquer deleted dans records
@@ -2391,4 +2405,3 @@ function doLogout(){
   ['prof-grade-sel','nu-grade'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML='';});
   rF();selEng=null;parcConfirmed.clear();
 }
-
