@@ -7291,7 +7291,7 @@ function autorisationDocumentsHTML(iv){
     const nid=interventionNids(iv)[index];
     const label=nid?[nid.nature,nid.localisation].filter(Boolean).join(' · '):iv.n;
     return '<div style="background:#fff;border:1px solid #DDD6FE;border-radius:8px;padding:8px;margin-top:6px;">'
-      +'<div style="font-size:11px;font-weight:700;color:#6B3AA0;margin-bottom:6px;">Nid '+(index+1)+(label?' — '+escHtml(label):'')+'</div>'
+      +'<div style="font-size:11px;font-weight:700;color:#6B3AA0;margin-bottom:6px;">'+autorisationDocumentNumberLabel(iv,index)+(label?' — '+escHtml(label):'')+'</div>'
       +'<div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn sm" style="background:#185FA5;color:#fff;" onclick="viewPdfDocument(\''+iv.id+'\',\'autorisation\','+index+')">&#x1F4CB; Autorisation</button>'
       +'<button class="btn sm" style="background:#3B6D11;color:#fff;" onclick="viewPdfDocument(\''+iv.id+'\',\'attestation\','+index+')">&#x1F4CB; Attestation</button></div></div>';
   }).join('');
@@ -14324,6 +14324,10 @@ const AUTORISATION_DOCX_B64 = 'UEsDBBQABgAIAAAAIQCQ9ICzsQEAAGIIAAATAAgCW0NvbnRlb
 
 let _autorisationData = {};
 const _autorisationActiveNid={};
+function autorisationDocumentNumberLabel(iv,index){
+  const isNid=/nid|guêpe|frelon|essaim/i.test(String(iv&&iv.n||''));
+  return (isNid?'Nid ':'')+(index+1);
+}
 function interventionNids(iv){
   if(iv&&Array.isArray(iv._nidsAppel)&&iv._nidsAppel.length)return iv._nidsAppel;
   return iv&&/nid|guêpe|frelon/i.test(String(iv.n||''))?[{id:'nid-1',nature:iv.n||'Nid',localisation:'',hauteur:'',taille:''}]:[];
@@ -15112,7 +15116,6 @@ function saveAdresse(ivId){
   saveData(true); // push immédiat : sinon la correction est écrasée au prochain pull
   cM();refreshOperationalInterventionViews();oM(ivId);
 }
-
 // === MODULE: stats.js ===
 // ══════════════════════════════════════════════════════
 // STATISTIQUES CASERNE
@@ -16770,7 +16773,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0002';
+const APP_VERSION='V202610_0003';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -18315,7 +18318,7 @@ function genRapportInterventionHTML(ivId) {
     if(bS>0&&bE>0){
       let ab=autoFull.slice(bS+6,bE).trim();
       ab=ab.replace(/^<div[^>]*class="page"[^>]*>/,'').replace(/<\/div>\s*$/,'');
-      autBody+='<div class="aut-nid-doc"'+(index?' style="page-break-before:always;break-before:page;padding-top:5mm;"':'')+'><div style="font-size:10pt;font-weight:700;color:#6B3AA0;margin-bottom:3mm;">Nid '+(index+1)+' sur '+autorisationList.length+'</div>'+ab+'</div>';
+      autBody+='<div class="aut-nid-doc"'+(index?' style="page-break-before:always;break-before:page;padding-top:5mm;"':'')+'><div style="font-size:10pt;font-weight:700;color:#6B3AA0;margin-bottom:3mm;">'+autorisationDocumentNumberLabel(iv,index)+' sur '+autorisationList.length+'</div>'+ab+'</div>';
     }
   });
   const avisBody=iv._isRenfort?'':_buildAvisPassageBody(iv);
@@ -18454,7 +18457,6 @@ function toggleAdminRole(){
   syncCaserneContext();
   _reloadActiveView();
 }
-
 // === MODULE: animal.js ===
 // ═══════════════════════════════════════════════════════════
 // PRISE EN CHARGE ANIMAL — Formulaire + PDF + Mail

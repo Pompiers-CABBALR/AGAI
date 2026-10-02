@@ -1405,7 +1405,7 @@ function autorisationDocumentsHTML(iv){
     const nid=interventionNids(iv)[index];
     const label=nid?[nid.nature,nid.localisation].filter(Boolean).join(' · '):iv.n;
     return '<div style="background:#fff;border:1px solid #DDD6FE;border-radius:8px;padding:8px;margin-top:6px;">'
-      +'<div style="font-size:11px;font-weight:700;color:#6B3AA0;margin-bottom:6px;">Nid '+(index+1)+(label?' — '+escHtml(label):'')+'</div>'
+      +'<div style="font-size:11px;font-weight:700;color:#6B3AA0;margin-bottom:6px;">'+autorisationDocumentNumberLabel(iv,index)+(label?' — '+escHtml(label):'')+'</div>'
       +'<div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn sm" style="background:#185FA5;color:#fff;" onclick="viewPdfDocument(\''+iv.id+'\',\'autorisation\','+index+')">&#x1F4CB; Autorisation</button>'
       +'<button class="btn sm" style="background:#3B6D11;color:#fff;" onclick="viewPdfDocument(\''+iv.id+'\',\'attestation\','+index+')">&#x1F4CB; Attestation</button></div></div>';
   }).join('');

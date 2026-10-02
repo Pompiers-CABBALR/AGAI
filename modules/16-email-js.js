@@ -1091,7 +1091,7 @@ function genRapportInterventionHTML(ivId) {
     if(bS>0&&bE>0){
       let ab=autoFull.slice(bS+6,bE).trim();
       ab=ab.replace(/^<div[^>]*class="page"[^>]*>/,'').replace(/<\/div>\s*$/,'');
-      autBody+='<div class="aut-nid-doc"'+(index?' style="page-break-before:always;break-before:page;padding-top:5mm;"':'')+'><div style="font-size:10pt;font-weight:700;color:#6B3AA0;margin-bottom:3mm;">Nid '+(index+1)+' sur '+autorisationList.length+'</div>'+ab+'</div>';
+      autBody+='<div class="aut-nid-doc"'+(index?' style="page-break-before:always;break-before:page;padding-top:5mm;"':'')+'><div style="font-size:10pt;font-weight:700;color:#6B3AA0;margin-bottom:3mm;">'+autorisationDocumentNumberLabel(iv,index)+' sur '+autorisationList.length+'</div>'+ab+'</div>';
     }
   });
   const avisBody=iv._isRenfort?'':_buildAvisPassageBody(iv);
@@ -1230,4 +1230,3 @@ function toggleAdminRole(){
   syncCaserneContext();
   _reloadActiveView();
 }
-

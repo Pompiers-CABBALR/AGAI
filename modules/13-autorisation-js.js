@@ -7,6 +7,10 @@ const AUTORISATION_DOCX_B64 = 'UEsDBBQABgAIAAAAIQCQ9ICzsQEAAGIIAAATAAgCW0NvbnRlb
 
 let _autorisationData = {};
 const _autorisationActiveNid={};
+function autorisationDocumentNumberLabel(iv,index){
+  const isNid=/nid|guêpe|frelon|essaim/i.test(String(iv&&iv.n||''));
+  return (isNid?'Nid ':'')+(index+1);
+}
 function interventionNids(iv){
   if(iv&&Array.isArray(iv._nidsAppel)&&iv._nidsAppel.length)return iv._nidsAppel;
   return iv&&/nid|guêpe|frelon/i.test(String(iv.n||''))?[{id:'nid-1',nature:iv.n||'Nid',localisation:'',hauteur:'',taille:''}]:[];
@@ -795,4 +799,3 @@ function saveAdresse(ivId){
   saveData(true); // push immédiat : sinon la correction est écrasée au prochain pull
   cM();refreshOperationalInterventionViews();oM(ivId);
 }
-

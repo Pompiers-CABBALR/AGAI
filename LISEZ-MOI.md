@@ -3,6 +3,11 @@
 Cette variante conserve les fonctionnalités de `AGAI-securise.html`, mais sépare
 le code afin de faciliter les prochaines corrections.
 
+La V202610_0003 affiche « 1 — … », « 2 — … » pour les feuilles
+d’autorisation et d’attestation d’une intervention qui ne concerne pas des
+nids. Les interventions de nids conservent « Nid 1 — … » et cette distinction
+s’applique aussi aux pages du PDF groupé. Les données des documents ne changent pas.
+
 La V202610_0002 permet de renseigner la hauteur du nid et le chef d’agrès
 ayant réalisé la reconnaissance lors de la création d’une PILP, puis de les
 corriger sur sa fiche, même après clôture, avec trace dans l’historique.

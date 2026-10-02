@@ -1,5 +1,12 @@
 # AGAI — déploiement sécurisé
 
+## Préparation locale V202610_0003 — libellés des autorisations
+
+**Non déployée par Codex.** Dans une intervention sans nid, vérifier que les
+feuilles d’autorisation et d’attestation sont libellées « 1 — … », « 2 — … »
+dans la fiche et « 1 sur 2 », « 2 sur 2 » dans le PDF groupé. Une intervention
+de nids doit garder ses libellés « Nid 1 — … ».
+
 ## Préparation locale V202610_0002 — reconnaissance PILP
 
 **Non déployée par Codex.** Publier le dossier modulaire complet. Sur une
