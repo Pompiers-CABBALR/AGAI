@@ -1,5 +1,51 @@
 # AGAI — déploiement sécurisé
 
+## Préparation locale V202610_0001 — avis de passage PILP
+
+**Non déployée par Codex.** Publier le dossier modulaire complet, puis
+vérifier sur un appareil synchronisé que l'avis de l'UT 423 apparaît dans
+PILP → Avis de passage. Ouvrir sa fiche doit montrer l'intervention
+terminée et proposer « Reprendre cet avis » à un utilisateur autorisé à
+prendre les appels. La reprise prépare un nouvel appel et ne modifie pas
+la clôture ni les numéros de l'UT 423 ; après validation, vérifier la
+nouvelle PILP en attente et la disparition de l'avis de la liste ouverte.
+
+## Préparation locale V202609_0032 — protection des interventions numérotées
+
+**Non déployée par Codex.** Cette version refuse dans l'interface
+superadministrateur la suppression d'une intervention terminée et numérotée,
+qu'il s'agisse d'une sélection ou d'une remise à zéro de la caserne. Elle
+inclut également la correction de file d'attente V202609_0031 ci-dessous.
+
+Les tests locaux du blocage, de la file d'attente et du moteur PostgreSQL
+embarqué passent. Ils ne remplacent pas une vérification du code actuellement
+publié ni un essai sur le projet Supabase réel. Publier le dossier modulaire
+complet, avec `index.html`, `version.json` et les modules. Vérifier que les
+appareils opérationnels affichent V202609_0032 et se synchronisent avant
+toute installation du garde-fou serveur CIS05. Le SQL serveur, placé dans le
+dossier parent `outputs`, est un projet de migration séparé ; ne pas le lancer
+en même temps que la publication de l'application.
+
+## Préparation locale V202609_0031 — file d'attente entre casernes
+
+**Non déployée par Codex.** Cette version empêche une action restée en attente
+pour CIS05 de bloquer la synchronisation apparente et le pilote de compte d'un
+utilisateur CIS02 sur le même navigateur. L'action CIS05 reste conservée et
+signalée : elle n'est ni supprimée ni envoyée sous l'identité CIS02.
+
+Avant toute publication, vérifier sur une copie de l'application les trois
+scénarios du test `test-file-attente-autre-caserne-v202609-0031.js` : file
+étrangère seule, file de la caserne active et vue globale superadministrateur.
+Publier **tout** le dossier modulaire, y compris `version.json` et les modules,
+uniquement après cette validation. Une fois la version publiée, contrôler la
+file CIS05 sur l'appareil qui la détient ; le compteur d'un autre appareil ne
+prouve pas que cette ligne a été envoyée.
+
+La bascule Supabase Auth/RLS reste interdite à ce stade. Lire
+`AUDIT-AUTH-RLS-V202609-0031.md` et exécuter, si nécessaire, le diagnostic
+**en lecture seule** `DIAGNOSTIC-DROITS-SUPABASE-V202609-0031.sql` avant de
+concevoir les politiques définitives.
+
 ## Préparation V202609_0030 — trois comptes personnels, un compte générique exclu
 
 **Préparée localement, non déployée et sans création de compte par Codex.**

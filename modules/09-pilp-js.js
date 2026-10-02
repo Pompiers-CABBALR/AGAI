@@ -240,6 +240,10 @@ function sfPilp(f,btn){
   rPilp();
 }
 
+function pilpAvisEnAttente(iv){
+  return !!(iv&&iv.s!=='annulee'&&(iv._avisEnAttente===true||(iv.s==='avis-passage'&&iv._avisPassageClasse!==true)));
+}
+
 function rPilp(){
   // Lecture seule : consulter PILP ne déclenche aucune écriture Supabase.
   // Même règle que la liste Interventions : les statuts actifs restent visibles,
@@ -249,13 +253,13 @@ function rPilp(){
   // Compteurs récapitulatifs PILP
   document.getElementById('pilp-nb1').textContent=PILP_IVS.filter(iv=>iv.s==='en-attente').length;
   document.getElementById('pilp-nb2s').textContent=PILP_IVS.filter(iv=>iv.s==='selectionne').length;
-  document.getElementById('pilp-nb2').textContent=PILP_IVS.filter(iv=>iv.s==='avis-passage').length;
+  document.getElementById('pilp-nb2').textContent=PILP_IVS.filter(pilpAvisEnAttente).length;
   document.getElementById('pilp-nb3').textContent=PILP_IVS.filter(iv=>iv.s==='en-cours').length;
   document.getElementById('pilp-nb4').textContent=pilpJour.filter(iv=>iv.s==='terminee').length;
   document.getElementById('pilp-nbtot').textContent=pilpJour.length;
   // Les avis PILP sont eux aussi consultables par tous. Les commandes de
   // classement restent soumises à leurs droits propres.
-  const avisP=PILP_IVS.filter(iv=>iv.s==='avis-passage');
+  const avisP=PILP_IVS.filter(pilpAvisEnAttente);
   const pas=document.getElementById('pilp-avsec');
   document.getElementById('pilp-avc').textContent=avisP.length;
   if(avisP.length){
@@ -268,8 +272,8 @@ function rPilp(){
       </div>
       <div id="pilp-av-detail" style="display:${apExpanded?'block':'none'};">
         ${avisP.map(iv=>`<div class="ivr avis-passage" style="cursor:pointer;" onclick="oPilp('${iv.id}')">
-          <div class="ivrl"><div class="ivrh">&#x1F4C5; ${escHtml(getAvisPassageDateTimeLabel(iv)||'Date non renseignée')}</div><div class="ivrn">&#x1F3AF; ${escHtml(iv.n)}</div><div class="ivrc">&#x1F4CD; ${escHtml(iv.com)}${iv.rappels?' · '+Number(iv.rappels)+' rappel(s)':''}</div></div>
-          <div class="ivrr"><span class="bdg bp">Avis PILP</span>${hasRight('Prise d\'appel')?`<button class="btn sm" style="font-size:10px;padding:3px 8px;background:#1D4ED8;color:#fff;border-color:#1D4ED8;" onclick="event.stopPropagation();reprendreAvisPassage('${iv.id}')">Reprendre cet avis</button>`:''}${isAdminModeActive()?`<button class="btn sm" style="font-size:10px;padding:3px 8px;background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="event.stopPropagation();classerAvisPassage('${iv.id}','pilp')">&#x1F5C3;&#xFE0F; Classer</button>`:''}</div></div>`).join('')}
+          <div class="ivrl"><div class="ivrh">&#x1F4C5; ${escHtml(getAvisPassageDateTimeLabel(iv)||'Date non renseignée')}${iv._numCaserne?' · UT '+escHtml(interventionDisplayUTNumber(iv)):''}</div><div class="ivrn">&#x1F3AF; ${escHtml(iv.n)}</div><div class="ivrc">&#x1F4CD; ${escHtml(interventionAddressLabel(iv))}${iv.rappels?' · '+Number(iv.rappels)+' rappel(s)':''}</div></div>
+          <div class="ivrr"><span class="bdg bp">${iv.s==='terminee'?'Avis PILP · terminée':'Avis PILP'}</span>${hasRight('Prise d\'appel')?`<button class="btn sm" style="font-size:10px;padding:3px 8px;background:#1D4ED8;color:#fff;border-color:#1D4ED8;" onclick="event.stopPropagation();reprendreAvisPassage('${iv.id}')">Reprendre cet avis</button>`:''}${isAdminModeActive()?`<button class="btn sm" style="font-size:10px;padding:3px 8px;background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="event.stopPropagation();classerAvisPassage('${iv.id}','pilp')">&#x1F5C3;&#xFE0F; Classer</button>`:''}</div></div>`).join('')}
       </div>`;
   } else pas.style.display='none';
   const avisPClasses=isAdminModeActive()?PILP_IVS.filter(iv=>iv._avisPassageClasse===true&&!iv._avisEnAttente&&iv.s!=='annulee'):[];
@@ -1081,4 +1085,3 @@ function vp(){
   if(isTireurPILP())PILP_IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l).forEach(iv=>{iv.s='en-attente';iv.agr=null;delete iv._routeBatchId;delete iv._routeOrder;pushTL(iv,'en-attente',CU.l);});
   selEng=null;parcConfirmed.clear();document.querySelectorAll('#eg .ec').forEach(c=>c.classList.remove('sel'));saveData(true);rI();
 }
-

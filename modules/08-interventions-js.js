@@ -1172,14 +1172,14 @@ function rI(){
   const ti=IVS.filter(iv=>!iv._isPilip&&['en-attente','selectionne','en-cours'].includes(iv.s));
   document.getElementById('nb1').textContent=ti.filter(iv=>iv.s==='en-attente').length;
   document.getElementById('nb2s').textContent=ti.filter(iv=>iv.s==='selectionne').length;
-  document.getElementById('nb2').textContent=IVS.filter(iv=>iv._avisEnAttente&&!iv._isPilip&&iv.s!=='annulee').length;
+  document.getElementById('nb2').textContent=IVS.filter(iv=>iv._avisEnAttente&&!iv._isPilip&&!iv._lienPilpSourceId&&iv.s!=='annulee').length;
   document.getElementById('nb3').textContent=ti.filter(iv=>iv.s==='en-cours').length;
   const isTermAuj=iv=>iv.s==='terminee'&&iv.tl&&iv.tl.some(t=>t.s==='terminee'&&(t.h||'').startsWith(TDP));
   document.getElementById('nb4').textContent=IVS.filter(iv=>!iv._isPilip&&(isTdy(iv)?iv.s==='terminee':isTermAuj(iv))).length;
 
   // Avis de passage EN ATTENTE DE RAPPEL — interventions terminées où l'équipe a
   // laissé un avis (requérant absent). Reste affiché jusqu'au rappel du requérant.
-  const avis=IVS.filter(iv=>!iv._isPilip&&iv._avisEnAttente&&iv.s!=='annulee');
+  const avis=IVS.filter(iv=>!iv._isPilip&&!iv._lienPilpSourceId&&iv._avisEnAttente&&iv.s!=='annulee');
   const as=document.getElementById('avsec');document.getElementById('avc').textContent=avis.length;
   if(avis.length){
     as.style.display='block';
@@ -1197,7 +1197,7 @@ function rI(){
   } else as.style.display='none';
   // Les avis classés restent accessibles aux administrateurs afin qu'un
   // classement involontaire puisse être annulé sans perdre le document.
-  const avisClasses=isAdminModeActive()?IVS.filter(iv=>!iv._isPilip&&iv._avisPassageClasse===true&&!iv._avisEnAttente&&iv.s!=='annulee'):[];
+  const avisClasses=isAdminModeActive()?IVS.filter(iv=>!iv._isPilip&&!iv._lienPilpSourceId&&iv._avisPassageClasse===true&&!iv._avisEnAttente&&iv.s!=='annulee'):[];
   const acs=document.getElementById('avcsec'),acc=document.getElementById('avcc'),acl=document.getElementById('avcl');
   if(acc)acc.textContent=avisClasses.length;
   if(acs&&acl&&avisClasses.length){
@@ -1723,9 +1723,9 @@ function oM(id){
       <div style="font-size:11px;font-weight:700;color:#6B3AA0;margin-bottom:8px;">&#x1F4DD; Documents autorisation / attestation</div>
       ${autorisationDocumentsHTML(iv)}
     </div>`:''}
-    ${iv._avisPassage&&(iv.agr===CU.l||iv._agr2===CU.l||hasAdministrativeAccount())?`<div style="background:#FAF5FF;border:1px solid #D8B4FE;border-radius:10px;padding:10px 12px;margin-bottom:10px;">
+    ${iv._avisPassage&&(iv.agr===CU.l||iv._agr2===CU.l||hasAdministrativeAccount()||(pilpScope&&hasRight('Prise d\'appel')))?`<div style="background:#FAF5FF;border:1px solid #D8B4FE;border-radius:10px;padding:10px 12px;margin-bottom:10px;">
       <div style="font-size:11px;font-weight:700;color:#6B21A8;margin-bottom:8px;">&#x1F4EC; Avis de passage${getAvisPassageDateTimeLabel(iv)?' — déposé le '+escHtml(getAvisPassageDateTimeLabel(iv)):''}${iv._avisPassageClasse?' — classé':''}</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;">${canOpenInterventionPdfOnThisDevice()?`<button class="btn sm" style="background:#7E22CE;color:#fff;border-color:#7E22CE;" onclick="viewAvisPassageDocument('${iv.id}')">&#x1F4CB; Voir l'avis de passage</button>`:desktopOnlyInterventionPdfMessageHTML()}${isAdminModeActive()&&iv._avisEnAttente?`<button class="btn sm" style="background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="classerAvisPassage('${iv.id}','${pilpScope?'pilp':'standard'}')">&#x1F5C3;&#xFE0F; Classer</button>`:''}${isAdminModeActive()&&iv._avisPassageClasse===true&&!iv._avisEnAttente?`<button class="btn sm" style="background:#fff;color:#6B21A8;border-color:#A855F7;" onclick="restaurerAvisPassage('${iv.id}','${pilpScope?'pilp':'standard'}')">↩ Remettre en attente</button>`:''}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">${canOpenInterventionPdfOnThisDevice()?`<button class="btn sm" style="background:#7E22CE;color:#fff;border-color:#7E22CE;" onclick="viewAvisPassageDocument('${iv.id}')">&#x1F4CB; Voir l'avis de passage</button>`:desktopOnlyInterventionPdfMessageHTML()}${pilpScope&&iv._avisEnAttente&&hasRight('Prise d\'appel')?`<button class="btn sm" style="background:#1D4ED8;color:#fff;border-color:#1D4ED8;" onclick="cM();reprendreAvisPassage('${iv.id}')">Reprendre cet avis</button>`:''}${isAdminModeActive()&&iv._avisEnAttente?`<button class="btn sm" style="background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="classerAvisPassage('${iv.id}','${pilpScope?'pilp':'standard'}')">&#x1F5C3;&#xFE0F; Classer</button>`:''}${isAdminModeActive()&&iv._avisPassageClasse===true&&!iv._avisEnAttente?`<button class="btn sm" style="background:#fff;color:#6B21A8;border-color:#A855F7;" onclick="restaurerAvisPassage('${iv.id}','${pilpScope?'pilp':'standard'}')">↩ Remettre en attente</button>`:''}</div>
     </div>`:''}
     ${(!pilpReadOnly&&['en-attente','selectionne','en-cours'].includes(iv.s)&&(hasRight('Interventions')||isAgres()||isChef()||isAdminModeActive()))?`<button class="btn sm" style="width:100%;margin-bottom:8px;background:#0369A1;color:#fff;border-color:#0369A1;" onclick="showComplementModal('${iv.id}')">&#x2139;&#xFE0F; Compléter : ERP, information, téléphone ou disponibilité</button>`:''}
     ${hasAdministrativeAccount()?`<details style="background:var(--bg);border-radius:10px;margin-bottom:8px;" id="tl-details-${iv.id}">
@@ -2398,4 +2398,3 @@ function reclasser(id){
   // Reopen modal with fresh data
   setTimeout(()=>oM(id),50);
 }
-

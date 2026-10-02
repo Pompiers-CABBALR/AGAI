@@ -5318,7 +5318,7 @@ function reprendreAvisPassage(id){
   }
   const banner=document.getElementById('appel-reprise-avis');
   banner.style.display='block';
-  banner.innerHTML='<strong>Reprise de l’avis '+escHtml(interventionDisplayCallNumber(source)||source.id)+'</strong><br>Adresse, contacts et informations préremplis. Vérifiez-les avec le requérant ; les disponibilités anciennes ne sont pas reprises.<label style="display:block;margin-top:8px;"><input type="checkbox" id="appel-reprise-verifie"> J’ai vérifié les informations avant le nouvel appel.</label>';
+  banner.innerHTML='<strong>Reprise de l’avis '+escHtml(interventionDisplayCallNumber(source)||source.id)+'</strong><br>Adresse, contacts et informations préremplis. Vérifiez-les avec le requérant ; les disponibilités anciennes ne sont pas reprises.'+(isPilpIntervention(source)?'<br>Après validation, une nouvelle intervention PILP en attente sera créée. L’intervention d’origine restera terminée et liée à ce nouvel appel.':'')+'<label style="display:block;margin-top:8px;"><input type="checkbox" id="appel-reprise-verifie"> J’ai vérifié les informations avant le nouvel appel.</label>';
   window.scrollTo({top:0,behavior:'smooth'});
 }
 function finaliserAvisRappeles(avis,nouvelAppel,h){
@@ -5882,7 +5882,6 @@ function rF(){
 }
 function updateH(){document.getElementById('hv').textContent=hoA?getH(hoA):getH(N());}
 function cpH(){const v=document.getElementById('hv').textContent;if(navigator.clipboard)navigator.clipboard.writeText(v).catch(()=>{});const b=document.querySelector('.cpbtn');if(b){b.textContent='✅';setTimeout(()=>b.textContent='&#x1F4CB; Copier',1500);}}
-
 // === MODULE: interventions.js ===
 // ────────────────── INTERVENTIONS ──────────────────
 function rIPostUpdate(){rStatsHeader();}
@@ -7057,14 +7056,14 @@ function rI(){
   const ti=IVS.filter(iv=>!iv._isPilip&&['en-attente','selectionne','en-cours'].includes(iv.s));
   document.getElementById('nb1').textContent=ti.filter(iv=>iv.s==='en-attente').length;
   document.getElementById('nb2s').textContent=ti.filter(iv=>iv.s==='selectionne').length;
-  document.getElementById('nb2').textContent=IVS.filter(iv=>iv._avisEnAttente&&!iv._isPilip&&iv.s!=='annulee').length;
+  document.getElementById('nb2').textContent=IVS.filter(iv=>iv._avisEnAttente&&!iv._isPilip&&!iv._lienPilpSourceId&&iv.s!=='annulee').length;
   document.getElementById('nb3').textContent=ti.filter(iv=>iv.s==='en-cours').length;
   const isTermAuj=iv=>iv.s==='terminee'&&iv.tl&&iv.tl.some(t=>t.s==='terminee'&&(t.h||'').startsWith(TDP));
   document.getElementById('nb4').textContent=IVS.filter(iv=>!iv._isPilip&&(isTdy(iv)?iv.s==='terminee':isTermAuj(iv))).length;
 
   // Avis de passage EN ATTENTE DE RAPPEL — interventions terminées où l'équipe a
   // laissé un avis (requérant absent). Reste affiché jusqu'au rappel du requérant.
-  const avis=IVS.filter(iv=>!iv._isPilip&&iv._avisEnAttente&&iv.s!=='annulee');
+  const avis=IVS.filter(iv=>!iv._isPilip&&!iv._lienPilpSourceId&&iv._avisEnAttente&&iv.s!=='annulee');
   const as=document.getElementById('avsec');document.getElementById('avc').textContent=avis.length;
   if(avis.length){
     as.style.display='block';
@@ -7082,7 +7081,7 @@ function rI(){
   } else as.style.display='none';
   // Les avis classés restent accessibles aux administrateurs afin qu'un
   // classement involontaire puisse être annulé sans perdre le document.
-  const avisClasses=isAdminModeActive()?IVS.filter(iv=>!iv._isPilip&&iv._avisPassageClasse===true&&!iv._avisEnAttente&&iv.s!=='annulee'):[];
+  const avisClasses=isAdminModeActive()?IVS.filter(iv=>!iv._isPilip&&!iv._lienPilpSourceId&&iv._avisPassageClasse===true&&!iv._avisEnAttente&&iv.s!=='annulee'):[];
   const acs=document.getElementById('avcsec'),acc=document.getElementById('avcc'),acl=document.getElementById('avcl');
   if(acc)acc.textContent=avisClasses.length;
   if(acs&&acl&&avisClasses.length){
@@ -7608,9 +7607,9 @@ function oM(id){
       <div style="font-size:11px;font-weight:700;color:#6B3AA0;margin-bottom:8px;">&#x1F4DD; Documents autorisation / attestation</div>
       ${autorisationDocumentsHTML(iv)}
     </div>`:''}
-    ${iv._avisPassage&&(iv.agr===CU.l||iv._agr2===CU.l||hasAdministrativeAccount())?`<div style="background:#FAF5FF;border:1px solid #D8B4FE;border-radius:10px;padding:10px 12px;margin-bottom:10px;">
+    ${iv._avisPassage&&(iv.agr===CU.l||iv._agr2===CU.l||hasAdministrativeAccount()||(pilpScope&&hasRight('Prise d\'appel')))?`<div style="background:#FAF5FF;border:1px solid #D8B4FE;border-radius:10px;padding:10px 12px;margin-bottom:10px;">
       <div style="font-size:11px;font-weight:700;color:#6B21A8;margin-bottom:8px;">&#x1F4EC; Avis de passage${getAvisPassageDateTimeLabel(iv)?' — déposé le '+escHtml(getAvisPassageDateTimeLabel(iv)):''}${iv._avisPassageClasse?' — classé':''}</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;">${canOpenInterventionPdfOnThisDevice()?`<button class="btn sm" style="background:#7E22CE;color:#fff;border-color:#7E22CE;" onclick="viewAvisPassageDocument('${iv.id}')">&#x1F4CB; Voir l'avis de passage</button>`:desktopOnlyInterventionPdfMessageHTML()}${isAdminModeActive()&&iv._avisEnAttente?`<button class="btn sm" style="background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="classerAvisPassage('${iv.id}','${pilpScope?'pilp':'standard'}')">&#x1F5C3;&#xFE0F; Classer</button>`:''}${isAdminModeActive()&&iv._avisPassageClasse===true&&!iv._avisEnAttente?`<button class="btn sm" style="background:#fff;color:#6B21A8;border-color:#A855F7;" onclick="restaurerAvisPassage('${iv.id}','${pilpScope?'pilp':'standard'}')">↩ Remettre en attente</button>`:''}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">${canOpenInterventionPdfOnThisDevice()?`<button class="btn sm" style="background:#7E22CE;color:#fff;border-color:#7E22CE;" onclick="viewAvisPassageDocument('${iv.id}')">&#x1F4CB; Voir l'avis de passage</button>`:desktopOnlyInterventionPdfMessageHTML()}${pilpScope&&iv._avisEnAttente&&hasRight('Prise d\'appel')?`<button class="btn sm" style="background:#1D4ED8;color:#fff;border-color:#1D4ED8;" onclick="cM();reprendreAvisPassage('${iv.id}')">Reprendre cet avis</button>`:''}${isAdminModeActive()&&iv._avisEnAttente?`<button class="btn sm" style="background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="classerAvisPassage('${iv.id}','${pilpScope?'pilp':'standard'}')">&#x1F5C3;&#xFE0F; Classer</button>`:''}${isAdminModeActive()&&iv._avisPassageClasse===true&&!iv._avisEnAttente?`<button class="btn sm" style="background:#fff;color:#6B21A8;border-color:#A855F7;" onclick="restaurerAvisPassage('${iv.id}','${pilpScope?'pilp':'standard'}')">↩ Remettre en attente</button>`:''}</div>
     </div>`:''}
     ${(!pilpReadOnly&&['en-attente','selectionne','en-cours'].includes(iv.s)&&(hasRight('Interventions')||isAgres()||isChef()||isAdminModeActive()))?`<button class="btn sm" style="width:100%;margin-bottom:8px;background:#0369A1;color:#fff;border-color:#0369A1;" onclick="showComplementModal('${iv.id}')">&#x2139;&#xFE0F; Compléter : ERP, information, téléphone ou disponibilité</button>`:''}
     ${hasAdministrativeAccount()?`<details style="background:var(--bg);border-radius:10px;margin-bottom:8px;" id="tl-details-${iv.id}">
@@ -8283,7 +8282,6 @@ function reclasser(id){
   // Reopen modal with fresh data
   setTimeout(()=>oM(id),50);
 }
-
 // === MODULE: pilp.js ===
 // ────────────────── PILP FORM ──────────────────
 function linkedPilpForSource(iv){
@@ -8526,6 +8524,10 @@ function sfPilp(f,btn){
   rPilp();
 }
 
+function pilpAvisEnAttente(iv){
+  return !!(iv&&iv.s!=='annulee'&&(iv._avisEnAttente===true||(iv.s==='avis-passage'&&iv._avisPassageClasse!==true)));
+}
+
 function rPilp(){
   // Lecture seule : consulter PILP ne déclenche aucune écriture Supabase.
   // Même règle que la liste Interventions : les statuts actifs restent visibles,
@@ -8535,13 +8537,13 @@ function rPilp(){
   // Compteurs récapitulatifs PILP
   document.getElementById('pilp-nb1').textContent=PILP_IVS.filter(iv=>iv.s==='en-attente').length;
   document.getElementById('pilp-nb2s').textContent=PILP_IVS.filter(iv=>iv.s==='selectionne').length;
-  document.getElementById('pilp-nb2').textContent=PILP_IVS.filter(iv=>iv.s==='avis-passage').length;
+  document.getElementById('pilp-nb2').textContent=PILP_IVS.filter(pilpAvisEnAttente).length;
   document.getElementById('pilp-nb3').textContent=PILP_IVS.filter(iv=>iv.s==='en-cours').length;
   document.getElementById('pilp-nb4').textContent=pilpJour.filter(iv=>iv.s==='terminee').length;
   document.getElementById('pilp-nbtot').textContent=pilpJour.length;
   // Les avis PILP sont eux aussi consultables par tous. Les commandes de
   // classement restent soumises à leurs droits propres.
-  const avisP=PILP_IVS.filter(iv=>iv.s==='avis-passage');
+  const avisP=PILP_IVS.filter(pilpAvisEnAttente);
   const pas=document.getElementById('pilp-avsec');
   document.getElementById('pilp-avc').textContent=avisP.length;
   if(avisP.length){
@@ -8554,8 +8556,8 @@ function rPilp(){
       </div>
       <div id="pilp-av-detail" style="display:${apExpanded?'block':'none'};">
         ${avisP.map(iv=>`<div class="ivr avis-passage" style="cursor:pointer;" onclick="oPilp('${iv.id}')">
-          <div class="ivrl"><div class="ivrh">&#x1F4C5; ${escHtml(getAvisPassageDateTimeLabel(iv)||'Date non renseignée')}</div><div class="ivrn">&#x1F3AF; ${escHtml(iv.n)}</div><div class="ivrc">&#x1F4CD; ${escHtml(iv.com)}${iv.rappels?' · '+Number(iv.rappels)+' rappel(s)':''}</div></div>
-          <div class="ivrr"><span class="bdg bp">Avis PILP</span>${hasRight('Prise d\'appel')?`<button class="btn sm" style="font-size:10px;padding:3px 8px;background:#1D4ED8;color:#fff;border-color:#1D4ED8;" onclick="event.stopPropagation();reprendreAvisPassage('${iv.id}')">Reprendre cet avis</button>`:''}${isAdminModeActive()?`<button class="btn sm" style="font-size:10px;padding:3px 8px;background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="event.stopPropagation();classerAvisPassage('${iv.id}','pilp')">&#x1F5C3;&#xFE0F; Classer</button>`:''}</div></div>`).join('')}
+          <div class="ivrl"><div class="ivrh">&#x1F4C5; ${escHtml(getAvisPassageDateTimeLabel(iv)||'Date non renseignée')}${iv._numCaserne?' · UT '+escHtml(interventionDisplayUTNumber(iv)):''}</div><div class="ivrn">&#x1F3AF; ${escHtml(iv.n)}</div><div class="ivrc">&#x1F4CD; ${escHtml(interventionAddressLabel(iv))}${iv.rappels?' · '+Number(iv.rappels)+' rappel(s)':''}</div></div>
+          <div class="ivrr"><span class="bdg bp">${iv.s==='terminee'?'Avis PILP · terminée':'Avis PILP'}</span>${hasRight('Prise d\'appel')?`<button class="btn sm" style="font-size:10px;padding:3px 8px;background:#1D4ED8;color:#fff;border-color:#1D4ED8;" onclick="event.stopPropagation();reprendreAvisPassage('${iv.id}')">Reprendre cet avis</button>`:''}${isAdminModeActive()?`<button class="btn sm" style="font-size:10px;padding:3px 8px;background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="event.stopPropagation();classerAvisPassage('${iv.id}','pilp')">&#x1F5C3;&#xFE0F; Classer</button>`:''}</div></div>`).join('')}
       </div>`;
   } else pas.style.display='none';
   const avisPClasses=isAdminModeActive()?PILP_IVS.filter(iv=>iv._avisPassageClasse===true&&!iv._avisEnAttente&&iv.s!=='annulee'):[];
@@ -9367,7 +9369,6 @@ function vp(){
   if(isTireurPILP())PILP_IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l).forEach(iv=>{iv.s='en-attente';iv.agr=null;delete iv._routeBatchId;delete iv._routeOrder;pushTL(iv,'en-attente',CU.l);});
   selEng=null;parcConfirmed.clear();document.querySelectorAll('#eg .ec').forEach(c=>c.classList.remove('sel'));saveData(true);rI();
 }
-
 // === MODULE: historique.js ===
 // ────────────────── HISTORIQUE ──────────────────
 function rHistLegacy(){
@@ -16689,7 +16690,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202609_0032';
+const APP_VERSION='V202610_0001';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -17141,7 +17142,6 @@ function viewAvisPassageDocument(ivId){
   if(!html){showToast('Avis de passage non disponible.','warn');return;}
   openIframeModal(html,ivId);
 }
-
 
 // === MODULE: email.js ===
 // ═══════════════════════════════════════════════════

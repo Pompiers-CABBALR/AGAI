@@ -596,7 +596,7 @@ function reprendreAvisPassage(id){
   }
   const banner=document.getElementById('appel-reprise-avis');
   banner.style.display='block';
-  banner.innerHTML='<strong>Reprise de l’avis '+escHtml(interventionDisplayCallNumber(source)||source.id)+'</strong><br>Adresse, contacts et informations préremplis. Vérifiez-les avec le requérant ; les disponibilités anciennes ne sont pas reprises.<label style="display:block;margin-top:8px;"><input type="checkbox" id="appel-reprise-verifie"> J’ai vérifié les informations avant le nouvel appel.</label>';
+  banner.innerHTML='<strong>Reprise de l’avis '+escHtml(interventionDisplayCallNumber(source)||source.id)+'</strong><br>Adresse, contacts et informations préremplis. Vérifiez-les avec le requérant ; les disponibilités anciennes ne sont pas reprises.'+(isPilpIntervention(source)?'<br>Après validation, une nouvelle intervention PILP en attente sera créée. L’intervention d’origine restera terminée et liée à ce nouvel appel.':'')+'<label style="display:block;margin-top:8px;"><input type="checkbox" id="appel-reprise-verifie"> J’ai vérifié les informations avant le nouvel appel.</label>';
   window.scrollTo({top:0,behavior:'smooth'});
 }
 function finaliserAvisRappeles(avis,nouvelAppel,h){
@@ -1160,4 +1160,3 @@ function rF(){
 }
 function updateH(){document.getElementById('hv').textContent=hoA?getH(hoA):getH(N());}
 function cpH(){const v=document.getElementById('hv').textContent;if(navigator.clipboard)navigator.clipboard.writeText(v).catch(()=>{});const b=document.querySelector('.cpbtn');if(b){b.textContent='✅';setTimeout(()=>b.textContent='&#x1F4CB; Copier',1500);}}
-

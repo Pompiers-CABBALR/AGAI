@@ -3,6 +3,24 @@
 Cette variante conserve les fonctionnalités de `AGAI-securise.html`, mais sépare
 le code afin de faciliter les prochaines corrections.
 
+La V202610_0001 conserve dans « Avis de passage » de PILP les avis encore
+ouverts des interventions déjà terminées. L’avis affiche le numéro UT et
+« Reprendre cet avis » ouvre la prise d’appel préremplie : sa validation crée
+une nouvelle PILP en attente, liée à l’intervention d’origine, sans modifier
+le rapport ni la numérotation de celle-ci. Les copies techniques PILP ne sont
+plus comptées comme des avis ordinaires.
+
+La V202609_0032 bloque côté interface la suppression d'une intervention
+terminée et numérotée, y compris dans la remise à zéro du superadministrateur.
+La protection serveur correspondante n'est pas installée automatiquement.
+Cette version inclut aussi la correction V202609_0031, qui évite qu'une action
+en attente d'une autre caserne bloque la
+session active sur le même navigateur. Cette action reste conservée et visible
+jusqu'à son envoi depuis sa caserne. La synchronisation des interventions
+utilise toujours l'accès historique ; la bascule Supabase Auth/RLS n'est pas
+incluse. Voir `DEPLOIEMENT-SECURISE.md` et l'audit local
+`../AUDIT-AUTH-RLS-V202609-0031.md` avant toute publication.
+
 La V202609_0027 prépare le rattachement manuel de `accoley.leo`, après le
 contrôle `DIAGNOSTIC-PILOTE-LEO-V202609-0027.sql`. La fonction Edge doit être
 déployée en V239.2 avant l'application. Brian reste déjà rattaché ; seul Léo
