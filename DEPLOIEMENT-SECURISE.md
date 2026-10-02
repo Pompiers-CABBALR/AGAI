@@ -1,5 +1,17 @@
 # AGAI — déploiement sécurisé
 
+## Préparation locale V202610_0002 — reconnaissance PILP
+
+**Non déployée par Codex.** Publier le dossier modulaire complet. Sur une
+PILP créée depuis une intervention reconnue, vérifier le chef d’agrès et
+la hauteur préremplis, puis les corriger depuis la fiche PILP. Sur une
+PILP créée directement à la prise d’appel, vérifier l’état « à confirmer »
+jusqu’à l’enregistrement du chef ayant réellement reconnu le nid. Après
+clôture, une correction de hauteur ou de chef ne doit modifier ni le statut
+ni les numéros d’intervention. Si le compte rendu est déjà validé, vérifier
+qu’une correction effective le remet à valider sans effacer son texte ; un
+enregistrement sans changement ne doit pas le dévalider.
+
 ## Préparation locale V202610_0001 — avis de passage PILP
 
 **Non déployée par Codex.** Publier le dossier modulaire complet, puis

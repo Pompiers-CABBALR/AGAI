@@ -1056,12 +1056,14 @@ function enr(){
   incCallCounter();
 
   if(pilpDirect&&natureAppel==='Nid de frelons asiatiques'){
+    const primaryNid=nidsAppel[0]||{};
+    const primaryHeight=pilpHeightNumber(primaryNid.hauteur);
     const newPilp={
       id:nextPilpId(annee),ivRef:null,_numApl:numApl,
       // Aucun numéro d'intervention tant que la PILP reste en attente.
       n:'Nid de frelons asiatiques — PILP',addr,_addrBase:addrBase,_addressCoordinates:addrSelectedCoords?addrSelectedCoords.slice():null,_gpsCoordinates:gps.coordinates,com,h,
       req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,_additionalRequesters:additionalRequesters,reqDispo,_nidsAppel:nidsAppel,_erp:erp,_urgence:erp,
-      localisation:null,hauteur:null,reconnaissanceFaite:false,axeTir:null,_axeTirEtat:'a-verifier',_pilpPeriode:'a-determiner',_pilpPeriodePrecision:'',_pilpPlanningUpdatedAt:Date.now(),_pilpPlanningUpdatedBy:CU.l,obs:det,
+      localisation:primaryNid.localisation||null,hauteur:Number.isFinite(primaryHeight)?primaryHeight:null,reconnaissanceFaite:null,_pilpReconnaissanceChef:null,axeTir:null,_axeTirEtat:'a-verifier',_pilpPeriode:'a-determiner',_pilpPeriodePrecision:'',_pilpPlanningUpdatedAt:Date.now(),_pilpPlanningUpdatedBy:CU.l,obs:det,
       // Une PILP en attente reste libre : l'opérateur qui prend l'appel
       // n'est pas automatiquement le chef d'agrès ni le tireur.
       s:'en-attente',agr:null,tireur:null,rappels:exIv.length+exPilp.length,

@@ -3,6 +3,16 @@
 Cette variante conserve les fonctionnalités de `AGAI-securise.html`, mais sépare
 le code afin de faciliter les prochaines corrections.
 
+La V202610_0002 permet de renseigner la hauteur du nid et le chef d’agrès
+ayant réalisé la reconnaissance lors de la création d’une PILP, puis de les
+corriger sur sa fiche, même après clôture, avec trace dans l’historique.
+Un chef d’agrès concerné peut corriger ces deux informations sans obtenir
+le droit de modifier la programmation PILP. Pour les PILP créées directement
+à la prise d’appel, la reconnaissance reste « à confirmer » tant que le chef
+qui l’a réalisée n’a pas été renseigné. Si un compte rendu était déjà validé,
+une correction effective le remet à valider en conservant son texte et une
+trace de l’ancienne validation.
+
 La V202610_0001 conserve dans « Avis de passage » de PILP les avis encore
 ouverts des interventions déjà terminées. L’avis affiche le numéro UT et
 « Reprendre cet avis » ouvre la prise d’appel préremplie : sa validation crée

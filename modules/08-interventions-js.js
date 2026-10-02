@@ -1021,7 +1021,7 @@ function renderInterventionRow(iv, ag, tireur) {
       <div class="ivrc">&#x1F4CD; ${escHtml(interventionAddressLabel(iv))}${iv.eng ? ' · ' + escHtml(iv.eng) : ''}${isRenfortUT && iv._hDebut ? ' · depuis ' + escHtml(iv._hDebut) : ''}${numBadges}</div>
       ${iv._followupSourceId?`<div class="ivrc" style="color:#9A3412;font-weight:700;">⚠️ Suite à vérifier : ${escHtml(iv._followupReason||'adresse à confirmer')}</div>`:''}
       ${isPilp?`<div class="ivrc" style="display:flex;gap:5px;flex-wrap:wrap;margin-top:3px;">
-        <span style="padding:2px 6px;border-radius:6px;background:${iv.reconnaissanceFaite===true?'#DCFCE7':'#FEE2E2'};color:${iv.reconnaissanceFaite===true?'#166534':'#991B1B'};font-weight:600;">${iv.reconnaissanceFaite===true?'✅ Reconnaissance réalisée':'❌ Reconnaissance non réalisée'}</span>
+        <span style="padding:2px 6px;border-radius:6px;background:${iv.reconnaissanceFaite===true?'#DCFCE7':pilpReconnaissanceAConfirmer(iv)?'#FEF3C7':'#FEE2E2'};color:${iv.reconnaissanceFaite===true?'#166534':pilpReconnaissanceAConfirmer(iv)?'#92400E':'#991B1B'};font-weight:600;">${escHtml(pilpReconnaissanceLabel(iv))}</span>
         <span style="padding:2px 6px;border-radius:6px;background:${pilpAxeEtat(iv)==='disponible'?'#DCFCE7':pilpAxeEtat(iv)==='indisponible'?'#FEE2E2':'#FEF3C7'};color:${pilpAxeEtat(iv)==='disponible'?'#166534':pilpAxeEtat(iv)==='indisponible'?'#991B1B':'#92400E'};font-weight:600;">${pilpAxeEtat(iv)==='disponible'?'🎯':'⚠️'} ${escHtml(pilpAxeLabel(iv))}</span>
         <span style="padding:2px 6px;border-radius:6px;background:#EEF2FF;color:#3730A3;font-weight:600;">🗓️ ${escHtml(pilpPeriodeLabel(iv))}</span>
       </div>`:''}
@@ -1644,7 +1644,7 @@ function oM(id){
     ${appelDetailEntries.length?`<div class="mr"><div class="ml">Informations de l'appel</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:3px;">${appelDetailEntries.map(([key,value])=>`<span style="font-size:13px;"><span style="color:var(--t2);">${escHtml(key)} :</span> <strong>${escHtml(interventionAppelDetailValue(iv,key,value))}</strong></span>`).join('')}</div></div></div>`:''}
     ${interventionRainCardHTML(iv)}
     ${(()=>{const compls=(iv.tl||[]).filter(t=>t.s==='info-compl');return compls.length?`<div class="mr"><div class="ml" style="color:#0369A1;">&#x2139;&#xFE0F; Compléments d'information</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:6px;">${compls.map(t=>`<div style="background:#EFF6FF;border-left:3px solid #0369A1;border-radius:6px;padding:6px 10px;font-size:13px;"><div>${escHtml(t.note||'')}</div><div style="font-size:10px;color:var(--t2);margin-top:2px;">&#x1F4C5; ${escHtml(t.h||'')} · ${escHtml(t.who||'')}</div></div>`).join('')}</div></div></div>`:'';})()}
-    ${pilpScope?`<div class="mr"><div class="ml">Programmation PILP</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:4px;"><strong>${pilpAxeEtat(iv)==='disponible'?'🎯':'⚠️'} ${escHtml(pilpAxeLabel(iv))}</strong><span>🗓️ ${escHtml(pilpPeriodeLabel(iv))}</span>${canOperatePilp()&&iv.s!=='terminee'?`<button class="btn sm" style="margin-top:4px;align-self:flex-start;background:#4C1D95;color:#fff;border-color:#4C1D95;" onclick="showPilpPlanningModal('${iv.id}')">✏️ Modifier la période et l’axe de tir</button>`:''}</div></div></div>`:''}
+    ${pilpScope?`<div class="mr"><div class="ml">Informations PILP</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:4px;"><span>📏 Hauteur du nid : <strong>${escHtml(pilpHeightLabel(iv))}</strong></span><span>👤 ${escHtml(pilpReconnaissanceLabel(iv))}</span><strong>${pilpAxeEtat(iv)==='disponible'?'🎯':'⚠️'} ${escHtml(pilpAxeLabel(iv))}</strong><span>🗓️ ${escHtml(pilpPeriodeLabel(iv))}</span>${canEditPilpReconnaissance(iv)?`<button class="btn sm" style="margin-top:4px;align-self:flex-start;background:#4C1D95;color:#fff;border-color:#4C1D95;" onclick="showPilpPlanningModal('${iv.id}')">✏️ Modifier hauteur et reconnaissance${canOperatePilp()?' / programmation':''}</button>`:''}</div></div></div>`:''}
     ${iv._transfertDe?`<div class="mr"><div class="ml">Transfert reçu de</div><div class="mv2" style="color:var(--amb);font-weight:500;">&#x1F500; ${CASERNES.find(c=>c.id===iv._transfertDe)?.nom||iv._transfertDe}</div></div>`:''}
     ${iv._transfertVers?`<div class="mr"><div class="ml">Transféré vers</div><div class="mv2" style="color:#888;">&#x1F500; ${CASERNES.find(c=>c.id===iv._transfertVers)?.nom||iv._transfertVers}</div></div>`:''}
     ${iv._refugeAnimalier?`<div class="mr"><div class="ml">Refuge animalier</div><div class="mv2" style="color:var(--grn);">&#x1F43E; Transmis au refuge — ${iv._refugeAnimalier}</div></div>`:''}
@@ -2270,8 +2270,8 @@ function creerSuiteApresCloture(iv,followup,h){
     _followupSourceId:iv.id,_followupReason:followup.motif,_followupDetails:followup.detail,
     avisIds:[],rappels:0,tl:[Object.assign(mkTL('en-attente',h,CU.l),{note})]};
   if(pilp){
-    Object.assign(base,{ivRef:null,obs:note,localisation:iv.localisation||null,hauteur:iv.hauteur||null,
-      reconnaissanceFaite:false,axeTir:null,_axeTirEtat:'a-verifier',_pilpPeriode:'a-determiner',
+    Object.assign(base,{ivRef:null,obs:note,localisation:iv.localisation||null,hauteur:iv.hauteur??null,
+      reconnaissanceFaite:null,_pilpReconnaissanceChef:null,axeTir:null,_axeTirEtat:'a-verifier',_pilpPeriode:'a-determiner',
       _pilpPeriodePrecision:'',_pilpPlanningUpdatedAt:Date.now(),_pilpPlanningUpdatedBy:CU.l,tireur:null});
     PILP_IVS.unshift(base);
   }else{

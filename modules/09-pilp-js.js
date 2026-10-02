@@ -4,6 +4,43 @@ function linkedPilpForSource(iv){
   if(!iv)return null;
   return (PILP_IVS||[]).find(function(pilp){return pilp&&(pilp.ivRef===iv.id||(iv._pilpId&&pilp.id===iv._pilpId));})||null;
 }
+function pilpHeightNumber(value){
+  const text=String(value??'').trim().replace(/\s*m$/i,'').replace(',','.');
+  if(!text)return null;
+  const height=Number(text);
+  return Number.isFinite(height)&&height>=0?height:NaN;
+}
+function pilpHeightInputValue(iv){
+  const stored=iv&&iv.hauteur;
+  const primary=Array.isArray(iv&&iv._nidsAppel)?iv._nidsAppel[0]:null;
+  const value=stored!==undefined&&stored!==null&&stored!==''?stored:primary&&primary.hauteur;
+  const height=pilpHeightNumber(value);
+  return Number.isFinite(height)?String(height):'';
+}
+function pilpHeightLabel(iv){
+  const height=pilpHeightNumber(iv&&iv.hauteur);
+  return Number.isFinite(height)?String(height).replace('.',',')+' m':'Non renseignée';
+}
+function pilpReconnaissanceChefLabel(iv){
+  const login=String(iv&&iv._pilpReconnaissanceChef||'').trim();
+  if(!login)return 'Chef d’agrès à renseigner';
+  const person=(USERS||[]).find(function(user){return user&&user.l===login;});
+  return person?fullName(person):login;
+}
+function pilpReconnaissanceChefOptions(selected){
+  const chefs=(USERS||[]).filter(function(user){return user&&user.l&&((Array.isArray(user.rights)&&user.rights.includes("Chef d'agrès"))||(typeof isChefAgresByGrade==='function'&&isChefAgresByGrade(user)));}).slice();
+  if(selected&&!chefs.some(function(user){return user.l===selected;}))chefs.push({l:selected,nom:selected,prenom:''});
+  chefs.sort(function(a,b){return fullName(a).localeCompare(fullName(b),'fr');});
+  return '<option value="">Choisir le chef d’agrès</option>'+chefs.map(function(user){return '<option value="'+escHtml(user.l)+'"'+(user.l===selected?' selected':'')+'>'+escHtml(fullName(user))+'</option>';}).join('');
+}
+function pilpReconnaissanceAConfirmer(iv){return !!(iv&&iv.reconnaissanceFaite!==true&&!iv.ivRef);}
+function pilpReconnaissanceLabel(iv){
+  if(iv&&iv.reconnaissanceFaite===true)return '✅ Reconnaissance réalisée — '+pilpReconnaissanceChefLabel(iv);
+  return pilpReconnaissanceAConfirmer(iv)?'⚠️ Reconnaissance à confirmer':'❌ Reconnaissance non réalisée';
+}
+function canEditPilpReconnaissance(iv){
+  return !!(iv&&isPilpIntervention(iv)&&CU&&(canOperatePilp()||(isAgres()&&(!iv.agr||iv.agr===CU.l||iv._pilpReconnaissanceChef===CU.l))));
+}
 function readAdditionalRequesterFields(containerId){
   const box=document.getElementById(containerId);
   return box?Array.from(box.querySelectorAll('[data-additional-requester]')).map(input=>input.value.trim()).filter(Boolean):[];
@@ -40,6 +77,7 @@ function showPilpForm(ivId){
   const existing=linkedPilpForSource(iv);
   if(existing||iv._lienPilp){showToast('Une intervention PILP est déjà liée à cette intervention.','warn');return;}
   const initialGps=interventionGpsCoordinates(iv)||[];
+  const recoChef=iv.agr||'';
   document.getElementById('mb').innerHTML+=`
     <div id="pilp-form" style="margin-top:12px;border:1.5px solid var(--pilp);border-radius:12px;padding:14px;background:var(--pilpl);">
       <div style="font-size:14px;font-weight:700;color:var(--pilp);margin-bottom:6px;">&#x1F3AF; Créer une intervention PILP${creationApresCloture?' après clôture':''}</div>
@@ -52,10 +90,11 @@ function showPilpForm(ivId){
       <div class="fg"><div class="fgl">Coordonnées GPS du nid <span style="font-size:10px;color:var(--t2);">(optionnel : bois, pâture…)</span></div><div class="appel-requerant-grid"><input class="fi" type="text" id="pf-lat" inputmode="decimal" value="${escHtml(initialGps[0]??'')}" placeholder="Latitude" aria-label="Latitude GPS"/><input class="fi" type="text" id="pf-lon" inputmode="decimal" value="${escHtml(initialGps[1]??'')}" placeholder="Longitude" aria-label="Longitude GPS"/></div></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div class="fg"><div class="fgl">Localisation</div><select class="fi" id="pf-loc"><option>Arbre</option><option>Toiture</option><option>Nichoir à oiseaux</option><option>Haie</option><option>Façade</option><option>Autre</option></select></div>
-        <div class="fg"><div class="fgl">Hauteur (m)</div><input class="fi" type="number" id="pf-haut" min="0" placeholder="ex. 8"/></div>
+        <div class="fg"><div class="fgl">Hauteur (m)</div><input class="fi" type="number" id="pf-haut" min="0" step="0.1" inputmode="decimal" value="${escHtml(pilpHeightInputValue(iv))}" placeholder="ex. 8"/></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr;gap:8px;margin-bottom:10px;">
-        <label style="display:flex;align-items:center;gap:8px;padding:8px;background:#fff;border-radius:8px;font-size:13px;cursor:pointer;border:1px solid var(--brd);"><input type="checkbox" id="pf-reco" style="width:16px;height:16px;accent-color:var(--pilp);"/>Reconnaissance faite</label>
+        <label style="display:flex;align-items:center;gap:8px;padding:8px;background:#fff;border-radius:8px;font-size:13px;cursor:pointer;border:1px solid var(--brd);"><input type="checkbox" id="pf-reco" style="width:16px;height:16px;accent-color:var(--pilp);"${recoChef?' checked':''}/>Reconnaissance faite</label>
+        <div class="fg"><div class="fgl">Chef d’agrès ayant réalisé la reconnaissance</div><select class="fi" id="pf-reco-chef">${pilpReconnaissanceChefOptions(recoChef)}</select></div>
       </div>
       <div class="fg"><div class="fgl">État de l’axe de tir</div><select class="fi" id="pf-axe"><option value="disponible">Axe de tir disponible</option><option value="a-verifier" selected>Axe de tir à vérifier</option><option value="indisponible">Axe de tir non satisfaisant</option></select></div>
       <div class="fg"><div class="fgl">Période possible pour l’intervention</div><select class="fi" id="pf-periode"><option value="des-que-possible">Dès que possible</option><option value="printemps">Au printemps</option><option value="ete">En été</option><option value="automne">En automne</option><option value="hiver">En hiver</option><option value="apres-feuilles">Après la chute des feuilles</option><option value="a-determiner" selected>À déterminer</option><option value="personnalisee">Autre période</option></select></div>
@@ -84,8 +123,11 @@ function creerPILP(ivId){
   const h=getH(N());
   const annee=new Date().getFullYear();
   const localisation=document.getElementById('pf-loc').value;
-  const hauteur=parseFloat(document.getElementById('pf-haut').value)||null;
+  const hauteur=pilpHeightNumber(document.getElementById('pf-haut').value);
   const reconnaissanceFaite=document.getElementById('pf-reco').checked;
+  const recoChef=document.getElementById('pf-reco-chef').value;
+  if(Number.isNaN(hauteur)){err.style.display='block';err.textContent='La hauteur doit être un nombre positif en mètres.';return;}
+  if(reconnaissanceFaite&&!recoChef){err.style.display='block';err.textContent='Sélectionnez le chef d’agrès qui a réalisé la reconnaissance.';return;}
   const axeTirEtat=document.getElementById('pf-axe').value;
   const axeTir=axeTirEtat==='disponible';
   const pilpPeriode=document.getElementById('pf-periode').value;
@@ -99,8 +141,8 @@ function creerPILP(ivId){
     // Pas de _numCaserne ni _numGlobal ici — attribués au passage En cours
     n:'Nid de frelons asiatiques — PILP',addr,addrComp:iv.addrComp||'',_addrBase:addr,_gpsCoordinates:gps.coordinates,com:iv.com,h,req,tel,tels,_additionalRequesters:readAdditionalRequesterFields('pf-extra-req'),
     op:iv.op||iv.agr||CU.l,reqDispo:null,_pilpIndependentAvailability:true,
-    localisation:localisation,hauteur:hauteur,reconnaissanceFaite:reconnaissanceFaite,axeTir:axeTir,_axeTirEtat:axeTirEtat,_pilpPeriode:pilpPeriode,_pilpPeriodePrecision:pilpPeriodePrecision,_pilpPlanningUpdatedAt:Date.now(),_pilpPlanningUpdatedBy:CU.l,obs:observations,det:observations,
-    _appelDetails:Object.assign({},iv._appelDetails||{},{'Localisation du nid':localisation,'Hauteur':hauteur?hauteur+' m':'Non renseignée','Reconnaissance':reconnaissanceFaite?'Réalisée':'Non réalisée','Axe de tir':axeTirEtat==='disponible'?'Disponible':axeTirEtat==='indisponible'?'Non satisfaisant':'À vérifier','Période PILP':pilpPeriodeLabel({_pilpPeriode:pilpPeriode,_pilpPeriodePrecision:pilpPeriodePrecision})}),
+    localisation:localisation,hauteur:hauteur,reconnaissanceFaite:reconnaissanceFaite,_pilpReconnaissanceChef:reconnaissanceFaite?recoChef:null,_pilpReconnaissanceRecordedAt:reconnaissanceFaite?h:null,_pilpReconnaissanceRecordedBy:reconnaissanceFaite?CU.l:null,axeTir:axeTir,_axeTirEtat:axeTirEtat,_pilpPeriode:pilpPeriode,_pilpPeriodePrecision:pilpPeriodePrecision,_pilpPlanningUpdatedAt:Date.now(),_pilpPlanningUpdatedBy:CU.l,obs:observations,det:observations,
+    _appelDetails:Object.assign({},iv._appelDetails||{},{'Localisation du nid':localisation,'Hauteur':hauteur!==null?hauteur+' m':'Non renseignée','Reconnaissance':reconnaissanceFaite?'Réalisée par '+pilpReconnaissanceChefLabel({_pilpReconnaissanceChef:recoChef}):'Non réalisée','Axe de tir':axeTirEtat==='disponible'?'Disponible':axeTirEtat==='indisponible'?'Non satisfaisant':'À vérifier','Période PILP':pilpPeriodeLabel({_pilpPeriode:pilpPeriode,_pilpPeriodePrecision:pilpPeriodePrecision})}),
     _nidsAppel:Array.isArray(iv._nidsAppel)?JSON.parse(JSON.stringify(iv._nidsAppel)):undefined,
     _createdAfterClosure:creationApresCloture,_sourceStatusAtCreation:iv.s,
     s:'en-attente',agr:null,tireur:null,rappels:0,avisIds:[],tl:[mkTL('en-attente',h,CU.l)]
@@ -121,31 +163,67 @@ function creerPILP(ivId){
 
 function showPilpPlanningModal(ivId){
   const iv=interventionById(ivId);if(!iv||!isPilpIntervention(iv))return;
-  if(!canOperatePilp()){showToast('La programmation PILP est en lecture seule.','warn');return;}
-  const axe=pilpAxeEtat(iv),periode=iv._pilpPeriode||'a-determiner';
-  document.getElementById('mt').textContent='Programmation de l’intervention PILP';
+  if(!canEditPilpReconnaissance(iv)){showToast('La modification de cette PILP est réservée au chef d’agrès concerné, au tireur PILP ou à l’administration.','warn');return;}
+  const canPlan=canOperatePilp(),axe=pilpAxeEtat(iv),periode=iv._pilpPeriode||'a-determiner';
+  document.getElementById('mt').textContent='Informations de l’intervention PILP';
   document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
   document.getElementById('mb').innerHTML=`
-    <div style="background:#F5F3FF;border:1px solid #C4B5FD;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#4C1D95;">Indiquez si l’axe de tir est utilisable et la période à laquelle l’intervention pourra être réalisée.</div>
-    <div class="fg"><div class="fgl">État de l’axe de tir</div><select class="fi" id="pilp-edit-axe"><option value="disponible"${axe==='disponible'?' selected':''}>Axe de tir disponible</option><option value="a-verifier"${axe==='a-verifier'?' selected':''}>Axe de tir à vérifier</option><option value="indisponible"${axe==='indisponible'?' selected':''}>Axe de tir non satisfaisant</option></select></div>
+    <div style="background:#F5F3FF;border:1px solid #C4B5FD;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#4C1D95;">Renseignez la hauteur constatée et le chef d’agrès ayant réalisé la reconnaissance.${canPlan?' Vous pouvez aussi modifier la programmation PILP.':''}</div>
+    ${iv._crValide?'<div style="background:#FFF7ED;border:1px solid #FDBA74;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#9A3412;">Le compte rendu est validé. Toute correction enregistrée le remettra à valider ; son texte sera conservé.</div>':''}
+    ${(Array.isArray(iv._impressions)&&iv._impressions.length)||(Array.isArray(iv._envois)&&iv._envois.length)?'<div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#991B1B;">Un rapport a déjà été imprimé ou envoyé. Pensez à transmettre la version corrigée aux destinataires.</div>':''}
+    <div class="fg"><div class="fgl">Hauteur du nid (m)</div><input class="fi" type="number" id="pilp-edit-hauteur" min="0" step="0.1" inputmode="decimal" value="${escHtml(pilpHeightInputValue(iv))}" placeholder="Ex. 8"/></div>
+    <label style="display:flex;align-items:center;gap:8px;padding:8px;background:#fff;border-radius:8px;font-size:13px;cursor:pointer;border:1px solid var(--brd);margin-bottom:10px;"><input type="checkbox" id="pilp-edit-reco" style="width:16px;height:16px;accent-color:var(--pilp);"${iv.reconnaissanceFaite===true?' checked':''}/>Reconnaissance réalisée</label>
+    <div class="fg"><div class="fgl">Chef d’agrès ayant réalisé la reconnaissance</div><select class="fi" id="pilp-edit-reco-chef">${pilpReconnaissanceChefOptions(iv._pilpReconnaissanceChef||'')}</select></div>
+    ${canPlan?`<div class="fg"><div class="fgl">État de l’axe de tir</div><select class="fi" id="pilp-edit-axe"><option value="disponible"${axe==='disponible'?' selected':''}>Axe de tir disponible</option><option value="a-verifier"${axe==='a-verifier'?' selected':''}>Axe de tir à vérifier</option><option value="indisponible"${axe==='indisponible'?' selected':''}>Axe de tir non satisfaisant</option></select></div>
     <div class="fg"><div class="fgl">Période possible pour l’intervention</div><select class="fi" id="pilp-edit-periode"><option value="des-que-possible"${periode==='des-que-possible'?' selected':''}>Dès que possible</option><option value="printemps"${periode==='printemps'?' selected':''}>Au printemps</option><option value="ete"${periode==='ete'?' selected':''}>En été</option><option value="automne"${periode==='automne'?' selected':''}>En automne</option><option value="hiver"${periode==='hiver'?' selected':''}>En hiver</option><option value="apres-feuilles"${periode==='apres-feuilles'?' selected':''}>Après la chute des feuilles</option><option value="a-determiner"${periode==='a-determiner'?' selected':''}>À déterminer</option><option value="personnalisee"${periode==='personnalisee'?' selected':''}>Autre période</option></select></div>
-    <div class="fg"><div class="fgl">Précision ou motif</div><textarea class="fta" id="pilp-edit-precision" placeholder="Ex. Trop de feuilles, attendre l’automne...">${escHtml(iv._pilpPeriodePrecision||'')}</textarea></div>
+    <div class="fg"><div class="fgl">Précision ou motif</div><textarea class="fta" id="pilp-edit-precision" placeholder="Ex. Trop de feuilles, attendre l’automne...">${escHtml(iv._pilpPeriodePrecision||'')}</textarea></div>`:''}
+    <div id="pilp-edit-error" style="font-size:12px;color:#E24B4A;display:none;margin-bottom:8px;"></div>
     <div class="brow"><button class="btn pilp-btn" onclick="savePilpPlanning('${iv.id}')">💾 Enregistrer</button><button class="btn" onclick="oM('${iv.id}')">Annuler</button></div>`;
+  registerMobileModalFields(document.getElementById('mb'));
   document.getElementById('mo').style.display='flex';
 }
 function savePilpPlanning(ivId){
   const iv=interventionById(ivId);if(!iv||!isPilpIntervention(iv))return;
-  if(!canOperatePilp()){showToast('La programmation PILP est en lecture seule.','warn');return;}
-  const axe=document.getElementById('pilp-edit-axe').value,periode=document.getElementById('pilp-edit-periode').value;
-  const precision=document.getElementById('pilp-edit-precision').value.trim();
-  iv._axeTirEtat=axe;iv.axeTir=axe==='disponible';iv._pilpPeriode=periode;iv._pilpPeriodePrecision=precision;
-  iv._pilpPlanningUpdatedAt=Date.now();iv._pilpPlanningUpdatedBy=CU.l;
+  if(!canEditPilpReconnaissance(iv)){showToast('La modification de cette PILP n’est plus autorisée.','warn');return;}
+  const canPlan=canOperatePilp(),height=pilpHeightNumber(document.getElementById('pilp-edit-hauteur').value);
+  const recognition=document.getElementById('pilp-edit-reco').checked;
+  const chef=document.getElementById('pilp-edit-reco-chef').value;
+  const error=document.getElementById('pilp-edit-error');
+  if(Number.isNaN(height)){error.style.display='block';error.textContent='La hauteur doit être un nombre positif en mètres.';return;}
+  if(recognition&&!chef){error.style.display='block';error.textContent='Sélectionnez le chef d’agrès qui a réalisé la reconnaissance.';return;}
+  error.style.display='none';
+  const axe=canPlan?document.getElementById('pilp-edit-axe').value:pilpAxeEtat(iv);
+  const periode=canPlan?document.getElementById('pilp-edit-periode').value:iv._pilpPeriode||'a-determiner';
+  const precision=canPlan?document.getElementById('pilp-edit-precision').value.trim():iv._pilpPeriodePrecision||'';
+  const recognitionChanged=recognition!==(iv.reconnaissanceFaite===true)||(recognition?chef:'')!==String(iv._pilpReconnaissanceChef||'');
+  const planningChanged=canPlan&&(axe!==pilpAxeEtat(iv)||periode!==(iv._pilpPeriode||'a-determiner')||precision!==(iv._pilpPeriodePrecision||''));
+  const changed=height!==pilpHeightNumber(iv.hauteur)||recognitionChanged||planningChanged;
+  if(!changed){oM(ivId);showToast('Aucune modification à enregistrer.','info');return;}
+  const previousHeight=pilpHeightLabel(iv),previousRecognition=pilpReconnaissanceLabel(iv);
+  iv.hauteur=height;iv.reconnaissanceFaite=recognition;
+  iv._pilpReconnaissanceChef=recognition?chef:null;
+  if(recognitionChanged){iv._pilpReconnaissanceRecordedAt=recognition?getH(N()):null;iv._pilpReconnaissanceRecordedBy=recognition?CU.l:null;}
+  if(Array.isArray(iv._nidsAppel)&&iv._nidsAppel[0])iv._nidsAppel[0].hauteur=height!==null?height+' m':'';
   if(!iv._appelDetails||typeof iv._appelDetails!=='object')iv._appelDetails={};
-  iv._appelDetails['Axe de tir']=axe==='disponible'?'Disponible':axe==='indisponible'?'Non satisfaisant':'À vérifier';
-  iv._appelDetails['Période PILP']=pilpPeriodeLabel(iv);
-  pushTL(iv,'modif',CU.l,'Programmation PILP : '+pilpAxeLabel(iv)+' · '+pilpPeriodeLabel(iv));
+  iv._appelDetails['Hauteur']=pilpHeightLabel(iv);
+  iv._appelDetails['Reconnaissance']=recognition?'Réalisée par '+pilpReconnaissanceChefLabel(iv):pilpReconnaissanceAConfirmer(iv)?'À confirmer':'Non réalisée';
+  let note='Informations PILP : hauteur '+previousHeight+' → '+pilpHeightLabel(iv)+' · '+previousRecognition+' → '+pilpReconnaissanceLabel(iv);
+  if(canPlan){
+    iv._axeTirEtat=axe;iv.axeTir=axe==='disponible';iv._pilpPeriode=periode;iv._pilpPeriodePrecision=precision;
+    iv._pilpPlanningUpdatedAt=Date.now();iv._pilpPlanningUpdatedBy=CU.l;
+    iv._appelDetails['Axe de tir']=axe==='disponible'?'Disponible':axe==='indisponible'?'Non satisfaisant':'À vérifier';
+    iv._appelDetails['Période PILP']=pilpPeriodeLabel(iv);
+    note+=' · '+pilpAxeLabel(iv)+' · '+pilpPeriodeLabel(iv);
+  }
+  if(iv._crValide===true){
+    if(!Array.isArray(iv._crValidationHistory))iv._crValidationHistory=[];
+    iv._crValidationHistory.push({dateValidation:iv._crDateValidation||'',remiseAValiderLe:getH(N()),auteur:CU.l,motif:'Correction des informations PILP'});
+    iv._crValide=false;iv._crDateValidation=null;
+    note+=' · Compte rendu remis à valider';
+  }
+  pushTL(iv,'modif',CU.l,note);
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-  markOperationalInterventionDirty(iv);saveData(true);refreshOperationalInterventionViews();
+  markOperationalInterventionDirty(iv);saveData(true);refreshOperationalInterventionViews();if(typeof rHist==='function')rHist();
   setTimeout(function(){oM(ivId);},80);
 }
 
@@ -220,8 +298,8 @@ function agaiRepairLegacyPilpDetails(){
     if(!iv.det&&iv.obs){iv.det=iv.obs;changed=true;}
     const pilpDetails=Object.assign({},iv._appelDetails||{});
     if(iv.localisation&&!pilpDetails['Localisation du nid'])pilpDetails['Localisation du nid']=iv.localisation;
-    if(iv.hauteur&&!pilpDetails['Hauteur'])pilpDetails['Hauteur']=String(iv.hauteur).replace(/\s*m$/i,'')+' m';
-    if(iv.reconnaissanceFaite!==undefined&&!pilpDetails['Reconnaissance'])pilpDetails['Reconnaissance']=iv.reconnaissanceFaite?'Réalisée':'Non réalisée';
+    if(iv.hauteur!==undefined&&iv.hauteur!==null&&!pilpDetails['Hauteur'])pilpDetails['Hauteur']=pilpHeightLabel(iv);
+    if(iv.reconnaissanceFaite!==undefined&&!pilpDetails['Reconnaissance'])pilpDetails['Reconnaissance']=iv.reconnaissanceFaite===true?'Réalisée par '+pilpReconnaissanceChefLabel(iv):pilpReconnaissanceAConfirmer(iv)?'À confirmer':'Non réalisée';
     if(iv.axeTir!==undefined&&!pilpDetails['Axe de tir'])pilpDetails['Axe de tir']=iv.axeTir?'Disponible':'À vérifier';
     if(JSON.stringify(pilpDetails)!==JSON.stringify(iv._appelDetails||{})){iv._appelDetails=pilpDetails;changed=true;}
     iv._legacyPilpDetailsVersion='20260827-pilp-details-v1';
