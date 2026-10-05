@@ -347,7 +347,9 @@ function agentsAvecDispos(wk){
   // Retourne tous les agents (toutes équipes + sans équipe) qui ont au moins 1 créneau dispo cette semaine
   return USERS.filter(u=>{
     const d=DISPOS[wk]?.[u.l];
-    return d&&Object.values(d).some(v=>v===true);
+    if(!d)return false;
+    const eq=getEquipeOfUser(u.l),gran=eq?eq.granularity:ASTR_CONFIG.granularity;
+    return Object.entries(d).some(function(entry){return entry[1]===true&&personnelDispoKeyAllowed(wk,u.l,entry[0],gran);});
   });
 }
 // Grades chef d’agrès
@@ -586,7 +588,7 @@ function pqBuildMiniGrille(wk){
   const dispoWk=DISPOS[wk]||{};
   const agents=sortByGradeThenName(USERS.filter(function(u){
     const d=dispoWk[u.l];if(!d)return false;
-    for(let s=0;s<slots;s++){if(d[jourIdx+'_'+s]===true)return true;}
+    for(let s=0;s<slots;s++){if(d[jourIdx+'_'+s]===true&&personnelDispoSlotAllowed(wk,u.l,jourIdx,s,gran))return true;}
     return false;
   }));
   if(!agents.length)return '<div style="font-size:11px;color:var(--t2);padding:8px;background:#FEF3C7;border-radius:6px;">⚠️ Aucun agent disponible le '+escHtml(jour)+'.</div>';
@@ -623,7 +625,7 @@ function pqBuildMiniGrille(wk){
     h+='<div style="display:flex;align-items:center;margin-bottom:3px;">';
     h+='<div style="width:'+_lw+'px;flex-shrink:0;font-size:10px;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:4px;" title="'+escHtml(fullName(u))+'">'+escHtml(nomAbrege(u))+'</div>';
     for(let s=0;s<slots;s++){
-      const ok=d[jourIdx+'_'+s]===true;
+      const ok=d[jourIdx+'_'+s]===true&&personnelDispoSlotAllowed(wk,u.l,jourIdx,s,gran);
       const dans=inPlage(s);
       // Dans la plage : couleurs franches. Hors plage : couleurs atténuées.
       const bg=ok?(dans?'#22C55E':'#BBF0CD'):(dans?'#D1D5DB':'#F1F2F4');
@@ -795,7 +797,8 @@ function suggestCreneaux(wk){
 
   // Vérifier si un agent est dispo sur un slot précis
   function isAgentDispo(login,dayIdx,slotIdx){
-    return DISPOS[wk]?.[login]?.[dayIdx+'_'+slotIdx]===true;
+    return personnelDispoSlotAllowed(wk,login,dayIdx,slotIdx,gran)
+      &&DISPOS[wk]?.[login]?.[dayIdx+'_'+slotIdx]===true;
   }
 
   // Trouver les créneaux continus pour chaque jour
@@ -1011,6 +1014,8 @@ function confirmAddPiquet(wk,engin){
   const note=document.getElementById('pq-note')?.value.trim()||'';
   const err=document.getElementById('pq-err');err.style.display='none';
   const membres=pqGetMembres(wk);
+  const indisponible=membres.find(function(m){return !personnelPiquetMemberAllowed(wk,m.login,jour,m.hDebut||debut,m.hFin||fin);});
+  if(indisponible){err.style.display='block';err.textContent='Cet agent ne peut pas être affecté pendant son absence : '+personnelScheduleName(indisponible.login);return;}
   const conflits=[];
   membres.forEach(function(m){
     if(hasConflitPiquet(wk,m.login,jour,m.hDebut||debut,m.hFin||fin,-1)){
@@ -1262,6 +1267,8 @@ function saveActivite(){
   if(dateErr){err.style.display='block';err.textContent=dateErr;return;}
   if(hf<=hd&&!(hf<hd)){/* ok */}
   const participants=Array.from(document.querySelectorAll('#act-participants input[type=checkbox]:checked')).map(cb=>cb.value);
+  const unavailable=personnelUnavailableForPeriod(participants,date,date);
+  if(unavailable){err.style.display='block';err.textContent=personnelScheduleName(unavailable.login)+' ne peut pas participer à une activité de service durant son indisponibilité.';return;}
   if(hhmmToMinutes(hd)===null||hhmmToMinutes(hf)===null||hd===hf){err.style.display='block';err.textContent='Renseignez des heures de début et de fin distinctes et valides.';return;}
   const interventionConflict=findInterventionConflictForSchedule('Activité de service',{date:date,hDebut:hd,hFin:hf,participants:participants});
   if(interventionConflict){err.style.display='block';err.textContent=personnelScheduleConflictMessage(interventionConflict,'Cette activité de service');return;}
@@ -1521,5 +1528,3 @@ function deleteFmpa(id){
     }
   });
 }
-
-

@@ -606,7 +606,9 @@ function finaliserAvisRappeles(avis,nouvelAppel,h){
     source.rappels=(Number(source.rappels)||0)+1;
     if(isPilpIntervention(source)&&source.s==='avis-passage')source.s='terminee';
     if(!Array.isArray(source.tl))source.tl=[];
-    source.tl.push(Object.assign(mkTL(source.s,h,CU.l),{note:'Rappel du requérant — nouvel appel '+(nouvelAppel._numApl||nouvelAppel.id)}));
+    // Un rappel ne constitue pas une nouvelle clôture de la fiche d'origine.
+    // Son événement propre évite de la faire réapparaître parmi les terminées du jour.
+    source.tl.push(Object.assign(mkTL('avis-rappel',h,CU.l),{note:'Rappel du requérant — nouvel appel '+(nouvelAppel._numApl||nouvelAppel.id)}));
     markOperationalInterventionDirty(source);
   });
   markOperationalInterventionDirty(nouvelAppel);

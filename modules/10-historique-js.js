@@ -16,7 +16,7 @@ function rHistLegacy(){
     const timeline=Array.isArray(iv.tl)?iv.tl:[];
     const passages=timeline.filter(function(entry){return entry&&entry.s==='en-cours'&&_dateKey(entry.h);});
     if(passages.length)return _dateKey(passages[passages.length-1].h);
-    const clotures=timeline.filter(function(entry){return entry&&entry.s==='terminee'&&_dateKey(entry.h);});
+    const clotures=timeline.filter(function(entry){return interventionIsClosureTimelineEntry(entry)&&_dateKey(entry.h);});
     if(clotures.length)return _dateKey(clotures[clotures.length-1].h);
     return _dateKey(iv.h)||'00000000';
   };
@@ -98,7 +98,7 @@ function historyInterventionDayKey(iv){
   const timeline=Array.isArray(iv&&iv.tl)?iv.tl:[];
   const starts=timeline.filter(function(entry){return entry&&entry.s==='en-cours'&&historyDateKey(entry.h);});
   if(starts.length)return historyDateKey(starts[starts.length-1].h);
-  const ends=timeline.filter(function(entry){return entry&&entry.s==='terminee'&&historyDateKey(entry.h);});
+  const ends=timeline.filter(function(entry){return interventionIsClosureTimelineEntry(entry)&&historyDateKey(entry.h);});
   if(ends.length)return historyDateKey(ends[ends.length-1].h);
   return historyDateKey(iv&&iv.h)||'00000000';
 }
@@ -354,4 +354,3 @@ async function saveProfil(){
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);rProfil();showToast('Mot de passe enregistré !','success'); // push immédiat
 }
-

@@ -7,6 +7,145 @@
 // Aucun compte privilégié ne doit être livré dans le code source.
 // Les comptes existants sont chargés depuis le stockage configuré.
 const GLOBAL_ACCOUNTS=[];
+// Suivi daté du personnel. Les décisions d'accès sont également vérifiées
+// côté serveur avant activation du dispositif ; ces fonctions évitent que
+// l'interface propose une personne indisponible.
+function personnelLocalDate(date){
+  const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(date||new Date());
+  const value=function(type){return (parts.find(function(part){return part.type===type;})||{}).value||'';};
+  return value('year')+'-'+value('month')+'-'+value('day');
+}
+function personnelIsoDate(value){
+  const text=String(value||'').trim();
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(text))return'';
+  const parsed=new Date(text+'T00:00:00Z');
+  return Number.isFinite(parsed.getTime())&&parsed.toISOString().slice(0,10)===text?text:'';
+}
+function personnelStatusAt(user,date){
+  if(!user)return'actif';
+  const day=personnelIsoDate(date)||personnelLocalDate();
+  const exits=(Array.isArray(user._personnelExits)?user._personnelExits:[]).concat(user._personnelExit?[user._personnelExit]:[]);
+  const activeExit=exits.filter(function(exit){
+    const start=personnelIsoDate(exit&&exit.start),cancelled=personnelIsoDate(exit&&exit.cancelledFrom);
+    return !!start&&start<=day&&(!cancelled||day<cancelled)&&['demission','licenciement','retraite'].includes(exit.kind);
+  }).sort(function(a,b){return b.start.localeCompare(a.start);})[0];
+  if(activeExit)return activeExit.kind;
+  const transfer=user._personnelTransferredOut;
+  if(transfer&&personnelIsoDate(transfer.start)&&personnelIsoDate(transfer.start)<=day)return'mutation';
+  const periods=Array.isArray(user._personnelPeriods)?user._personnelPeriods:[];
+  const active=periods.filter(function(period){
+    if(!period||period.cancelledAt||!['arret','disponibilite'].includes(period.kind))return false;
+    const start=personnelIsoDate(period.start),end=personnelIsoDate(period.end),cancelled=personnelIsoDate(period.cancelledFrom);
+    return !!start&&start<=day&&(!end||day<=end)&&(!cancelled||day<cancelled);
+  });
+  if(active.some(function(period){return period.kind==='disponibilite';}))return'disponibilite';
+  if(active.length)return'arret';
+  return'actif';
+}
+function personnelCanLogin(user,date){
+  const status=personnelStatusAt(user,date);
+  return status==='actif'||status==='arret';
+}
+function personnelCanOperate(user,date){return personnelStatusAt(user,date)==='actif';}
+function personnelCanOperateForPeriod(user,startDate,endDate){
+  const start=personnelIsoDate(startDate),end=personnelIsoDate(endDate||startDate);
+  if(!start||!end||end<start)return false;
+  if(!user)return false;
+  const blockedFrom=function(record){
+    const date=personnelIsoDate(record&&record.start),cancelled=personnelIsoDate(record&&record.cancelledFrom);
+    return !!date&&date<=end&&(!cancelled||cancelled>start);
+  };
+  if((Array.isArray(user._personnelExits)?user._personnelExits:[]).some(blockedFrom)
+    ||blockedFrom(user._personnelExit)||blockedFrom(user._personnelTransferredOut))return false;
+  return !(Array.isArray(user._personnelPeriods)?user._personnelPeriods:[]).some(function(period){
+    if(!period||period.cancelledAt||!['arret','disponibilite'].includes(period.kind))return false;
+    const from=personnelIsoDate(period.start),through=personnelIsoDate(period.end),cancelled=personnelIsoDate(period.cancelledFrom);
+    return !!from&&from<=end&&(!through||through>=start)&&(!cancelled||cancelled>start);
+  });
+}
+function personnelIsOnActiveRoster(user,date){
+  return !['demission','licenciement','retraite','mutation'].includes(personnelStatusAt(user,date));
+}
+function personnelCurrentRecord(login){
+  const wanted=String(login||'').trim().toLowerCase();if(!wanted)return null;
+  const current=(typeof USERS!=='undefined'&&Array.isArray(USERS)?USERS:[]).find(function(user){
+    return user&&user.l===wanted&&!user._personnelTransferredOut;
+  });
+  if(current)return current;
+  for(const caserneId of Object.keys(CASERNE_DATA||{})){
+    const user=((CASERNE_DATA[caserneId]||{}).users||[]).find(function(item){
+      return item&&item.l===wanted&&!item._personnelTransferredOut;
+    });
+    if(user)return user;
+  }
+  return null;
+}
+function personnelUnavailableForPeriod(logins,startDate,endDate){
+  for(const login of [...new Set((logins||[]).filter(Boolean))]){
+    const user=personnelCurrentRecord(login);
+    if(user&&!personnelCanOperateForPeriod(user,startDate,endDate)){
+      return {login:login,status:personnelStatusAt(user,startDate)};
+    }
+  }
+  return null;
+}
+function personnelApplyDecision(user,status,startDate,endDate,actor,recordedAt){
+  const start=personnelIsoDate(startDate),end=endDate?personnelIsoDate(endDate):'';
+  if(!user||!start||!['actif','arret','disponibilite','demission','licenciement','retraite'].includes(status)
+    ||(endDate&&!end)||(end&&end<start)||(status==='disponibilite'&&!end)
+    ||(['demission','licenciement','retraite'].includes(status)&&end))return false;
+  if(!Array.isArray(user._personnelPeriods))user._personnelPeriods=[];
+  if(!Array.isArray(user._personnelExits))user._personnelExits=[];
+  if(user._personnelExit&&!user._personnelExits.some(function(exit){return exit.kind===user._personnelExit.kind&&exit.start===user._personnelExit.start;})){
+    user._personnelExits.push(user._personnelExit);
+  }
+  user._personnelPeriods.forEach(function(period){
+    if(!period.cancelledAt&&(!period.cancelledFrom||period.cancelledFrom>start))period.cancelledFrom=start;
+  });
+  user._personnelExits.forEach(function(exit){
+    if(!exit.cancelledFrom||exit.cancelledFrom>start)exit.cancelledFrom=start;
+  });
+  user._personnelExit=null;
+  if(status==='arret'||status==='disponibilite')user._personnelPeriods.push({kind:status,start:start,end:end||null});
+  else if(status!=='actif'){
+    user._personnelExit={kind:status,start:start};
+    user._personnelExits.push(user._personnelExit);
+  }
+  if(!Array.isArray(user._personnelHistory))user._personnelHistory=[];
+  user._personnelHistory.push({status:status,start:start,end:end||null,actor:String(actor||''),recordedAt:String(recordedAt||new Date().toISOString())});
+  return true;
+}
+// Prépare les deux fiches d'une mutation approuvée sans modifier les données.
+// Le transfert effectif doit être atomique côté serveur et approuvé par le SA.
+function personnelBuildTransferRecords(user,targetCaserneId,startDate,approvedBy,requestId,recordedAt){
+  const source=String(user&&user.caserneId||''),target=String(targetCaserneId||'');
+  const start=personnelIsoDate(startDate);
+  const targetKnown=typeof CASERNES!=='undefined'&&CASERNES.some(function(c){return c&&c.id===target&&c.id!=='EMAJ';});
+  const targetUsers=CASERNE_DATA&&CASERNE_DATA[target]&&CASERNE_DATA[target].users;
+  if(!user||!user.l||user._isSA||!source||source===target||!targetKnown||!Array.isArray(targetUsers)
+    ||targetUsers.some(function(item){return item&&item.l===user.l;})||!start
+    ||!String(approvedBy||'').trim()||!String(requestId||'').trim()
+    ||!personnelIsOnActiveRoster(user,start)||user._personnelTransferredOut)return null;
+  const historical=JSON.parse(JSON.stringify(user));
+  const active=JSON.parse(JSON.stringify(user));
+  const event={status:'mutation',start:start,target:target,source:source,
+    actor:String(approvedBy),requestId:String(requestId),recordedAt:String(recordedAt||new Date().toISOString())};
+  historical._personnelTransferredOut={start:start,target:target,approvedBy:event.actor,requestId:event.requestId,recordedAt:event.recordedAt};
+  historical._personnelHistory=(Array.isArray(historical._personnelHistory)?historical._personnelHistory:[]).concat([event]);
+  active.caserneId=target;
+  active._personnelTransferredIn={start:start,source:source,approvedBy:event.actor,requestId:event.requestId,recordedAt:event.recordedAt};
+  active._personnelHistory=(Array.isArray(active._personnelHistory)?active._personnelHistory:[]).concat([event]);
+  delete active._personnelTransferredOut;
+  delete active._personnelTransferRequest;
+  delete active._isSA;
+  active.appRole='agent';
+  active.rl='Utilisateur';
+  active.rights=(Array.isArray(active.rights)?active.rights:[]).filter(function(right){return right!=='Administration';});
+  if(active.fonction==='Chef de centre'||active.fonction==='Adjoint au chef de centre'){
+    active.fonction='Équipier';active.fonction2='';
+  }
+  return {source:historical,target:active};
+}
 // Helpers
 function isSuperAdmin(){return GLOBAL_ROLE==='superadmin'&&!window._superAdminDisabled;}
 function isChefCorps(){return GLOBAL_ROLE==='chef_corps';}
@@ -202,6 +341,11 @@ const AUTH_LINK_MODE = ['off','canary','on'].includes(AGAI_RUNTIME_CONFIG.accoun
   ? AGAI_RUNTIME_CONFIG.accountLinkMode
   : (AGAI_RUNTIME_CONFIG.accountLinkEnabled===true?'on':'off');
 const AUTH_LINK_ENABLED = AUTH_LINK_MODE!=='off';
+// Le seul réglage public ne doit jamais pouvoir activer la fonction tant que
+// le chargement et les écritures des données utilisent encore l'accès anon.
+// Passer ce verrou à true seulement après migration et tests Auth/RLS complets.
+const PERSONNEL_AUTH_CUTOVER_SUPPORTED=false;
+const PERSONNEL_ONLINE_GATE=PERSONNEL_AUTH_CUTOVER_SUPPORTED&&AGAI_RUNTIME_CONFIG.personnelOnlineGateEnabled===true;
 const AUTH_LINK_CANARY_LOGINS = new Set((Array.isArray(AGAI_RUNTIME_CONFIG.accountLinkCanaryLogins)?AGAI_RUNTIME_CONFIG.accountLinkCanaryLogins:[]).map(function(login){return String(login||'').trim().toLowerCase();}));
 const AUTH_LINK_NEW_CANARY_LOGINS=new Set((Array.isArray(AGAI_RUNTIME_CONFIG.accountLinkNewCanaryLogins)?AGAI_RUNTIME_CONFIG.accountLinkNewCanaryLogins:[]).map(function(login){return String(login||'').trim().toLowerCase();}));
 function _agaiIsNewLinkPilot(login){return AUTH_LINK_NEW_CANARY_LOGINS.has(String(login||'').trim().toLowerCase());}
@@ -1046,4 +1190,3 @@ function showParamsTab(sub,btn){
   else if(sub==='admin')rAdm();
   else if(sub==='onedrive')odRenderStatus();
 }
-

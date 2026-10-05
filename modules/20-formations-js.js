@@ -338,6 +338,8 @@ function _saveFormEntry(pfx,idPrefix,getDataFn,toggleFn,listFn,recapFn){
     const allowed=new Set(declaredFormateurUsers().map(function(user){return user.l;}));
     participants=participants.filter(function(login){return allowed.has(login);});
   }
+  const unavailable=personnelUnavailableForPeriod(participants,ddebut,dfin);
+  if(unavailable){err.style.display='block';err.textContent=personnelScheduleName(unavailable.login)+' ne peut pas être inscrit à cette formation pendant son indisponibilité.';return;}
   const proposed={ddebut:ddebut,dfin:dfin,hmatind:hmatind,hmatinf:hmatinf,hapremd:hapremd,hapremf:hapremf,participants:participants};
   const hoursError=personnelFormationHoursError(proposed);
   if(hoursError){err.style.display='block';err.textContent=hoursError;return;}
@@ -578,6 +580,8 @@ function saveFmpa(){
   if(new Date(date+'T00:00:00')>now){err.style.display='block';err.textContent='La date ne peut pas être dans le futur.';return;}
   const participants=Array.from(document.querySelectorAll('#fmpa-participants input[type=checkbox]:checked')).map(cb=>cb.value);
   const formateurs=Array.from(document.querySelectorAll('#fmpa-formateurs input[type=checkbox]:checked')).map(cb=>cb.value);
+  const unavailable=personnelUnavailableForPeriod(participants.concat(formateurs),date,date);
+  if(unavailable){err.style.display='block';err.textContent=personnelScheduleName(unavailable.login)+' ne peut pas être inscrit à cette FMPA pendant son indisponibilité.';return;}
   if(hhmmToMinutes(hd)===null||hhmmToMinutes(hf)===null||hd===hf){err.style.display='block';err.textContent='Renseignez des heures de début et de fin distinctes et valides.';return;}
   const interventionConflict=findInterventionConflictForSchedule('FMPA',{date:date,hDebut:hd,hFin:hf,participants:participants,formateurs:formateurs});
   if(interventionConflict){err.style.display='block';err.textContent=personnelScheduleConflictMessage(interventionConflict,'Cette FMPA');return;}
@@ -698,6 +702,8 @@ function fmpaSaveEdit(id){
   const newPart=Array.from(document.querySelectorAll('#fmedit-participants input[type=checkbox]:checked')).map(cb=>cb.value);
   const newForm=Array.from(document.querySelectorAll('#fmedit-formateurs input[type=checkbox]:checked')).map(cb=>cb.value);
   if(hhmmToMinutes(newHd)===null||hhmmToMinutes(newHf)===null||newHd===newHf){err.style.display='block';err.textContent='Renseignez des heures de début et de fin distinctes et valides.';return;}
+  const unavailable=personnelUnavailableForPeriod(newPart.concat(newForm),a.date,a.date);
+  if(unavailable){err.style.display='block';err.textContent=personnelScheduleName(unavailable.login)+' ne peut pas participer à cette formation durant son indisponibilité.';return;}
   const interventionConflict=findInterventionConflictForSchedule('FMPA',{date:a.date,hDebut:newHd,hFin:newHf,participants:newPart,formateurs:newForm});
   if(interventionConflict){err.style.display='block';err.textContent=personnelScheduleConflictMessage(interventionConflict,'Cette FMPA');return;}
   const champs=[];

@@ -326,7 +326,7 @@ function rPilp(){
   // Lecture seule : consulter PILP ne déclenche aucune écriture Supabase.
   // Même règle que la liste Interventions : les statuts actifs restent visibles,
   // tandis qu'une terminée disparaît dès le changement de journée.
-  const pilpTermineeAujourdhui=function(iv){return iv.s==='terminee'&&iv.tl&&iv.tl.some(function(t){return t.s==='terminee'&&(t.h||'').startsWith(TDP);});};
+  const pilpTermineeAujourdhui=function(iv){return interventionWasClosedOnDay(iv,TDP);};
   const pilpJour=PILP_IVS.filter(function(iv){return isTdy(iv)||['en-attente','selectionne','en-cours'].includes(iv.s)||pilpTermineeAujourdhui(iv);});
   // Compteurs récapitulatifs PILP
   document.getElementById('pilp-nb1').textContent=PILP_IVS.filter(iv=>iv.s==='en-attente').length;
@@ -802,6 +802,8 @@ function validateOperationalDeparture(iv,engin1,engin2,personnelLogins){
   const duplicateLogin=personnel.find(function(login,index){return personnel.indexOf(login)!==index;});
   if(duplicateLogin)return {kind:'personnel',value:duplicateLogin,iv:iv,sameDeparture:true};
   const uniquePersonnel=[...new Set(personnel)];
+  const unavailable=personnelUnavailableForPeriod(uniquePersonnel,personnelLocalDate(),personnelLocalDate());
+  if(unavailable)return {kind:'lifecycle',value:unavailable.login,iv:iv};
   for(const login of uniquePersonnel){
     const personnelConflict=findActivePersonnelConflict(login,iv&&iv.id);
     if(personnelConflict)return {kind:'personnel',value:login,iv:personnelConflict};

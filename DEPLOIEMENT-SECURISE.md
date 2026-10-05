@@ -1,5 +1,48 @@
 # AGAI — déploiement sécurisé
 
+## Préparation locale V202610_0004 — rappels après avis de passage
+
+**Non déployée par Codex.** Un rappel du requérant crée toujours un nouvel appel,
+mais ne constitue plus une nouvelle clôture de l'intervention d'origine.
+L'ancienne fiche reste terminée, avec ses numéros et sa date de clôture ;
+elle ne réapparaît pas dans la liste des interventions terminées du jour.
+La lecture corrige aussi l'affichage des rappels déjà enregistrés avec une
+ancienne entrée d'historique mal étiquetée « terminée ». Publier le dossier
+modulaire complet, puis vérifier un rappel sur une fiche clôturée la veille :
+seul le nouvel appel doit être actif, l'ancienne fiche restant dans
+l'historique à sa date d'origine. Aucune migration de base n'est requise.
+
+## Préparation locale — suivi administratif du personnel (4 octobre 2026)
+
+La procédure de préparation pour une mise en service **sur la production,
+sans projet de test Supabase**, se trouve dans
+`MISE-EN-SERVICE-PERSONNEL-PRODUCTION.md`. Elle conclut actuellement à un
+**NO-GO pour l'activation** ; aucun accès ni compte de production n'a été
+modifié par cette préparation.
+
+**Non déployée. Aucun projet de test Supabase créé.** Les dossiers peuvent
+conserver un historique daté des arrêts, disponibilités et sorties ; la liste
+active d'administration sépare les dossiers sortis. Les créneaux de
+disponibilité et les piquets refusent localement une nouvelle affectation
+durant une absence. Une disponibilité ancienne marquée verte est affichée
+indisponible pendant la période concernée, y compris dans la préparation des
+piquets. Le déplacement d'un piquet et la modification d'une formation
+revérifient aussi les agents concernés. Les contrôles d'accès Internet et
+l'interface de décision restent désactivés par les deux verrous
+`PERSONNEL_AUTH_CUTOVER_SUPPORTED=false` et
+`personnelOnlineGateEnabled: false`.
+
+Ne pas activer ces verrous, déployer la fonction Edge préparée, exécuter le
+SQL `supabase-personnel-lifecycle-PREPARATION.sql`, ni désactiver
+`cis04.admin` à ce stade. L'accès historique anonyme aux données n'est pas
+encore sécurisé, et ce compte générique n'est pas rattaché. Une migration
+Auth/RLS et une vérification contrôlée restent nécessaires avant toute mise
+en service, même sans projet de test séparé. Le modèle local d'une mutation approuvée est
+préparé et testé : l'ancienne fiche reste historique, la nouvelle conserve
+les périodes d'absence et perd les droits d'administration propres à la
+caserne d'origine. La demande, l'approbation du superadministrateur et le
+transfert atomique côté serveur restent à implémenter avant toute utilisation.
+
 ## Préparation locale V202610_0003 — libellés des autorisations
 
 **Non déployée par Codex.** Dans une intervention sans nid, vérifier que les

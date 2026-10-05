@@ -73,6 +73,96 @@ async function _agaiAuthFetchWithTimeout(url,options,timeoutMs){
   try{return await fetch(url,Object.assign({},options||{},{signal:controller.signal}));}
   finally{clearTimeout(timer);}
 }
+// La session locale ne suffit plus lorsque le suivi du personnel est activé :
+// chaque ouverture et chaque reprise d'AGAI doit recevoir un accord serveur.
+let _agaiOnlineAccessTimer=null;
+let _agaiOnlineAccessInFlight=false;
+function _agaiOnlineAccessReady(){
+  return PERSONNEL_ONLINE_GATE&&AUTH_LINK_MODE==='on'&&typeof navigator!=='undefined'&&navigator.onLine!==false;
+}
+async function _agaiOnlineSignIn(account,password){
+  if(!_agaiOnlineAccessReady())return null;
+  try{
+    const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{
+      method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','x-device-id':agaiDeviceId()},
+      body:JSON.stringify({mode:'login',login:account.l,password:password})
+    },8000);
+    const result=await response.json().catch(function(){return{};});
+    if(!response.ok||result.personnelEnforcementEnabled!==true||!result.session||!result.session.access_token
+      ||result.login!==account.l||result.caserneId!==account.caserneId)return null;
+    return Object.assign({},result.session,{_agai_link_login:account.l});
+  }catch(error){console.warn('[AGAI][ACCÈS] Connexion en ligne indisponible :',error);return null;}
+}
+async function _agaiOnlineCheckSavedSession(login,caserneId){
+  if(!_agaiOnlineAccessReady())return false;
+  let session=_agaiAuthSession;
+  if(!session)try{session=JSON.parse(localStorage.getItem(AUTH_LINK_SESSION_KEY)||'null');}catch(error){return false;}
+  if(!session||session._agai_link_login!==login||!session.access_token)return false;
+  if(Number(session.expires_at)*1000<Date.now()+30000){
+    if(!session.refresh_token)return false;
+    try{
+      const refreshed=await _agaiAuthFetchWithTimeout(SB_URL+'/auth/v1/token?grant_type=refresh_token',{
+        method:'POST',headers:{'apikey':SB_KEY,'Content-Type':'application/json'},
+        body:JSON.stringify({refresh_token:session.refresh_token})
+      },8000);
+      const payload=await refreshed.json().catch(function(){return{};});
+      if(!refreshed.ok||!payload.access_token)return false;
+      session=Object.assign({},payload,{_agai_link_login:login});
+      _agaiStoreAuthSession(session);
+    }catch(error){return false;}
+  }
+  try{
+    const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{
+      method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+session.access_token,'Content-Type':'application/json'},
+      body:JSON.stringify({mode:'account_status'})
+    },8000);
+    const result=await response.json().catch(function(){return{};});
+    if(!response.ok||result.personnelEnforcementEnabled!==true||result.canLogin!==true
+      ||result.login!==login||result.caserneId!==caserneId)return false;
+    if(_agaiAuthSession!==session)_agaiStoreAuthSession(session);
+    return true;
+  }catch(error){console.warn('[AGAI][ACCÈS] Vérification en ligne indisponible :',error);return false;}
+}
+function _agaiOnlineStopChecks(){
+  if(_agaiOnlineAccessTimer){clearInterval(_agaiOnlineAccessTimer);_agaiOnlineAccessTimer=null;}
+}
+async function _agaiOnlineCheckCurrent(){
+  if(!PERSONNEL_ONLINE_GATE||!CU||_agaiOnlineAccessInFlight)return;
+  _agaiOnlineAccessInFlight=true;
+  const login=CU.l,caserneId=CU.caserneId,token=SESSION_TOKEN;
+  try{
+    const allowed=await _agaiOnlineCheckSavedSession(login,caserneId);
+    if(!allowed&&CU&&CU.l===login&&SESSION_TOKEN===token){
+      doLogout();
+      const error=document.getElementById('lerr');
+      if(error){error.style.display='block';error.textContent='Accès suspendu ou vérification Internet impossible. Reconnectez-vous lorsque la connexion est disponible.';}
+    }
+  }finally{_agaiOnlineAccessInFlight=false;}
+}
+function _agaiOnlineArmChecks(){
+  if(!PERSONNEL_ONLINE_GATE)return;
+  _agaiOnlineStopChecks();
+  _agaiOnlineAccessTimer=setInterval(_agaiOnlineCheckCurrent,60000);
+}
+async function _agaiSetPersonnelStatusServer(login,status,startsOn,endsOn){
+  if(!PERSONNEL_ONLINE_GATE||!_agaiOnlineAccessReady()||!CU)return null;
+  const token=_agaiAuthAccessToken();
+  if(!token)return null;
+  try{
+    const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{
+      method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+      body:JSON.stringify({mode:'admin_personnel_status',login:login,status:status,startsOn:startsOn||null,endsOn:endsOn||null})
+    },8000);
+    const result=await response.json().catch(function(){return{};});
+    return response.ok&&result.status==='updated'&&result.login===login?result:null;
+  }catch(error){console.warn('[AGAI][PERSONNEL] Changement de statut différé :',error);return null;}
+}
+document.addEventListener('visibilitychange',function(){
+  if(PERSONNEL_ONLINE_GATE&&CU&&!document.hidden)_agaiOnlineCheckCurrent();
+});
+window.addEventListener('offline',function(){
+  if(PERSONNEL_ONLINE_GATE&&CU)_agaiOnlineCheckCurrent();
+});
 async function _agaiRefreshAuthSession(){
   const session=_agaiReadAuthSession();if(!CU||!_agaiAuthLinkEligible(CU)||!session||session._agai_link_login!==CU.l||!session.refresh_token)return false;
   try{
@@ -508,4 +598,3 @@ async function _migratePasswords(){
   }
   if(changed){saveData();}
 }
-

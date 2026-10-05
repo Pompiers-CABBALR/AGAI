@@ -43,6 +43,7 @@ function sortByName(list){
 function fullName(u){return u?u.nom+' '+u.prenom:'';}
 function fullNameAff(u){return u?(u.nom+' '+u.prenom).trim():'';}
 function shortName(u){return u?u.nom+' '+u.prenom.charAt(0)+'.':'';}
+const PERSONNEL_STATUS_LABELS={actif:'Actif',arret:'Arrêt de travail',disponibilite:'Mise en disponibilité',demission:'Démission',licenciement:'Licenciement',retraite:'Retraite',mutation:'Mutation'};
 function rAdm(){
   // Reconstruire les selects grade/fonction seulement si le formulaire est fermé
   const addFormOpen = document.getElementById('admin-add')&&document.getElementById('admin-add').style.display!=='none';
@@ -59,15 +60,17 @@ function rAdm(){
   const tbody=document.getElementById('admin-tbody');if(!tbody)return;
   const RIGHTS_SHORT=['Prise d\'appel','Interventions','Historique complet','Chef d\'agrès','Tireur PILP','Administration','Formation'];
   // USERS contient déjà le superadmin via syncCaserneContext
-  const sorted=sortByName(USERS);
+  const sorted=sortByName(PERSONNEL_ONLINE_GATE?USERS.filter(personnelIsOnActiveRoster):USERS);
   const caserneAdminLogins=new Set(getCaserneAdmins(CURRENT_CASERNE_ID).map(function(admin){return admin.l;}));
   tbody.innerHTML=sorted.map(u=>{
     const isSA=u._isSA===true;
+    const personnelStatus=personnelStatusAt(u);
     // Le superadmin peut modifier sa propre ligne ; les autres ne peuvent pas toucher au SA
     const saEditable=isSA&&isSuperAdmin()&&u.l===CU.l;
     const roLbl=isSA?'<span class="admin-person-badge" style="font-size:10px;background:#FEF2F2;color:#C0392B;padding:2px 7px;border-radius:8px;font-weight:600;">Super Admin</span>':'';
     const rfLbl=u.responsableFormation===true?'<span class="admin-person-badge" style="font-size:9px;background:#F3E8FF;color:#6D28D9;padding:2px 6px;border-radius:8px;font-weight:700;">Responsable formation</span>':'';
-    const badgesHtml=(roLbl||rfLbl)?`<div class="admin-person-badges">${roLbl}${rfLbl}</div>`:'';
+    const statusLbl=PERSONNEL_ONLINE_GATE&&personnelStatus!=='actif'?'<span class="admin-person-badge" style="font-size:9px;background:#FEF3C7;color:#92400E;padding:2px 6px;border-radius:8px;font-weight:700;">'+escHtml(PERSONNEL_STATUS_LABELS[personnelStatus]||personnelStatus)+'</span>':'';
+    const badgesHtml=(roLbl||rfLbl||statusLbl)?`<div class="admin-person-badges">${roLbl}${rfLbl}${statusLbl}</div>`:'';
     const nomCell=(isSA&&!saEditable)?`<td style="font-size:12px;font-weight:500;"><div class="admin-person-name"><span>${u.nom}</span>${badgesHtml}</div></td>`:`<td><div class="admin-person-name"><input type="text" value="${u.nom}" data-login="${u.l}" data-field="nom" onchange="updateUser(this.dataset.login,this.dataset.field,this.value)" style="width:80px;padding:3px 6px;border:1px solid var(--brd);border-radius:5px;font-size:12px;"/>${badgesHtml}</div></td>`;
     const prenomCell=(isSA&&!saEditable)?`<td style="font-size:12px;">${u.prenom}</td>`:`<td><input type="text" value="${u.prenom}" data-login="${u.l}" data-field="prenom" onchange="updateUser(this.dataset.login,this.dataset.field,this.value)" style="width:70px;padding:3px 6px;border:1px solid var(--brd);border-radius:5px;font-size:12px;"/></td>`;
     const gradeCell=(isSA&&!saEditable)?`<td style="font-size:12px;color:var(--t2);">${u.grade||''}</td>`:`<td><div style="display:flex;align-items:center;gap:3px;"><select data-login="${u.l}" onchange="requestPersonnelGradeChange(this)" style="width:110px;padding:3px 5px;border:1px solid var(--brd);border-radius:5px;font-size:11px;">${GRADES.map(g=>`<option${g===u.grade?' selected':''}>${g}</option>`).join('')}</select><button type="button" onclick="showPersonnelGradeHistory('${u.l}')" title="Historique des grades" style="padding:3px 5px;border:1px solid var(--brd);background:#fff;border-radius:5px;cursor:pointer;">📅</button></div></td>`;
@@ -93,7 +96,10 @@ function rAdm(){
         }
         return `<td style="text-align:center;"><input type="checkbox" ${u.rights.includes(r)?'checked':''} onchange="updateRight('${u.l}','${r.replace(/'/g,"\\'")}',this.checked)" ${isSA?'disabled':''}></td>`;
       }).join('');
-    const delCell=(!isSuperAdmin()||isSA)?'<td></td>':`<td><button class="del-btn" onclick="delUser('${u.l}')" ${u.l===CU.l?'disabled':''} title="Retirer une fiche créée par erreur — superadministrateur uniquement">✕</button></td>`;
+    const followButton=PERSONNEL_ONLINE_GATE&&!isSA&&hasRight('Administration')&&u.l!==CU.l
+      ?'<button type="button" class="btn sm" onclick="openPersonnelLifecycle(\''+encodeURIComponent(u.l)+'\')">Suivi</button>':'';
+    const deleteButton=isSuperAdmin()&&!isSA?`<button class="del-btn" onclick="delUser('${u.l}')" ${u.l===CU.l?'disabled':''} title="Retirer une fiche créée par erreur — superadministrateur uniquement">✕</button>`:'';
+    const delCell='<td style="white-space:nowrap;">'+followButton+deleteButton+'</td>';
     const matriculeCell=(isSA&&!saEditable)?`<td style="font-size:11px;color:var(--t2);">${u.matricule||'—'}</td>`:`<td><input type="text" value="${u.matricule||''}" data-login="${u.l}" data-field="matricule" onchange="updateUser(this.dataset.login,this.dataset.field,this.value)" placeholder="Matricule" style="width:70px;padding:3px 6px;border:1px solid var(--brd);border-radius:5px;font-size:12px;"/></td>`;
     // Cellule Fonctions formateur
     const ffList=u.fonctionsFormateur||[];
@@ -132,6 +138,106 @@ function rAdm(){
       tbody.innerHTML=ccRow+tbody.innerHTML;
     }
   }
+  const archiveBox=document.getElementById('admin-personnel-archives');
+  if(archiveBox){
+    const archived=PERSONNEL_ONLINE_GATE?sortByName(USERS.filter(function(user){return user&&!personnelIsOnActiveRoster(user);})):[];
+    archiveBox.style.display=PERSONNEL_ONLINE_GATE?'':'none';
+    archiveBox.innerHTML='<div style="font-size:13px;font-weight:700;margin-bottom:8px;">Historique du personnel sorti ('+archived.length+')</div>'
+      +(archived.length?archived.map(function(user){
+        const status=personnelStatusAt(user),label=PERSONNEL_STATUS_LABELS[status]||status;
+        return '<div style="padding:8px 10px;border:1px solid var(--brd);border-radius:8px;margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;gap:8px;">'
+          +'<span>'+escHtml(fullName(user))+' — '+escHtml(label)+'</span>'
+          +'<button type="button" class="btn sm" onclick="openPersonnelLifecycle(\''+encodeURIComponent(user.l)+'\')">Voir le suivi</button></div>';
+      }).join(''):'<div style="font-size:12px;color:var(--t2);">Aucune sortie enregistrée.</div>');
+  }
+}
+function personnelLifecycleHistoryRows(user){
+  const history=Array.isArray(user&&user._personnelHistory)?user._personnelHistory:[];
+  return history.slice().reverse().map(function(entry){
+    const label=PERSONNEL_STATUS_LABELS[entry.status]||entry.status;
+    return '<tr style="border-bottom:1px solid #E5E7EB;">'
+      +'<td style="padding:6px;">'+escHtml(entry.start||'')+'</td>'
+      +'<td style="padding:6px;">'+escHtml(label)+'</td>'
+      +'<td style="padding:6px;">'+escHtml(entry.end||'—')+'</td>'
+      +'<td style="padding:6px;">'+escHtml(entry.actor||'—')+'</td></tr>';
+  }).join('')||'<tr><td colspan="4" style="padding:8px;color:var(--t2);">Aucun changement de statut enregistré.</td></tr>';
+}
+function personnelLifecycleSyncFields(){
+  const status=document.getElementById('personnel-lifecycle-status')?.value||'';
+  const end=document.getElementById('personnel-lifecycle-end');
+  if(end){
+    end.disabled=!['arret','disponibilite'].includes(status);
+    if(end.disabled)end.value='';
+  }
+  const hint=document.getElementById('personnel-lifecycle-hint');
+  if(hint)hint.textContent=status==='arret'?'Fin facultative si elle n’est pas encore connue. Aucun motif médical n’est enregistré.'
+    :status==='disponibilite'?'Une date de fin est obligatoire ; l’accès reprend automatiquement le lendemain.'
+    :status==='actif'?'Réactivation immédiate uniquement. L’historique passé reste conservé.'
+    :'Le dossier reste dans l’historique, mais quitte la liste active et perd son accès.';
+}
+function openPersonnelLifecycle(encodedLogin){
+  if(!PERSONNEL_ONLINE_GATE||!CU||!hasRight('Administration'))return;
+  const login=decodeURIComponent(encodedLogin||'');
+  const user=USERS.find(function(item){return item&&item.l===login;});
+  if(!user||user._isSA)return;
+  const current=personnelStatusAt(user),isTransfer=current==='mutation';
+  const permanent=['demission','licenciement','retraite'].includes(current);
+  const editable=!isTransfer&&(!permanent||isSuperAdmin())&&user.l!==CU.l;
+  const today=personnelLocalDate();
+  document.getElementById('mt').textContent='Suivi du personnel — '+fullName(user);
+  document.getElementById('mi').textContent='Statut actuel : '+(PERSONNEL_STATUS_LABELS[current]||current);
+  const options=['actif','arret','disponibilite','demission','licenciement','retraite'];
+  document.getElementById('mb').innerHTML=(editable
+    ?'<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Choisissez un statut et sa date d’effet. Les interventions et les autres activités passées restent dans l’historique.</div>'
+      +'<label class="fg"><span class="fgl">Situation</span><select class="fi" id="personnel-lifecycle-status" onchange="personnelLifecycleSyncFields()">'
+      +options.map(function(status){return '<option value="'+status+'"'+(status===current?' selected':'')+'>'+escHtml(PERSONNEL_STATUS_LABELS[status])+'</option>';}).join('')+'</select></label>'
+      +'<label class="fg"><span class="fgl">Date d’effet</span><input class="fi" id="personnel-lifecycle-start" type="date" value="'+today+'"></label>'
+      +'<label class="fg"><span class="fgl">Date de fin</span><input class="fi" id="personnel-lifecycle-end" type="date"></label>'
+      +'<div id="personnel-lifecycle-hint" style="font-size:11px;color:var(--t2);margin-bottom:10px;"></div>'
+      +'<div class="brow"><button type="button" class="btn pr sm" onclick="savePersonnelLifecycle(\''+encodeURIComponent(login)+'\')">Enregistrer le statut</button><button type="button" class="btn sm" onclick="cM()">Annuler</button></div>'
+    :'<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">'+(isTransfer?'Une mutation exige la validation du superadministrateur.':'La réactivation de ce dossier est réservée au superadministrateur.')+'</div>')
+    +'<div style="font-size:12px;font-weight:700;margin:15px 0 5px;">Historique des décisions</div>'
+    +'<div style="max-height:220px;overflow:auto;"><table style="width:100%;font-size:11px;border-collapse:collapse;"><thead><tr><th>Date d’effet</th><th>Situation</th><th>Fin</th><th>Enregistré par</th></tr></thead><tbody>'
+    +personnelLifecycleHistoryRows(user)+'</tbody></table></div>';
+  document.getElementById('mo').style.display='flex';
+  if(editable)personnelLifecycleSyncFields();
+}
+function savePersonnelLifecycle(encodedLogin){
+  if(!PERSONNEL_ONLINE_GATE||!CU||!hasRight('Administration'))return;
+  const login=decodeURIComponent(encodedLogin||'');
+  const user=USERS.find(function(item){return item&&item.l===login;});
+  if(!user||user._isSA||user.l===CU.l)return;
+  if(['demission','licenciement','retraite','mutation'].includes(personnelStatusAt(user))&&!isSuperAdmin())return;
+  const status=document.getElementById('personnel-lifecycle-status')?.value||'';
+  const start=personnelIsoDate(document.getElementById('personnel-lifecycle-start')?.value);
+  const endValue=document.getElementById('personnel-lifecycle-end')?.value||'';
+  const end=endValue?personnelIsoDate(endValue):'';
+  const today=personnelLocalDate();
+  if(!start||!['actif','arret','disponibilite','demission','licenciement','retraite'].includes(status)
+    ||(endValue&&!end)||(end&&end<start)||(status==='disponibilite'&&!end)
+    ||(['demission','licenciement','retraite'].includes(status)&&end)){
+    showToast('Dates ou situation invalides.','warn');return;
+  }
+  if(status==='actif'&&start!==today){showToast('La réactivation doit prendre effet aujourd’hui.','warn');return;}
+  if(start>today&&personnelStatusAt(user,today)!=='actif'){
+    showToast('Terminez d’abord la situation en cours avant d’en programmer une autre.','warn');return;
+  }
+  const futureDecision=[...(Array.isArray(user._personnelPeriods)?user._personnelPeriods:[]),
+    ...(Array.isArray(user._personnelExits)?user._personnelExits:[])].some(function(record){
+      return record&&personnelIsoDate(record.start)>today&&!record.cancelledFrom;
+    });
+  if(start>today&&futureDecision){showToast('Une situation est déjà programmée ; corrigez-la avant d’en ajouter une autre.','warn');return;}
+  const label=PERSONNEL_STATUS_LABELS[status]||status;
+  confirmModal('Confirmer « '+escHtml(label)+' » pour '+escHtml(fullName(user))+' à partir du '+escHtml(start)+' ?',async function(){
+    const result=await _agaiSetPersonnelStatusServer(login,status,start,end);
+    if(!result){showToast('Statut non modifié : vérification serveur indisponible ou refusée.','error');return;}
+    if(!personnelApplyDecision(user,status,start,end,CU.l,new Date().toISOString())){
+      showToast('Le serveur a accepté le statut ; actualisez le dossier avant toute autre action.','warn');return;
+    }
+    user._personnelServerRevision=result.revision;
+    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+    saveData(true);rAdm();showToast('Statut enregistré ; synchronisation du dossier en cours.','success');
+  });
 }
 function genLogin(nom,prenom){
   // Génère un login unique : nom.prenom, puis nom.prenom2, nom.prenom3…
@@ -367,5 +473,3 @@ function _updateUserRefresh(login,field){
     if(profPanel&&profPanel.style.display!=='none')rProfil();
   }
 }
-
-

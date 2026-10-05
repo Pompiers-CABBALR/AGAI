@@ -1299,12 +1299,17 @@ function _loadClear(){
   }
 }
 
+let _agaiSessionRestorePromise=null;
 function _postLoadInit(){
   if(CASERNE_DATA._global&&CASERNE_DATA._global.logoB64){
     window._LOGO_OVERRIDE='data:'+(CASERNE_DATA._global.logoMime||'image/jpeg')+';base64,'+CASERNE_DATA._global.logoB64;
   }
   try{agaiMigrateOperationalStatusMetadata();}catch(error){console.warn('[AGAI] Mise à niveau des statuts historiques impossible:',error);}
-  if(!CU)try{_restoreSessionAfterLoad();}catch(e){console.warn('[AGAI] Restauration de session impossible:',e);}
+  if(!CU&&!_agaiSessionRestorePromise){
+    _agaiSessionRestorePromise=Promise.resolve(_restoreSessionAfterLoad())
+      .catch(function(error){console.warn('[AGAI] Restauration de session impossible:',error);})
+      .finally(function(){_agaiSessionRestorePromise=null;});
+  }
 }
 
 function jbSyncNow(){
@@ -1459,12 +1464,14 @@ let _sbSaveTimer = null;
 let _sbRealtime  = null;
 let _sbPollTimer = null;
 
+function _agaiDataAccessToken(){
+  return PERSONNEL_ONLINE_GATE?_agaiAuthAccessToken():SB_KEY;
+}
 const _sbHeaders = {
   'apikey': SB_KEY,
-  // Phase v239 : la session liée sert uniquement aux opérations de compte.
-  // Les données restent volontairement sur l'accès historique jusqu'à la v240,
-  // sinon les politiques RLS intermédiaires peuvent bloquer toute la file.
-  'Authorization': 'Bearer ' + SB_KEY,
+  // La bascule reste inactive tant que PERSONNEL_ONLINE_GATE est désactivé.
+  // Ensuite chaque requête de données doit porter le jeton Auth du titulaire.
+  get Authorization(){return 'Bearer '+(_agaiDataAccessToken()||'session-indisponible');},
   'Content-Type': 'application/json'
 };
 
@@ -1637,6 +1644,8 @@ async function _sbPull(silent){
 function _sbStartRealtime(){
   try {
     if (_sbRealtime) { try{ _sbRealtime.close(); }catch(e){} _sbRealtime = null; }
+    const dataToken=_agaiDataAccessToken();
+    if(PERSONNEL_ONLINE_GATE&&!dataToken)return;
     const wsUrl = SB_URL.replace('https://', 'wss://') + '/realtime/v1/websocket?apikey=' + SB_KEY + '&vsn=1.0.0';
     const ws = new WebSocket(wsUrl);
     _sbRealtime = ws;
@@ -1645,7 +1654,7 @@ function _sbStartRealtime(){
       ws.send(JSON.stringify({
         topic: 'realtime:public:caserne_data',
         event: 'phx_join',
-        payload: { config: { postgres_changes: [{ event: '*', schema: 'public', table: 'caserne_data' }] } },
+        payload: { config: { postgres_changes: [{ event: '*', schema: 'public', table: 'caserne_data' }] }, access_token:dataToken },
         ref: '1'
       }));
       // Heartbeat toutes les 25s pour garder la connexion vivante
@@ -3434,6 +3443,8 @@ function _rcRefreshRealtimeScope(){
 }
 function _rcStartRealtime(){
   if(!USE_RECORDS||!CU)return;
+  const dataToken=_agaiDataAccessToken();
+  if(PERSONNEL_ONLINE_GATE&&!dataToken)return;
   try {
     if(_rcRealtimeReconnectTimer){clearTimeout(_rcRealtimeReconnectTimer);_rcRealtimeReconnectTimer=null;}
     if(_rcRealtime){
@@ -3453,7 +3464,7 @@ function _rcStartRealtime(){
       const joinRef=String(++_rcRealtimeJoinSequence);
       ws._agaiJoinRef=joinRef;
       ws.send(JSON.stringify({ topic:'realtime:public:records', event:'phx_join',
-        payload:{ config:{ postgres_changes:[subscription] }, access_token:SB_KEY },
+        payload:{ config:{ postgres_changes:[subscription] }, access_token:dataToken },
         ref:joinRef, join_ref:joinRef }));
       ws._agaiJoinTimer=window.setTimeout(function(){
         if(!_rcRealtimeReady&&ws.readyState===WebSocket.OPEN)try{ws.close();}catch(e){}
@@ -3562,4 +3573,3 @@ async function _rcMigrate(){
 
 function saveAndRefresh(){saveData();}
 function _odSyncAfterSave(){if(typeof odScheduleSync==='function')odScheduleSync();}
-

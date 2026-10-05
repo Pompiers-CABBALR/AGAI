@@ -55,6 +55,12 @@ async function doLogin(){
     }
     if(gaFound){
       const ga=gaFound;
+      const onlineSession=PERSONNEL_ONLINE_GATE?await _agaiOnlineSignIn(ga,p):null;
+      if(PERSONNEL_ONLINE_GATE&&!onlineSession){
+        lerr.style.display='block';
+        lerr.textContent='Connexion impossible : la vérification Internet des droits est obligatoire. Réessayez lorsque le service est disponible.';
+        return;
+      }
       GLOBAL_ROLE=ga.role;
       _loginAttempts=0;_loginLocked=false;
       if(_loginLockTimer){clearTimeout(_loginLockTimer);_loginLockTimer=null;}
@@ -78,9 +84,11 @@ async function doLogin(){
       document.getElementById('t2u').textContent=CU.l+(cas?' — '+cas.nom:'');
       document.getElementById('t2r').textContent=CU.rl;
       GRADES.forEach(g=>{['prof-grade-sel','nu-grade'].forEach(id=>{const el=document.getElementById(id);if(el&&!el.querySelector(`option[value="${g}"]`)&&![...el.options].find(o=>o.textContent===g)){const o=document.createElement('option');o.textContent=g;el.appendChild(o);}});});
+      if(onlineSession)_agaiStoreAuthSession(onlineSession);
       _createSession(); // P2
+      _agaiOnlineArmChecks();
       // La liaison technique n'attend jamais avant de rendre l'application utilisable.
-      if(AUTH_LINK_MODE==='on')_agaiLinkSupabaseAccount(ga,p,SESSION_TOKEN);
+      if(AUTH_LINK_MODE==='on'&&!PERSONNEL_ONLINE_GATE)_agaiLinkSupabaseAccount(ga,p,SESSION_TOKEN);
       if(ga.role==='chef_corps'){showGlobalView('chef_corps');return;}
       const hopEl=document.getElementById('hop');if(hopEl)hopEl.textContent='Opérateur : '+CU.l;
       doLoginSuccess();
@@ -93,6 +101,7 @@ async function doLogin(){
       initCaserneData(c.id);
       const users=CASERNE_DATA[c.id].users||[];
       for(const u of users){
+        if(u._personnelTransferredOut&&personnelStatusAt(u)==='mutation')continue;
         if(u.l===l&&await verifyPassword(p,u.p)){foundUser=u;foundCasId=c.id;break;}
       }
       if(foundUser)break;
@@ -118,6 +127,20 @@ async function doLogin(){
       return;
     }
 
+    if(!personnelCanLogin(foundUser)){
+      lerr.style.display='block';
+      lerr.textContent=personnelStatusAt(foundUser)==='disponibilite'
+        ?'Accès suspendu pendant la mise en disponibilité.'
+        :'Ce compte n’a plus accès à l’application. Contactez un administrateur.';
+      return;
+    }
+    const onlineSession=PERSONNEL_ONLINE_GATE?await _agaiOnlineSignIn(foundUser,p):null;
+    if(PERSONNEL_ONLINE_GATE&&!onlineSession){
+      lerr.style.display='block';
+      lerr.textContent='Connexion impossible : la vérification Internet des droits est obligatoire. Réessayez lorsque le service est disponible.';
+      return;
+    }
+
     // ── Connexion réussie ──
     _loginAttempts=0;_loginLocked=false;
     if(_loginLockTimer){clearTimeout(_loginLockTimer);_loginLockTimer=null;}
@@ -134,8 +157,10 @@ async function doLogin(){
     document.getElementById('t2r').textContent=CU.rl||'';
     const hopEl2=document.getElementById('hop');if(hopEl2)hopEl2.textContent='Opérateur : '+CU.l;
     GRADES.forEach(g=>{['prof-grade-sel','nu-grade'].forEach(id=>{const el=document.getElementById(id);if(el&&![...el.options].find(o=>o.textContent===g)){const o=document.createElement('option');o.textContent=g;el.appendChild(o);}});});
+    if(onlineSession)_agaiStoreAuthSession(onlineSession);
     _createSession(); // P2
-    if(AUTH_LINK_MODE==='on')_agaiLinkSupabaseAccount(foundUser,p,SESSION_TOKEN);
+    _agaiOnlineArmChecks();
+    if(AUTH_LINK_MODE==='on'&&!PERSONNEL_ONLINE_GATE)_agaiLinkSupabaseAccount(foundUser,p,SESSION_TOKEN);
     doLoginSuccess();
 
   } finally {

@@ -190,9 +190,20 @@ function interventionCrewSignature(iv,equipage1,equipage2){
   return [...new Set(members)].sort().join('|');
 }
 
+function interventionIsClosureTimelineEntry(entry){
+  // Les rappels enregistrés par les anciennes versions portaient à tort
+  // s='terminee' dans la chronologie, sans nouvelle clôture effective.
+  return !!entry&&entry.s==='terminee'&&!/^Rappel du requérant\b/i.test(String(entry.note||'').trim());
+}
+function interventionWasClosedOnDay(iv,day){
+  return !!(iv&&iv.s==='terminee'&&Array.isArray(iv.tl)&&iv.tl.some(function(entry){
+    return interventionIsClosureTimelineEntry(entry)&&String(entry.h||'').startsWith(day);
+  }));
+}
 function interventionTimelineStamp(iv,status,latest){
   const entries=(Array.isArray(iv&&iv.tl)?iv.tl:[]).filter(function(entry){
-    return entry&&entry.s===status&&/^\d{8}/.test(String(entry.h||''));
+    return entry&&entry.s===status&&(status!=='terminee'||interventionIsClosureTimelineEntry(entry))
+      &&/^\d{8}/.test(String(entry.h||''));
   });
   if(!entries.length)return '';
   return String(entries[latest?entries.length-1:0].h||'');
@@ -1049,7 +1060,7 @@ function renderInterventionRow(iv, ag, tireur) {
 // Tri : en-attente par date asc, autres par dernière action desc
 function interventionTerminationSortKey(iv){
   if(!iv)return '';
-  const terminaisons=(iv.tl||[]).filter(function(entry){return entry&&entry.s==='terminee'&&entry.h;});
+  const terminaisons=(iv.tl||[]).filter(function(entry){return interventionIsClosureTimelineEntry(entry)&&entry.h;});
   if(terminaisons.length)return terminaisons.map(function(entry){return entry.h;}).sort()[0];
   const day=String(iv.h||'').slice(0,8);
   const end=String(iv._hFin||'').replace(':','');
@@ -1174,7 +1185,7 @@ function rI(){
   document.getElementById('nb2s').textContent=ti.filter(iv=>iv.s==='selectionne').length;
   document.getElementById('nb2').textContent=IVS.filter(iv=>iv._avisEnAttente&&!iv._isPilip&&!iv._lienPilpSourceId&&iv.s!=='annulee').length;
   document.getElementById('nb3').textContent=ti.filter(iv=>iv.s==='en-cours').length;
-  const isTermAuj=iv=>iv.s==='terminee'&&iv.tl&&iv.tl.some(t=>t.s==='terminee'&&(t.h||'').startsWith(TDP));
+  const isTermAuj=iv=>interventionWasClosedOnDay(iv,TDP);
   document.getElementById('nb4').textContent=IVS.filter(iv=>!iv._isPilip&&(isTdy(iv)?iv.s==='terminee':isTermAuj(iv))).length;
 
   // Avis de passage EN ATTENTE DE RAPPEL — interventions terminées où l'équipe a
@@ -1231,7 +1242,7 @@ function rI(){
   // Liste
   const tireur=isTireurPILP();
   // Une intervention est visible si : créée aujourd'hui OU statut actif (quelle que soit la date) OU clôturée aujourd'hui
-  const isTermineeAujourdhui=iv=>iv.s==='terminee'&&iv.tl&&iv.tl.some(t=>t.s==='terminee'&&(t.h||'').startsWith(TDP));
+  const isTermineeAujourdhui=iv=>interventionWasClosedOnDay(iv,TDP);
   let list=IVS.filter(iv=>(isTdy(iv)||['en-attente','selectionne','en-cours'].includes(iv.s)||isTermineeAujourdhui(iv))&&iv.s!=='avis-passage'&&!iv._isPilip&&iv.s!=='annulee');
   // Si tireur PILP et filtre sélect. ou mes-sel : ajouter aussi les PILP sélectionnées
   let listPilpSel=tireur?PILP_IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l):[];
@@ -1449,9 +1460,9 @@ function oM(id){
     ?' · numéro définitif non confirmé'
     :iv._numCaserne?' · UT '+interventionDisplayUTNumber(iv)+(iv._numberingScheme==='dual-v1'&&iv.s==='en-cours'?' (provisoire)':''):'';
   document.getElementById('mi').textContent=dispApl+dispUt+dispTransfert;
-   const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis de passage'],'avis-classe':['bp','Avis classé'],'avis-restaure':['binfo','Avis remis en attente'],'modif':['bgr','Modification'],'modif-adresse':['bgr','Adresse corrigée'],'modif-heure':['binfo','Horaire corrigé'],'modif-equipier':['binfo','Équipage corrigé'],'modif-engin':['binfo','Véhicule corrigé'],'reclasse':['bgr','Reclasé'],'releve':['binfo','Relève'],'info-compl':['binfo','ℹ️ Complément d\u2019info']};
+   const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis de passage'],'avis-rappel':['bp','Rappel de l’avis'],'avis-classe':['bp','Avis classé'],'avis-restaure':['binfo','Avis remis en attente'],'modif':['bgr','Modification'],'modif-adresse':['bgr','Adresse corrigée'],'modif-heure':['binfo','Horaire corrigé'],'modif-equipier':['binfo','Équipage corrigé'],'modif-engin':['binfo','Véhicule corrigé'],'reclasse':['bgr','Reclasé'],'releve':['binfo','Relève'],'info-compl':['binfo','ℹ️ Complément d\u2019info']};
   const[bc,bt]=bm[iv.s]||['bgr','—'];
-  const sdots={'en-attente':'#E24B4A','selectionne':'var(--sel)','en-cours':'var(--amb)','terminee':'var(--grn)','avis-passage':'var(--pur)','avis-classe':'#6B21A8','avis-restaure':'#2563EB','modif':'#888','modif-adresse':'#888','modif-heure':'#C2410C','modif-equipier':'#2563EB','modif-engin':'#0F766E','reclasse':'#888','releve':'#0369A1','info-compl':'#0369A1'};
+  const sdots={'en-attente':'#E24B4A','selectionne':'var(--sel)','en-cours':'var(--amb)','terminee':'var(--grn)','avis-passage':'var(--pur)','avis-rappel':'var(--pur)','avis-classe':'#6B21A8','avis-restaure':'#2563EB','modif':'#888','modif-adresse':'#888','modif-heure':'#C2410C','modif-equipier':'#2563EB','modif-engin':'#0F766E','reclasse':'#888','releve':'#0369A1','info-compl':'#0369A1'};
   const tlHtml=hasAdministrativeAccount()?(iv.tl||[]).map(t=>`<div class="tl-item"><div class="tl-dot" style="background:${sdots[t.s]||'#aaa'};"></div><div class="tl-info"><span class="tl-status">${bm[t.s]?bm[t.s][1]:t.s}${t.note?` — ${t.note}`:''}</span> <span class="tl-horo">&#x1F4C5; ${t.h}</span><div class="tl-who">${t.who}</div></div></div>`).join(''):'';
   const appelDetailEntries=iv._appelDetails&&typeof iv._appelDetails==='object'
     ?Object.entries(iv._appelDetails).filter(([key])=>(key!=='Nids à traiter'||!Array.isArray(iv._nidsAppel)||iv._nidsAppel.length!==1)&&key!=='Disponibilité du requérant')

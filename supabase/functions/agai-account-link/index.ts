@@ -53,12 +53,16 @@ function technicalEmail(login: string, caserneId: string) {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-  if (req.method === 'GET') return json({ status: 'ready', version: 'v239.5', pilotCreateOnlyLogins: [...pilotCreateOnlyLogins] })
+  if (req.method === 'GET') return json({ status: 'ready', version: 'v239.5', pilotCreateOnlyLogins: [...pilotCreateOnlyLogins],
+    personnelEnforcementEnabled: Deno.env.get('AGAI_PERSONNEL_ENFORCEMENT') === 'true' })
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405)
 
   const url = Deno.env.get('SUPABASE_URL') ?? ''
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+  // Désactivé tant que la migration des accès et les politiques RLS ne sont
+  // pas validées. Le pilote v239 continue de fonctionner à l'identique.
+  const personnelEnforcement = Deno.env.get('AGAI_PERSONNEL_ENFORCEMENT') === 'true'
   if (!url || !serviceKey || !anonKey) return json({ error: 'server_configuration' }, 503)
   const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } })
 
@@ -82,6 +86,11 @@ Deno.serve(async (req) => {
       const delay = failed >= 8 ? 15 * 60 : failed >= 5 ? 2 * 60 : 0
       await admin.from('agai_auth_attempts').upsert({ login, failed_count: failed, locked_until: delay ? new Date(Date.now() + delay * 1000).toISOString() : null, last_attempt_at: new Date().toISOString() })
       return json({ error: 'invalid_credentials' }, 401)
+    }
+    if (personnelEnforcement) {
+      const access = await admin.rpc('agai_personnel_can_login', { p_login: login })
+      if (access.error) return json({ error: 'personnel_access_unavailable' }, 503)
+      if (access.data !== true) return json({ error: 'account_unavailable' }, 403)
     }
     await admin.from('agai_auth_attempts').upsert({ login, failed_count: 0, locked_until: null, last_attempt_at: new Date().toISOString() })
 
@@ -124,7 +133,8 @@ Deno.serve(async (req) => {
     const signed = await publicClient.auth.signInWithPassword({ email, password })
     if (signed.error || !signed.data.session) return json({ error: 'session_creation_failed' }, 503)
     await admin.from('agai_auth_links').update({ last_login_at: new Date().toISOString(), last_device_id: String(req.headers.get('x-device-id') ?? '').slice(0, 120), caserne_id: credential.caserne_id, app_role: credential.app_role }).eq('login', login)
-    return json({ status: 'linked', version: 'v239', login, caserneId: credential.caserne_id, appRole: credential.app_role, authUserId, session: signed.data.session })
+    return json({ status: 'linked', version: 'v239', login, caserneId: credential.caserne_id, appRole: credential.app_role,
+      personnelEnforcementEnabled: personnelEnforcement, authUserId, session: signed.data.session })
   }
 
   const authorization = req.headers.get('Authorization') ?? ''
@@ -132,8 +142,59 @@ Deno.serve(async (req) => {
   if (!accessToken) return json({ error: 'authentication_required' }, 401)
   const caller = await admin.auth.getUser(accessToken)
   if (caller.error || !caller.data.user) return json({ error: 'authentication_required' }, 401)
-  const callerRole = String(caller.data.user.app_metadata?.app_role ?? '')
   const callerLogin = normalizeLogin(caller.data.user.app_metadata?.agai_login)
+  const { data: callerCredential } = await admin.from('agai_identity_credentials')
+    .select('active,app_role,caserne_id').eq('login', callerLogin).maybeSingle()
+  if (!callerCredential?.active) return json({ error: 'account_unavailable' }, 403)
+  const callerRole = String(callerCredential.app_role ?? '')
+  const callerStation = String(callerCredential.caserne_id ?? '')
+
+  if (mode === 'account_status') {
+    if (!personnelEnforcement) return json({ error: 'personnel_enforcement_disabled' }, 503)
+    if (!callerLogin) return json({ error: 'identity_unavailable' }, 403)
+    const loginAllowed = await admin.rpc('agai_personnel_can_login', { p_login: callerLogin })
+    const operationAllowed = await admin.rpc('agai_personnel_can_operate', { p_login: callerLogin })
+    if (loginAllowed.error || operationAllowed.error) return json({ error: 'personnel_access_unavailable' }, 503)
+    const { data: access } = await admin.from('agai_personnel_access').select('status,starts_on,ends_on,revision').eq('login', callerLogin).maybeSingle()
+    return json({ login: callerLogin, caserneId: callerStation, status: access?.status ?? 'actif', startsOn: access?.starts_on ?? null,
+      endsOn: access?.ends_on ?? null, revision: access?.revision ?? 0,
+      personnelEnforcementEnabled: true,
+      canLogin: loginAllowed.data === true, canOperate: operationAllowed.data === true })
+  }
+
+  if (personnelEnforcement) {
+    const callerAllowed = await admin.rpc('agai_personnel_can_login', { p_login: callerLogin })
+    if (callerAllowed.error) return json({ error: 'personnel_access_unavailable' }, 503)
+    if (callerAllowed.data !== true) return json({ error: 'account_unavailable' }, 403)
+  }
+
+  if (mode === 'admin_personnel_status') {
+    if (!personnelEnforcement) return json({ error: 'personnel_enforcement_disabled' }, 503)
+    if (!['superadmin', 'administrateur_caserne'].includes(callerRole)) return json({ error: 'forbidden' }, 403)
+    const targetLogin = normalizeLogin(payload.login)
+    const targetStatus = String(payload.status ?? '')
+    const start = payload.startsOn == null || payload.startsOn === '' ? null : String(payload.startsOn)
+    const end = payload.endsOn == null || payload.endsOn === '' ? null : String(payload.endsOn)
+    if (!targetLogin || targetLogin === callerLogin) return json({ error: 'invalid_target' }, 400)
+    const { data: target, error: targetError } = await admin.from('agai_identity_credentials')
+      .select('login,caserne_id,app_role').eq('login', targetLogin).maybeSingle()
+    if (targetError || !target) return json({ error: 'unknown_account' }, 404)
+    if (callerRole !== 'superadmin' &&
+      (target.caserne_id !== callerStation ||
+       ['superadmin','chef_corps','administrateur_caserne'].includes(target.app_role)))
+      return json({ error: 'forbidden' }, 403)
+    const { data: currentStatus, error: currentStatusError } = await admin.from('agai_personnel_access')
+      .select('status').eq('login', targetLogin).maybeSingle()
+    if (currentStatusError) return json({ error: 'personnel_access_unavailable' }, 503)
+    if (callerRole !== 'superadmin' &&
+      ['demission','licenciement','retraite'].includes(currentStatus?.status ?? ''))
+      return json({ error: 'superadmin_approval_required' }, 403)
+    const changed = await admin.rpc('agai_set_personnel_access', {
+      p_login: targetLogin, p_status: targetStatus, p_start: start, p_end: end, p_actor: callerLogin,
+    })
+    if (changed.error) return json({ error: 'personnel_status_rejected' }, 409)
+    return json({ status: 'updated', login: targetLogin, revision: changed.data })
+  }
 
   if (mode === 'admin_provision') {
     if (!['superadmin', 'administrateur_caserne'].includes(callerRole)) return json({ error: 'forbidden' }, 403)
@@ -142,7 +203,7 @@ Deno.serve(async (req) => {
     const targetRole = String(payload.appRole ?? 'agent')
     const newPassword = String(payload.newPassword ?? '')
     if (!targetLogin || !targetStation || newPassword.length < 12) return json({ error: 'invalid_account' }, 400)
-    if (callerRole !== 'superadmin' && (targetStation !== caller.data.user.app_metadata?.caserne_id || ['superadmin', 'chef_corps'].includes(targetRole))) return json({ error: 'forbidden' }, 403)
+    if (callerRole !== 'superadmin' && (targetStation !== callerStation || ['superadmin', 'chef_corps'].includes(targetRole))) return json({ error: 'forbidden' }, 403)
     const hash = await hashLegacyPassword(newPassword)
     const provisioned = await admin.from('agai_identity_credentials').upsert({
       login: targetLogin,
@@ -164,7 +225,7 @@ Deno.serve(async (req) => {
     const targetStation = String(payload.caserneId ?? '').trim()
     const targetRole = String(payload.appRole ?? 'agent')
     if (!targetLogin || !targetStation) return json({ error: 'invalid_account' }, 400)
-    if (callerRole !== 'superadmin' && (targetStation !== caller.data.user.app_metadata?.caserne_id || ['superadmin', 'chef_corps', 'administrateur_caserne'].includes(targetRole))) return json({ error: 'forbidden' }, 403)
+    if (callerRole !== 'superadmin' && (targetStation !== callerStation || ['superadmin', 'chef_corps', 'administrateur_caserne'].includes(targetRole))) return json({ error: 'forbidden' }, 403)
     const updatedCredential = await admin.from('agai_identity_credentials').update({
       caserne_id: targetStation,
       app_role: targetRole,
@@ -187,7 +248,7 @@ Deno.serve(async (req) => {
     if (!['superadmin', 'administrateur_caserne'].includes(callerRole)) return json({ error: 'forbidden' }, 403)
     const targetLogin = normalizeLogin(payload.login)
     const { data: target } = await admin.from('agai_identity_credentials').select('*').eq('login', targetLogin).maybeSingle()
-    if (!target || (callerRole !== 'superadmin' && target.caserne_id !== caller.data.user.app_metadata?.caserne_id)) return json({ error: 'forbidden' }, 403)
+    if (!target || (callerRole !== 'superadmin' && target.caserne_id !== callerStation)) return json({ error: 'forbidden' }, 403)
     await admin.from('agai_identity_credentials').update({ active: false, source_updated_at: new Date().toISOString() }).eq('login', targetLogin)
     const { data: targetLink } = await admin.from('agai_auth_links').select('*').eq('login', targetLogin).maybeSingle()
     if (targetLink?.auth_user_id) await admin.auth.admin.updateUserById(targetLink.auth_user_id, { ban_duration: '876000h' })
@@ -210,7 +271,7 @@ Deno.serve(async (req) => {
     const targetLogin = normalizeLogin(payload.login)
     const newPassword = String(payload.newPassword ?? '')
     const { data: target } = await admin.from('agai_identity_credentials').select('*').eq('login', targetLogin).maybeSingle()
-    if (!target || (callerRole !== 'superadmin' && target.caserne_id !== caller.data.user.app_metadata?.caserne_id)) return json({ error: 'forbidden' }, 403)
+    if (!target || (callerRole !== 'superadmin' && target.caserne_id !== callerStation)) return json({ error: 'forbidden' }, 403)
     if (newPassword.length < 12) return json({ error: 'password_policy' }, 400)
     const hash = await hashLegacyPassword(newPassword)
     await admin.from('agai_identity_credentials').update({ password_hash: hash, source_updated_at: new Date().toISOString() }).eq('login', targetLogin)

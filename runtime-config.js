@@ -8,6 +8,7 @@ window.AGAI_CONFIG = Object.freeze({
   // Aucun appel Auth à la connexion AGAI, aucune incidence sur la synchronisation.
   // Remettre 'off' ici suffit à interrompre le pilote sans toucher aux données.
   accountLinkMode: 'canary',
+  personnelOnlineGateEnabled: false,
   accountLinkCanaryLogins: ['dacheville.thibaut', 'lericque.brian', 'accoley.leo', 'degryse.herve', 'douvrin.pascal', 'dumoulin.sebastien', 'francois.laurent', 'maerten.mathis', 'marien.matthis', 'smagliante.enzo', 'millecamps.alicia', 'canneson.eric', 'leriche.valery'],
   accountLinkNewCanaryLogins: ['millecamps.alicia', 'canneson.eric', 'leriche.valery'],
   accountLinkEndpoint: '',

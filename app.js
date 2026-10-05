@@ -160,6 +160,145 @@ function dst(a,b){const x=a[0]-b[0],y=a[1]-b[1];return Math.sqrt(x*x+y*y);}
 // Aucun compte privilégié ne doit être livré dans le code source.
 // Les comptes existants sont chargés depuis le stockage configuré.
 const GLOBAL_ACCOUNTS=[];
+// Suivi daté du personnel. Les décisions d'accès sont également vérifiées
+// côté serveur avant activation du dispositif ; ces fonctions évitent que
+// l'interface propose une personne indisponible.
+function personnelLocalDate(date){
+  const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(date||new Date());
+  const value=function(type){return (parts.find(function(part){return part.type===type;})||{}).value||'';};
+  return value('year')+'-'+value('month')+'-'+value('day');
+}
+function personnelIsoDate(value){
+  const text=String(value||'').trim();
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(text))return'';
+  const parsed=new Date(text+'T00:00:00Z');
+  return Number.isFinite(parsed.getTime())&&parsed.toISOString().slice(0,10)===text?text:'';
+}
+function personnelStatusAt(user,date){
+  if(!user)return'actif';
+  const day=personnelIsoDate(date)||personnelLocalDate();
+  const exits=(Array.isArray(user._personnelExits)?user._personnelExits:[]).concat(user._personnelExit?[user._personnelExit]:[]);
+  const activeExit=exits.filter(function(exit){
+    const start=personnelIsoDate(exit&&exit.start),cancelled=personnelIsoDate(exit&&exit.cancelledFrom);
+    return !!start&&start<=day&&(!cancelled||day<cancelled)&&['demission','licenciement','retraite'].includes(exit.kind);
+  }).sort(function(a,b){return b.start.localeCompare(a.start);})[0];
+  if(activeExit)return activeExit.kind;
+  const transfer=user._personnelTransferredOut;
+  if(transfer&&personnelIsoDate(transfer.start)&&personnelIsoDate(transfer.start)<=day)return'mutation';
+  const periods=Array.isArray(user._personnelPeriods)?user._personnelPeriods:[];
+  const active=periods.filter(function(period){
+    if(!period||period.cancelledAt||!['arret','disponibilite'].includes(period.kind))return false;
+    const start=personnelIsoDate(period.start),end=personnelIsoDate(period.end),cancelled=personnelIsoDate(period.cancelledFrom);
+    return !!start&&start<=day&&(!end||day<=end)&&(!cancelled||day<cancelled);
+  });
+  if(active.some(function(period){return period.kind==='disponibilite';}))return'disponibilite';
+  if(active.length)return'arret';
+  return'actif';
+}
+function personnelCanLogin(user,date){
+  const status=personnelStatusAt(user,date);
+  return status==='actif'||status==='arret';
+}
+function personnelCanOperate(user,date){return personnelStatusAt(user,date)==='actif';}
+function personnelCanOperateForPeriod(user,startDate,endDate){
+  const start=personnelIsoDate(startDate),end=personnelIsoDate(endDate||startDate);
+  if(!start||!end||end<start)return false;
+  if(!user)return false;
+  const blockedFrom=function(record){
+    const date=personnelIsoDate(record&&record.start),cancelled=personnelIsoDate(record&&record.cancelledFrom);
+    return !!date&&date<=end&&(!cancelled||cancelled>start);
+  };
+  if((Array.isArray(user._personnelExits)?user._personnelExits:[]).some(blockedFrom)
+    ||blockedFrom(user._personnelExit)||blockedFrom(user._personnelTransferredOut))return false;
+  return !(Array.isArray(user._personnelPeriods)?user._personnelPeriods:[]).some(function(period){
+    if(!period||period.cancelledAt||!['arret','disponibilite'].includes(period.kind))return false;
+    const from=personnelIsoDate(period.start),through=personnelIsoDate(period.end),cancelled=personnelIsoDate(period.cancelledFrom);
+    return !!from&&from<=end&&(!through||through>=start)&&(!cancelled||cancelled>start);
+  });
+}
+function personnelIsOnActiveRoster(user,date){
+  return !['demission','licenciement','retraite','mutation'].includes(personnelStatusAt(user,date));
+}
+function personnelCurrentRecord(login){
+  const wanted=String(login||'').trim().toLowerCase();if(!wanted)return null;
+  const current=(typeof USERS!=='undefined'&&Array.isArray(USERS)?USERS:[]).find(function(user){
+    return user&&user.l===wanted&&!user._personnelTransferredOut;
+  });
+  if(current)return current;
+  for(const caserneId of Object.keys(CASERNE_DATA||{})){
+    const user=((CASERNE_DATA[caserneId]||{}).users||[]).find(function(item){
+      return item&&item.l===wanted&&!item._personnelTransferredOut;
+    });
+    if(user)return user;
+  }
+  return null;
+}
+function personnelUnavailableForPeriod(logins,startDate,endDate){
+  for(const login of [...new Set((logins||[]).filter(Boolean))]){
+    const user=personnelCurrentRecord(login);
+    if(user&&!personnelCanOperateForPeriod(user,startDate,endDate)){
+      return {login:login,status:personnelStatusAt(user,startDate)};
+    }
+  }
+  return null;
+}
+function personnelApplyDecision(user,status,startDate,endDate,actor,recordedAt){
+  const start=personnelIsoDate(startDate),end=endDate?personnelIsoDate(endDate):'';
+  if(!user||!start||!['actif','arret','disponibilite','demission','licenciement','retraite'].includes(status)
+    ||(endDate&&!end)||(end&&end<start)||(status==='disponibilite'&&!end)
+    ||(['demission','licenciement','retraite'].includes(status)&&end))return false;
+  if(!Array.isArray(user._personnelPeriods))user._personnelPeriods=[];
+  if(!Array.isArray(user._personnelExits))user._personnelExits=[];
+  if(user._personnelExit&&!user._personnelExits.some(function(exit){return exit.kind===user._personnelExit.kind&&exit.start===user._personnelExit.start;})){
+    user._personnelExits.push(user._personnelExit);
+  }
+  user._personnelPeriods.forEach(function(period){
+    if(!period.cancelledAt&&(!period.cancelledFrom||period.cancelledFrom>start))period.cancelledFrom=start;
+  });
+  user._personnelExits.forEach(function(exit){
+    if(!exit.cancelledFrom||exit.cancelledFrom>start)exit.cancelledFrom=start;
+  });
+  user._personnelExit=null;
+  if(status==='arret'||status==='disponibilite')user._personnelPeriods.push({kind:status,start:start,end:end||null});
+  else if(status!=='actif'){
+    user._personnelExit={kind:status,start:start};
+    user._personnelExits.push(user._personnelExit);
+  }
+  if(!Array.isArray(user._personnelHistory))user._personnelHistory=[];
+  user._personnelHistory.push({status:status,start:start,end:end||null,actor:String(actor||''),recordedAt:String(recordedAt||new Date().toISOString())});
+  return true;
+}
+// Prépare les deux fiches d'une mutation approuvée sans modifier les données.
+// Le transfert effectif doit être atomique côté serveur et approuvé par le SA.
+function personnelBuildTransferRecords(user,targetCaserneId,startDate,approvedBy,requestId,recordedAt){
+  const source=String(user&&user.caserneId||''),target=String(targetCaserneId||'');
+  const start=personnelIsoDate(startDate);
+  const targetKnown=typeof CASERNES!=='undefined'&&CASERNES.some(function(c){return c&&c.id===target&&c.id!=='EMAJ';});
+  const targetUsers=CASERNE_DATA&&CASERNE_DATA[target]&&CASERNE_DATA[target].users;
+  if(!user||!user.l||user._isSA||!source||source===target||!targetKnown||!Array.isArray(targetUsers)
+    ||targetUsers.some(function(item){return item&&item.l===user.l;})||!start
+    ||!String(approvedBy||'').trim()||!String(requestId||'').trim()
+    ||!personnelIsOnActiveRoster(user,start)||user._personnelTransferredOut)return null;
+  const historical=JSON.parse(JSON.stringify(user));
+  const active=JSON.parse(JSON.stringify(user));
+  const event={status:'mutation',start:start,target:target,source:source,
+    actor:String(approvedBy),requestId:String(requestId),recordedAt:String(recordedAt||new Date().toISOString())};
+  historical._personnelTransferredOut={start:start,target:target,approvedBy:event.actor,requestId:event.requestId,recordedAt:event.recordedAt};
+  historical._personnelHistory=(Array.isArray(historical._personnelHistory)?historical._personnelHistory:[]).concat([event]);
+  active.caserneId=target;
+  active._personnelTransferredIn={start:start,source:source,approvedBy:event.actor,requestId:event.requestId,recordedAt:event.recordedAt};
+  active._personnelHistory=(Array.isArray(active._personnelHistory)?active._personnelHistory:[]).concat([event]);
+  delete active._personnelTransferredOut;
+  delete active._personnelTransferRequest;
+  delete active._isSA;
+  active.appRole='agent';
+  active.rl='Utilisateur';
+  active.rights=(Array.isArray(active.rights)?active.rights:[]).filter(function(right){return right!=='Administration';});
+  if(active.fonction==='Chef de centre'||active.fonction==='Adjoint au chef de centre'){
+    active.fonction='Équipier';active.fonction2='';
+  }
+  return {source:historical,target:active};
+}
 // Helpers
 function isSuperAdmin(){return GLOBAL_ROLE==='superadmin'&&!window._superAdminDisabled;}
 function isChefCorps(){return GLOBAL_ROLE==='chef_corps';}
@@ -355,6 +494,11 @@ const AUTH_LINK_MODE = ['off','canary','on'].includes(AGAI_RUNTIME_CONFIG.accoun
   ? AGAI_RUNTIME_CONFIG.accountLinkMode
   : (AGAI_RUNTIME_CONFIG.accountLinkEnabled===true?'on':'off');
 const AUTH_LINK_ENABLED = AUTH_LINK_MODE!=='off';
+// Le seul réglage public ne doit jamais pouvoir activer la fonction tant que
+// le chargement et les écritures des données utilisent encore l'accès anon.
+// Passer ce verrou à true seulement après migration et tests Auth/RLS complets.
+const PERSONNEL_AUTH_CUTOVER_SUPPORTED=false;
+const PERSONNEL_ONLINE_GATE=PERSONNEL_AUTH_CUTOVER_SUPPORTED&&AGAI_RUNTIME_CONFIG.personnelOnlineGateEnabled===true;
 const AUTH_LINK_CANARY_LOGINS = new Set((Array.isArray(AGAI_RUNTIME_CONFIG.accountLinkCanaryLogins)?AGAI_RUNTIME_CONFIG.accountLinkCanaryLogins:[]).map(function(login){return String(login||'').trim().toLowerCase();}));
 const AUTH_LINK_NEW_CANARY_LOGINS=new Set((Array.isArray(AGAI_RUNTIME_CONFIG.accountLinkNewCanaryLogins)?AGAI_RUNTIME_CONFIG.accountLinkNewCanaryLogins:[]).map(function(login){return String(login||'').trim().toLowerCase();}));
 function _agaiIsNewLinkPilot(login){return AUTH_LINK_NEW_CANARY_LOGINS.has(String(login||'').trim().toLowerCase());}
@@ -1199,7 +1343,6 @@ function showParamsTab(sub,btn){
   else if(sub==='admin')rAdm();
   else if(sub==='onedrive')odRenderStatus();
 }
-
 // === MODULE: security.js ===
 // ══════════════════════════════════════════════════════
 // SÉCURITÉ — Hachage PBKDF2 (P1), Session (P2), XSS (P4)
@@ -1275,6 +1418,96 @@ async function _agaiAuthFetchWithTimeout(url,options,timeoutMs){
   try{return await fetch(url,Object.assign({},options||{},{signal:controller.signal}));}
   finally{clearTimeout(timer);}
 }
+// La session locale ne suffit plus lorsque le suivi du personnel est activé :
+// chaque ouverture et chaque reprise d'AGAI doit recevoir un accord serveur.
+let _agaiOnlineAccessTimer=null;
+let _agaiOnlineAccessInFlight=false;
+function _agaiOnlineAccessReady(){
+  return PERSONNEL_ONLINE_GATE&&AUTH_LINK_MODE==='on'&&typeof navigator!=='undefined'&&navigator.onLine!==false;
+}
+async function _agaiOnlineSignIn(account,password){
+  if(!_agaiOnlineAccessReady())return null;
+  try{
+    const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{
+      method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','x-device-id':agaiDeviceId()},
+      body:JSON.stringify({mode:'login',login:account.l,password:password})
+    },8000);
+    const result=await response.json().catch(function(){return{};});
+    if(!response.ok||result.personnelEnforcementEnabled!==true||!result.session||!result.session.access_token
+      ||result.login!==account.l||result.caserneId!==account.caserneId)return null;
+    return Object.assign({},result.session,{_agai_link_login:account.l});
+  }catch(error){console.warn('[AGAI][ACCÈS] Connexion en ligne indisponible :',error);return null;}
+}
+async function _agaiOnlineCheckSavedSession(login,caserneId){
+  if(!_agaiOnlineAccessReady())return false;
+  let session=_agaiAuthSession;
+  if(!session)try{session=JSON.parse(localStorage.getItem(AUTH_LINK_SESSION_KEY)||'null');}catch(error){return false;}
+  if(!session||session._agai_link_login!==login||!session.access_token)return false;
+  if(Number(session.expires_at)*1000<Date.now()+30000){
+    if(!session.refresh_token)return false;
+    try{
+      const refreshed=await _agaiAuthFetchWithTimeout(SB_URL+'/auth/v1/token?grant_type=refresh_token',{
+        method:'POST',headers:{'apikey':SB_KEY,'Content-Type':'application/json'},
+        body:JSON.stringify({refresh_token:session.refresh_token})
+      },8000);
+      const payload=await refreshed.json().catch(function(){return{};});
+      if(!refreshed.ok||!payload.access_token)return false;
+      session=Object.assign({},payload,{_agai_link_login:login});
+      _agaiStoreAuthSession(session);
+    }catch(error){return false;}
+  }
+  try{
+    const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{
+      method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+session.access_token,'Content-Type':'application/json'},
+      body:JSON.stringify({mode:'account_status'})
+    },8000);
+    const result=await response.json().catch(function(){return{};});
+    if(!response.ok||result.personnelEnforcementEnabled!==true||result.canLogin!==true
+      ||result.login!==login||result.caserneId!==caserneId)return false;
+    if(_agaiAuthSession!==session)_agaiStoreAuthSession(session);
+    return true;
+  }catch(error){console.warn('[AGAI][ACCÈS] Vérification en ligne indisponible :',error);return false;}
+}
+function _agaiOnlineStopChecks(){
+  if(_agaiOnlineAccessTimer){clearInterval(_agaiOnlineAccessTimer);_agaiOnlineAccessTimer=null;}
+}
+async function _agaiOnlineCheckCurrent(){
+  if(!PERSONNEL_ONLINE_GATE||!CU||_agaiOnlineAccessInFlight)return;
+  _agaiOnlineAccessInFlight=true;
+  const login=CU.l,caserneId=CU.caserneId,token=SESSION_TOKEN;
+  try{
+    const allowed=await _agaiOnlineCheckSavedSession(login,caserneId);
+    if(!allowed&&CU&&CU.l===login&&SESSION_TOKEN===token){
+      doLogout();
+      const error=document.getElementById('lerr');
+      if(error){error.style.display='block';error.textContent='Accès suspendu ou vérification Internet impossible. Reconnectez-vous lorsque la connexion est disponible.';}
+    }
+  }finally{_agaiOnlineAccessInFlight=false;}
+}
+function _agaiOnlineArmChecks(){
+  if(!PERSONNEL_ONLINE_GATE)return;
+  _agaiOnlineStopChecks();
+  _agaiOnlineAccessTimer=setInterval(_agaiOnlineCheckCurrent,60000);
+}
+async function _agaiSetPersonnelStatusServer(login,status,startsOn,endsOn){
+  if(!PERSONNEL_ONLINE_GATE||!_agaiOnlineAccessReady()||!CU)return null;
+  const token=_agaiAuthAccessToken();
+  if(!token)return null;
+  try{
+    const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{
+      method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+      body:JSON.stringify({mode:'admin_personnel_status',login:login,status:status,startsOn:startsOn||null,endsOn:endsOn||null})
+    },8000);
+    const result=await response.json().catch(function(){return{};});
+    return response.ok&&result.status==='updated'&&result.login===login?result:null;
+  }catch(error){console.warn('[AGAI][PERSONNEL] Changement de statut différé :',error);return null;}
+}
+document.addEventListener('visibilitychange',function(){
+  if(PERSONNEL_ONLINE_GATE&&CU&&!document.hidden)_agaiOnlineCheckCurrent();
+});
+window.addEventListener('offline',function(){
+  if(PERSONNEL_ONLINE_GATE&&CU)_agaiOnlineCheckCurrent();
+});
 async function _agaiRefreshAuthSession(){
   const session=_agaiReadAuthSession();if(!CU||!_agaiAuthLinkEligible(CU)||!session||session._agai_link_login!==CU.l||!session.refresh_token)return false;
   try{
@@ -1710,7 +1943,6 @@ async function _migratePasswords(){
   }
   if(changed){saveData();}
 }
-
 // === MODULE: auth.js (partie 2/2 — login, session, droits) ===
 // ────────────────── LOGIN ──────────────────
 // Compteur tentatives de connexion
@@ -1768,6 +2000,12 @@ async function doLogin(){
     }
     if(gaFound){
       const ga=gaFound;
+      const onlineSession=PERSONNEL_ONLINE_GATE?await _agaiOnlineSignIn(ga,p):null;
+      if(PERSONNEL_ONLINE_GATE&&!onlineSession){
+        lerr.style.display='block';
+        lerr.textContent='Connexion impossible : la vérification Internet des droits est obligatoire. Réessayez lorsque le service est disponible.';
+        return;
+      }
       GLOBAL_ROLE=ga.role;
       _loginAttempts=0;_loginLocked=false;
       if(_loginLockTimer){clearTimeout(_loginLockTimer);_loginLockTimer=null;}
@@ -1791,9 +2029,11 @@ async function doLogin(){
       document.getElementById('t2u').textContent=CU.l+(cas?' — '+cas.nom:'');
       document.getElementById('t2r').textContent=CU.rl;
       GRADES.forEach(g=>{['prof-grade-sel','nu-grade'].forEach(id=>{const el=document.getElementById(id);if(el&&!el.querySelector(`option[value="${g}"]`)&&![...el.options].find(o=>o.textContent===g)){const o=document.createElement('option');o.textContent=g;el.appendChild(o);}});});
+      if(onlineSession)_agaiStoreAuthSession(onlineSession);
       _createSession(); // P2
+      _agaiOnlineArmChecks();
       // La liaison technique n'attend jamais avant de rendre l'application utilisable.
-      if(AUTH_LINK_MODE==='on')_agaiLinkSupabaseAccount(ga,p,SESSION_TOKEN);
+      if(AUTH_LINK_MODE==='on'&&!PERSONNEL_ONLINE_GATE)_agaiLinkSupabaseAccount(ga,p,SESSION_TOKEN);
       if(ga.role==='chef_corps'){showGlobalView('chef_corps');return;}
       const hopEl=document.getElementById('hop');if(hopEl)hopEl.textContent='Opérateur : '+CU.l;
       doLoginSuccess();
@@ -1806,6 +2046,7 @@ async function doLogin(){
       initCaserneData(c.id);
       const users=CASERNE_DATA[c.id].users||[];
       for(const u of users){
+        if(u._personnelTransferredOut&&personnelStatusAt(u)==='mutation')continue;
         if(u.l===l&&await verifyPassword(p,u.p)){foundUser=u;foundCasId=c.id;break;}
       }
       if(foundUser)break;
@@ -1831,6 +2072,20 @@ async function doLogin(){
       return;
     }
 
+    if(!personnelCanLogin(foundUser)){
+      lerr.style.display='block';
+      lerr.textContent=personnelStatusAt(foundUser)==='disponibilite'
+        ?'Accès suspendu pendant la mise en disponibilité.'
+        :'Ce compte n’a plus accès à l’application. Contactez un administrateur.';
+      return;
+    }
+    const onlineSession=PERSONNEL_ONLINE_GATE?await _agaiOnlineSignIn(foundUser,p):null;
+    if(PERSONNEL_ONLINE_GATE&&!onlineSession){
+      lerr.style.display='block';
+      lerr.textContent='Connexion impossible : la vérification Internet des droits est obligatoire. Réessayez lorsque le service est disponible.';
+      return;
+    }
+
     // ── Connexion réussie ──
     _loginAttempts=0;_loginLocked=false;
     if(_loginLockTimer){clearTimeout(_loginLockTimer);_loginLockTimer=null;}
@@ -1847,8 +2102,10 @@ async function doLogin(){
     document.getElementById('t2r').textContent=CU.rl||'';
     const hopEl2=document.getElementById('hop');if(hopEl2)hopEl2.textContent='Opérateur : '+CU.l;
     GRADES.forEach(g=>{['prof-grade-sel','nu-grade'].forEach(id=>{const el=document.getElementById(id);if(el&&![...el.options].find(o=>o.textContent===g)){const o=document.createElement('option');o.textContent=g;el.appendChild(o);}});});
+    if(onlineSession)_agaiStoreAuthSession(onlineSession);
     _createSession(); // P2
-    if(AUTH_LINK_MODE==='on')_agaiLinkSupabaseAccount(foundUser,p,SESSION_TOKEN);
+    _agaiOnlineArmChecks();
+    if(AUTH_LINK_MODE==='on'&&!PERSONNEL_ONLINE_GATE)_agaiLinkSupabaseAccount(foundUser,p,SESSION_TOKEN);
     doLoginSuccess();
 
   } finally {
@@ -4110,7 +4367,7 @@ function delCaserne(id){
   confirmModal('Supprimer cette caserne et toutes ses données ?',function(){CASERNES=CASERNES.filter(c=>c.id!==id);delete CASERNE_DATA[id];saveData();renderSuperAdmin();});
 }
 
-function _restoreSessionAfterLoad(){
+async function _restoreSessionAfterLoad(){
   if(CU&&isSessionValid())return true;
   const stored=_readStoredSession();
   if(!stored||!stored.token||!stored.login||!Number.isFinite(Number(stored.expiresAt)))return false;
@@ -4123,6 +4380,13 @@ function _restoreSessionAfterLoad(){
       expiredEntry.actif=false;
       expiredEntry.fermetureAuto='Session arrivée à expiration';
     }
+    return false;
+  }
+  if(PERSONNEL_ONLINE_GATE&&!await _agaiOnlineCheckSavedSession(stored.login,stored.caserneId)){
+    try{localStorage.removeItem(SESSION_STORAGE_KEY);}catch(error){}
+    _agaiStoreAuthSession(null);
+    const error=document.getElementById('lerr');
+    if(error){error.style.display='block';error.textContent='AGAI nécessite Internet pour vérifier votre accès. Reconnectez-vous lorsque le service est disponible.';}
     return false;
   }
 
@@ -4147,6 +4411,10 @@ function _restoreSessionAfterLoad(){
     GLOBAL_ROLE=null;CURRENT_CASERNE_ID=caserneId;syncCaserneContext();
     restoredUser=USERS.find(function(user){return user.l===stored.login;})||null;
     if(!restoredUser){CURRENT_CASERNE_ID=null;syncCaserneContext();return false;}
+    if(!personnelCanLogin(restoredUser)){
+      try{localStorage.removeItem(SESSION_STORAGE_KEY);}catch(error){}
+      CURRENT_CASERNE_ID=null;syncCaserneContext();return false;
+    }
     restoredUser.caserneId=caserneId;
     restoredUser.appRole=deriveAccountRole(restoredUser);
   }
@@ -4200,6 +4468,7 @@ function _restoreSessionAfterLoad(){
   });
   _persistSessionState({backgroundAt:0});
   _armSessionTimers();
+  _agaiOnlineArmChecks();
   doLoginSuccess();
   return true;
 }
@@ -4241,6 +4510,7 @@ function doLoginSuccess(){
   if(window.innerWidth<=480){window.scrollTo(0,0);}
 }
 function doLogout(){
+  _agaiOnlineStopChecks();
   const authToken=_agaiAuthAccessToken();
   if(authToken)fetch(SB_URL+'/auth/v1/logout?scope=local',{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+authToken}}).catch(function(){});
   _agaiStoreAuthSession(null);
@@ -5328,7 +5598,9 @@ function finaliserAvisRappeles(avis,nouvelAppel,h){
     source.rappels=(Number(source.rappels)||0)+1;
     if(isPilpIntervention(source)&&source.s==='avis-passage')source.s='terminee';
     if(!Array.isArray(source.tl))source.tl=[];
-    source.tl.push(Object.assign(mkTL(source.s,h,CU.l),{note:'Rappel du requérant — nouvel appel '+(nouvelAppel._numApl||nouvelAppel.id)}));
+    // Un rappel ne constitue pas une nouvelle clôture de la fiche d'origine.
+    // Son événement propre évite de la faire réapparaître parmi les terminées du jour.
+    source.tl.push(Object.assign(mkTL('avis-rappel',h,CU.l),{note:'Rappel du requérant — nouvel appel '+(nouvelAppel._numApl||nouvelAppel.id)}));
     markOperationalInterventionDirty(source);
   });
   markOperationalInterventionDirty(nouvelAppel);
@@ -6076,9 +6348,20 @@ function interventionCrewSignature(iv,equipage1,equipage2){
   return [...new Set(members)].sort().join('|');
 }
 
+function interventionIsClosureTimelineEntry(entry){
+  // Les rappels enregistrés par les anciennes versions portaient à tort
+  // s='terminee' dans la chronologie, sans nouvelle clôture effective.
+  return !!entry&&entry.s==='terminee'&&!/^Rappel du requérant\b/i.test(String(entry.note||'').trim());
+}
+function interventionWasClosedOnDay(iv,day){
+  return !!(iv&&iv.s==='terminee'&&Array.isArray(iv.tl)&&iv.tl.some(function(entry){
+    return interventionIsClosureTimelineEntry(entry)&&String(entry.h||'').startsWith(day);
+  }));
+}
 function interventionTimelineStamp(iv,status,latest){
   const entries=(Array.isArray(iv&&iv.tl)?iv.tl:[]).filter(function(entry){
-    return entry&&entry.s===status&&/^\d{8}/.test(String(entry.h||''));
+    return entry&&entry.s===status&&(status!=='terminee'||interventionIsClosureTimelineEntry(entry))
+      &&/^\d{8}/.test(String(entry.h||''));
   });
   if(!entries.length)return '';
   return String(entries[latest?entries.length-1:0].h||'');
@@ -6935,7 +7218,7 @@ function renderInterventionRow(iv, ag, tireur) {
 // Tri : en-attente par date asc, autres par dernière action desc
 function interventionTerminationSortKey(iv){
   if(!iv)return '';
-  const terminaisons=(iv.tl||[]).filter(function(entry){return entry&&entry.s==='terminee'&&entry.h;});
+  const terminaisons=(iv.tl||[]).filter(function(entry){return interventionIsClosureTimelineEntry(entry)&&entry.h;});
   if(terminaisons.length)return terminaisons.map(function(entry){return entry.h;}).sort()[0];
   const day=String(iv.h||'').slice(0,8);
   const end=String(iv._hFin||'').replace(':','');
@@ -7060,7 +7343,7 @@ function rI(){
   document.getElementById('nb2s').textContent=ti.filter(iv=>iv.s==='selectionne').length;
   document.getElementById('nb2').textContent=IVS.filter(iv=>iv._avisEnAttente&&!iv._isPilip&&!iv._lienPilpSourceId&&iv.s!=='annulee').length;
   document.getElementById('nb3').textContent=ti.filter(iv=>iv.s==='en-cours').length;
-  const isTermAuj=iv=>iv.s==='terminee'&&iv.tl&&iv.tl.some(t=>t.s==='terminee'&&(t.h||'').startsWith(TDP));
+  const isTermAuj=iv=>interventionWasClosedOnDay(iv,TDP);
   document.getElementById('nb4').textContent=IVS.filter(iv=>!iv._isPilip&&(isTdy(iv)?iv.s==='terminee':isTermAuj(iv))).length;
 
   // Avis de passage EN ATTENTE DE RAPPEL — interventions terminées où l'équipe a
@@ -7117,7 +7400,7 @@ function rI(){
   // Liste
   const tireur=isTireurPILP();
   // Une intervention est visible si : créée aujourd'hui OU statut actif (quelle que soit la date) OU clôturée aujourd'hui
-  const isTermineeAujourdhui=iv=>iv.s==='terminee'&&iv.tl&&iv.tl.some(t=>t.s==='terminee'&&(t.h||'').startsWith(TDP));
+  const isTermineeAujourdhui=iv=>interventionWasClosedOnDay(iv,TDP);
   let list=IVS.filter(iv=>(isTdy(iv)||['en-attente','selectionne','en-cours'].includes(iv.s)||isTermineeAujourdhui(iv))&&iv.s!=='avis-passage'&&!iv._isPilip&&iv.s!=='annulee');
   // Si tireur PILP et filtre sélect. ou mes-sel : ajouter aussi les PILP sélectionnées
   let listPilpSel=tireur?PILP_IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l):[];
@@ -7335,9 +7618,9 @@ function oM(id){
     ?' · numéro définitif non confirmé'
     :iv._numCaserne?' · UT '+interventionDisplayUTNumber(iv)+(iv._numberingScheme==='dual-v1'&&iv.s==='en-cours'?' (provisoire)':''):'';
   document.getElementById('mi').textContent=dispApl+dispUt+dispTransfert;
-   const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis de passage'],'avis-classe':['bp','Avis classé'],'avis-restaure':['binfo','Avis remis en attente'],'modif':['bgr','Modification'],'modif-adresse':['bgr','Adresse corrigée'],'modif-heure':['binfo','Horaire corrigé'],'modif-equipier':['binfo','Équipage corrigé'],'modif-engin':['binfo','Véhicule corrigé'],'reclasse':['bgr','Reclasé'],'releve':['binfo','Relève'],'info-compl':['binfo','ℹ️ Complément d\u2019info']};
+   const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis de passage'],'avis-rappel':['bp','Rappel de l’avis'],'avis-classe':['bp','Avis classé'],'avis-restaure':['binfo','Avis remis en attente'],'modif':['bgr','Modification'],'modif-adresse':['bgr','Adresse corrigée'],'modif-heure':['binfo','Horaire corrigé'],'modif-equipier':['binfo','Équipage corrigé'],'modif-engin':['binfo','Véhicule corrigé'],'reclasse':['bgr','Reclasé'],'releve':['binfo','Relève'],'info-compl':['binfo','ℹ️ Complément d\u2019info']};
   const[bc,bt]=bm[iv.s]||['bgr','—'];
-  const sdots={'en-attente':'#E24B4A','selectionne':'var(--sel)','en-cours':'var(--amb)','terminee':'var(--grn)','avis-passage':'var(--pur)','avis-classe':'#6B21A8','avis-restaure':'#2563EB','modif':'#888','modif-adresse':'#888','modif-heure':'#C2410C','modif-equipier':'#2563EB','modif-engin':'#0F766E','reclasse':'#888','releve':'#0369A1','info-compl':'#0369A1'};
+  const sdots={'en-attente':'#E24B4A','selectionne':'var(--sel)','en-cours':'var(--amb)','terminee':'var(--grn)','avis-passage':'var(--pur)','avis-rappel':'var(--pur)','avis-classe':'#6B21A8','avis-restaure':'#2563EB','modif':'#888','modif-adresse':'#888','modif-heure':'#C2410C','modif-equipier':'#2563EB','modif-engin':'#0F766E','reclasse':'#888','releve':'#0369A1','info-compl':'#0369A1'};
   const tlHtml=hasAdministrativeAccount()?(iv.tl||[]).map(t=>`<div class="tl-item"><div class="tl-dot" style="background:${sdots[t.s]||'#aaa'};"></div><div class="tl-info"><span class="tl-status">${bm[t.s]?bm[t.s][1]:t.s}${t.note?` — ${t.note}`:''}</span> <span class="tl-horo">&#x1F4C5; ${t.h}</span><div class="tl-who">${t.who}</div></div></div>`).join(''):'';
   const appelDetailEntries=iv._appelDetails&&typeof iv._appelDetails==='object'
     ?Object.entries(iv._appelDetails).filter(([key])=>(key!=='Nids à traiter'||!Array.isArray(iv._nidsAppel)||iv._nidsAppel.length!==1)&&key!=='Disponibilité du requérant')
@@ -8612,7 +8895,7 @@ function rPilp(){
   // Lecture seule : consulter PILP ne déclenche aucune écriture Supabase.
   // Même règle que la liste Interventions : les statuts actifs restent visibles,
   // tandis qu'une terminée disparaît dès le changement de journée.
-  const pilpTermineeAujourdhui=function(iv){return iv.s==='terminee'&&iv.tl&&iv.tl.some(function(t){return t.s==='terminee'&&(t.h||'').startsWith(TDP);});};
+  const pilpTermineeAujourdhui=function(iv){return interventionWasClosedOnDay(iv,TDP);};
   const pilpJour=PILP_IVS.filter(function(iv){return isTdy(iv)||['en-attente','selectionne','en-cours'].includes(iv.s)||pilpTermineeAujourdhui(iv);});
   // Compteurs récapitulatifs PILP
   document.getElementById('pilp-nb1').textContent=PILP_IVS.filter(iv=>iv.s==='en-attente').length;
@@ -9088,6 +9371,8 @@ function validateOperationalDeparture(iv,engin1,engin2,personnelLogins){
   const duplicateLogin=personnel.find(function(login,index){return personnel.indexOf(login)!==index;});
   if(duplicateLogin)return {kind:'personnel',value:duplicateLogin,iv:iv,sameDeparture:true};
   const uniquePersonnel=[...new Set(personnel)];
+  const unavailable=personnelUnavailableForPeriod(uniquePersonnel,personnelLocalDate(),personnelLocalDate());
+  if(unavailable)return {kind:'lifecycle',value:unavailable.login,iv:iv};
   for(const login of uniquePersonnel){
     const personnelConflict=findActivePersonnelConflict(login,iv&&iv.id);
     if(personnelConflict)return {kind:'personnel',value:login,iv:personnelConflict};
@@ -9467,7 +9752,7 @@ function rHistLegacy(){
     const timeline=Array.isArray(iv.tl)?iv.tl:[];
     const passages=timeline.filter(function(entry){return entry&&entry.s==='en-cours'&&_dateKey(entry.h);});
     if(passages.length)return _dateKey(passages[passages.length-1].h);
-    const clotures=timeline.filter(function(entry){return entry&&entry.s==='terminee'&&_dateKey(entry.h);});
+    const clotures=timeline.filter(function(entry){return interventionIsClosureTimelineEntry(entry)&&_dateKey(entry.h);});
     if(clotures.length)return _dateKey(clotures[clotures.length-1].h);
     return _dateKey(iv.h)||'00000000';
   };
@@ -9549,7 +9834,7 @@ function historyInterventionDayKey(iv){
   const timeline=Array.isArray(iv&&iv.tl)?iv.tl:[];
   const starts=timeline.filter(function(entry){return entry&&entry.s==='en-cours'&&historyDateKey(entry.h);});
   if(starts.length)return historyDateKey(starts[starts.length-1].h);
-  const ends=timeline.filter(function(entry){return entry&&entry.s==='terminee'&&historyDateKey(entry.h);});
+  const ends=timeline.filter(function(entry){return interventionIsClosureTimelineEntry(entry)&&historyDateKey(entry.h);});
   if(ends.length)return historyDateKey(ends[ends.length-1].h);
   return historyDateKey(iv&&iv.h)||'00000000';
 }
@@ -9805,7 +10090,6 @@ async function saveProfil(){
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);rProfil();showToast('Mot de passe enregistré !','success'); // push immédiat
 }
-
 // === MODULE: admin.js (partie 2/2 — gestion utilisateurs) ===
 // ────────────────── ADMIN ──────────────────
 function showResetPwd(login){
@@ -9851,6 +10135,7 @@ function sortByName(list){
 function fullName(u){return u?u.nom+' '+u.prenom:'';}
 function fullNameAff(u){return u?(u.nom+' '+u.prenom).trim():'';}
 function shortName(u){return u?u.nom+' '+u.prenom.charAt(0)+'.':'';}
+const PERSONNEL_STATUS_LABELS={actif:'Actif',arret:'Arrêt de travail',disponibilite:'Mise en disponibilité',demission:'Démission',licenciement:'Licenciement',retraite:'Retraite',mutation:'Mutation'};
 function rAdm(){
   // Reconstruire les selects grade/fonction seulement si le formulaire est fermé
   const addFormOpen = document.getElementById('admin-add')&&document.getElementById('admin-add').style.display!=='none';
@@ -9867,15 +10152,17 @@ function rAdm(){
   const tbody=document.getElementById('admin-tbody');if(!tbody)return;
   const RIGHTS_SHORT=['Prise d\'appel','Interventions','Historique complet','Chef d\'agrès','Tireur PILP','Administration','Formation'];
   // USERS contient déjà le superadmin via syncCaserneContext
-  const sorted=sortByName(USERS);
+  const sorted=sortByName(PERSONNEL_ONLINE_GATE?USERS.filter(personnelIsOnActiveRoster):USERS);
   const caserneAdminLogins=new Set(getCaserneAdmins(CURRENT_CASERNE_ID).map(function(admin){return admin.l;}));
   tbody.innerHTML=sorted.map(u=>{
     const isSA=u._isSA===true;
+    const personnelStatus=personnelStatusAt(u);
     // Le superadmin peut modifier sa propre ligne ; les autres ne peuvent pas toucher au SA
     const saEditable=isSA&&isSuperAdmin()&&u.l===CU.l;
     const roLbl=isSA?'<span class="admin-person-badge" style="font-size:10px;background:#FEF2F2;color:#C0392B;padding:2px 7px;border-radius:8px;font-weight:600;">Super Admin</span>':'';
     const rfLbl=u.responsableFormation===true?'<span class="admin-person-badge" style="font-size:9px;background:#F3E8FF;color:#6D28D9;padding:2px 6px;border-radius:8px;font-weight:700;">Responsable formation</span>':'';
-    const badgesHtml=(roLbl||rfLbl)?`<div class="admin-person-badges">${roLbl}${rfLbl}</div>`:'';
+    const statusLbl=PERSONNEL_ONLINE_GATE&&personnelStatus!=='actif'?'<span class="admin-person-badge" style="font-size:9px;background:#FEF3C7;color:#92400E;padding:2px 6px;border-radius:8px;font-weight:700;">'+escHtml(PERSONNEL_STATUS_LABELS[personnelStatus]||personnelStatus)+'</span>':'';
+    const badgesHtml=(roLbl||rfLbl||statusLbl)?`<div class="admin-person-badges">${roLbl}${rfLbl}${statusLbl}</div>`:'';
     const nomCell=(isSA&&!saEditable)?`<td style="font-size:12px;font-weight:500;"><div class="admin-person-name"><span>${u.nom}</span>${badgesHtml}</div></td>`:`<td><div class="admin-person-name"><input type="text" value="${u.nom}" data-login="${u.l}" data-field="nom" onchange="updateUser(this.dataset.login,this.dataset.field,this.value)" style="width:80px;padding:3px 6px;border:1px solid var(--brd);border-radius:5px;font-size:12px;"/>${badgesHtml}</div></td>`;
     const prenomCell=(isSA&&!saEditable)?`<td style="font-size:12px;">${u.prenom}</td>`:`<td><input type="text" value="${u.prenom}" data-login="${u.l}" data-field="prenom" onchange="updateUser(this.dataset.login,this.dataset.field,this.value)" style="width:70px;padding:3px 6px;border:1px solid var(--brd);border-radius:5px;font-size:12px;"/></td>`;
     const gradeCell=(isSA&&!saEditable)?`<td style="font-size:12px;color:var(--t2);">${u.grade||''}</td>`:`<td><div style="display:flex;align-items:center;gap:3px;"><select data-login="${u.l}" onchange="requestPersonnelGradeChange(this)" style="width:110px;padding:3px 5px;border:1px solid var(--brd);border-radius:5px;font-size:11px;">${GRADES.map(g=>`<option${g===u.grade?' selected':''}>${g}</option>`).join('')}</select><button type="button" onclick="showPersonnelGradeHistory('${u.l}')" title="Historique des grades" style="padding:3px 5px;border:1px solid var(--brd);background:#fff;border-radius:5px;cursor:pointer;">📅</button></div></td>`;
@@ -9901,7 +10188,10 @@ function rAdm(){
         }
         return `<td style="text-align:center;"><input type="checkbox" ${u.rights.includes(r)?'checked':''} onchange="updateRight('${u.l}','${r.replace(/'/g,"\\'")}',this.checked)" ${isSA?'disabled':''}></td>`;
       }).join('');
-    const delCell=(!isSuperAdmin()||isSA)?'<td></td>':`<td><button class="del-btn" onclick="delUser('${u.l}')" ${u.l===CU.l?'disabled':''} title="Retirer une fiche créée par erreur — superadministrateur uniquement">✕</button></td>`;
+    const followButton=PERSONNEL_ONLINE_GATE&&!isSA&&hasRight('Administration')&&u.l!==CU.l
+      ?'<button type="button" class="btn sm" onclick="openPersonnelLifecycle(\''+encodeURIComponent(u.l)+'\')">Suivi</button>':'';
+    const deleteButton=isSuperAdmin()&&!isSA?`<button class="del-btn" onclick="delUser('${u.l}')" ${u.l===CU.l?'disabled':''} title="Retirer une fiche créée par erreur — superadministrateur uniquement">✕</button>`:'';
+    const delCell='<td style="white-space:nowrap;">'+followButton+deleteButton+'</td>';
     const matriculeCell=(isSA&&!saEditable)?`<td style="font-size:11px;color:var(--t2);">${u.matricule||'—'}</td>`:`<td><input type="text" value="${u.matricule||''}" data-login="${u.l}" data-field="matricule" onchange="updateUser(this.dataset.login,this.dataset.field,this.value)" placeholder="Matricule" style="width:70px;padding:3px 6px;border:1px solid var(--brd);border-radius:5px;font-size:12px;"/></td>`;
     // Cellule Fonctions formateur
     const ffList=u.fonctionsFormateur||[];
@@ -9940,6 +10230,106 @@ function rAdm(){
       tbody.innerHTML=ccRow+tbody.innerHTML;
     }
   }
+  const archiveBox=document.getElementById('admin-personnel-archives');
+  if(archiveBox){
+    const archived=PERSONNEL_ONLINE_GATE?sortByName(USERS.filter(function(user){return user&&!personnelIsOnActiveRoster(user);})):[];
+    archiveBox.style.display=PERSONNEL_ONLINE_GATE?'':'none';
+    archiveBox.innerHTML='<div style="font-size:13px;font-weight:700;margin-bottom:8px;">Historique du personnel sorti ('+archived.length+')</div>'
+      +(archived.length?archived.map(function(user){
+        const status=personnelStatusAt(user),label=PERSONNEL_STATUS_LABELS[status]||status;
+        return '<div style="padding:8px 10px;border:1px solid var(--brd);border-radius:8px;margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;gap:8px;">'
+          +'<span>'+escHtml(fullName(user))+' — '+escHtml(label)+'</span>'
+          +'<button type="button" class="btn sm" onclick="openPersonnelLifecycle(\''+encodeURIComponent(user.l)+'\')">Voir le suivi</button></div>';
+      }).join(''):'<div style="font-size:12px;color:var(--t2);">Aucune sortie enregistrée.</div>');
+  }
+}
+function personnelLifecycleHistoryRows(user){
+  const history=Array.isArray(user&&user._personnelHistory)?user._personnelHistory:[];
+  return history.slice().reverse().map(function(entry){
+    const label=PERSONNEL_STATUS_LABELS[entry.status]||entry.status;
+    return '<tr style="border-bottom:1px solid #E5E7EB;">'
+      +'<td style="padding:6px;">'+escHtml(entry.start||'')+'</td>'
+      +'<td style="padding:6px;">'+escHtml(label)+'</td>'
+      +'<td style="padding:6px;">'+escHtml(entry.end||'—')+'</td>'
+      +'<td style="padding:6px;">'+escHtml(entry.actor||'—')+'</td></tr>';
+  }).join('')||'<tr><td colspan="4" style="padding:8px;color:var(--t2);">Aucun changement de statut enregistré.</td></tr>';
+}
+function personnelLifecycleSyncFields(){
+  const status=document.getElementById('personnel-lifecycle-status')?.value||'';
+  const end=document.getElementById('personnel-lifecycle-end');
+  if(end){
+    end.disabled=!['arret','disponibilite'].includes(status);
+    if(end.disabled)end.value='';
+  }
+  const hint=document.getElementById('personnel-lifecycle-hint');
+  if(hint)hint.textContent=status==='arret'?'Fin facultative si elle n’est pas encore connue. Aucun motif médical n’est enregistré.'
+    :status==='disponibilite'?'Une date de fin est obligatoire ; l’accès reprend automatiquement le lendemain.'
+    :status==='actif'?'Réactivation immédiate uniquement. L’historique passé reste conservé.'
+    :'Le dossier reste dans l’historique, mais quitte la liste active et perd son accès.';
+}
+function openPersonnelLifecycle(encodedLogin){
+  if(!PERSONNEL_ONLINE_GATE||!CU||!hasRight('Administration'))return;
+  const login=decodeURIComponent(encodedLogin||'');
+  const user=USERS.find(function(item){return item&&item.l===login;});
+  if(!user||user._isSA)return;
+  const current=personnelStatusAt(user),isTransfer=current==='mutation';
+  const permanent=['demission','licenciement','retraite'].includes(current);
+  const editable=!isTransfer&&(!permanent||isSuperAdmin())&&user.l!==CU.l;
+  const today=personnelLocalDate();
+  document.getElementById('mt').textContent='Suivi du personnel — '+fullName(user);
+  document.getElementById('mi').textContent='Statut actuel : '+(PERSONNEL_STATUS_LABELS[current]||current);
+  const options=['actif','arret','disponibilite','demission','licenciement','retraite'];
+  document.getElementById('mb').innerHTML=(editable
+    ?'<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Choisissez un statut et sa date d’effet. Les interventions et les autres activités passées restent dans l’historique.</div>'
+      +'<label class="fg"><span class="fgl">Situation</span><select class="fi" id="personnel-lifecycle-status" onchange="personnelLifecycleSyncFields()">'
+      +options.map(function(status){return '<option value="'+status+'"'+(status===current?' selected':'')+'>'+escHtml(PERSONNEL_STATUS_LABELS[status])+'</option>';}).join('')+'</select></label>'
+      +'<label class="fg"><span class="fgl">Date d’effet</span><input class="fi" id="personnel-lifecycle-start" type="date" value="'+today+'"></label>'
+      +'<label class="fg"><span class="fgl">Date de fin</span><input class="fi" id="personnel-lifecycle-end" type="date"></label>'
+      +'<div id="personnel-lifecycle-hint" style="font-size:11px;color:var(--t2);margin-bottom:10px;"></div>'
+      +'<div class="brow"><button type="button" class="btn pr sm" onclick="savePersonnelLifecycle(\''+encodeURIComponent(login)+'\')">Enregistrer le statut</button><button type="button" class="btn sm" onclick="cM()">Annuler</button></div>'
+    :'<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">'+(isTransfer?'Une mutation exige la validation du superadministrateur.':'La réactivation de ce dossier est réservée au superadministrateur.')+'</div>')
+    +'<div style="font-size:12px;font-weight:700;margin:15px 0 5px;">Historique des décisions</div>'
+    +'<div style="max-height:220px;overflow:auto;"><table style="width:100%;font-size:11px;border-collapse:collapse;"><thead><tr><th>Date d’effet</th><th>Situation</th><th>Fin</th><th>Enregistré par</th></tr></thead><tbody>'
+    +personnelLifecycleHistoryRows(user)+'</tbody></table></div>';
+  document.getElementById('mo').style.display='flex';
+  if(editable)personnelLifecycleSyncFields();
+}
+function savePersonnelLifecycle(encodedLogin){
+  if(!PERSONNEL_ONLINE_GATE||!CU||!hasRight('Administration'))return;
+  const login=decodeURIComponent(encodedLogin||'');
+  const user=USERS.find(function(item){return item&&item.l===login;});
+  if(!user||user._isSA||user.l===CU.l)return;
+  if(['demission','licenciement','retraite','mutation'].includes(personnelStatusAt(user))&&!isSuperAdmin())return;
+  const status=document.getElementById('personnel-lifecycle-status')?.value||'';
+  const start=personnelIsoDate(document.getElementById('personnel-lifecycle-start')?.value);
+  const endValue=document.getElementById('personnel-lifecycle-end')?.value||'';
+  const end=endValue?personnelIsoDate(endValue):'';
+  const today=personnelLocalDate();
+  if(!start||!['actif','arret','disponibilite','demission','licenciement','retraite'].includes(status)
+    ||(endValue&&!end)||(end&&end<start)||(status==='disponibilite'&&!end)
+    ||(['demission','licenciement','retraite'].includes(status)&&end)){
+    showToast('Dates ou situation invalides.','warn');return;
+  }
+  if(status==='actif'&&start!==today){showToast('La réactivation doit prendre effet aujourd’hui.','warn');return;}
+  if(start>today&&personnelStatusAt(user,today)!=='actif'){
+    showToast('Terminez d’abord la situation en cours avant d’en programmer une autre.','warn');return;
+  }
+  const futureDecision=[...(Array.isArray(user._personnelPeriods)?user._personnelPeriods:[]),
+    ...(Array.isArray(user._personnelExits)?user._personnelExits:[])].some(function(record){
+      return record&&personnelIsoDate(record.start)>today&&!record.cancelledFrom;
+    });
+  if(start>today&&futureDecision){showToast('Une situation est déjà programmée ; corrigez-la avant d’en ajouter une autre.','warn');return;}
+  const label=PERSONNEL_STATUS_LABELS[status]||status;
+  confirmModal('Confirmer « '+escHtml(label)+' » pour '+escHtml(fullName(user))+' à partir du '+escHtml(start)+' ?',async function(){
+    const result=await _agaiSetPersonnelStatusServer(login,status,start,end);
+    if(!result){showToast('Statut non modifié : vérification serveur indisponible ou refusée.','error');return;}
+    if(!personnelApplyDecision(user,status,start,end,CU.l,new Date().toISOString())){
+      showToast('Le serveur a accepté le statut ; actualisez le dossier avant toute autre action.','warn');return;
+    }
+    user._personnelServerRevision=result.revision;
+    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+    saveData(true);rAdm();showToast('Statut enregistré ; synchronisation du dossier en cours.','success');
+  });
 }
 function genLogin(nom,prenom){
   // Génère un login unique : nom.prenom, puis nom.prenom2, nom.prenom3…
@@ -10175,8 +10565,6 @@ function _updateUserRefresh(login,field){
     if(profPanel&&profPanel.style.display!=='none')rProfil();
   }
 }
-
-
 // === MODULE: astreintes.js ===
 // ══════════════════════════════════════════════════════
 // ASTREINTES — Données
@@ -10568,7 +10956,8 @@ function rAstrPlanning(){
         const dispoDay=Math.floor(absFromStore/1440)%7;
         const dispoIdx=Math.floor((absFromStore%1440)/uGran);
         const dispoKey=dispoDay+'_'+dispoIdx;
-        const isDispo=DISPOS[wk]?.[login]?.[dispoKey]===true;
+        const lifecycleAllowed=personnelDispoSlotAllowed(wk,login,dispoDay,dispoIdx,uGran);
+        const isDispo=lifecycleAllowed&&DISPOS[wk]?.[login]?.[dispoKey]===true;
 
         // Piquet sur ce créneau ? — minutes absolues depuis lundi 00h00
         const slotAbsWeekMin=(di+slotDayOff)*1440+slotAbsMin;
@@ -10606,7 +10995,7 @@ function rAstrPlanning(){
         } else if(hasPiquet){
           // En piquet sans dispo renseignée : fond blanc + croix couleur équipe (ne compte pas dans y)
           html+=`<td${currentCellClass} style="padding:0;border-bottom:0.5px solid #f0f0f0;border-right:0.5px solid #e5e7eb;text-align:center;background:#fff;"><span style="font-size:11px;font-weight:700;color:${eqColor};">X</span></td>`;
-        } else if(DISPOS[wk]?.[login]?.[dispoDay+'_'+dispoIdx]===false){
+        } else if(!lifecycleAllowed||DISPOS[wk]?.[login]?.[dispoDay+'_'+dispoIdx]===false){
           // Indisponible : rouge
           html+=`<td${currentCellClass} style="padding:0;border-bottom:0.5px solid #f0f0f0;border-right:0.5px solid #e5e7eb;background:#EF4444;"></td>`;
         } else {
@@ -10708,7 +11097,7 @@ function oAstrCellDetailSansEq(wk,dayIdx,slotIdx){
   const gran=ASTR_CONFIG.granularity;
   const label=`${jourLabel(dayIdx,true)} ${dd.getDate()}/${dd.getMonth()+1} — ${slotToLabelDay(dayIdx,slotIdx,gran)}`;
   const agents=sansEq.map(u=>{
-    const dispo=DISPOS[wk]?.[u.l]?.[`${dayIdx}_${slotIdx}`]===true;
+    const dispo=personnelDispoSlotAllowed(wk,u.l,dayIdx,slotIdx,gran)&&DISPOS[wk]?.[u.l]?.[`${dayIdx}_${slotIdx}`]===true;
     return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--brd);font-size:12px;">
       <div style="flex:1;font-weight:500;">${u.prenom} ${u.nom}</div>
       <span class="astr-status-badge ${dispo?'valide':'attente'}">${dispo?'Dispo':'Indispo'}</span>
@@ -10756,7 +11145,7 @@ function oAstrCellDetail(wk,dayIdx,slotIdx,eqId){
   const label=`${jourLabel(dayIdx,true)} ${dd.getDate()}/${dd.getMonth()+1} — ${slotToLabelDay(dayIdx,slotIdx,eq.granularity)}`;
   const agents=eq.membres.map(login=>{
     const u=USERS.find(x=>x.l===login);
-    const dispo=DISPOS[wk]?.[login]?.[`${dayIdx}_${slotIdx}`]===true;
+    const dispo=personnelDispoSlotAllowed(wk,login,dayIdx,slotIdx,eq.granularity)&&DISPOS[wk]?.[login]?.[`${dayIdx}_${slotIdx}`]===true;
     return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--brd);font-size:12px;">
       <div style="flex:1;font-weight:500;">${u?fullName(u):login}</div>
       <span class="astr-status-badge ${dispo?'valide':'attente'}">${dispo?'Dispo':'Indispo'}</span>
@@ -10898,6 +11287,7 @@ function envoyerDispoRequest(wk,login){
     const newVal=sel?sel.value:'true';
     return {key:key,newVal:newVal};
   });
+  if(slots.some(function(slot){return slot.newVal==='true'&&!personnelDispoKeyAllowed(wk,login,slot.key,gran);})){showToast('Disponibilité impossible pendant une absence ou une sortie du personnel.','warn');return;}
 
   // Grouper par jour pour affichage
   const slotsByDay={};
@@ -10947,6 +11337,10 @@ function repondreDispoRequest(wk,reqId,reponse){
   if(!DISPO_REQUESTS[wk])return;
   const req=DISPO_REQUESTS[wk].find(function(r){return r.id===reqId;});
   if(!req)return;
+  if(reponse==='accepte'){
+    const eq=getEquipeOfUser(req.login),gran=eq?eq.granularity:ASTR_CONFIG.granularity;
+    if((req.slots||[]).some(function(slot){return slot&&slot.newVal==='true'&&!personnelDispoKeyAllowed(wk,req.login,slot.key,gran);})){showToast('Demande refusée : la situation du personnel interdit ces disponibilités.','warn');return;}
+  }
   req.statut=reponse;
   req.reponduPar=CU.l;
   req.hReponse=getHHMM(N());
@@ -10999,6 +11393,41 @@ function dispoDayLabel(wk,dayIdx,full){
   const start=new Date(Number(value.slice(0,4)),Number(value.slice(4,6))-1,Number(value.slice(6,8)));
   start.setDate(start.getDate()+Number(dayIdx||0));
   return jourLabel(dayIdx,!!full)+' '+pad(start.getDate())+'/'+pad(start.getMonth()+1);
+}
+function personnelDispoSlotAllowed(wk,login,dayIdx,slotIdx,granularity){
+  if(!PERSONNEL_ONLINE_GATE)return true;
+  const user=personnelCurrentRecord(login);
+  if(!user)return false;
+  const key=String(wk||'');
+  if(!/^\d{8}$/.test(key)||!Number.isInteger(dayIdx)||dayIdx<0||dayIdx>6
+    ||!Number.isInteger(slotIdx)||slotIdx<0||!Number.isFinite(granularity)||granularity<=0)return false;
+  const start=new Date(Number(key.slice(0,4)),Number(key.slice(4,6))-1,Number(key.slice(6,8)));
+  if(Number.isNaN(start.getTime()))return false;
+  start.setDate(start.getDate()+dayIdx);
+  start.setMinutes((ASTR_CONFIG.weekStartHour??0)*60+slotIdx*granularity);
+  const end=new Date(start);
+  end.setMinutes(end.getMinutes()+granularity);
+  end.setMilliseconds(end.getMilliseconds()-1);
+  return personnelCanOperateForPeriod(user,personnelLocalDate(start),personnelLocalDate(end));
+}
+function personnelDispoKeyAllowed(wk,login,key,granularity){
+  const match=/^(\d+)_(\d+)$/.exec(String(key||''));
+  return !!match&&personnelDispoSlotAllowed(wk,login,Number(match[1]),Number(match[2]),granularity);
+}
+function personnelPiquetMemberAllowed(wk,login,jour,debut,fin){
+  if(!PERSONNEL_ONLINE_GATE)return true;
+  const user=personnelCurrentRecord(login);
+  if(!user||!/^\d{8}$/.test(String(wk||''))||!/^\d{2}:\d{2}$/.test(String(debut||''))||!/^\d{2}:\d{2}$/.test(String(fin||'')))return false;
+  const dayIdx=Array.from({length:7},function(_,idx){return idx;}).find(function(idx){return jourLabel(idx,true)===jour;});
+  if(dayIdx===undefined)return false;
+  const start=new Date(Number(wk.slice(0,4)),Number(wk.slice(4,6))-1,Number(wk.slice(6,8)));
+  start.setDate(start.getDate()+dayIdx+(timeToMin(debut)<(ASTR_CONFIG.weekStartHour??0)*60?1:0));
+  start.setHours(Number(debut.slice(0,2)),Number(debut.slice(3,5)),0,0);
+  const end=new Date(start);
+  end.setHours(Number(fin.slice(0,2)),Number(fin.slice(3,5)),0,0);
+  if(end<=start)end.setDate(end.getDate()+1);
+  end.setMilliseconds(end.getMilliseconds()-1);
+  return personnelCanOperateForPeriod(user,personnelLocalDate(start),personnelLocalDate(end));
 }
 function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWeek,myEq){
   const u=USERS.find(x=>x.l===login)||{prenom:login,nom:''};
@@ -11091,15 +11520,16 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
     h+='<div style="display:flex;align-items:center;margin-bottom:3px;"><div style="width:'+_lw+'px;flex-shrink:0;font-size:11px;font-weight:600;color:var(--t);white-space:nowrap;">'+dispoDayLabel(wk,d,false)+'</div>';
     for(let s=0;s<slotsD;s++){
       const key=d+'_'+s;
-      const val=DISPOS[wk][login][key];
+      const allowed=personnelDispoSlotAllowed(wk,login,d,s,agGran);
+      const val=allowed?DISPOS[wk][login][key]:false;
       const isDispo=val===true,isIndispo=val===false;
       const bg=isDispo?'#22C55E':isIndispo?'#EF4444':'#E5E7EB';
-      const cursor=canEdit?'pointer':'default';
-      const oc=canEdit?'toggleDispoCell(\''+wk+'\',\''+login+'\','+d+','+s+',this,\''+(eq?eq.color:'#22C55E')+'\')':'';
+      const cursor=canEdit&&allowed?'pointer':'default';
+      const oc=canEdit&&allowed?'toggleDispoCell(\''+wk+'\',\''+login+'\','+d+','+s+',this,\''+(eq?eq.color:'#22C55E')+'\')':'';
       const dragVal=isDispo?'true':isIndispo?'false':'null';
       h+='<div class="dispo-cell" style="flex:0 0 '+_cw+'px;width:'+_cw+'px;box-sizing:border-box;height:28px;background:'+bg+';cursor:'+cursor+';transition:background .1s;border-radius:3px;border:1px solid #fff;user-select:none;"'
-        +' title="'+dispoDayLabel(wk,d,true)+' '+slotToLabelDay(d,s,agGran)+'"'
-        +' data-wk="'+wk+'" data-login="'+login+'" data-d="'+d+'" data-s="'+s+'" data-val="'+dragVal+'"'
+        +' title="'+(allowed?dispoDayLabel(wk,d,true)+' '+slotToLabelDay(d,s,agGran):'Indisponible durant la situation du personnel')+'"'
+        +' data-wk="'+wk+'" data-login="'+login+'" data-d="'+d+'" data-s="'+s+'" data-val="'+dragVal+'" data-personnel-allowed="'+(allowed?'true':'false')+'"'
         +(oc?' onclick="'+oc+'"':'')+'></div>';
     }
     h+='</div>';
@@ -11325,6 +11755,8 @@ function markDispoSlotsChanged(wk,login,keys){
 function toggleDispoCell(wk,login,d,s,el,eqColor){
   // Ignore le click synthétique généré juste après un geste tactile (évite le double-toggle)
   if(_dispoTouchHandled && (Date.now()-_dispoTouchHandled)<600){return;}
+  const eq=getEquipeOfUser(login),gran=eq?eq.granularity:ASTR_CONFIG.granularity;
+  if(!personnelDispoSlotAllowed(wk,login,d,s,gran)){showToast('Créneau indisponible pour cet agent.','warn');return;}
   _jbEditLock=Date.now();
   if(!DISPOS[wk])DISPOS[wk]={};
   if(!DISPOS[wk][login])DISPOS[wk][login]={};
@@ -11340,6 +11772,7 @@ function toggleDispoCell(wk,login,d,s,el,eqColor){
 let _dragActive=false,_dragTargetVal=true,_dispoTouchHandled=0;
 let _dispoGestureCell=null,_dispoGestureX=0,_dispoGestureY=0,_dispoGestureMoved=false;
 function startDispoDrag(el){
+  if(el.dataset.personnelAllowed==='false')return;
   _jbEditLock=Date.now();
   _dragActive=true;
   // Gris (jamais renseigné) devient vert ; ensuite alternance vert ↔ rouge.
@@ -11353,6 +11786,8 @@ function continueDispoDrag(el){
 }
 function applyDispoDrag(el){
   const wk=el.dataset.wk,login=el.dataset.login,d=parseInt(el.dataset.d),s=parseInt(el.dataset.s);
+  const eq=getEquipeOfUser(login),gran=eq?eq.granularity:ASTR_CONFIG.granularity;
+  if(!personnelDispoSlotAllowed(wk,login,d,s,gran))return;
   if(!DISPOS[wk])DISPOS[wk]={};
   if(!DISPOS[wk][login])DISPOS[wk][login]={};
   const key=`${d}_${s}`;
@@ -11371,6 +11806,7 @@ function _dispoCellAtPoint(x,y){
   return null;
 }
 function _beginDispoGesture(cell,x,y){
+  if(cell.dataset.personnelAllowed==='false')return;
   _dispoGestureCell=cell;
   _dispoGestureX=x;
   _dispoGestureY=y;
@@ -11465,7 +11901,7 @@ function setAllDispoFor(wk,login,val,eqColor,allowClear){
   for(let d=0;d<7;d++)for(let s=0;s<slots;s++){
     const key=`${d}_${s}`;changedKeys.push(key);
     if(val===null)delete DISPOS[wk][login][key];
-    else DISPOS[wk][login][key]=val;
+    else DISPOS[wk][login][key]=val===true&&!personnelDispoSlotAllowed(wk,login,d,s,gran)?false:val;
   }
   markDispoSlotsChanged(wk,login,changedKeys);
   saveData();rAstrDispo();
@@ -11730,7 +12166,7 @@ function rAstrPiquets(){
       +'<div style="font-size:11px;font-weight:600;color:'+eq.color+';margin-bottom:6px;">'+eq.nom+labelSuffix+'</div>';
     sortByGradeThenName(eq.membres.map(function(l){return USERS.find(function(x){return x.l===l;});}).filter(Boolean)).forEach(function(u){
       const dispos=DISPOS[wk]?.[u.l]||{};
-      const nb=Object.values(dispos).filter(function(v){return v===true;}).length;
+      const nb=Object.entries(dispos).filter(function(entry){return entry[1]===true&&personnelDispoKeyAllowed(wk,u.l,entry[0],eq.granularity);}).length;
       const total=getSlotsPerDay(eq.granularity)*7;
       const pct=total>0?Math.round(nb/total*100):0;
       const pctColor=pctDispoColor(pct); // échelle progressive : rouge ≤25%, vert ≥75%
@@ -11757,7 +12193,7 @@ function rAstrPiquets(){
     html+='<div class="panel" style="padding:8px;margin-bottom:6px;"><div style="font-size:11px;font-weight:600;color:#888;margin-bottom:6px;">Sans &eacute;quipe</div>';
     sortByGradeThenName(sansEqPiquet).forEach(function(u){
       const dispos=DISPOS[wk]?.[u.l]||{};
-      const nb=Object.values(dispos).filter(function(v){return v===true;}).length;
+      const nb=Object.entries(dispos).filter(function(entry){return entry[1]===true&&personnelDispoKeyAllowed(wk,u.l,entry[0],ASTR_CONFIG.granularity);}).length;
       const total=getSlotsPerDay(ASTR_CONFIG.granularity)*7;
       const pct=total>0?Math.round(nb/total*100):0;
       const pctColor=pctDispoColor(pct); // échelle progressive : rouge ≤25%, vert ≥75%
@@ -11832,6 +12268,19 @@ document.addEventListener('drop',function(e){
   const tranchesHoraires={m:['08:00','12:00'],a:['12:00','18:00'],s:['18:00','00:00'],n:['00:00','08:00']};
   const anciennesHeures=[p.debut,p.fin];
   const nouvellesHeures=tranchesHoraires[tranche];
+  const nextDebut=nouvellesHeures?nouvellesHeures[0]:p.debut;
+  const nextFin=nouvellesHeures?nouvellesHeures[1]:p.fin;
+  const membres=p.membres&&p.membres.length?p.membres:[p.chefAgres,p.conducteur,p.chefEquipe,p.stagiaire].filter(Boolean).map(function(login){return {login:login,hDebut:p.debut,hFin:p.fin};});
+  const indisponible=membres.find(function(member){
+    const debut=nouvellesHeures&&member.hDebut===p.debut?nextDebut:member.hDebut||nextDebut;
+    const fin=nouvellesHeures&&member.hFin===p.fin?nextFin:member.hFin||nextFin;
+    return !personnelPiquetMemberAllowed(wk,member.login,jour,debut,fin);
+  });
+  if(indisponible){
+    _piquetDragData=null;
+    showToast('Déplacement refusé : '+personnelScheduleName(indisponible.login)+' est indisponible sur ce créneau.','warn');
+    return;
+  }
   if(nouvellesHeures){
     p.debut=nouvellesHeures[0];p.fin=nouvellesHeures[1];
     (p.membres||[]).forEach(function(m){
@@ -11876,6 +12325,8 @@ function confirmEditPiquet(wk,globalIdx){
   const note=document.getElementById('pq-note')?.value.trim()||'';
   const membres=pqGetMembres(wk);
   const err=document.getElementById('pq-err');err.style.display='none';
+  const indisponible=membres.find(function(m){return !personnelPiquetMemberAllowed(wk,m.login,jour,m.hDebut||debut,m.hFin||fin);});
+  if(indisponible){err.style.display='block';err.textContent='Cet agent ne peut pas être affecté pendant son absence : '+personnelScheduleName(indisponible.login);return;}
   const conflits=[];
   membres.forEach(function(m){
     if(hasConflitPiquet(wk,m.login,jour,m.hDebut||debut,m.hFin||fin,globalIdx)){
@@ -12879,7 +13330,9 @@ function refreshEquipageSelects(){
     const takenByOthers=sels.filter(function(o){return o.id!==sel.id&&vals[o.id];}).map(function(o){return vals[o.id];});
     const allExclude=baseExclude.concat(takenByOthers);
     const users=USERS.filter(function(u){
-      return (u.l===currentVal||!allExclude.includes(u.l))&&(allowHistoricalBusy||!findActivePersonnelConflict(u.l,currentIvId));
+      return (allowHistoricalBusy||personnelCanOperate(u))
+        &&(u.l===currentVal||!allExclude.includes(u.l))
+        &&(allowHistoricalBusy||!findActivePersonnelConflict(u.l,currentIvId));
     }).sort(function(a,b){return (a.nom+' '+a.prenom).localeCompare(b.nom+' '+b.prenom,'fr');});
     const suggested=sel.dataset.suggested||'';
     // Personnel renfort (autre caserne) — affiché en tête de liste
@@ -13402,7 +13855,9 @@ function confirmerDepart(id){
   const personnelLogins=eq1.concat(eq2).map(function(member){return member&&member.login;}).filter(Boolean);
   const conflict=validateOperationalDeparture(iv,engin1,engin2,personnelLogins);
   if(conflict){
-    if(conflict.sameDeparture&&conflict.kind==='vehicle'){
+    if(conflict.kind==='lifecycle'){
+      showToast(personnelScheduleName(conflict.value)+' ne peut pas être affecté à cette intervention pendant sa période d’indisponibilité.','warn');
+    }else if(conflict.sameDeparture&&conflict.kind==='vehicle'){
       showToast('Le même véhicule ne peut pas être engagé deux fois sur la même intervention.','warn');
     }else if(conflict.sameDeparture){
       showToast('Le même agent ne peut pas occuper plusieurs places ou plusieurs véhicules sur le même départ.','warn');
@@ -14313,8 +14768,6 @@ function annulerRenfortUT(ivId,renfortId,cid){
   saveData(true);setTimeout(function(){oM(ivId);},80); // push immédiat
   showToast('Demande annul\u00e9e pour '+(cas?cas.nom:cid),'success');
 }
-
-
 // === MODULE: autorisation.js ===
 // ═══════════════════════════════════════
 // AUTORISATION & ATTESTATION
@@ -16773,7 +17226,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0003';
+const APP_VERSION='V202610_0004';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -19758,12 +20211,17 @@ function _loadClear(){
   }
 }
 
+let _agaiSessionRestorePromise=null;
 function _postLoadInit(){
   if(CASERNE_DATA._global&&CASERNE_DATA._global.logoB64){
     window._LOGO_OVERRIDE='data:'+(CASERNE_DATA._global.logoMime||'image/jpeg')+';base64,'+CASERNE_DATA._global.logoB64;
   }
   try{agaiMigrateOperationalStatusMetadata();}catch(error){console.warn('[AGAI] Mise à niveau des statuts historiques impossible:',error);}
-  if(!CU)try{_restoreSessionAfterLoad();}catch(e){console.warn('[AGAI] Restauration de session impossible:',e);}
+  if(!CU&&!_agaiSessionRestorePromise){
+    _agaiSessionRestorePromise=Promise.resolve(_restoreSessionAfterLoad())
+      .catch(function(error){console.warn('[AGAI] Restauration de session impossible:',error);})
+      .finally(function(){_agaiSessionRestorePromise=null;});
+  }
 }
 
 function jbSyncNow(){
@@ -19918,12 +20376,14 @@ let _sbSaveTimer = null;
 let _sbRealtime  = null;
 let _sbPollTimer = null;
 
+function _agaiDataAccessToken(){
+  return PERSONNEL_ONLINE_GATE?_agaiAuthAccessToken():SB_KEY;
+}
 const _sbHeaders = {
   'apikey': SB_KEY,
-  // Phase v239 : la session liée sert uniquement aux opérations de compte.
-  // Les données restent volontairement sur l'accès historique jusqu'à la v240,
-  // sinon les politiques RLS intermédiaires peuvent bloquer toute la file.
-  'Authorization': 'Bearer ' + SB_KEY,
+  // La bascule reste inactive tant que PERSONNEL_ONLINE_GATE est désactivé.
+  // Ensuite chaque requête de données doit porter le jeton Auth du titulaire.
+  get Authorization(){return 'Bearer '+(_agaiDataAccessToken()||'session-indisponible');},
   'Content-Type': 'application/json'
 };
 
@@ -20096,6 +20556,8 @@ async function _sbPull(silent){
 function _sbStartRealtime(){
   try {
     if (_sbRealtime) { try{ _sbRealtime.close(); }catch(e){} _sbRealtime = null; }
+    const dataToken=_agaiDataAccessToken();
+    if(PERSONNEL_ONLINE_GATE&&!dataToken)return;
     const wsUrl = SB_URL.replace('https://', 'wss://') + '/realtime/v1/websocket?apikey=' + SB_KEY + '&vsn=1.0.0';
     const ws = new WebSocket(wsUrl);
     _sbRealtime = ws;
@@ -20104,7 +20566,7 @@ function _sbStartRealtime(){
       ws.send(JSON.stringify({
         topic: 'realtime:public:caserne_data',
         event: 'phx_join',
-        payload: { config: { postgres_changes: [{ event: '*', schema: 'public', table: 'caserne_data' }] } },
+        payload: { config: { postgres_changes: [{ event: '*', schema: 'public', table: 'caserne_data' }] }, access_token:dataToken },
         ref: '1'
       }));
       // Heartbeat toutes les 25s pour garder la connexion vivante
@@ -21893,6 +22355,8 @@ function _rcRefreshRealtimeScope(){
 }
 function _rcStartRealtime(){
   if(!USE_RECORDS||!CU)return;
+  const dataToken=_agaiDataAccessToken();
+  if(PERSONNEL_ONLINE_GATE&&!dataToken)return;
   try {
     if(_rcRealtimeReconnectTimer){clearTimeout(_rcRealtimeReconnectTimer);_rcRealtimeReconnectTimer=null;}
     if(_rcRealtime){
@@ -21912,7 +22376,7 @@ function _rcStartRealtime(){
       const joinRef=String(++_rcRealtimeJoinSequence);
       ws._agaiJoinRef=joinRef;
       ws.send(JSON.stringify({ topic:'realtime:public:records', event:'phx_join',
-        payload:{ config:{ postgres_changes:[subscription] }, access_token:SB_KEY },
+        payload:{ config:{ postgres_changes:[subscription] }, access_token:dataToken },
         ref:joinRef, join_ref:joinRef }));
       ws._agaiJoinTimer=window.setTimeout(function(){
         if(!_rcRealtimeReady&&ws.readyState===WebSocket.OPEN)try{ws.close();}catch(e){}
@@ -22021,7 +22485,6 @@ async function _rcMigrate(){
 
 function saveAndRefresh(){saveData();}
 function _odSyncAfterSave(){if(typeof odScheduleSync==='function')odScheduleSync();}
-
 // === MODULE: planning_annuel.js ===
 // ══════════════════════════════════════════════════════
 // PLANNING ANNUEL DES ÉQUIPES DE GARDE
@@ -22604,7 +23067,9 @@ function agentsAvecDispos(wk){
   // Retourne tous les agents (toutes équipes + sans équipe) qui ont au moins 1 créneau dispo cette semaine
   return USERS.filter(u=>{
     const d=DISPOS[wk]?.[u.l];
-    return d&&Object.values(d).some(v=>v===true);
+    if(!d)return false;
+    const eq=getEquipeOfUser(u.l),gran=eq?eq.granularity:ASTR_CONFIG.granularity;
+    return Object.entries(d).some(function(entry){return entry[1]===true&&personnelDispoKeyAllowed(wk,u.l,entry[0],gran);});
   });
 }
 // Grades chef d’agrès
@@ -22843,7 +23308,7 @@ function pqBuildMiniGrille(wk){
   const dispoWk=DISPOS[wk]||{};
   const agents=sortByGradeThenName(USERS.filter(function(u){
     const d=dispoWk[u.l];if(!d)return false;
-    for(let s=0;s<slots;s++){if(d[jourIdx+'_'+s]===true)return true;}
+    for(let s=0;s<slots;s++){if(d[jourIdx+'_'+s]===true&&personnelDispoSlotAllowed(wk,u.l,jourIdx,s,gran))return true;}
     return false;
   }));
   if(!agents.length)return '<div style="font-size:11px;color:var(--t2);padding:8px;background:#FEF3C7;border-radius:6px;">⚠️ Aucun agent disponible le '+escHtml(jour)+'.</div>';
@@ -22880,7 +23345,7 @@ function pqBuildMiniGrille(wk){
     h+='<div style="display:flex;align-items:center;margin-bottom:3px;">';
     h+='<div style="width:'+_lw+'px;flex-shrink:0;font-size:10px;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:4px;" title="'+escHtml(fullName(u))+'">'+escHtml(nomAbrege(u))+'</div>';
     for(let s=0;s<slots;s++){
-      const ok=d[jourIdx+'_'+s]===true;
+      const ok=d[jourIdx+'_'+s]===true&&personnelDispoSlotAllowed(wk,u.l,jourIdx,s,gran);
       const dans=inPlage(s);
       // Dans la plage : couleurs franches. Hors plage : couleurs atténuées.
       const bg=ok?(dans?'#22C55E':'#BBF0CD'):(dans?'#D1D5DB':'#F1F2F4');
@@ -23052,7 +23517,8 @@ function suggestCreneaux(wk){
 
   // Vérifier si un agent est dispo sur un slot précis
   function isAgentDispo(login,dayIdx,slotIdx){
-    return DISPOS[wk]?.[login]?.[dayIdx+'_'+slotIdx]===true;
+    return personnelDispoSlotAllowed(wk,login,dayIdx,slotIdx,gran)
+      &&DISPOS[wk]?.[login]?.[dayIdx+'_'+slotIdx]===true;
   }
 
   // Trouver les créneaux continus pour chaque jour
@@ -23268,6 +23734,8 @@ function confirmAddPiquet(wk,engin){
   const note=document.getElementById('pq-note')?.value.trim()||'';
   const err=document.getElementById('pq-err');err.style.display='none';
   const membres=pqGetMembres(wk);
+  const indisponible=membres.find(function(m){return !personnelPiquetMemberAllowed(wk,m.login,jour,m.hDebut||debut,m.hFin||fin);});
+  if(indisponible){err.style.display='block';err.textContent='Cet agent ne peut pas être affecté pendant son absence : '+personnelScheduleName(indisponible.login);return;}
   const conflits=[];
   membres.forEach(function(m){
     if(hasConflitPiquet(wk,m.login,jour,m.hDebut||debut,m.hFin||fin,-1)){
@@ -23519,6 +23987,8 @@ function saveActivite(){
   if(dateErr){err.style.display='block';err.textContent=dateErr;return;}
   if(hf<=hd&&!(hf<hd)){/* ok */}
   const participants=Array.from(document.querySelectorAll('#act-participants input[type=checkbox]:checked')).map(cb=>cb.value);
+  const unavailable=personnelUnavailableForPeriod(participants,date,date);
+  if(unavailable){err.style.display='block';err.textContent=personnelScheduleName(unavailable.login)+' ne peut pas participer à une activité de service durant son indisponibilité.';return;}
   if(hhmmToMinutes(hd)===null||hhmmToMinutes(hf)===null||hd===hf){err.style.display='block';err.textContent='Renseignez des heures de début et de fin distinctes et valides.';return;}
   const interventionConflict=findInterventionConflictForSchedule('Activité de service',{date:date,hDebut:hd,hFin:hf,participants:participants});
   if(interventionConflict){err.style.display='block';err.textContent=personnelScheduleConflictMessage(interventionConflict,'Cette activité de service');return;}
@@ -23778,8 +24248,6 @@ function deleteFmpa(id){
     }
   });
 }
-
-
 // === MODULE: formations.js ===
 // ══════════════════════════════════════════════════════
 // FORMATION
@@ -24120,6 +24588,8 @@ function _saveFormEntry(pfx,idPrefix,getDataFn,toggleFn,listFn,recapFn){
     const allowed=new Set(declaredFormateurUsers().map(function(user){return user.l;}));
     participants=participants.filter(function(login){return allowed.has(login);});
   }
+  const unavailable=personnelUnavailableForPeriod(participants,ddebut,dfin);
+  if(unavailable){err.style.display='block';err.textContent=personnelScheduleName(unavailable.login)+' ne peut pas être inscrit à cette formation pendant son indisponibilité.';return;}
   const proposed={ddebut:ddebut,dfin:dfin,hmatind:hmatind,hmatinf:hmatinf,hapremd:hapremd,hapremf:hapremf,participants:participants};
   const hoursError=personnelFormationHoursError(proposed);
   if(hoursError){err.style.display='block';err.textContent=hoursError;return;}
@@ -24360,6 +24830,8 @@ function saveFmpa(){
   if(new Date(date+'T00:00:00')>now){err.style.display='block';err.textContent='La date ne peut pas être dans le futur.';return;}
   const participants=Array.from(document.querySelectorAll('#fmpa-participants input[type=checkbox]:checked')).map(cb=>cb.value);
   const formateurs=Array.from(document.querySelectorAll('#fmpa-formateurs input[type=checkbox]:checked')).map(cb=>cb.value);
+  const unavailable=personnelUnavailableForPeriod(participants.concat(formateurs),date,date);
+  if(unavailable){err.style.display='block';err.textContent=personnelScheduleName(unavailable.login)+' ne peut pas être inscrit à cette FMPA pendant son indisponibilité.';return;}
   if(hhmmToMinutes(hd)===null||hhmmToMinutes(hf)===null||hd===hf){err.style.display='block';err.textContent='Renseignez des heures de début et de fin distinctes et valides.';return;}
   const interventionConflict=findInterventionConflictForSchedule('FMPA',{date:date,hDebut:hd,hFin:hf,participants:participants,formateurs:formateurs});
   if(interventionConflict){err.style.display='block';err.textContent=personnelScheduleConflictMessage(interventionConflict,'Cette FMPA');return;}
@@ -24480,6 +24952,8 @@ function fmpaSaveEdit(id){
   const newPart=Array.from(document.querySelectorAll('#fmedit-participants input[type=checkbox]:checked')).map(cb=>cb.value);
   const newForm=Array.from(document.querySelectorAll('#fmedit-formateurs input[type=checkbox]:checked')).map(cb=>cb.value);
   if(hhmmToMinutes(newHd)===null||hhmmToMinutes(newHf)===null||newHd===newHf){err.style.display='block';err.textContent='Renseignez des heures de début et de fin distinctes et valides.';return;}
+  const unavailable=personnelUnavailableForPeriod(newPart.concat(newForm),a.date,a.date);
+  if(unavailable){err.style.display='block';err.textContent=personnelScheduleName(unavailable.login)+' ne peut pas participer à cette formation durant son indisponibilité.';return;}
   const interventionConflict=findInterventionConflictForSchedule('FMPA',{date:a.date,hDebut:newHd,hFin:newHf,participants:newPart,formateurs:newForm});
   if(interventionConflict){err.style.display='block';err.textContent=personnelScheduleConflictMessage(interventionConflict,'Cette FMPA');return;}
   const champs=[];

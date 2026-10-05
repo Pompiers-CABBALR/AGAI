@@ -2252,7 +2252,7 @@ function delCaserne(id){
   confirmModal('Supprimer cette caserne et toutes ses données ?',function(){CASERNES=CASERNES.filter(c=>c.id!==id);delete CASERNE_DATA[id];saveData();renderSuperAdmin();});
 }
 
-function _restoreSessionAfterLoad(){
+async function _restoreSessionAfterLoad(){
   if(CU&&isSessionValid())return true;
   const stored=_readStoredSession();
   if(!stored||!stored.token||!stored.login||!Number.isFinite(Number(stored.expiresAt)))return false;
@@ -2265,6 +2265,13 @@ function _restoreSessionAfterLoad(){
       expiredEntry.actif=false;
       expiredEntry.fermetureAuto='Session arrivée à expiration';
     }
+    return false;
+  }
+  if(PERSONNEL_ONLINE_GATE&&!await _agaiOnlineCheckSavedSession(stored.login,stored.caserneId)){
+    try{localStorage.removeItem(SESSION_STORAGE_KEY);}catch(error){}
+    _agaiStoreAuthSession(null);
+    const error=document.getElementById('lerr');
+    if(error){error.style.display='block';error.textContent='AGAI nécessite Internet pour vérifier votre accès. Reconnectez-vous lorsque le service est disponible.';}
     return false;
   }
 
@@ -2289,6 +2296,10 @@ function _restoreSessionAfterLoad(){
     GLOBAL_ROLE=null;CURRENT_CASERNE_ID=caserneId;syncCaserneContext();
     restoredUser=USERS.find(function(user){return user.l===stored.login;})||null;
     if(!restoredUser){CURRENT_CASERNE_ID=null;syncCaserneContext();return false;}
+    if(!personnelCanLogin(restoredUser)){
+      try{localStorage.removeItem(SESSION_STORAGE_KEY);}catch(error){}
+      CURRENT_CASERNE_ID=null;syncCaserneContext();return false;
+    }
     restoredUser.caserneId=caserneId;
     restoredUser.appRole=deriveAccountRole(restoredUser);
   }
@@ -2342,6 +2353,7 @@ function _restoreSessionAfterLoad(){
   });
   _persistSessionState({backgroundAt:0});
   _armSessionTimers();
+  _agaiOnlineArmChecks();
   doLoginSuccess();
   return true;
 }
@@ -2383,6 +2395,7 @@ function doLoginSuccess(){
   if(window.innerWidth<=480){window.scrollTo(0,0);}
 }
 function doLogout(){
+  _agaiOnlineStopChecks();
   const authToken=_agaiAuthAccessToken();
   if(authToken)fetch(SB_URL+'/auth/v1/logout?scope=local',{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+authToken}}).catch(function(){});
   _agaiStoreAuthSession(null);
