@@ -1415,6 +1415,21 @@ function piquetToAbsRangeIdx(jourIdx,debut,fin){
   return [s,e];
 }
 
+// Le piquet désigne un rang de départ, pas un camion garé à une place fixe.
+// La clé historique `engin` reste conservée pour les plannings existants ;
+// le véhicule réellement engagé est choisi lors du premier départ.
+function piquetDepartureLabel(engin){
+  const name=String(engin||'');
+  const type=(name.match(/^(VTU|VPI)/i)||[])[1];
+  if(!type)return name;
+  const sameType=sortVehicleNames(ASTR_CONFIG.engins||[]).filter(function(candidate){
+    return new RegExp('^'+type,'i').test(candidate);
+  });
+  const index=sameType.findIndex(function(candidate){return candidate===name;});
+  if(index<0)return name;
+  return type.toUpperCase()+' — '+(index+1)+(index===0?'er':'e')+' départ';
+}
+
 function rAstrPiquets(){
   const mon=getMondayOfWeek(astrPiquetWeek);
   const wk=weekKey(mon);
@@ -1463,6 +1478,7 @@ function rAstrPiquets(){
   if(piquetsValidated&&!isAdmin){
     html+='<div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#166534;">&#x2705; Piquets et disponibilités validés pour cette semaine. Contactez un administrateur pour toute modification.</div>';
   }
+  html+='<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:11px;color:#1D4ED8;">Les rangs « 1er départ », « 2e départ » désignent les équipages du piquet. Le camion réellement utilisé est choisi au premier départ de la tournée.</div>';
 
   // Afficher avertissement si deadline piquet passee
   if(pastDeadlinePiquet&&!isAdmin){
@@ -1569,7 +1585,7 @@ function rAstrPiquets(){
       const addBtn=canAdd?'<button class="btn pr sm" style="font-size:10px;padding:2px 7px;white-space:nowrap;" onclick="addPiquet(\''+wk+'\',\''+engin+'\',\''+jour+'\')">+ Cr&eacute;neau</button>':'';
 
       html+='<tr style="border-bottom:0.5px solid var(--brd);">'
-        +'<td style="padding:6px 8px;font-size:11px;font-weight:500;text-align:center;background:var(--bg);border-right:0.5px solid var(--brd);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">&#x1F692; '+engin+'</td>'
+        +'<td style="padding:6px 8px;font-size:11px;font-weight:500;text-align:center;background:var(--bg);border-right:0.5px solid var(--brd);">&#x1F692; '+piquetDepartureLabel(engin)+'</td>'
         +'<td class="pq-drop-cell" data-wk="'+wk+'" data-jour="'+jour+'" data-tr="m" data-engin="'+engin+'" style="padding:6px 8px;border-right:0.5px solid var(--brd);">'+cellHtml(tranches.m,'#E6F1FB','#185FA5','m')+'</td>'
         +'<td class="pq-drop-cell" data-wk="'+wk+'" data-jour="'+jour+'" data-tr="a" data-engin="'+engin+'" style="padding:6px 8px;border-right:0.5px solid var(--brd);">'+cellHtml(tranches.a,'#EAF3DE','#3B6D11','a')+'</td>'
         +'<td class="pq-drop-cell" data-wk="'+wk+'" data-jour="'+jour+'" data-tr="s" data-engin="'+engin+'" style="padding:6px 8px;border-right:0.5px solid var(--brd);">'+cellHtml(tranches.s,'#EEEDFE','#534AB7','s')+'</td>'
@@ -1732,7 +1748,7 @@ document.addEventListener('drop',function(e){
 function editPiquet(wk,globalIdx){
   const p=PIQUETS[wk]?.[globalIdx];if(!p)return;
   document.getElementById('mt').textContent='Modifier le cr\u00e9neau';
-  document.getElementById('mi').textContent=p.engin+' \u2014 '+p.jour;
+  document.getElementById('mi').textContent=piquetDepartureLabel(p.engin)+' \u2014 '+p.jour;
   document.getElementById('mb').innerHTML=pqBuildForm(wk,p.engin,p.jour,p)
     +'<div id="pq-err" style="font-size:12px;color:#E24B4A;display:none;margin-bottom:8px;"></div>'
     +'<div class="brow">'
@@ -1796,7 +1812,7 @@ function logPiquetChange(wk, action, piquet, details) {
     date: new Date().toLocaleString('fr-FR'),
     auteur: CU ? CU.nom+' '+CU.prenom : '?',
     action: action,
-    piquet: piquet.engin+' '+piquet.jour+' '+piquet.debut+'-'+piquet.fin,
+    piquet: piquetDepartureLabel(piquet.engin)+' '+piquet.jour+' '+piquet.debut+'-'+piquet.fin,
     membres: membres||'-',
     details: details||''
   });
@@ -1898,7 +1914,7 @@ function exportPiquets(){
     // Feuille r\u00e9cap semaine (1 tableau par jour, tous les engins)
     const recapData=[];
     recapData.push(['Fiche des piquets \u00e0 la semaine - '+weekLabel(mon),'','','','','','','','']);
-    recapData.push(['Engin','Matin','Cr\u00e9neau','Apr\u00e8s-midi','Cr\u00e9neau','Soir','Cr\u00e9neau','Nuit','Cr\u00e9neau']);
+    recapData.push(['Rang de d\u00e9part','Matin','Cr\u00e9neau','Apr\u00e8s-midi','Cr\u00e9neau','Soir','Cr\u00e9neau','Nuit','Cr\u00e9neau']);
 
     JOURS_FULL.forEach(function(jour,di){
       const jourDate=new Date(mon);jourDate.setDate(jourDate.getDate()+di);
@@ -1910,7 +1926,7 @@ function exportPiquets(){
         const [aN,aC]=trancheData(pJour,'am');
         const [sN,sC]=trancheData(pJour,'soir');
         const [nN,nC]=trancheData(pJour,'nuit');
-        recapData.push([engin,mN,mC,aN,aC,sN,sC,nN,nC]);
+        recapData.push([piquetDepartureLabel(engin),mN,mC,aN,aC,sN,sC,nN,nC]);
       });
       recapData.push(['','','','','','','','','']);
     });
@@ -1928,7 +1944,7 @@ function exportPiquets(){
     // Données exhaustives : une ligne par agent affecté, sans perdre les
     // créneaux multiples, les rôles, les horaires individuels ni les notes.
     const detailData=[[
-      'Caserne','Semaine','Date','Jour','Engin','P\u00e9riode',
+      'Caserne','Semaine','Date','Jour','Rang de d\u00e9part','P\u00e9riode',
       'D\u00e9but piquet','Fin piquet','R\u00f4le','Identifiant',
       'Agent','D\u00e9but agent','Fin agent','Note'
     ]];
@@ -1940,7 +1956,7 @@ function exportPiquets(){
       piquetsSem.filter(function(p){return p.jour===jour;}).forEach(function(p){
         const membres=getMembresExport(p);
         const base=[
-          caserneNom,wk,dateIso,jour,p.engin||'',trancheLabels[getTranche(p)]||'',
+          caserneNom,wk,dateIso,jour,piquetDepartureLabel(p.engin),trancheLabels[getTranche(p)]||'',
           p.debut||'',p.fin||''
         ];
         if(!membres.length){
@@ -1974,14 +1990,14 @@ function exportPiquets(){
       const dateStr=jour+' '+jourDate.getDate()+'/'+pad(jourDate.getMonth()+1);
       const wsData=[];
       wsData.push([dateStr,'','','','','','','','']);
-      wsData.push(['Engin','Matin','Cr\u00e9neau','Apr\u00e8s-midi','Cr\u00e9neau','Soir','Cr\u00e9neau','Nuit','Cr\u00e9neau']);
+      wsData.push(['Rang de d\u00e9part','Matin','Cr\u00e9neau','Apr\u00e8s-midi','Cr\u00e9neau','Soir','Cr\u00e9neau','Nuit','Cr\u00e9neau']);
       engins.forEach(function(engin){
         const pJour=piquetsSem.filter(function(p){return p.engin===engin&&p.jour===jour;});
         const [mN,mC]=trancheData(pJour,'matin');
         const [aN,aC]=trancheData(pJour,'am');
         const [sN,sC]=trancheData(pJour,'soir');
         const [nN,nC]=trancheData(pJour,'nuit');
-        wsData.push([engin,mN,mC,aN,aC,sN,sC,nN,nC]);
+        wsData.push([piquetDepartureLabel(engin),mN,mC,aN,aC,sN,sC,nN,nC]);
       });
       const ws=XLSX.utils.aoa_to_sheet(wsData);
       ws['!cols']=[{wch:14},{wch:25},{wch:12},{wch:25},{wch:12},{wch:25},{wch:12},{wch:25},{wch:12}];
@@ -2584,7 +2600,8 @@ function buildDepartureCrewFields(engin,prefix,suggestions,excludeLogins,require
   suggestions=suggestions||{};
   return configuredCrewSlotsForVehicle(engin).map(function(slot){
     const label=slot.role+(slot.total>1?' '+slot.ordinal:'');
-    const suggested=slot.ordinal===1?(suggestions[slot.key]||''):'';
+    const values=suggestions[slot.key]||'';
+    const suggested=Array.isArray(values)?(values[slot.ordinal-1]||''):(slot.ordinal===1?values:'');
     return agentSelectHtml(label,departureCrewSlotId(prefix,slot),suggested,!!suggested,requireAll===true||slot.key==='conducteur',excludeLogins||[]);
   }).join('');
 }
@@ -2660,6 +2677,38 @@ function getPiquetEquipage(piq){
   if(!res.chefEquipe&&piq.chefEquipe)res.chefEquipe=piq.chefEquipe;
   if(!res.equipier&&piq.stagiaire)res.equipier=piq.stagiaire;
   return res;
+}
+
+// La tournée garde l'engin et les agents réellement partis sur la première
+// intervention. Le chef et le conducteur peuvent échanger leurs rôles.
+function chainedDepartureSuggestions(previous,chief,secondChief){
+  if(!previous||!operationalStartChainWithinGrace(previous))return null;
+  const crew=[].concat(previous._equipage1||[],previous._equipage2||[]);
+  if(!crew.some(function(member){return member&&member.login===chief;})
+      &&previous.agr!==chief&&previous._agr2!==chief)return null;
+  const effectiveSecondChief=secondChief||previous._agr2||'';
+  const excluded=[chief,effectiveSecondChief].filter(Boolean);
+  const fromCrew=function(members,oldChief){
+    const result={conducteur:[],chefdequipe:[],equipier:[]},used=new Set(excluded);
+    // Si le conducteur est devenu chef, l'ancien chef occupe en priorité
+    // la place de conducteur ; les autres agents conservent leur rôle.
+    if(oldChief&&oldChief!==chief&&!used.has(oldChief)){
+      result.conducteur.push(oldChief);used.add(oldChief);
+    }
+    (members||[]).forEach(function(member){
+      const key=interventionRoleKey(member&&member.role),login=member&&member.login;
+      if(!login||used.has(login)||!Object.prototype.hasOwnProperty.call(result,key))return;
+      result[key].push(login);used.add(login);
+    });
+    return result;
+  };
+  return {
+    engin1:previous._engin1||previous.eng||'',
+    engin2:previous._engin2||'',
+    agr2:effectiveSecondChief,
+    equipage1:fromCrew(previous._equipage1,previous.agr),
+    equipage2:fromCrew(previous._equipage2,previous._agr2)
+  };
 }
 
 // ── Construit le HTML d'un sélecteur d'agent avec rôle ──
@@ -2961,23 +3010,25 @@ function showPersonnelModal(id){
   const heure=interruptedHandoff?interruptedHandoff.handoff.heure:(_pendingNextInterventionStarts[id]||getHHMM(N()));
   const chained=!interruptedHandoff&&!!_pendingNextInterventionStarts[id];
   const wk=weekKey(getMondayOfWeek(0));
+  const previous=chained&&iv._chainPreviousInterventionId?interventionById(iv._chainPreviousInterventionId):null;
+  const inherited=chainedDepartureSuggestions(previous,CU.l,iv._agr2||'');
 
   // Piquet du CA principal
   const piq1=getPiquetActif(wk,CU.l);
   const _eq1=getPiquetEquipage(piq1);
-  const engin1Sugg=piq1?piq1.engin:'';
-  const cond1Sugg=_eq1.conducteur;
-  const chefEq1Sugg=_eq1.chefEquipe;
-  const eq1Sugg=_eq1.equipier;
+  const engin1Sugg=inherited?inherited.engin1:'';
+  const cond1Sugg=inherited?inherited.equipage1.conducteur:_eq1.conducteur;
+  const chefEq1Sugg=inherited?inherited.equipage1.chefdequipe:_eq1.chefEquipe;
+  const eq1Sugg=inherited?inherited.equipage1.equipier:_eq1.equipier;
 
   // Piquet du 2ème chef d'agrès (si présent)
-  const agr2=iv._agr2||'';
+  const agr2=iv._agr2||inherited&&inherited.agr2||'';
   const piq2=agr2?getPiquetActif(wk,agr2):null;
   const _eq2=getPiquetEquipage(piq2);
-  const engin2Sugg=piq2?piq2.engin:'';
-  const cond2Sugg=_eq2.conducteur;
-  const chefEq2Sugg=_eq2.chefEquipe;
-  const eq2Sugg=_eq2.equipier;
+  const engin2Sugg=inherited?inherited.engin2:'';
+  const cond2Sugg=inherited?inherited.equipage2.conducteur:_eq2.conducteur;
+  const chefEq2Sugg=inherited?inherited.equipage2.chefdequipe:_eq2.chefEquipe;
+  const eq2Sugg=inherited?inherited.equipage2.equipier:_eq2.equipier;
 
   const enginOpts=function(sugg){
     const vehicles=departureVehicleCatalog.slice();
@@ -3031,7 +3082,7 @@ function showPersonnelModal(id){
     +'<div style="background:#FEF0E7;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#854F0B;">'
     +'\u23F1\uFE0F Heure de d\u00e9part : <strong>'+heure+'</strong>'
     +(interruptedHandoff?' <span style="font-size:10px;font-weight:600;color:#B45309;">(départ repris de '+escHtml(interruptedHandoff.source.id)+')</span>':'')
-    +(chained?' <span style="font-size:10px;font-weight:600;color:#7C3AED;">(enchaînée après l’intervention précédente)</span>':'')+'</div>'
+    +(chained?' <span style="font-size:10px;font-weight:600;color:#7C3AED;">(enchaînée après l’intervention précédente'+(inherited?' : véhicule et équipage proposés':'')+')</span>':'')+'</div>'
     +'<div style="font-size:12px;font-weight:700;color:var(--t);margin-bottom:8px;">&#x1F692; Engin 1 \u2014 '+fullName(USERS.find(function(u){return u.l===CU.l;})||{prenom:CU.l,nom:''})+'</div>'
     +'<div class="fg" style="margin-bottom:8px;"><div class="fgl">Engin engag\u00e9</div>'
     +'<select class="fi" id="pers-engin" onchange="document.getElementById(\'eq1-body\').innerHTML=buildEquipage1Dyn(this.value);refreshEquipageSelects()">'+enginOpts(engin1Sugg)+'</select></div>'
@@ -3265,7 +3316,8 @@ function confirmerDepart(id){
   const heure=interruptedHandoff?interruptedHandoff.handoff.heure:(_pendingNextInterventionStarts[id]||getHHMM(N()));
   const engin1=document.getElementById('pers-engin')?.value||'';
   const engin2=document.getElementById('pers-engin2')?.value||'';
-  const agr2=iv._agr2||(document.getElementById('eq2-ca')?.value||'');
+  const agr2=iv._agr2||(document.getElementById('eq2-ca')?.value||'')
+    ||(window._piqData&&window._piqData.ivId===id?window._piqData.agr2||'':'');
   const personnelReinforcementException=hasActiveOutgoingPersonnelReinforcementRequest(iv);
   if(engin2&&!agr2){showToast('Renseignez le chef d’agrès du deuxième véhicule.','warn');return;}
   if(agr2){

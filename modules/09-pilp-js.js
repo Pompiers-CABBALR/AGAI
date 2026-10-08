@@ -815,29 +815,17 @@ function getEnginsOccupes(){
   // lorsque l'intervention a été créée un jour précédent.
   return [...new Set(getActiveOperationalInterventions().flatMap(interventionVehicleNames))];
 }
-function getPiquetsEngin(engin){
-  // Piquets ASTR du jour pour cet engin
-  const mon=getMondayOfWeek(0);
-  const wk=weekKey(mon);
-  const jourAuj=JOURS_FULL[new Date().getDay()?new Date().getDay()-1:6];
-  return (PIQUETS[wk]||[]).filter(p=>p.engin===engin&&p.jour===jourAuj);
-}
 function rEgrid(){
   const eg=document.getElementById('eg');
   if(!eg)return;
   const occupes=getEnginsOccupes();
   eg.innerHTML=sortVehicleNames(ASTR_CONFIG.engins).map(engin=>{
     const occupe=occupes.some(function(name){return nm(name)===nm(engin);});
-    const piquets=getPiquetsEngin(engin);
-    const agentsPiquet=piquets.map(p=>{
-      const ca=USERS.find(u=>u.l===p.chefAgres);
-      const co=USERS.find(u=>u.l===p.conducteur);
-      return [ca?ca.nom:'?',co?co.nom:'?'].join('/');
-    }).join(', ');
-    const tooltip=occupe?'Engin en intervention':agentsPiquet?`Piquet: ${agentsPiquet}`:'';
+    // Les piquets sont des rangs de départ : leur équipage n'est rattaché
+    // à aucun camion physique avant le premier départ.
+    const tooltip=occupe?'Engin en intervention':'Choisir ce véhicule pour le départ';
     return `<div class="ec${occupe?' ec-occupe':''}" onclick="sE(this,'${engin}')" title="${tooltip}" ${occupe?'style="opacity:.4;cursor:not-allowed;"':''}>
       ${engin}
-      ${agentsPiquet?`<div style="font-size:9px;color:var(--t2);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70px;">${agentsPiquet}</div>`:''}
       ${occupe?'<div style="font-size:9px;color:#E24B4A;">⛔ En cours</div>':''}
     </div>`;
   }).join('');

@@ -762,7 +762,7 @@ function pqPrefillSelects(existingP){
 
 
 function addPiquet(wk,engin,jourDefaut){
-  document.getElementById('mt').textContent='Nouveau cr\u00e9neau \u2014 '+engin;
+  document.getElementById('mt').textContent='Nouveau cr\u00e9neau \u2014 '+piquetDepartureLabel(engin);
   document.getElementById('mi').textContent='';
   document.getElementById('mb').innerHTML=pqBuildForm(wk,engin,jourDefaut||JOURS_FULL[0],null)
     +'<div id="pq-suggestions" style="margin-bottom:8px;"></div>'
