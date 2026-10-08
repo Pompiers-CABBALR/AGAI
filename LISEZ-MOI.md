@@ -3,6 +3,16 @@
 Cette variante conserve les fonctionnalités de `AGAI-securise.html`, mais sépare
 le code afin de faciliter les prochaines corrections.
 
+La V202610_0005 reconnaît un enchaînement lorsque le conducteur de la
+précédente intervention devient chef d'agrès, à condition que l'équipage et
+le véhicule restent identiques et que le nouveau départ soit confirmé dans
+les 15 minutes suivant la fin précédente. L'heure affichée reprend alors la
+fin précédente, tandis que l'heure réelle du nouveau départ reste tracée.
+Au-delà des 15 minutes, ou si l'équipage ou le véhicule change, il s'agit
+d'un nouveau départ soumis au contrôle de présence à la caserne (sauf
+exceptions de contrôle déjà configurées). Une tournée préparée ne prolonge
+plus ce délai.
+
 La V202610_0003 affiche « 1 — … », « 2 — … » pour les feuilles
 d’autorisation et d’attestation d’une intervention qui ne concerne pas des
 nids. Les interventions de nids conservent « Nid 1 — … » et cette distinction

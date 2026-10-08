@@ -1,5 +1,19 @@
 # AGAI — déploiement sécurisé
 
+## Préparation locale V202610_0005 — enchaînement avec permutation des rôles
+
+**Non déployée par Codex.** Publier le dossier modulaire complet. Un conducteur
+qui devient chef d'agrès peut enchaîner avec le même équipage et le même
+véhicule jusqu'à 15 minutes après la fin précédente. L'heure affichée reprend
+cette fin ; l'heure réelle du second départ reste dans la fiche et l'historique.
+Si le délai expire, y compris pendant que le formulaire est ouvert, ou si
+l'équipage ou le véhicule change, l'heure héritée est abandonnée et une nouvelle
+vérification de présence à la caserne est demandée. Le contrôle suit les
+exceptions déjà configurées pour les départs SDIS, le chef de corps, le
+superadministrateur et les casernes où la géolocalisation est désactivée.
+Vérifier les cas limites à 15 min et 15 min 01 s sur mobile avant usage réel.
+Aucune migration Supabase n'est requise.
+
 ## Préparation locale V202610_0004 — rappels après avis de passage
 
 **Non déployée par Codex.** Un rappel du requérant crée toujours un nouvel appel,

@@ -224,7 +224,6 @@ function interventionCompactStampMillis(value){
 function isFollowingInterventionInSeries(iv){
   if(!iv)return false;
   if(iv._startLockedByChain===true||iv._chainedFromInterventionId)return true;
-  if(iv._routeBatchId&&!isFirstInterventionOfRoute(iv))return true;
   const signature=interventionCrewSignature(iv);
   const startStamp=interventionTimelineStamp(iv,'en-cours',false);
   const startMillis=interventionCompactStampMillis(startStamp);
@@ -235,7 +234,7 @@ function isFollowingInterventionInSeries(iv){
     if(!previous._hFin||previous._hFin!==iv._hDebut)return false;
     const endMillis=interventionCompactStampMillis(interventionTimelineStamp(previous,'terminee',true));
     const delay=startMillis-endMillis;
-    return Number.isFinite(endMillis)&&delay>=0&&delay<=12*60*60*1000;
+    return Number.isFinite(endMillis)&&delay>=0&&delay<=OPERATIONAL_START_GRACE_MINUTES*60*1000;
   });
 }
 
@@ -1968,11 +1967,28 @@ function operationalStartMeasurementScore(distance,accuracy){
   const usableAccuracy=measuredAccuracy>0&&measuredAccuracy<=OPERATIONAL_START_MAX_GPS_UNCERTAINTY_METERS?measuredAccuracy:0;
   return Math.max(0,measuredDistance-usableAccuracy);
 }
+function operationalStartChainWithinGrace(previous){
+  if(!previous||previous.s!=='terminee')return false;
+  const end=interventionOperationalBounds(previous).end;
+  const delay=N().getTime()-end;
+  return Number.isFinite(end)&&delay>=0&&delay<=OPERATIONAL_START_GRACE_MINUTES*60*1000;
+}
+function operationalStartSameCrewAndVehicle(previous,chief,secondChief,crew1,crew2,vehicle1,vehicle2){
+  if(!previous||!vehicle1)return false;
+  const previousCrew=interventionCrewSignature(previous);
+  return !!previousCrew
+    &&previousCrew===interventionCrewSignature({agr:chief,_agr2:secondChief},crew1,crew2)
+    &&nm(previous._engin1||previous.eng)===nm(vehicle1)
+    &&nm(previous._engin2||'')===nm(vehicle2||'');
+}
 function recentFinishedInterventionForChef(login,excludeId){
   const now=N().getTime(),maxDelay=OPERATIONAL_START_GRACE_MINUTES*60*1000;
   return [].concat(IVS||[],PILP_IVS||[]).map(function(item){
     if(!item||item.id===excludeId||item.s!=='terminee')return null;
-    const involved=item.agr===login||item._agr2===login||(typeof isInterventionReportChef==='function'&&isInterventionReportChef(item,login));
+    // Le conducteur de la mission précédente peut devenir chef d'agrès
+    // sans que l'équipage ait changé.
+    const crew=[].concat(item._equipage1||[],item._equipage2||[]);
+    const involved=item.agr===login||item._agr2===login||crew.some(function(member){return member&&member.login===login;});
     if(!involved)return null;
     const bounds=interventionOperationalBounds(item),delay=now-bounds.end;
     return Number.isFinite(bounds.end)&&delay>=0&&delay<=maxDelay?{iv:item,end:bounds.end,delay:delay}:null;
@@ -1990,7 +2006,7 @@ function previousRouteInterventionForStart(iv,login){
 }
 function prepareRouteChainedOperationalStart(iv){
   const previous=previousRouteInterventionForStart(iv,CU&&CU.l);
-  if(!previous)return null;
+  if(!operationalStartChainWithinGrace(previous))return null;
   _pendingNextInterventionStarts[iv.id]=previous._hFin;
   iv._chainPreviousInterventionId=previous.id;
   return previous;
@@ -2001,7 +2017,11 @@ function prepareOperationalChainedStart(iv){
   if(interrupted)return null;
   if(_pendingNextInterventionStarts[iv.id]){
     const source=iv._chainPreviousInterventionId?interventionById(iv._chainPreviousInterventionId):null;
-    return {iv:source,reason:'enchaînement confirmé',sourceId:source&&source.id||iv._chainPreviousInterventionId||''};
+    if(operationalStartChainWithinGrace(source)){
+      return {iv:source,reason:'enchaînement confirmé',sourceId:source.id};
+    }
+    delete _pendingNextInterventionStarts[iv.id];
+    delete iv._chainPreviousInterventionId;
   }
   // L'ordre de tournée reste une intention. Si le chef d'agrès vient de
   // terminer une autre intervention, la chronologie réellement effectuée
@@ -2013,6 +2033,7 @@ function prepareOperationalChainedStart(iv){
     return {iv:recent.iv,reason:'intervention précédente terminée depuis moins de 15 minutes',sourceId:recent.iv.id};
   }
   const routePrevious=prepareRouteChainedOperationalStart(iv);
+  if(!routePrevious)delete iv._chainPreviousInterventionId;
   return routePrevious?{iv:routePrevious,reason:'enchaînement de tournée après '+routePrevious.id,sourceId:routePrevious.id}:null;
 }
 function operationalStartGeoExemption(iv){
@@ -2024,7 +2045,7 @@ function operationalStartGeoExemption(iv){
   if(chained)return {reason:chained.reason,sourceId:chained.sourceId};
   return null;
 }
-function requestOperationalStartAuthorization(iv,onApproved){
+function requestOperationalStartAuthorization(iv,onApproved,options){
   if(hasSuperAdminOperationalStartOverride()){
     _operationalStartAuthorizations[iv.id]={at:Date.now(),exempt:true,reason:'départ autorisé sur ordinateur par le superadmin avec pouvoirs activés'};
     onApproved();return;
@@ -2042,7 +2063,7 @@ function requestOperationalStartAuthorization(iv,onApproved){
     _operationalStartAuthorizations[iv.id]={at:Date.now(),exempt:true,reason:exemptReason};
     onApproved();return;
   }
-  const exemption=operationalStartGeoExemption(iv);
+  const exemption=options&&options.skipChaining?null:operationalStartGeoExemption(iv);
   if(exemption){
     _operationalStartAuthorizations[iv.id]={at:Date.now(),exempt:true,reason:exemption.reason,sourceId:exemption.sourceId||''};
     onApproved();return;
@@ -2202,8 +2223,13 @@ function chooseNextSelectedIntervention(nextId,previousId){
   const next=interventionById(nextId);
   const previous=interventionById(previousId);
   if(!next||!previous)return;
-  _pendingNextInterventionStarts[nextId]=previous._hFin||getHHMM(N());
-  next._chainPreviousInterventionId=previous.id;
+  if(operationalStartChainWithinGrace(previous)){
+    _pendingNextInterventionStarts[nextId]=previous._hFin||getHHMM(N());
+    next._chainPreviousInterventionId=previous.id;
+  }else{
+    delete _pendingNextInterventionStarts[nextId];
+    delete next._chainPreviousInterventionId;
+  }
   cM();
   cS(nextId,'en-cours');
 }
@@ -2213,10 +2239,10 @@ function showNextSelectedInterventionModal(closedIv){
   const nextItems=getNextSelectedInterventions(closedIv);
   if(!nextItems.length)return;
   document.getElementById('mt').textContent='Intervention suivante';
-  document.getElementById('mi').textContent='Départ proposé à '+(closedIv._hFin||getHHMM(N()));
+  document.getElementById('mi').textContent='Départ enchaîné possible pendant 15 minutes après '+(closedIv._hFin||getHHMM(N()));
   document.getElementById('mb').innerHTML=
     '<div style="background:#EEF2FF;border:1px solid #C7D2FE;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#3730A3;">'
-    +'Sélectionnez l’intervention à enchaîner. Son heure de début reprendra automatiquement l’heure de fin de l’intervention que vous venez de clôturer.</div>'
+    +'Sélectionnez l’intervention suivante. Si le départ est confirmé dans les 15 minutes avec le même équipage et le même véhicule, son heure de début reprendra la fin de cette intervention. Sinon, un nouveau départ avec contrôle de présence à la caserne sera nécessaire.</div>'
     +nextItems.map(function(next,index){
       return '<button class="btn" style="width:100%;text-align:left;justify-content:flex-start;margin-bottom:8px;padding:10px 12px;" onclick="chooseNextSelectedIntervention(\''+next.id+'\',\''+closedIv.id+'\')">'
         +'<span style="display:inline-flex;width:24px;height:24px;border-radius:50%;align-items:center;justify-content:center;background:#E0E7FF;color:#3730A3;font-weight:700;margin-right:8px;flex:0 0 auto;">'+(index+1)+'</span>'

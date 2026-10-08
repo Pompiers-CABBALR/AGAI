@@ -1,10 +1,77 @@
 # AGAI — mise en service du suivi du personnel sur la production
 
-État au 4 octobre 2026 : **préparation locale, aucune modification de la production**.
+État au 5 octobre 2026 : **phases serveur 1 et 2 installées en production,
+fonction Edge préparatoire v10 publiée, aucun statut actif ni changement de
+droits de l'application**.
 Le projet de test Supabase n'est pas un préalable imposé par cette procédure.
 En revanche, l'absence d'environnement isolé impose des contrôles plus stricts
 et une fenêtre de mise en service coordonnée. Ce document n'est pas un ordre
 d'exécuter les scripts de préparation tels quels.
+
+## Reprise du chantier — contrôle du 5 octobre 2026
+
+Le contrôle initial confirmait 24 comptes actifs dont 23 rattachés à Supabase
+Auth ; `anon` peut encore lire et écrire `public.records` et exécuter la
+fonction atomique ; 23 fiches de personnel contiennent encore une empreinte de
+mot de passe. Les cinq tests locaux du suivi du personnel, de la porte d'accès
+en ligne et du transport Auth passent. **La décision reste NO-GO pour
+l'activation.** Aucun statut ni compte n'a été modifié.
+
+Les deux migrations additives `agai_personnel_phase_1_structures` et
+`agai_personnel_phase_2_service_functions` ont été appliquées sur le projet
+AGAI le 5 octobre. Elles créent deux tables privées et trois fonctions
+`SECURITY INVOKER` réservées à `service_role` ; elles ne changent ni les
+politiques de `records`, ni l'application, ni les comptes. Contrôles après
+application : RLS actif sur les deux tables, aucun accès `anon` ou
+`authenticated`, aucune ligne de statut ou d'historique, 24/24 comptes actifs
+autorisés par les fonctions, aucune nouvelle alerte de sécurité de niveau
+WARN. L'avis « RLS Enabled No Policy » sur ces tables est intentionnel : les
+clients ne doivent pas les interroger directement.
+
+Le prochain lot de développement est la connexion sur appareil neuf sans
+lecture préalable des fiches, puis l'isolation Auth/RLS et le retrait des
+empreintes des données opérationnelles. Les décisions de statut et les
+mutations ne pourront être activées qu'après vérification de ce lot sur tous
+les profils et contrôle d'une sauvegarde récente. Une sauvegarde physique
+du 5 octobre 2026 à 05:56:41 UTC a été signalée par l'administrateur. Elle
+ne couvre pas nécessairement les interventions enregistrées après cette heure ;
+recontrôler la sauvegarde juste avant la mise en service.
+
+Le parcours **serveur d'abord** est maintenant préparé localement : la fonction
+Edge préparée rend un profil minimal après vérification du mot de passe ; en
+mode sécurisé, le client ne lit plus de cache ni de fiches avant cet accord.
+Il refuse une file locale non envoyée, charge ensuite les données avec le
+jeton Auth et vérifie que la caserne et le rôle du dossier correspondent à
+ceux du serveur. Lors des futurs envois en mode sécurisé, les empreintes de
+mot de passe sont exclues des lignes `user` et du bloc des comptes globaux.
+Les tests locaux de ce parcours passent. Ce mode reste
+**désactivé** (`PERSONNEL_AUTH_CUTOVER_SUPPORTED=false` et
+`personnelOnlineGateEnabled=false`). Il faut encore retirer les empreintes
+des fiches déjà stockées en production et des anciens caches d'appareil,
+fermer les accès anonymes par RLS et par la fonction atomique,
+vérifier les anciens appareils et tester les profils réels avant activation.
+La fonction Edge de production a été remplacée le 5 octobre par une version
+préparatoire `v239.6-prep`, avec `personnelEnforcement=false` codé en dur :
+elle ne peut pas activer les restrictions par un simple secret ou paramètre.
+Le mode sécurisé du client reste lui aussi désactivé. Contrôles après
+publication : réponse GET `200` avec `personnelEnforcementEnabled:false`,
+demande d'administration sans session refusée `401`, zéro ligne de statut ou
+d'historique, 24 comptes actifs, politique anonyme des enregistrements
+inchangée. L'ancienne fonction v9 a été conservée comme source de retour
+arrière dans `supabase/functions/agai-account-link/rollback-v9.ts` ; son
+contenu a été comparé à la version v9 publiée avant la mise à jour.
+**Ce déploiement n'active pas le suivi du
+personnel.**
+Le chargement sur appareil neuf et l'exclusion des empreintes sont couverts
+par `test-personnel-online-gate.js` et `test-personnel-credential-stripping.js`.
+La fonction Edge locale refuse aussi qu'une création reprenne un identifiant
+existant, qu'une synchronisation ordinaire change de caserne (la mutation doit
+avoir son parcours approuvé), et qu'un administrateur de caserne modifie un
+compte administrateur ou celui d'une autre caserne. Les échecs d'écriture lors
+d'une désactivation ou remise à zéro ne sont plus présentés comme des succès.
+Ces contrôles locaux sont couverts par `test-personnel-edge-admin-guard.js` ;
+ils ne sont **pas encore publiés** et ne constituent pas le parcours complet
+de mutation.
 
 ## Ce qui est prêt localement
 
@@ -53,9 +120,9 @@ Contrôle direct **en lecture seule** du projet Supabase `AGAI` le 4 octobre
 L'analyse de sécurité Supabase signale aussi que des fonctions
 `SECURITY DEFINER` sont accessibles sans connexion :
 [avis Supabase sur ces fonctions](https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable).
-La fonction Edge `agai-account-link` actuellement publiée est la version 9 ;
-elle ne contient pas encore le contrôle des statuts du personnel préparé
-localement. Ne pas remplacer cette fonction seule.
+La fonction Edge `agai-account-link` actuellement publiée est la version 10
+préparatoire ; son contrôle des statuts est désactivé. Ne pas activer ce
+contrôle ni déployer le client sécurisé seul.
 
 ## Ordre des travaux restants
 
@@ -106,13 +173,18 @@ Si l'audit révèle un compte actif non prévu, une file locale non envoyée,
 une sauvegarde incertaine, une lecture/écriture anonyme encore possible ou
 un échec sur appareil neuf, **ne pas activer les restrictions**. Conserver
 l'application actuelle, corriger et refaire les contrôles. Ne pas lancer
-`supabase-personnel-lifecycle-PREPARATION.sql` ni la désactivation de
-`cis04.admin` isolément.
+`supabase-personnel-lifecycle-PREPARATION.sql` (ancien brouillon obsolète) ni
+la désactivation de `cis04.admin` isolément.
 
-## Prochaine action simple pour l'administrateur
+Le 5 octobre, l'administrateur a indiqué qu'il pourra réserver un créneau,
+mais n'a pas pu confirmer que tous les appareils affichent « Sync OK » : des
+collègues dormaient. Ce créneau n'est donc **pas ouvert pour une bascule**.
 
-Quand il est disponible : ouvrir Supabase → Database → Backups →
-« Scheduled backups » et relever uniquement **la date et l'heure de la
-première ligne**. Ne pas cliquer sur « Restore ». Ce renseignement permet
-de situer la sauvegarde, sans changer la base. Le contrôle de la sauvegarde
-sera à refaire juste avant la mise en service.
+## Sauvegarde signalée par l'administrateur
+
+La première ligne de Supabase → Database → Backups → « Scheduled backups »
+indiquait **05 Oct 2026 05:56:41 (+0000), PHYSICAL**. Aucune restauration
+n'a été demandée. Cette sauvegarde sert de point de repère, mais ne couvre pas
+forcément les interventions ultérieures. Vérifier de nouveau la première
+ligne et la synchronisation de tous les appareils juste avant la mise en
+service ; ne pas cliquer sur « Restore » dans le cadre de ce contrôle.

@@ -1425,18 +1425,57 @@ let _agaiOnlineAccessInFlight=false;
 function _agaiOnlineAccessReady(){
   return PERSONNEL_ONLINE_GATE&&AUTH_LINK_MODE==='on'&&typeof navigator!=='undefined'&&navigator.onLine!==false;
 }
-async function _agaiOnlineSignIn(account,password){
+async function _agaiOnlineBootstrapLogin(login,password){
   if(!_agaiOnlineAccessReady())return null;
+  const normalized=String(login||'').trim().toLowerCase();
+  if(!normalized||!password)return null;
   try{
     const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{
       method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','x-device-id':agaiDeviceId()},
-      body:JSON.stringify({mode:'login',login:account.l,password:password})
+      body:JSON.stringify({mode:'login',login:normalized,password:password})
     },8000);
     const result=await response.json().catch(function(){return{};});
     if(!response.ok||result.personnelEnforcementEnabled!==true||!result.session||!result.session.access_token
-      ||result.login!==account.l||result.caserneId!==account.caserneId)return null;
-    return Object.assign({},result.session,{_agai_link_login:account.l});
+      ||result.login!==normalized||!result.profile||result.profile.login!==normalized
+      ||result.profile.caserneId!==result.caserneId||result.profile.appRole!==result.appRole)return null;
+    return {session:Object.assign({},result.session,{_agai_link_login:normalized}),profile:result.profile};
   }catch(error){console.warn('[AGAI][ACCÈS] Connexion en ligne indisponible :',error);return null;}
+}
+async function _agaiOnlinePrepareLogin(login,password){
+  const signed=await _agaiOnlineBootstrapLogin(login,password);
+  if(!signed||!USE_RECORDS||typeof _rcOutboxGetRows!=='function'||typeof _rcPull!=='function')return null;
+  // Ne jamais envoyer les actions d'un autre compte avec la session qui vient
+  // d'etre ouverte. Une file locale doit etre resynchronisee avant la bascule.
+  try{
+    if(_rcPendingDirty.size||_rcSaving||_rcPulling||(await _rcOutboxGetRows()).length)return null;
+  }catch(error){return null;}
+  const previous={user:CU,role:GLOBAL_ROLE,station:CURRENT_CASERNE_ID};
+  // Une autre personne peut s'identifier sans fermer l'onglet. Les fiches du
+  // precedent compte ne doivent pas servir de repli si le serveur ne les rend pas.
+  CU=null;CURRENT_CASERNE_ID=null;syncCaserneContext();
+  Object.keys(CASERNE_DATA).forEach(function(caserneId){delete CASERNE_DATA[caserneId];});
+  GLOBAL_ACCOUNTS.length=0;
+  const profile=signed.profile;
+  CU={l:profile.login,caserneId:profile.caserneId,appRole:profile.appRole,
+      prenom:profile.firstName||'',nom:profile.lastName||''};
+  GLOBAL_ROLE=profile.appRole==='superadmin'?'superadmin':profile.appRole==='chef_corps'?'chef_corps':null;
+  CURRENT_CASERNE_ID=profile.appRole==='chef_corps'?null:profile.caserneId;
+  _agaiStoreAuthSession(signed.session);
+  try{
+    if(await _rcPull(false))return signed;
+  }catch(error){console.warn('[AGAI][ACCÈS] Chargement authentifié impossible :',error);}
+  _agaiStoreAuthSession(null);
+  CU=previous.user;GLOBAL_ROLE=previous.role;CURRENT_CASERNE_ID=previous.station;
+  return null;
+}
+function _agaiOnlineDiscardPreparedLogin(){
+  _agaiStoreAuthSession(null);
+  CU=null;GLOBAL_ROLE=null;CURRENT_CASERNE_ID=null;
+}
+async function _agaiOnlineSignIn(account,password){
+  if(!account||!account.l)return null;
+  const signed=await _agaiOnlineBootstrapLogin(account.l,password);
+  return signed&&signed.profile.caserneId===account.caserneId?signed.session:null;
 }
 async function _agaiOnlineCheckSavedSession(login,caserneId){
   if(!_agaiOnlineAccessReady())return false;
@@ -1993,19 +2032,26 @@ async function doLogin(){
   lerr.style.display='none';
 
   try{
+    const onlineBootstrap=PERSONNEL_ONLINE_GATE?await _agaiOnlinePrepareLogin(l,p):null;
+    if(PERSONNEL_ONLINE_GATE&&!onlineBootstrap){
+      lerr.style.display='block';
+      lerr.textContent='Connexion en ligne impossible, ou actions locales encore en attente. Vérifiez la synchronisation et réessayez.';
+      return;
+    }
     // ── 1. Vérifier comptes globaux (P1 : verifyPassword async) ──
     let gaFound=null;
     for(const x of GLOBAL_ACCOUNTS){
-      if(x.l===l&&await verifyPassword(p,x.p)){gaFound=x;break;}
+      if(x.l===l&&(!PERSONNEL_ONLINE_GATE||x.caserneId===onlineBootstrap.profile.caserneId)
+        &&(PERSONNEL_ONLINE_GATE||await verifyPassword(p,x.p))){gaFound=x;break;}
     }
     if(gaFound){
       const ga=gaFound;
-      const onlineSession=PERSONNEL_ONLINE_GATE?await _agaiOnlineSignIn(ga,p):null;
-      if(PERSONNEL_ONLINE_GATE&&!onlineSession){
-        lerr.style.display='block';
-        lerr.textContent='Connexion impossible : la vérification Internet des droits est obligatoire. Réessayez lorsque le service est disponible.';
+      if(PERSONNEL_ONLINE_GATE&&deriveAccountRole(ga)!==onlineBootstrap.profile.appRole){
+        _agaiOnlineDiscardPreparedLogin();
+        lerr.style.display='block';lerr.textContent='Le rôle du compte ne correspond pas aux droits serveur. Contactez un administrateur.';
         return;
       }
+      const onlineSession=onlineBootstrap&&onlineBootstrap.session;
       GLOBAL_ROLE=ga.role;
       _loginAttempts=0;_loginLocked=false;
       if(_loginLockTimer){clearTimeout(_loginLockTimer);_loginLockTimer=null;}
@@ -2032,6 +2078,7 @@ async function doLogin(){
       if(onlineSession)_agaiStoreAuthSession(onlineSession);
       _createSession(); // P2
       _agaiOnlineArmChecks();
+      if(PERSONNEL_ONLINE_GATE){_rcStartRealtime();_rcStartPolling();}
       // La liaison technique n'attend jamais avant de rendre l'application utilisable.
       if(AUTH_LINK_MODE==='on'&&!PERSONNEL_ONLINE_GATE)_agaiLinkSupabaseAccount(ga,p,SESSION_TOKEN);
       if(ga.role==='chef_corps'){showGlobalView('chef_corps');return;}
@@ -2043,16 +2090,19 @@ async function doLogin(){
     // ── 2. Chercher dans toutes les casernes (P1 : verifyPassword async) ──
     let foundUser=null,foundCasId=null;
     for(const c of CASERNES){
+      if(PERSONNEL_ONLINE_GATE&&c.id!==onlineBootstrap.profile.caserneId)continue;
       initCaserneData(c.id);
       const users=CASERNE_DATA[c.id].users||[];
       for(const u of users){
         if(u._personnelTransferredOut&&personnelStatusAt(u)==='mutation')continue;
-        if(u.l===l&&await verifyPassword(p,u.p)){foundUser=u;foundCasId=c.id;break;}
+        if(u.l===l&&(!PERSONNEL_ONLINE_GATE||c.id===onlineBootstrap.profile.caserneId)
+          &&(PERSONNEL_ONLINE_GATE||await verifyPassword(p,u.p))){foundUser=u;foundCasId=c.id;break;}
       }
       if(foundUser)break;
     }
 
     if(!foundUser){
+      if(PERSONNEL_ONLINE_GATE)_agaiOnlineDiscardPreparedLogin();
       _loginAttempts++;
       const delay=_lockoutDuration(_loginAttempts);
       lerr.style.display='block';
@@ -2072,19 +2122,20 @@ async function doLogin(){
       return;
     }
 
-    if(!personnelCanLogin(foundUser)){
+    if(PERSONNEL_ONLINE_GATE&&deriveAccountRole(foundUser)!==onlineBootstrap.profile.appRole){
+      _agaiOnlineDiscardPreparedLogin();
+      lerr.style.display='block';lerr.textContent='Le rôle du compte ne correspond pas aux droits serveur. Contactez un administrateur.';
+      return;
+    }
+
+    if(!PERSONNEL_ONLINE_GATE&&!personnelCanLogin(foundUser)){
       lerr.style.display='block';
       lerr.textContent=personnelStatusAt(foundUser)==='disponibilite'
         ?'Accès suspendu pendant la mise en disponibilité.'
         :'Ce compte n’a plus accès à l’application. Contactez un administrateur.';
       return;
     }
-    const onlineSession=PERSONNEL_ONLINE_GATE?await _agaiOnlineSignIn(foundUser,p):null;
-    if(PERSONNEL_ONLINE_GATE&&!onlineSession){
-      lerr.style.display='block';
-      lerr.textContent='Connexion impossible : la vérification Internet des droits est obligatoire. Réessayez lorsque le service est disponible.';
-      return;
-    }
+    const onlineSession=onlineBootstrap&&onlineBootstrap.session;
 
     // ── Connexion réussie ──
     _loginAttempts=0;_loginLocked=false;
@@ -2105,9 +2156,14 @@ async function doLogin(){
     if(onlineSession)_agaiStoreAuthSession(onlineSession);
     _createSession(); // P2
     _agaiOnlineArmChecks();
+    if(PERSONNEL_ONLINE_GATE){_rcStartRealtime();_rcStartPolling();}
     if(AUTH_LINK_MODE==='on'&&!PERSONNEL_ONLINE_GATE)_agaiLinkSupabaseAccount(foundUser,p,SESSION_TOKEN);
     doLoginSuccess();
 
+  } catch(error) {
+    if(PERSONNEL_ONLINE_GATE)_agaiOnlineDiscardPreparedLogin();
+    console.warn('[AGAI] Connexion impossible :',error);
+    lerr.style.display='block';lerr.textContent='Connexion impossible. Réessayez lorsque le service est disponible.';
   } finally {
     // Restaurer le bouton dans tous les cas (sauf si bloqué)
     if(btn&&!_loginLocked&&(typeof _loginVersionGateState==='undefined'||_loginVersionGateState!=='blocked')){btn.disabled=false;btn.textContent='Se connecter';}
@@ -4511,6 +4567,7 @@ function doLoginSuccess(){
 }
 function doLogout(){
   _agaiOnlineStopChecks();
+  if(PERSONNEL_ONLINE_GATE&&typeof _rcStopPolling==='function')_rcStopPolling();
   const authToken=_agaiAuthAccessToken();
   if(authToken)fetch(SB_URL+'/auth/v1/logout?scope=local',{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+authToken}}).catch(function(){});
   _agaiStoreAuthSession(null);
@@ -6382,7 +6439,6 @@ function interventionCompactStampMillis(value){
 function isFollowingInterventionInSeries(iv){
   if(!iv)return false;
   if(iv._startLockedByChain===true||iv._chainedFromInterventionId)return true;
-  if(iv._routeBatchId&&!isFirstInterventionOfRoute(iv))return true;
   const signature=interventionCrewSignature(iv);
   const startStamp=interventionTimelineStamp(iv,'en-cours',false);
   const startMillis=interventionCompactStampMillis(startStamp);
@@ -6393,7 +6449,7 @@ function isFollowingInterventionInSeries(iv){
     if(!previous._hFin||previous._hFin!==iv._hDebut)return false;
     const endMillis=interventionCompactStampMillis(interventionTimelineStamp(previous,'terminee',true));
     const delay=startMillis-endMillis;
-    return Number.isFinite(endMillis)&&delay>=0&&delay<=12*60*60*1000;
+    return Number.isFinite(endMillis)&&delay>=0&&delay<=OPERATIONAL_START_GRACE_MINUTES*60*1000;
   });
 }
 
@@ -8126,11 +8182,28 @@ function operationalStartMeasurementScore(distance,accuracy){
   const usableAccuracy=measuredAccuracy>0&&measuredAccuracy<=OPERATIONAL_START_MAX_GPS_UNCERTAINTY_METERS?measuredAccuracy:0;
   return Math.max(0,measuredDistance-usableAccuracy);
 }
+function operationalStartChainWithinGrace(previous){
+  if(!previous||previous.s!=='terminee')return false;
+  const end=interventionOperationalBounds(previous).end;
+  const delay=N().getTime()-end;
+  return Number.isFinite(end)&&delay>=0&&delay<=OPERATIONAL_START_GRACE_MINUTES*60*1000;
+}
+function operationalStartSameCrewAndVehicle(previous,chief,secondChief,crew1,crew2,vehicle1,vehicle2){
+  if(!previous||!vehicle1)return false;
+  const previousCrew=interventionCrewSignature(previous);
+  return !!previousCrew
+    &&previousCrew===interventionCrewSignature({agr:chief,_agr2:secondChief},crew1,crew2)
+    &&nm(previous._engin1||previous.eng)===nm(vehicle1)
+    &&nm(previous._engin2||'')===nm(vehicle2||'');
+}
 function recentFinishedInterventionForChef(login,excludeId){
   const now=N().getTime(),maxDelay=OPERATIONAL_START_GRACE_MINUTES*60*1000;
   return [].concat(IVS||[],PILP_IVS||[]).map(function(item){
     if(!item||item.id===excludeId||item.s!=='terminee')return null;
-    const involved=item.agr===login||item._agr2===login||(typeof isInterventionReportChef==='function'&&isInterventionReportChef(item,login));
+    // Le conducteur de la mission précédente peut devenir chef d'agrès
+    // sans que l'équipage ait changé.
+    const crew=[].concat(item._equipage1||[],item._equipage2||[]);
+    const involved=item.agr===login||item._agr2===login||crew.some(function(member){return member&&member.login===login;});
     if(!involved)return null;
     const bounds=interventionOperationalBounds(item),delay=now-bounds.end;
     return Number.isFinite(bounds.end)&&delay>=0&&delay<=maxDelay?{iv:item,end:bounds.end,delay:delay}:null;
@@ -8148,7 +8221,7 @@ function previousRouteInterventionForStart(iv,login){
 }
 function prepareRouteChainedOperationalStart(iv){
   const previous=previousRouteInterventionForStart(iv,CU&&CU.l);
-  if(!previous)return null;
+  if(!operationalStartChainWithinGrace(previous))return null;
   _pendingNextInterventionStarts[iv.id]=previous._hFin;
   iv._chainPreviousInterventionId=previous.id;
   return previous;
@@ -8159,7 +8232,11 @@ function prepareOperationalChainedStart(iv){
   if(interrupted)return null;
   if(_pendingNextInterventionStarts[iv.id]){
     const source=iv._chainPreviousInterventionId?interventionById(iv._chainPreviousInterventionId):null;
-    return {iv:source,reason:'enchaînement confirmé',sourceId:source&&source.id||iv._chainPreviousInterventionId||''};
+    if(operationalStartChainWithinGrace(source)){
+      return {iv:source,reason:'enchaînement confirmé',sourceId:source.id};
+    }
+    delete _pendingNextInterventionStarts[iv.id];
+    delete iv._chainPreviousInterventionId;
   }
   // L'ordre de tournée reste une intention. Si le chef d'agrès vient de
   // terminer une autre intervention, la chronologie réellement effectuée
@@ -8171,6 +8248,7 @@ function prepareOperationalChainedStart(iv){
     return {iv:recent.iv,reason:'intervention précédente terminée depuis moins de 15 minutes',sourceId:recent.iv.id};
   }
   const routePrevious=prepareRouteChainedOperationalStart(iv);
+  if(!routePrevious)delete iv._chainPreviousInterventionId;
   return routePrevious?{iv:routePrevious,reason:'enchaînement de tournée après '+routePrevious.id,sourceId:routePrevious.id}:null;
 }
 function operationalStartGeoExemption(iv){
@@ -8182,7 +8260,7 @@ function operationalStartGeoExemption(iv){
   if(chained)return {reason:chained.reason,sourceId:chained.sourceId};
   return null;
 }
-function requestOperationalStartAuthorization(iv,onApproved){
+function requestOperationalStartAuthorization(iv,onApproved,options){
   if(hasSuperAdminOperationalStartOverride()){
     _operationalStartAuthorizations[iv.id]={at:Date.now(),exempt:true,reason:'départ autorisé sur ordinateur par le superadmin avec pouvoirs activés'};
     onApproved();return;
@@ -8200,7 +8278,7 @@ function requestOperationalStartAuthorization(iv,onApproved){
     _operationalStartAuthorizations[iv.id]={at:Date.now(),exempt:true,reason:exemptReason};
     onApproved();return;
   }
-  const exemption=operationalStartGeoExemption(iv);
+  const exemption=options&&options.skipChaining?null:operationalStartGeoExemption(iv);
   if(exemption){
     _operationalStartAuthorizations[iv.id]={at:Date.now(),exempt:true,reason:exemption.reason,sourceId:exemption.sourceId||''};
     onApproved();return;
@@ -8360,8 +8438,13 @@ function chooseNextSelectedIntervention(nextId,previousId){
   const next=interventionById(nextId);
   const previous=interventionById(previousId);
   if(!next||!previous)return;
-  _pendingNextInterventionStarts[nextId]=previous._hFin||getHHMM(N());
-  next._chainPreviousInterventionId=previous.id;
+  if(operationalStartChainWithinGrace(previous)){
+    _pendingNextInterventionStarts[nextId]=previous._hFin||getHHMM(N());
+    next._chainPreviousInterventionId=previous.id;
+  }else{
+    delete _pendingNextInterventionStarts[nextId];
+    delete next._chainPreviousInterventionId;
+  }
   cM();
   cS(nextId,'en-cours');
 }
@@ -8371,10 +8454,10 @@ function showNextSelectedInterventionModal(closedIv){
   const nextItems=getNextSelectedInterventions(closedIv);
   if(!nextItems.length)return;
   document.getElementById('mt').textContent='Intervention suivante';
-  document.getElementById('mi').textContent='Départ proposé à '+(closedIv._hFin||getHHMM(N()));
+  document.getElementById('mi').textContent='Départ enchaîné possible pendant 15 minutes après '+(closedIv._hFin||getHHMM(N()));
   document.getElementById('mb').innerHTML=
     '<div style="background:#EEF2FF;border:1px solid #C7D2FE;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#3730A3;">'
-    +'Sélectionnez l’intervention à enchaîner. Son heure de début reprendra automatiquement l’heure de fin de l’intervention que vous venez de clôturer.</div>'
+    +'Sélectionnez l’intervention suivante. Si le départ est confirmé dans les 15 minutes avec le même équipage et le même véhicule, son heure de début reprendra la fin de cette intervention. Sinon, un nouveau départ avec contrôle de présence à la caserne sera nécessaire.</div>'
     +nextItems.map(function(next,index){
       return '<button class="btn" style="width:100%;text-align:left;justify-content:flex-start;margin-bottom:8px;padding:10px 12px;" onclick="chooseNextSelectedIntervention(\''+next.id+'\',\''+closedIv.id+'\')">'
         +'<span style="display:inline-flex;width:24px;height:24px;border-radius:50%;align-items:center;justify-content:center;background:#E0E7FF;color:#3730A3;font-weight:700;margin-right:8px;flex:0 0 auto;">'+(index+1)+'</span>'
@@ -13866,6 +13949,18 @@ function confirmerDepart(id){
     }
     return;
   }
+  const previous=chainedPreviousId?interventionById(chainedPreviousId):null;
+  const sameCrewAndVehicle=operationalStartSameCrewAndVehicle(previous,CU.l,agr2,eq1,eq2,engin1,engin2);
+  if(chained&&(!operationalStartChainWithinGrace(previous)||!sameCrewAndVehicle)){
+    // La préparation du départ ne vaut pas autorisation permanente : un
+    // formulaire resté ouvert peut franchir la limite des 15 minutes.
+    delete _pendingNextInterventionStarts[id];
+    delete iv._chainPreviousInterventionId;
+    delete _operationalStartAuthorizations[id];
+    showToast('Enchaînement non confirmé : nouveau départ avec vérification de présence à la caserne.','info');
+    requestOperationalStartAuthorization(iv,function(){confirmerDepart(id);},{skipChaining:true});
+    return;
+  }
   const departureStart=personnelOperationalStartMillis(heure,interruptedHandoff&&interruptedHandoff.handoff&&interruptedHandoff.handoff.date);
   const scheduleConflict=findPersonnelScheduleConflict(personnelLogins,departureStart,Math.max(departureStart+60000,Date.now()+1000));
   if(scheduleConflict)showPersonnelScheduleConflict(scheduleConflict);
@@ -13878,12 +13973,13 @@ function confirmerDepart(id){
   if(!beginOperationalAction(iv,'depart',['selectionne','en-attente']))return;
   prepareInterventionRoute(iv);
   delete _pendingNextInterventionStarts[id];
+  const actualDepartureTime=getHHMM(N());
   if(!iv.tl)iv.tl=[];
   iv.s='en-cours';iv.agr=CU.l;
   saveOperationalStartAuthorization(iv,startAuthorization);
   iv._hDebut=heure;
-  if(!iv._hDebutReelle)iv._hDebutReelle=heure;
-  if(!iv._hDebutInitiale)iv._hDebutInitiale=heure;
+  if(!iv._hDebutReelle)iv._hDebutReelle=interruptedHandoff?heure:actualDepartureTime;
+  if(!iv._hDebutInitiale)iv._hDebutInitiale=interruptedHandoff?heure:actualDepartureTime;
   if(interruptedHandoff){
     const source=interruptedHandoff.source,handoff=interruptedHandoff.handoff;
     iv._departureInheritedFromInterventionId=source.id;
@@ -13894,9 +13990,7 @@ function confirmerDepart(id){
   const _renfortList=_getRenfortPersonnel();
   const _enrich=function(arr){arr.forEach(function(e){if(e&&e.login&&!USERS.find(function(u){return u.l===e.login;})){const rf=_renfortList.find(function(r){return r.login===e.login;});if(rf){e.renfort=true;e.nom=rf.nom;e.prenom=rf.prenom;e.grade=rf.grade;e.caserneNom=rf.caserneNom;}}});};
   _enrich(eq1);_enrich(eq2);
-  const previous=chainedPreviousId?interventionById(chainedPreviousId):null;
-  const sameCrew=!!(chained&&previous&&interventionCrewSignature(previous)&&interventionCrewSignature(previous)===interventionCrewSignature(iv,eq1,eq2));
-  if(sameCrew){
+  if(chained&&sameCrewAndVehicle){
     iv._startLockedByChain=true;
     iv._chainedFromInterventionId=previous.id;
   }else{
@@ -13916,7 +14010,7 @@ function confirmerDepart(id){
   const agr2Label=agr2?(function(){const u=USERS.find(function(u){return u.l===agr2;});return u?' + '+fullName(u)+' (2\u00e8me)':' + '+agr2;})():'';
   const persLabel=' ['+eq1.concat(eq2).map(function(e){const u=USERS.find(function(x){return x.l===e.login;});return e.role+': '+(u?fullName(u):e.login);}).join(', ')+']';
   pushTL(iv,'en-cours',CU.l+agr2Label+persLabel,
-    interruptedHandoff?'Départ à '+heure+' repris de l’intervention '+interruptedHandoff.source.id:(restartedAfterPending?'Nouveau départ à '+heure+' après retour en attente':(chained?'Début enchaîné à '+heure+' après l’intervention précédente':'Départ réel à '+heure)));
+    interruptedHandoff?'Départ à '+heure+' repris de l’intervention '+interruptedHandoff.source.id:(restartedAfterPending?'Nouveau départ à '+heure+' après retour en attente':(chained?'Début enchaîné à '+heure+' (départ réel '+actualDepartureTime+') après l’intervention précédente':'Départ réel à '+heure)));
   if(scheduleConflict)recordPersonnelScheduleAlert(iv,scheduleConflict);
   delete iv._retourAttenteDepuis;
   assignInterventionNumbersAtStart(iv);
@@ -17226,7 +17320,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0004';
+const APP_VERSION='V202610_0005';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -20179,6 +20273,9 @@ async function _rcBootstrapSync(){
 }
 
 function loadData(){
+  // Avec le nouveau controle d'acces, aucune fiche ni cache ne doit etre lu
+  // avant que le serveur ait authentifie le personnel.
+  if(PERSONNEL_ONLINE_GATE)return;
   const cache=localStorage.getItem(JB_CACHE_KEY);
   if(cache){
     try{
@@ -21506,6 +21603,13 @@ window.addEventListener('pageshow',function(){
 
 // Construit un id global unique
 function _rcId(caserne, type, key){ return caserne + RC_SEP + type + RC_SEP + key; }
+function _rcAccountWithoutCredential(account){
+  const result=Object.assign({},account||{});
+  delete result.p;
+  delete result.password_hash;
+  delete result.passwordHash;
+  return result;
+}
 
 // ── Découpe une caserne en lignes records ──
 // Renvoie un tableau {id,caserne,type,data,deleted}
@@ -21523,7 +21627,8 @@ function _rcSplitCaserne(cid, d){
   // Users : une ligne par login
   (d.users||[]).forEach(function(u){
     if(!u || !u.l) return;
-    rows.push({ id:_rcId(cid,'user',u.l), caserne:cid, type:'user', data:u, deleted:!!u._deleted });
+    rows.push({ id:_rcId(cid,'user',u.l), caserne:cid, type:'user',
+      data:PERSONNEL_ONLINE_GATE?_rcAccountWithoutCredential(u):u, deleted:!!u._deleted });
   });
   // Dispos : une ligne par (semaine, login)
   const dispos = d.dispos||{};
@@ -21664,7 +21769,7 @@ function _rcSplitAll(data){
   let rows = [];
   // Ligne globale unique (compteurs, comptes, NAT/COM, etc.) — type 'global'
   rows.push({ id:'_GLOBAL'+RC_SEP+'global'+RC_SEP+'main', caserne:'_GLOBAL', type:'global', data:{
-    v:data.v, CASERNES:data.CASERNES, GLOBAL_ACCOUNTS:data.GLOBAL_ACCOUNTS, NAT:data.NAT, ACT_TYPES:data.ACT_TYPES, REPORT_TYPES:data.REPORT_TYPES, COM:data.COM, ENGIN_TYPES:data.ENGIN_TYPES,
+    v:data.v, CASERNES:data.CASERNES, GLOBAL_ACCOUNTS:PERSONNEL_ONLINE_GATE?(data.GLOBAL_ACCOUNTS||[]).map(_rcAccountWithoutCredential):data.GLOBAL_ACCOUNTS, NAT:data.NAT, ACT_TYPES:data.ACT_TYPES, REPORT_TYPES:data.REPORT_TYPES, COM:data.COM, ENGIN_TYPES:data.ENGIN_TYPES,
     APL_COUNTER:data.APL_COUNTER, INT_GLOBAL_COUNTER:data.INT_GLOBAL_COUNTER, INT_CAS_COUNTER:data.INT_CAS_COUNTER,
     PILP_COUNTER:data.PILP_COUNTER, DISPOS_UNLOCKED:data.DISPOS_UNLOCKED, DISPO_REQUESTS:data.DISPO_REQUESTS,
     LOGIN_HISTORY:data.LOGIN_HISTORY,
@@ -22148,7 +22253,7 @@ async function _rcFetchAllActiveRows(scopeFilter){
 
 // ── PULL : lit tous les enregistrements et reconstruit l'état ──
 async function _rcPull(silent){
-  if(_rcSaving||_rcPulling) return true;
+  if(_rcSaving||_rcPulling) return !PERSONNEL_ONLINE_GATE;
   // Traiter d'abord la file locale, puis poursuivre la réception. L'overlay
   // protège les modifications locales : une action bloquée ne doit plus cacher
   // les nouvelles interventions reçues par la caserne.
@@ -22439,8 +22544,11 @@ function _rcStartRealtime(){
   }
 }
 
+function _rcStopPolling(){
+  if(_rcPollTimer){clearInterval(_rcPollTimer);_rcPollTimer=null;}
+}
 function _rcStartPolling(){
-  if(_rcPollTimer) clearInterval(_rcPollTimer);
+  _rcStopPolling();
   _rcPollTimer = window.setInterval(function(){
     if(!CU)return;
     if(document.visibilityState==='hidden')return;
@@ -23032,7 +23140,7 @@ setTimeout(()=>{ odRestoreHandle(); }, 500);
 
 loadData();
 // P1 : migration des MDP en clair → hachés PBKDF2 (async, transparent)
-_migratePasswords();
+if(!PERSONNEL_ONLINE_GATE)_migratePasswords();
 // Contrôle automatique de version : recharge l'app si une nouvelle version est en ligne
 _startVersionCheck();
 

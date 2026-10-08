@@ -312,7 +312,7 @@ setTimeout(()=>{ odRestoreHandle(); }, 500);
 
 loadData();
 // P1 : migration des MDP en clair → hachés PBKDF2 (async, transparent)
-_migratePasswords();
+if(!PERSONNEL_ONLINE_GATE)_migratePasswords();
 // Contrôle automatique de version : recharge l'app si une nouvelle version est en ligne
 _startVersionCheck();
 

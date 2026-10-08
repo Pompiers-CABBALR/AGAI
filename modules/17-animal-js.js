@@ -1267,6 +1267,9 @@ async function _rcBootstrapSync(){
 }
 
 function loadData(){
+  // Avec le nouveau controle d'acces, aucune fiche ni cache ne doit etre lu
+  // avant que le serveur ait authentifie le personnel.
+  if(PERSONNEL_ONLINE_GATE)return;
   const cache=localStorage.getItem(JB_CACHE_KEY);
   if(cache){
     try{
@@ -2594,6 +2597,13 @@ window.addEventListener('pageshow',function(){
 
 // Construit un id global unique
 function _rcId(caserne, type, key){ return caserne + RC_SEP + type + RC_SEP + key; }
+function _rcAccountWithoutCredential(account){
+  const result=Object.assign({},account||{});
+  delete result.p;
+  delete result.password_hash;
+  delete result.passwordHash;
+  return result;
+}
 
 // ── Découpe une caserne en lignes records ──
 // Renvoie un tableau {id,caserne,type,data,deleted}
@@ -2611,7 +2621,8 @@ function _rcSplitCaserne(cid, d){
   // Users : une ligne par login
   (d.users||[]).forEach(function(u){
     if(!u || !u.l) return;
-    rows.push({ id:_rcId(cid,'user',u.l), caserne:cid, type:'user', data:u, deleted:!!u._deleted });
+    rows.push({ id:_rcId(cid,'user',u.l), caserne:cid, type:'user',
+      data:PERSONNEL_ONLINE_GATE?_rcAccountWithoutCredential(u):u, deleted:!!u._deleted });
   });
   // Dispos : une ligne par (semaine, login)
   const dispos = d.dispos||{};
@@ -2752,7 +2763,7 @@ function _rcSplitAll(data){
   let rows = [];
   // Ligne globale unique (compteurs, comptes, NAT/COM, etc.) — type 'global'
   rows.push({ id:'_GLOBAL'+RC_SEP+'global'+RC_SEP+'main', caserne:'_GLOBAL', type:'global', data:{
-    v:data.v, CASERNES:data.CASERNES, GLOBAL_ACCOUNTS:data.GLOBAL_ACCOUNTS, NAT:data.NAT, ACT_TYPES:data.ACT_TYPES, REPORT_TYPES:data.REPORT_TYPES, COM:data.COM, ENGIN_TYPES:data.ENGIN_TYPES,
+    v:data.v, CASERNES:data.CASERNES, GLOBAL_ACCOUNTS:PERSONNEL_ONLINE_GATE?(data.GLOBAL_ACCOUNTS||[]).map(_rcAccountWithoutCredential):data.GLOBAL_ACCOUNTS, NAT:data.NAT, ACT_TYPES:data.ACT_TYPES, REPORT_TYPES:data.REPORT_TYPES, COM:data.COM, ENGIN_TYPES:data.ENGIN_TYPES,
     APL_COUNTER:data.APL_COUNTER, INT_GLOBAL_COUNTER:data.INT_GLOBAL_COUNTER, INT_CAS_COUNTER:data.INT_CAS_COUNTER,
     PILP_COUNTER:data.PILP_COUNTER, DISPOS_UNLOCKED:data.DISPOS_UNLOCKED, DISPO_REQUESTS:data.DISPO_REQUESTS,
     LOGIN_HISTORY:data.LOGIN_HISTORY,
@@ -3236,7 +3247,7 @@ async function _rcFetchAllActiveRows(scopeFilter){
 
 // ── PULL : lit tous les enregistrements et reconstruit l'état ──
 async function _rcPull(silent){
-  if(_rcSaving||_rcPulling) return true;
+  if(_rcSaving||_rcPulling) return !PERSONNEL_ONLINE_GATE;
   // Traiter d'abord la file locale, puis poursuivre la réception. L'overlay
   // protège les modifications locales : une action bloquée ne doit plus cacher
   // les nouvelles interventions reçues par la caserne.
@@ -3527,8 +3538,11 @@ function _rcStartRealtime(){
   }
 }
 
+function _rcStopPolling(){
+  if(_rcPollTimer){clearInterval(_rcPollTimer);_rcPollTimer=null;}
+}
 function _rcStartPolling(){
-  if(_rcPollTimer) clearInterval(_rcPollTimer);
+  _rcStopPolling();
   _rcPollTimer = window.setInterval(function(){
     if(!CU)return;
     if(document.visibilityState==='hidden')return;

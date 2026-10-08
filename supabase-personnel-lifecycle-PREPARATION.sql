@@ -1,5 +1,8 @@
--- AGAI — préparation du suivi du personnel. NE PAS EXÉCUTER EN PRODUCTION
--- AVANT la bascule Auth/RLS et la vérification de tous les comptes rattachés.
+-- AGAI — ANCIEN BROUILLON, NE PAS EXÉCUTER.
+-- Les phases 1 et 2 sont désormais décrites dans
+-- supabase-personnel-phase-1-structures.sql et
+-- supabase-personnel-phase-2-service-functions.sql.
+-- Ce brouillon contient des définitions obsolètes et ne doit pas être rejoué.
 -- Ce fichier seul ne coupe PAS l'accès historique anon aux enregistrements.
 -- Les motifs médicaux et diagnostics ne sont jamais stockés ici.
 

@@ -48,19 +48,26 @@ async function doLogin(){
   lerr.style.display='none';
 
   try{
+    const onlineBootstrap=PERSONNEL_ONLINE_GATE?await _agaiOnlinePrepareLogin(l,p):null;
+    if(PERSONNEL_ONLINE_GATE&&!onlineBootstrap){
+      lerr.style.display='block';
+      lerr.textContent='Connexion en ligne impossible, ou actions locales encore en attente. Vérifiez la synchronisation et réessayez.';
+      return;
+    }
     // ── 1. Vérifier comptes globaux (P1 : verifyPassword async) ──
     let gaFound=null;
     for(const x of GLOBAL_ACCOUNTS){
-      if(x.l===l&&await verifyPassword(p,x.p)){gaFound=x;break;}
+      if(x.l===l&&(!PERSONNEL_ONLINE_GATE||x.caserneId===onlineBootstrap.profile.caserneId)
+        &&(PERSONNEL_ONLINE_GATE||await verifyPassword(p,x.p))){gaFound=x;break;}
     }
     if(gaFound){
       const ga=gaFound;
-      const onlineSession=PERSONNEL_ONLINE_GATE?await _agaiOnlineSignIn(ga,p):null;
-      if(PERSONNEL_ONLINE_GATE&&!onlineSession){
-        lerr.style.display='block';
-        lerr.textContent='Connexion impossible : la vérification Internet des droits est obligatoire. Réessayez lorsque le service est disponible.';
+      if(PERSONNEL_ONLINE_GATE&&deriveAccountRole(ga)!==onlineBootstrap.profile.appRole){
+        _agaiOnlineDiscardPreparedLogin();
+        lerr.style.display='block';lerr.textContent='Le rôle du compte ne correspond pas aux droits serveur. Contactez un administrateur.';
         return;
       }
+      const onlineSession=onlineBootstrap&&onlineBootstrap.session;
       GLOBAL_ROLE=ga.role;
       _loginAttempts=0;_loginLocked=false;
       if(_loginLockTimer){clearTimeout(_loginLockTimer);_loginLockTimer=null;}
@@ -87,6 +94,7 @@ async function doLogin(){
       if(onlineSession)_agaiStoreAuthSession(onlineSession);
       _createSession(); // P2
       _agaiOnlineArmChecks();
+      if(PERSONNEL_ONLINE_GATE){_rcStartRealtime();_rcStartPolling();}
       // La liaison technique n'attend jamais avant de rendre l'application utilisable.
       if(AUTH_LINK_MODE==='on'&&!PERSONNEL_ONLINE_GATE)_agaiLinkSupabaseAccount(ga,p,SESSION_TOKEN);
       if(ga.role==='chef_corps'){showGlobalView('chef_corps');return;}
@@ -98,16 +106,19 @@ async function doLogin(){
     // ── 2. Chercher dans toutes les casernes (P1 : verifyPassword async) ──
     let foundUser=null,foundCasId=null;
     for(const c of CASERNES){
+      if(PERSONNEL_ONLINE_GATE&&c.id!==onlineBootstrap.profile.caserneId)continue;
       initCaserneData(c.id);
       const users=CASERNE_DATA[c.id].users||[];
       for(const u of users){
         if(u._personnelTransferredOut&&personnelStatusAt(u)==='mutation')continue;
-        if(u.l===l&&await verifyPassword(p,u.p)){foundUser=u;foundCasId=c.id;break;}
+        if(u.l===l&&(!PERSONNEL_ONLINE_GATE||c.id===onlineBootstrap.profile.caserneId)
+          &&(PERSONNEL_ONLINE_GATE||await verifyPassword(p,u.p))){foundUser=u;foundCasId=c.id;break;}
       }
       if(foundUser)break;
     }
 
     if(!foundUser){
+      if(PERSONNEL_ONLINE_GATE)_agaiOnlineDiscardPreparedLogin();
       _loginAttempts++;
       const delay=_lockoutDuration(_loginAttempts);
       lerr.style.display='block';
@@ -127,19 +138,20 @@ async function doLogin(){
       return;
     }
 
-    if(!personnelCanLogin(foundUser)){
+    if(PERSONNEL_ONLINE_GATE&&deriveAccountRole(foundUser)!==onlineBootstrap.profile.appRole){
+      _agaiOnlineDiscardPreparedLogin();
+      lerr.style.display='block';lerr.textContent='Le rôle du compte ne correspond pas aux droits serveur. Contactez un administrateur.';
+      return;
+    }
+
+    if(!PERSONNEL_ONLINE_GATE&&!personnelCanLogin(foundUser)){
       lerr.style.display='block';
       lerr.textContent=personnelStatusAt(foundUser)==='disponibilite'
         ?'Accès suspendu pendant la mise en disponibilité.'
         :'Ce compte n’a plus accès à l’application. Contactez un administrateur.';
       return;
     }
-    const onlineSession=PERSONNEL_ONLINE_GATE?await _agaiOnlineSignIn(foundUser,p):null;
-    if(PERSONNEL_ONLINE_GATE&&!onlineSession){
-      lerr.style.display='block';
-      lerr.textContent='Connexion impossible : la vérification Internet des droits est obligatoire. Réessayez lorsque le service est disponible.';
-      return;
-    }
+    const onlineSession=onlineBootstrap&&onlineBootstrap.session;
 
     // ── Connexion réussie ──
     _loginAttempts=0;_loginLocked=false;
@@ -160,9 +172,14 @@ async function doLogin(){
     if(onlineSession)_agaiStoreAuthSession(onlineSession);
     _createSession(); // P2
     _agaiOnlineArmChecks();
+    if(PERSONNEL_ONLINE_GATE){_rcStartRealtime();_rcStartPolling();}
     if(AUTH_LINK_MODE==='on'&&!PERSONNEL_ONLINE_GATE)_agaiLinkSupabaseAccount(foundUser,p,SESSION_TOKEN);
     doLoginSuccess();
 
+  } catch(error) {
+    if(PERSONNEL_ONLINE_GATE)_agaiOnlineDiscardPreparedLogin();
+    console.warn('[AGAI] Connexion impossible :',error);
+    lerr.style.display='block';lerr.textContent='Connexion impossible. Réessayez lorsque le service est disponible.';
   } finally {
     // Restaurer le bouton dans tous les cas (sauf si bloqué)
     if(btn&&!_loginLocked&&(typeof _loginVersionGateState==='undefined'||_loginVersionGateState!=='blocked')){btn.disabled=false;btn.textContent='Se connecter';}

@@ -2396,6 +2396,7 @@ function doLoginSuccess(){
 }
 function doLogout(){
   _agaiOnlineStopChecks();
+  if(PERSONNEL_ONLINE_GATE&&typeof _rcStopPolling==='function')_rcStopPolling();
   const authToken=_agaiAuthAccessToken();
   if(authToken)fetch(SB_URL+'/auth/v1/logout?scope=local',{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+authToken}}).catch(function(){});
   _agaiStoreAuthSession(null);
