@@ -3,6 +3,11 @@
 Cette variante conserve les fonctionnalités de `AGAI-securise.html`, mais sépare
 le code afin de faciliter les prochaines corrections.
 
+La V202610_0007 affiche les piquets VTU/VPI par rang de départ et propose
+automatiquement le véhicule et l'équipage de l'intervention précédente
+si l'enchaînement reste dans la limite de 15 minutes. Après ce délai,
+un nouveau départ et le contrôle de proximité sont requis.
+
 La V202610_0006 affiche les VTU avant les VPI dans les listes de véhicules,
 les piquets et leurs exports. L'ordre des véhicules enregistrés et les
 affectations ne sont pas modifiés.
