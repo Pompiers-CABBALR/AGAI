@@ -826,7 +826,7 @@ function rEgrid(){
   const eg=document.getElementById('eg');
   if(!eg)return;
   const occupes=getEnginsOccupes();
-  eg.innerHTML=ASTR_CONFIG.engins.map(engin=>{
+  eg.innerHTML=sortVehicleNames(ASTR_CONFIG.engins).map(engin=>{
     const occupe=occupes.some(function(name){return nm(name)===nm(engin);});
     const piquets=getPiquetsEngin(engin);
     const agentsPiquet=piquets.map(p=>{

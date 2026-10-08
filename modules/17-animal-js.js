@@ -2722,7 +2722,7 @@ function _rcVehicleCatalogFromCaserneData(data){
       (Array.isArray(iv._renfortsInternes)?iv._renfortsInternes:[]).forEach(function(renfort){add(renfort&&renfort.engin);});
     });
   });
-  return vehicles.sort(function(a,b){return a.localeCompare(b,'fr',{numeric:true,sensitivity:'base'});});
+  return sortVehicleNames(vehicles);
 }
 function _rcSafeAstrConfig(data){
   const source=data&&data.astrConfig&&typeof data.astrConfig==='object'?data.astrConfig:{};

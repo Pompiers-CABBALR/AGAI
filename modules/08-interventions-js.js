@@ -467,7 +467,7 @@ function interventionSupplementaryVehicleOptions(iv,record){
   const vehicles=[current].concat(ASTR_CONFIG&&Array.isArray(ASTR_CONFIG.engins)?ASTR_CONFIG.engins:[]).filter(Boolean);
   const unique=[];
   vehicles.forEach(function(vehicle){if(!unique.some(function(existing){return nm(existing)===nm(vehicle);}))unique.push(vehicle);});
-  return unique.map(function(vehicle){return '<option value="'+escHtml(vehicle)+'"'+(nm(vehicle)===nm(current)?' selected':'')+'>'+escHtml(vehicle)+'</option>';}).join('');
+  return sortVehicleNames(unique).map(function(vehicle){return '<option value="'+escHtml(vehicle)+'"'+(nm(vehicle)===nm(current)?' selected':'')+'>'+escHtml(vehicle)+'</option>';}).join('');
 }
 function interventionSupplementaryCrewsEditorHTML(iv){
   if(!iv||!CU)return '';
@@ -706,7 +706,7 @@ function interventionReportVehicleOptions(iv){
   vehicles.forEach(function(vehicle){
     if(!unique.some(function(existing){return nm(existing)===nm(vehicle);}))unique.push(vehicle);
   });
-  return unique.map(function(vehicle){
+  return sortVehicleNames(unique).map(function(vehicle){
     return '<option value="'+escHtml(vehicle)+'"'+(nm(vehicle)===nm(current)?' selected':'')+'>'+escHtml(vehicle)+'</option>';
   }).join('');
 }

@@ -1007,6 +1007,16 @@ const TODAY=N(),TDP=getDS(TODAY);
 function isTdy(iv){return (iv.h||'').startsWith(TDP);}
 function hO(h){const d=new Date(TODAY);d.setHours(d.getHours()-h);return getH(d);}
 function nm(s){return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
+function compareVehicleNames(a,b){
+  function rank(value){
+    const name=String(value||'').trim().toUpperCase();
+    if(/^VTU(?:$|[-_\s]|\d)/.test(name))return 0;
+    if(/^VPI(?:$|[-_\s]|\d)/.test(name))return 1;
+    return 2;
+  }
+  return rank(a)-rank(b)||String(a).localeCompare(String(b),'fr',{numeric:true,sensitivity:'base'});
+}
+function sortVehicleNames(vehicles){return (Array.isArray(vehicles)?vehicles:[]).slice().sort(compareVehicleNames);}
 function formatInterventionStreetAddress(value){
   return String(value||'').trim().replace(/^(\d+\s*(?:bis|ter|quater|b|t|q)?)(?=[a-zà-ÿ])/i,'$1 ').replace(/\s+/g,' ').trim();
 }
