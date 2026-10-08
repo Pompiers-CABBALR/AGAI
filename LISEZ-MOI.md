@@ -3,6 +3,10 @@
 Cette variante conserve les fonctionnalités de `AGAI-securise.html`, mais sépare
 le code afin de faciliter les prochaines corrections.
 
+La V202610_0006 affiche les VTU avant les VPI dans les listes de véhicules,
+les piquets et leurs exports. L'ordre des véhicules enregistrés et les
+affectations ne sont pas modifiés.
+
 La V202610_0005 reconnaît un enchaînement lorsque le conducteur de la
 précédente intervention devient chef d'agrès, à condition que l'équipage et
 le véhicule restent identiques et que le nouveau départ soit confirmé dans

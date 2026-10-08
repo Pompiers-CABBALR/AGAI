@@ -1,5 +1,13 @@
 # AGAI — déploiement sécurisé
 
+## V202610_0006 — ordre des véhicules
+
+Les VTU apparaissent avant les VPI dans les
+sélecteurs de véhicules, la programmation PILP, les piquets, leur export et
+la configuration administrative. Le tri est uniquement visuel : il ne
+change aucune affectation ni donnée enregistrée. Aucune migration Supabase
+n'est requise.
+
 ## Préparation locale V202610_0005 — enchaînement avec permutation des rôles
 
 **Non déployée par Codex.** Publier le dossier modulaire complet. Un conducteur

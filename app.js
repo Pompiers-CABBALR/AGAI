@@ -1160,6 +1160,16 @@ const TODAY=N(),TDP=getDS(TODAY);
 function isTdy(iv){return (iv.h||'').startsWith(TDP);}
 function hO(h){const d=new Date(TODAY);d.setHours(d.getHours()-h);return getH(d);}
 function nm(s){return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
+function compareVehicleNames(a,b){
+  function rank(value){
+    const name=String(value||'').trim().toUpperCase();
+    if(/^VTU(?:$|[-_\s]|\d)/.test(name))return 0;
+    if(/^VPI(?:$|[-_\s]|\d)/.test(name))return 1;
+    return 2;
+  }
+  return rank(a)-rank(b)||String(a).localeCompare(String(b),'fr',{numeric:true,sensitivity:'base'});
+}
+function sortVehicleNames(vehicles){return (Array.isArray(vehicles)?vehicles:[]).slice().sort(compareVehicleNames);}
 function formatInterventionStreetAddress(value){
   return String(value||'').trim().replace(/^(\d+\s*(?:bis|ter|quater|b|t|q)?)(?=[a-zà-ÿ])/i,'$1 ').replace(/\s+/g,' ').trim();
 }
@@ -6682,7 +6692,7 @@ function interventionSupplementaryVehicleOptions(iv,record){
   const vehicles=[current].concat(ASTR_CONFIG&&Array.isArray(ASTR_CONFIG.engins)?ASTR_CONFIG.engins:[]).filter(Boolean);
   const unique=[];
   vehicles.forEach(function(vehicle){if(!unique.some(function(existing){return nm(existing)===nm(vehicle);}))unique.push(vehicle);});
-  return unique.map(function(vehicle){return '<option value="'+escHtml(vehicle)+'"'+(nm(vehicle)===nm(current)?' selected':'')+'>'+escHtml(vehicle)+'</option>';}).join('');
+  return sortVehicleNames(unique).map(function(vehicle){return '<option value="'+escHtml(vehicle)+'"'+(nm(vehicle)===nm(current)?' selected':'')+'>'+escHtml(vehicle)+'</option>';}).join('');
 }
 function interventionSupplementaryCrewsEditorHTML(iv){
   if(!iv||!CU)return '';
@@ -6921,7 +6931,7 @@ function interventionReportVehicleOptions(iv){
   vehicles.forEach(function(vehicle){
     if(!unique.some(function(existing){return nm(existing)===nm(vehicle);}))unique.push(vehicle);
   });
-  return unique.map(function(vehicle){
+  return sortVehicleNames(unique).map(function(vehicle){
     return '<option value="'+escHtml(vehicle)+'"'+(nm(vehicle)===nm(current)?' selected':'')+'>'+escHtml(vehicle)+'</option>';
   }).join('');
 }
@@ -9478,7 +9488,7 @@ function rEgrid(){
   const eg=document.getElementById('eg');
   if(!eg)return;
   const occupes=getEnginsOccupes();
-  eg.innerHTML=ASTR_CONFIG.engins.map(engin=>{
+  eg.innerHTML=sortVehicleNames(ASTR_CONFIG.engins).map(engin=>{
     const occupe=occupes.some(function(name){return nm(name)===nm(engin);});
     const piquets=getPiquetsEngin(engin);
     const agentsPiquet=piquets.map(p=>{
@@ -12173,7 +12183,7 @@ function rAstrPiquets(){
       +'<th style="padding:5px 8px;font-size:10px;border-bottom:0.5px solid var(--brd);text-align:right;"></th>'
       +'</tr></thead><tbody>';
 
-    ASTR_CONFIG.engins.forEach(function(engin){
+    sortVehicleNames(ASTR_CONFIG.engins).forEach(function(engin){
       const pJour=PIQUETS[wk].filter(function(p){return p.engin===engin&&p.jour===jour;});
       const tranches={m:[],a:[],s:[],n:[]};
       pJour.forEach(function(p){tranches[getTranche(p)].push(p);});
@@ -12543,7 +12553,7 @@ function exportPiquets(){
   function doExport(){
     const XLSX=window.XLSX;
     const wb=XLSX.utils.book_new();
-    const engins=ASTR_CONFIG.engins||[];
+    const engins=sortVehicleNames(ASTR_CONFIG.engins);
 
     // Feuille r\u00e9cap semaine (1 tableau par jour, tous les engins)
     const recapData=[];
@@ -12718,7 +12728,7 @@ function rAstrEquipes(){
   if(respSel)respSel.innerHTML=respSorted.map(u=>`<option value="${u.l}">${fullNameAff(u)}</option>`).join('');
   // Remplir engins
   const enginsList=document.getElementById('engins-list');
-  if(enginsList)enginsList.innerHTML=ASTR_CONFIG.engins.map((e,i)=>
+  if(enginsList)enginsList.innerHTML=ASTR_CONFIG.engins.map((e,i)=>({e,i})).sort((a,b)=>compareVehicleNames(a.e,b.e)).map(({e,i})=>
     `<span style="background:var(--bg);border:1px solid var(--brd);border-radius:20px;padding:3px 10px;font-size:12px;display:flex;align-items:center;gap:5px;">${e} <span style="font-size:10px;color:var(--t2);">(${getEnginType(e)})</span>
       <button style="background:none;border:none;color:#E24B4A;cursor:pointer;font-size:12px;" onclick="delEngin(${i})">✕</button>
     </span>`).join('');
@@ -13743,7 +13753,7 @@ function caserneVehicleCatalog(caserneId,selected){
   [].concat(data.ivs||[],data.pilpIvs||[]).forEach(function(iv){
     interventionVehicleNames(iv).forEach(add);
   });
-  return vehicles.sort(function(a,b){return a.localeCompare(b,'fr',{numeric:true,sensitivity:'base'});});
+  return sortVehicleNames(vehicles);
 }
 function availableCaserneVehicleNames(selected){
   return caserneVehicleCatalog(CURRENT_CASERNE_ID,selected);
@@ -17320,7 +17330,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0005';
+const APP_VERSION='V202610_0006';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -21728,7 +21738,7 @@ function _rcVehicleCatalogFromCaserneData(data){
       (Array.isArray(iv._renfortsInternes)?iv._renfortsInternes:[]).forEach(function(renfort){add(renfort&&renfort.engin);});
     });
   });
-  return vehicles.sort(function(a,b){return a.localeCompare(b,'fr',{numeric:true,sensitivity:'base'});});
+  return sortVehicleNames(vehicles);
 }
 function _rcSafeAstrConfig(data){
   const source=data&&data.astrConfig&&typeof data.astrConfig==='object'?data.astrConfig:{};
