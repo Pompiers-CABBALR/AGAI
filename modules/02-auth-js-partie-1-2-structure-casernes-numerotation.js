@@ -1020,7 +1020,9 @@ function sortVehicleNames(vehicles){return (Array.isArray(vehicles)?vehicles:[])
 function formatInterventionStreetAddress(value){
   let address=String(value||'').trim()
     // Ancienne mise en forme : « 35 Boulevard » devenait « 35 B oulevard ».
-    .replace(/^(\d+)\s+b\s+(oulevard\b)/i,'$1 Boulevard');
+    .replace(/^(\d+)\s+b\s+(oulevard\b)/i,'$1 Boulevard')
+    // Même découpage erroné pour le suffixe « bis » : « 16 b is ».
+    .replace(/^(\d+)\s+b\s+is(?=\s|$)/i,'$1 bis');
   // Un suffixe collé n'est reconnu que devant un nom de voie complet.
   const suffixAndStreet=/^(\d+)\s*(bis|ter|quater|[a-z])(?=(?:rue|route|avenue|av|boulevard|bd|chemin|impasse|place|allee|allée|residence|résidence|cite|cité|faubourg)\b)/i;
   address=suffixAndStreet.test(address)

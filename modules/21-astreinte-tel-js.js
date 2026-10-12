@@ -20,9 +20,24 @@ function astrTelGetParams(){
 
 // Clé de stockage : "login_YYYY_M" → objet {jour: heures} ex: {1:24, 3:12}
 function astrTelKey(login,y,m){return login+'_'+y+'_'+m;}
+function astrTelDutyMonthHours(login,y,m){
+  const hours={};
+  astrTelGetDuties().forEach(function(duty){
+    if(!duty||duty._deleted||duty._hoursSourceOfTruth!==true||duty.mode!=='person'||duty.login!==login)return;
+    (duty._hoursApplied||[]).forEach(function(part){
+      if(Number(part.y)!==y||Number(part.m)!==m)return;
+      const day=Number(part.d),amount=Number(part.h);
+      if(Number.isInteger(day)&&day>=1&&day<=31&&Number.isFinite(amount)&&amount>0)hours[day]=(hours[day]||0)+amount;
+    });
+  });
+  return hours;
+}
 function astrTelGetMonth(login,y,m){
   const d=astrTelGetData();
-  return d[astrTelKey(login,y,m)]||{};
+  // La permanence est une fiche distincte de la grille. Si une ancienne
+  // configuration écrase la grille, ses heures restent lisibles depuis la fiche.
+  // Une cellule saisie manuellement, y compris 0, garde toutefois la priorité.
+  return Object.assign(astrTelDutyMonthHours(login,y,m),d[astrTelKey(login,y,m)]||{});
 }
 function astrTelTotalJour(y,m,day,excludeLogin){
   return (USERS||[]).reduce(function(total,u){
@@ -72,9 +87,10 @@ function astrTelSetHeure(login,y,m,day,val){
     h=disponible;
     showToast('Le total de la journée ne peut pas dépasser 24:00 ('+astrTelFormatHeures(autres)+' déjà attribuées)','warn');
   }
-  const previous=parseFloat(d[k][day])||0;
+  const previous=parseFloat(astrTelGetMonth(login,y,m)[day])||0;
   if(Math.abs(previous-h)<(1/120))return h;
   if(h>0)d[k][day]=h;
+  else if((astrTelDutyMonthHours(login,y,m)[day]||0)>0)d[k][day]=0;
   else delete d[k][day];
   _jbEditLock=Date.now();
   if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcPendingDirty!=='undefined'&&typeof _rcId==='function'){
@@ -241,12 +257,15 @@ function astrTelSaveDuty(){
     const duty=existing||{id:'ASTTEL_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),createdAt:Date.now(),createdBy:CU.l};
     duty.mode=mode;duty.login=login;duty.targetCaserneId=targetCaserneId;duty.start=start.toISOString();duty.end=end.toISOString();duty.updatedAt=Date.now();duty.updatedBy=CU.l;
     astrTelApplyDutyHours(duty);
+    duty._hoursSourceOfTruth=true;
     if(!existing)list.push(duty);
   }catch(error){
     CD().astrTelData=JSON.parse(dataSnapshot);CD().astrTelDuties=JSON.parse(listSnapshot);
     showToast(error.message||'Enregistrement impossible.','warn');return;
   }
-  _jbEditLock=Date.now();saveData(true);astrTelResetDutyForm();astrTelRenderDutyAdmin();astrTelRenderGrid();rAccueil();
+  _jbEditLock=Date.now();
+  if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcPendingDirty!=='undefined'&&typeof _rcId==='function')_rcPendingDirty.add(_rcId(CURRENT_CASERNE_ID,'config','main'));
+  saveData(true);astrTelResetDutyForm();astrTelRenderDutyAdmin();astrTelRenderGrid();rAccueil();
   showToast(shorten.length?'Ancienne permanence arrêtée et nouvelle astreinte enregistrée ✓':'Astreinte téléphonique enregistrée ✓','success');
 }
 function astrTelDeleteDuty(id){
@@ -548,5 +567,4 @@ function showAstrTelParams(){
   </div>`;
   document.getElementById('mo').style.display='flex';
 }
-
 
