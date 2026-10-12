@@ -1171,14 +1171,23 @@ function compareVehicleNames(a,b){
 }
 function sortVehicleNames(vehicles){return (Array.isArray(vehicles)?vehicles:[]).slice().sort(compareVehicleNames);}
 function formatInterventionStreetAddress(value){
-  return String(value||'').trim().replace(/^(\d+\s*(?:bis|ter|quater|b|t|q)?)(?=[a-zà-ÿ])/i,'$1 ').replace(/\s+/g,' ').trim();
+  let address=String(value||'').trim()
+    // Ancienne mise en forme : « 35 Boulevard » devenait « 35 B oulevard ».
+    .replace(/^(\d+)\s+b\s+(oulevard\b)/i,'$1 Boulevard');
+  // Un suffixe collé n'est reconnu que devant un nom de voie complet.
+  const suffixAndStreet=/^(\d+)\s*(bis|ter|quater|[a-z])(?=(?:rue|route|avenue|av|boulevard|bd|chemin|impasse|place|allee|allée|residence|résidence|cite|cité|faubourg)\b)/i;
+  address=suffixAndStreet.test(address)
+    ?address.replace(suffixAndStreet,(_,number,suffix)=>number+' '+(suffix.length===1?suffix.toUpperCase():suffix)+' ')
+    :address.replace(/^(\d+)(?=[a-zà-ÿ])/i,'$1 ');
+  address=address.replace(/^(\d+)\s+([a-z])(?=\s|$)/i,(_,number,suffix)=>number+' '+suffix.toUpperCase());
+  return address.replace(/\s+/g,' ').trim();
 }
 // Comparaison tolérante des adresses saisies manuellement : « 12 bis »,
 // « 12bis », « 12 BIS » et « 12 Bis » désignent la même adresse.
 // Les autres éléments de l'adresse restent obligatoires afin de ne pas
 // confondre deux rues ou deux communes différentes.
 function normalizeInterventionAddressForMatch(value){
-  return nm(String(value||''))
+  return nm(formatInterventionStreetAddress(value))
     .replace(/[’']/g,' ')
     .replace(/[\-‐‑‒–—―,.;:()]/g,' ')
     .replace(/(\d)(?=[a-z])/g,'$1 ')
@@ -5303,7 +5312,11 @@ function callRequerantMasque(id,index){
 // ────────────────── AUTOCOMPLÉTION ADRESSE (Nominatim) ──────────────────
 let addrTimer=null,addrRequest=null;
 let addrSelected=false,addrSelectedValue='',addrSelectedCoords=null;
-function extractNumero(q){const m=q.match(/^(\d+\s*(?:bis|ter|quater)?\s*)/i);return m?m[1]:'';}
+function extractNumero(q){
+  const address=formatInterventionStreetAddress(q);
+  const match=address.match(/^(\d+)(?:\s+(bis|ter|quater|[a-z]))?(?=\s|$)/i);
+  return match?match[1]+(match[2]?' '+match[2]:'')+' ':'';
+}
 const ADDRESS_COMPLETION_URL='https://data.geopf.fr/geocodage/completion/';
 const ADDRESS_SEARCH_URL='https://data.geopf.fr/geocodage/search';
 const ADDRESS_REVERSE_URL='https://data.geopf.fr/geocodage/reverse';
@@ -5336,7 +5349,9 @@ function addrCandidate(raw,kind,commune,numero){
     fulltext=raw.display_name||'';
     latitude=Number(raw.lat);longitude=Number(raw.lon);
   }
-  street=String(street||'').replace(/^\d+\s*(?:bis|ter|quater)?\s*/i,'').trim();
+  street=formatInterventionStreetAddress(street);
+  const streetNumber=extractNumero(street);
+  if(streetNumber)street=street.slice(streetNumber.length).trim();
   if(!street||!addrCityMatches(city,fulltext,commune))return null;
   return {address:(numero+street).trim(),detail:fulltext||((numero+street).trim()+', '+commune),latitude:Number.isFinite(latitude)?latitude:null,longitude:Number.isFinite(longitude)?longitude:null};
 }
@@ -17370,7 +17385,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0007';
+const APP_VERSION='V202610_0008';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
