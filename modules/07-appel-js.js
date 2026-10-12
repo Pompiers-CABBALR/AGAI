@@ -244,7 +244,11 @@ function callRequerantMasque(id,index){
 // ────────────────── AUTOCOMPLÉTION ADRESSE (Nominatim) ──────────────────
 let addrTimer=null,addrRequest=null;
 let addrSelected=false,addrSelectedValue='',addrSelectedCoords=null;
-function extractNumero(q){const m=q.match(/^(\d+\s*(?:bis|ter|quater)?\s*)/i);return m?m[1]:'';}
+function extractNumero(q){
+  const address=formatInterventionStreetAddress(q);
+  const match=address.match(/^(\d+)(?:\s+(bis|ter|quater|[a-z]))?(?=\s|$)/i);
+  return match?match[1]+(match[2]?' '+match[2]:'')+' ':'';
+}
 const ADDRESS_COMPLETION_URL='https://data.geopf.fr/geocodage/completion/';
 const ADDRESS_SEARCH_URL='https://data.geopf.fr/geocodage/search';
 const ADDRESS_REVERSE_URL='https://data.geopf.fr/geocodage/reverse';
@@ -277,7 +281,9 @@ function addrCandidate(raw,kind,commune,numero){
     fulltext=raw.display_name||'';
     latitude=Number(raw.lat);longitude=Number(raw.lon);
   }
-  street=String(street||'').replace(/^\d+\s*(?:bis|ter|quater)?\s*/i,'').trim();
+  street=formatInterventionStreetAddress(street);
+  const streetNumber=extractNumero(street);
+  if(streetNumber)street=street.slice(streetNumber.length).trim();
   if(!street||!addrCityMatches(city,fulltext,commune))return null;
   return {address:(numero+street).trim(),detail:fulltext||((numero+street).trim()+', '+commune),latitude:Number.isFinite(latitude)?latitude:null,longitude:Number.isFinite(longitude)?longitude:null};
 }

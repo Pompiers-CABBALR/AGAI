@@ -1018,14 +1018,23 @@ function compareVehicleNames(a,b){
 }
 function sortVehicleNames(vehicles){return (Array.isArray(vehicles)?vehicles:[]).slice().sort(compareVehicleNames);}
 function formatInterventionStreetAddress(value){
-  return String(value||'').trim().replace(/^(\d+\s*(?:bis|ter|quater|b|t|q)?)(?=[a-zà-ÿ])/i,'$1 ').replace(/\s+/g,' ').trim();
+  let address=String(value||'').trim()
+    // Ancienne mise en forme : « 35 Boulevard » devenait « 35 B oulevard ».
+    .replace(/^(\d+)\s+b\s+(oulevard\b)/i,'$1 Boulevard');
+  // Un suffixe collé n'est reconnu que devant un nom de voie complet.
+  const suffixAndStreet=/^(\d+)\s*(bis|ter|quater|[a-z])(?=(?:rue|route|avenue|av|boulevard|bd|chemin|impasse|place|allee|allée|residence|résidence|cite|cité|faubourg)\b)/i;
+  address=suffixAndStreet.test(address)
+    ?address.replace(suffixAndStreet,(_,number,suffix)=>number+' '+(suffix.length===1?suffix.toUpperCase():suffix)+' ')
+    :address.replace(/^(\d+)(?=[a-zà-ÿ])/i,'$1 ');
+  address=address.replace(/^(\d+)\s+([a-z])(?=\s|$)/i,(_,number,suffix)=>number+' '+suffix.toUpperCase());
+  return address.replace(/\s+/g,' ').trim();
 }
 // Comparaison tolérante des adresses saisies manuellement : « 12 bis »,
 // « 12bis », « 12 BIS » et « 12 Bis » désignent la même adresse.
 // Les autres éléments de l'adresse restent obligatoires afin de ne pas
 // confondre deux rues ou deux communes différentes.
 function normalizeInterventionAddressForMatch(value){
-  return nm(String(value||''))
+  return nm(formatInterventionStreetAddress(value))
     .replace(/[’']/g,' ')
     .replace(/[\-‐‑‒–—―,.;:()]/g,' ')
     .replace(/(\d)(?=[a-z])/g,'$1 ')
