@@ -81,11 +81,16 @@ for (const file of ['modules/17-animal-js.js', 'app.js']) {
   assert.ok(start >= 0 && end > start, `${file}: filtre d'écriture introuvable`);
   const context = {
     _rcSyncScopeCaserne: () => 'CIS05', PERSONNEL_ONLINE_GATE: true,
+    PERSONNEL_SECURE_CIS05_PILOT: true,
     CU: { l: 'pilote', caserneId: 'CIS05' }, isSuperAdmin: () => true,
   };
   vm.runInNewContext(source.slice(start, end) + '\nglobalThis.writable=_rcRowWritableHere;', context);
   assert.equal(context.writable({ caserne: 'CIS05', type: 'login', data: { login: 'pilote' } }), true);
   assert.equal(context.writable({ caserne: 'CIS05', type: 'login', data: { login: 'autre' } }), false);
+  assert.equal(context.writable({ caserne: '_GLOBAL', type: 'global', data: {} }), false);
+  assert.equal(context.writable({ caserne: 'CIS05', type: 'user', data: {} }), false);
+  assert.equal(context.writable({ caserne: 'CIS05', type: 'login', deleted: true, data: { login: 'pilote' } }), false);
+  assert.equal(context.writable({ caserne: 'CIS05', type: 'iv', data: {} }), true);
   const scopeStart = source.indexOf('function _rcPendingIdInScope(', end);
   const scopeEnd = source.indexOf('function _rcPrunePendingDirty(', scopeStart);
   assert.ok(scopeStart >= 0 && scopeEnd > scopeStart, `${file}: filtre de file introuvable`);
@@ -94,6 +99,40 @@ for (const file of ['modules/17-animal-js.js', 'app.js']) {
   vm.runInNewContext(source.slice(scopeStart, scopeEnd) + '\nglobalThis.inScope=_rcPendingIdInScope;', context);
   assert.equal(context.inScope('CIS05__login__foreign'), false);
   assert.equal(context.inScope('CIS05__login__own'), true);
+  assert.match(source, /loginRetention\.removed\.length&&GLOBAL_ROLE==='superadmin'&&!PERSONNEL_SECURE_CIS05_PILOT/);
+  const protectStart = source.indexOf('async function _rcProtectSensitiveGlobalRow(');
+  const protectEnd = source.indexOf('async function _rcSendAtomicOperationalRow(', protectStart);
+  const protectContext = { PERSONNEL_SECURE_CIS05_PILOT: true };
+  vm.runInNewContext(source.slice(protectStart, protectEnd)
+    + '\nglobalThis.protect=_rcProtectSensitiveGlobalRow;', protectContext);
+  testCases.push({ result: protectContext.protect([
+    { id: 'global', type: 'global', caserne: '_GLOBAL', data: { GLOBAL_ACCOUNTS: [] } },
+    { id: 'inter', type: 'iv', caserne: 'CIS05', data: {} },
+  ]).then(rows => {
+    assert.deepEqual(Array.from(rows, row => row.id), ['inter']);
+    return true;
+  }), expected: true, pulls: () => 1 });
+  const cleanupStart = source.indexOf('async function _rcDiscardPilotLoginTombstones(');
+  const cleanupEnd = source.indexOf('async function _rcReconcileOutboxWithRemote(', cleanupStart);
+  assert.ok(cleanupStart >= 0 && cleanupEnd > cleanupStart, `${file}: nettoyage ciblé introuvable`);
+  const removed = [], pending = new Set(['old-login', 'inter']);
+  const cleanupContext = {
+    PERSONNEL_SECURE_CIS05_PILOT: true,
+    _rcOutboxDelete: async ids => { removed.push(...ids); return true; },
+    _rcPendingDirty: pending, _rcPersistPendingDirty: () => {},
+  };
+  vm.runInNewContext(source.slice(cleanupStart, cleanupEnd)
+    + '\nglobalThis.cleanup=_rcDiscardPilotLoginTombstones;', cleanupContext);
+  testCases.push({ result: cleanupContext.cleanup([
+    { id: 'old-login', type: 'login', deleted: true },
+    { id: 'inter', type: 'iv', deleted: false },
+  ]).then(rows => {
+    assert.deepEqual(removed, ['old-login']);
+    assert.deepEqual(Array.from(rows, row => row.id), ['inter']);
+    assert.equal(pending.has('old-login'), false);
+    assert.equal(pending.has('inter'), true);
+    return true;
+  }), expected: true, pulls: () => 1 });
 }
 
 Promise.all(testCases.map(async ({ result, expected, pulls }) => {

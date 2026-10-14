@@ -1867,6 +1867,19 @@ async function _rcOutboxDelete(ids){
     tx.onabort=function(){resolve(false);};
   });
 }
+// Les pierres tombales de l'historique sont un entretien automatique, pas des
+// saisies opérationnelles. Le pilote Auth n'a pas le droit de les supprimer au
+// nom d'autres agents ; retirer uniquement ces essais techniques de sa file.
+async function _rcDiscardPilotLoginTombstones(rows){
+  if(!PERSONNEL_SECURE_CIS05_PILOT)return rows;
+  const obsolete=(rows||[]).filter(function(row){return row&&row.type==='login'&&row.deleted===true;});
+  if(!obsolete.length)return rows;
+  const ids=obsolete.map(function(row){return row.id;});
+  if(!await _rcOutboxDelete(ids))return rows;
+  ids.forEach(function(id){_rcPendingDirty.delete(id);});
+  _rcPersistPendingDirty();
+  return rows.filter(function(row){return !(row&&row.type==='login'&&row.deleted===true);});
+}
 async function _rcReconcileOutboxWithRemote(remoteRows,durableRows){
   const remoteById={};
   (remoteRows||[]).forEach(function(row){if(row&&row.id)remoteById[row.id]=row;});
@@ -1908,6 +1921,7 @@ async function _rcRecoverPendingQueue(knownRows){
   _rcRecoveryPromise=(async function(){
     try{
       let localRows=knownRows||await _rcOutboxGetRows();
+      localRows=await _rcDiscardPilotLoginTombstones(localRows);
       localRows=await _rcDiscardForeignSuperAdminDispoRows(localRows);
       localRows.forEach(function(row){if(row&&row.id)_rcPendingDirty.add(row.id);});
       _rcPersistPendingDirty();
@@ -2017,6 +2031,10 @@ function _rcPersistPendingDirty(){
 }
 function _rcRowWritableHere(row){
   if(!row)return false;
+  // Le pilote n'autorise pas la réécriture des comptes historiques : leur
+  // projection Auth ne contient plus les mots de passe de l'ancien système.
+  if(PERSONNEL_SECURE_CIS05_PILOT&&(row.type==='global'||row.type==='user'))return false;
+  if(PERSONNEL_SECURE_CIS05_PILOT&&row.type==='login'&&row.deleted)return false;
   const scopedCaserne=_rcSyncScopeCaserne();
   if(PERSONNEL_ONLINE_GATE&&row.type==='login'){
     return !!(CU&&row.data&&row.data.login===CU.l
@@ -2852,6 +2870,7 @@ async function _rcPushRecords(records){
 // les éléments des listes locales, sinon la suppression ne se propage pas.
 async function _rcMarkDeleted(caserne, type, recordIds){
   if(!USE_RECORDS) return; // en mode normal, rien à faire
+  if(PERSONNEL_SECURE_CIS05_PILOT&&type==='login')return;
   if(!recordIds || !recordIds.length) return;
   const rows=recordIds.map(function(rid){
     return {id:_rcId(caserne,type,rid),caserne:caserne,type:type,data:{id:rid,_deleted:true},deleted:true};
@@ -2946,6 +2965,11 @@ function _rcPushGlobalRowKeepalive(){
 }
 
 async function _rcProtectSensitiveGlobalRow(rows){
+  // Un envoi global en mode pilote (notamment un fullPush) détruirait les
+  // empreintes des comptes encore utilisées par l'application normale.
+  if(PERSONNEL_SECURE_CIS05_PILOT){
+    return (rows||[]).filter(function(row){return !(row&&row.type==='global'&&row.caserne==='_GLOBAL');});
+  }
   if(typeof isSuperAdmin==='function'&&isSuperAdmin())return rows;
   const globalRow=(rows||[]).find(function(row){return row&&row.type==='global'&&row.caserne==='_GLOBAL';});
   if(!globalRow)return rows;
@@ -3124,6 +3148,7 @@ async function _rcPush(fullPush){
     _rcRepairDuplicateLocalRecordIds();
     generationAtStart=_rcDirtyGeneration;
     let durableRows=await _rcOutboxGetRows();
+    durableRows=await _rcDiscardPilotLoginTombstones(durableRows);
     durableRows=await _rcDiscardForeignSuperAdminDispoRows(durableRows);
     durableRows.forEach(function(row){if(row&&row.id)_rcPendingDirty.add(row.id);});
     _rcPersistPendingDirty();
@@ -3383,7 +3408,7 @@ async function _rcPull(silent){
     );
     const loginRetention=loginHistoryRetentionPartition(mergedLoginHistory);
     data.LOGIN_HISTORY=loginRetention.kept;
-    if(loginRetention.removed.length&&GLOBAL_ROLE==='superadmin'){
+    if(loginRetention.removed.length&&GLOBAL_ROLE==='superadmin'&&!PERSONNEL_SECURE_CIS05_PILOT){
       const deletedAt=new Date().toISOString(),deleteGroups={};
       loginRetention.removed.forEach(function(entry){
         data.LOGIN_HISTORY_DELETED[entry.id]=deletedAt;
@@ -3450,7 +3475,7 @@ async function _rcPull(silent){
       }
     }
     _applyDataObject(data);
-    if(loginRetention.removed.length&&GLOBAL_ROLE==='superadmin'){
+    if(loginRetention.removed.length&&GLOBAL_ROLE==='superadmin'&&!PERSONNEL_SECURE_CIS05_PILOT){
       window.setTimeout(function(){if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();saveData(true);},0);
     }
     _postLoadInit();
