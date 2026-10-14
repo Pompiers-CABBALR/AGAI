@@ -23,6 +23,38 @@ function loginImportJSON(input){
   reader.readAsText(file);
 }
 
+// La copie locale d'un compte global peut avoir perdu son empreinte pendant
+// un essai de bascule. Vérifier l'identité via Auth serveur, sans relire ni
+// conserver l'empreinte du mot de passe dans le navigateur.
+async function _agaiRecoverLegacyGlobalAccount(login,password){
+  if(PERSONNEL_ONLINE_GATE||!USE_RECORDS)return null;
+  const local=(GLOBAL_ACCOUNTS||[]).find(function(account){
+    return account&&account.l===login&&account.role==='superadmin'&&account.caserneId==='CIS05'&&!account.p;
+  });
+  if(!local)return null;
+  let accessToken='',verified=false;
+  try{
+    const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{
+      method:'POST',headers:{apikey:SB_KEY,Authorization:'Bearer '+SB_KEY,'Content-Type':'application/json','x-device-id':agaiDeviceId()},
+      body:JSON.stringify({mode:'pilot_login',login:login,password:password})
+    },8000);
+    const result=await response.json().catch(function(){return{};});
+    accessToken=String(result&&result.session&&result.session.access_token||'');
+    verified=response.ok&&result.personnelEnforcementEnabled===true&&accessToken
+      &&result.login===login&&result.profile&&result.profile.login===login
+      &&result.profile.caserneId===local.caserneId&&result.profile.appRole===local.role
+      &&result.caserneId===local.caserneId&&result.appRole===local.role;
+  }catch(error){verified=false;}
+  if(!accessToken)return null;
+  try{
+    const logout=await _agaiAuthFetchWithTimeout(SB_URL+'/auth/v1/logout?scope=local',{
+      method:'POST',headers:{apikey:SB_KEY,Authorization:'Bearer '+accessToken}
+    },6000);
+    if(!logout.ok)return null;
+  }catch(error){return null;}
+  return verified?local:null;
+}
+
 async function doLogin(){
   const lerr=document.getElementById('lerr');
   const btn=document.querySelector('.lbtn');
@@ -60,6 +92,7 @@ async function doLogin(){
       if(x.l===l&&(!PERSONNEL_ONLINE_GATE||x.caserneId===onlineBootstrap.profile.caserneId)
         &&(PERSONNEL_ONLINE_GATE||await verifyPassword(p,x.p))){gaFound=x;break;}
     }
+    if(!gaFound)gaFound=await _agaiRecoverLegacyGlobalAccount(l,p);
     if(gaFound){
       const ga=gaFound;
       if(PERSONNEL_ONLINE_GATE&&deriveAccountRole(ga)!==onlineBootstrap.profile.appRole){
