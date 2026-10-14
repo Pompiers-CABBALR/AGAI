@@ -1478,8 +1478,17 @@ async function _agaiOnlinePrepareLogin(login,password){
       return String(id||'').startsWith(ownStation+RC_SEP)
         ||String(id||'').startsWith('_GLOBAL'+RC_SEP);
     };
-    const pendingHere=Array.from(_rcPendingDirty).filter(ownOrGlobal).length;
-    const durableHereRows=(await _rcOutboxGetRows()).filter(function(row){return row&&ownOrGlobal(row.id);});
+    const requiresPreviousSession=function(id){
+      return ownOrGlobal(id)&&!String(id||'').includes(RC_SEP+'login'+RC_SEP);
+    };
+    const durableRows=await _rcOutboxGetRows();
+    // Les anciennes traces de connexion d'autres comptes restent dans la file,
+    // mais ne sont ni un obstacle pour CIS05 ni transmises sous ce titulaire.
+    _rcForeignLoginPendingIds=new Set(durableRows.filter(function(row){
+      return row&&row.type==='login'&&(!row.data||row.data.login!==signed.profile.login);
+    }).map(function(row){return row.id;}));
+    const pendingHere=Array.from(_rcPendingDirty).filter(requiresPreviousSession).length;
+    const durableHereRows=durableRows.filter(function(row){return row&&requiresPreviousSession(row.id);});
     const durableHere=durableHereRows.length;
     // Une file d'une autre caserne reste intacte et ne doit pas empêcher
     // l'ouverture de CIS05 ; elle ne sera jamais envoyée avec ce compte.
@@ -17427,7 +17436,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0014';
+const APP_VERSION='V202610_0015';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -21075,6 +21084,7 @@ function _rcLoadPendingDirty(){
   }catch(e){return [];}
 }
 const _rcPendingDirty = new Set(_rcLoadPendingDirty());
+let _rcForeignLoginPendingIds=new Set();
 function _rcLoadPendingSince(){
   try{
     const saved=JSON.parse(localStorage.getItem(RC_PENDING_SINCE_KEY)||'{}');
@@ -21130,6 +21140,10 @@ function _rcPersistPendingDirty(){
 function _rcRowWritableHere(row){
   if(!row)return false;
   const scopedCaserne=_rcSyncScopeCaserne();
+  if(PERSONNEL_ONLINE_GATE&&row.type==='login'){
+    return !!(CU&&row.data&&row.data.login===CU.l
+      &&(row.caserne===CU.caserneId||row.caserne==='_GLOBAL'));
+  }
   if(typeof isSuperAdmin==='function'&&isSuperAdmin()){
     return !scopedCaserne||row.caserne===scopedCaserne||row.caserne==='_GLOBAL';
   }
@@ -21141,6 +21155,7 @@ function _rcRowWritableHere(row){
   return !!(scopedCaserne&&row.caserne===scopedCaserne);
 }
 function _rcPendingIdInScope(id){
+  if(PERSONNEL_ONLINE_GATE&&_rcForeignLoginPendingIds.has(id))return false;
   const scopedCaserne=_rcSyncScopeCaserne();
   if(typeof isSuperAdmin==='function'&&isSuperAdmin()&&!scopedCaserne)return true;
   if(!scopedCaserne)return false;

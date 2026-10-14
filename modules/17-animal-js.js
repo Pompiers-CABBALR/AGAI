@@ -1962,6 +1962,7 @@ function _rcLoadPendingDirty(){
   }catch(e){return [];}
 }
 const _rcPendingDirty = new Set(_rcLoadPendingDirty());
+let _rcForeignLoginPendingIds=new Set();
 function _rcLoadPendingSince(){
   try{
     const saved=JSON.parse(localStorage.getItem(RC_PENDING_SINCE_KEY)||'{}');
@@ -2017,6 +2018,10 @@ function _rcPersistPendingDirty(){
 function _rcRowWritableHere(row){
   if(!row)return false;
   const scopedCaserne=_rcSyncScopeCaserne();
+  if(PERSONNEL_ONLINE_GATE&&row.type==='login'){
+    return !!(CU&&row.data&&row.data.login===CU.l
+      &&(row.caserne===CU.caserneId||row.caserne==='_GLOBAL'));
+  }
   if(typeof isSuperAdmin==='function'&&isSuperAdmin()){
     return !scopedCaserne||row.caserne===scopedCaserne||row.caserne==='_GLOBAL';
   }
@@ -2028,6 +2033,7 @@ function _rcRowWritableHere(row){
   return !!(scopedCaserne&&row.caserne===scopedCaserne);
 }
 function _rcPendingIdInScope(id){
+  if(PERSONNEL_ONLINE_GATE&&_rcForeignLoginPendingIds.has(id))return false;
   const scopedCaserne=_rcSyncScopeCaserne();
   if(typeof isSuperAdmin==='function'&&isSuperAdmin()&&!scopedCaserne)return true;
   if(!scopedCaserne)return false;

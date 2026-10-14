@@ -107,8 +107,17 @@ async function _agaiOnlinePrepareLogin(login,password){
       return String(id||'').startsWith(ownStation+RC_SEP)
         ||String(id||'').startsWith('_GLOBAL'+RC_SEP);
     };
-    const pendingHere=Array.from(_rcPendingDirty).filter(ownOrGlobal).length;
-    const durableHereRows=(await _rcOutboxGetRows()).filter(function(row){return row&&ownOrGlobal(row.id);});
+    const requiresPreviousSession=function(id){
+      return ownOrGlobal(id)&&!String(id||'').includes(RC_SEP+'login'+RC_SEP);
+    };
+    const durableRows=await _rcOutboxGetRows();
+    // Les anciennes traces de connexion d'autres comptes restent dans la file,
+    // mais ne sont ni un obstacle pour CIS05 ni transmises sous ce titulaire.
+    _rcForeignLoginPendingIds=new Set(durableRows.filter(function(row){
+      return row&&row.type==='login'&&(!row.data||row.data.login!==signed.profile.login);
+    }).map(function(row){return row.id;}));
+    const pendingHere=Array.from(_rcPendingDirty).filter(requiresPreviousSession).length;
+    const durableHereRows=durableRows.filter(function(row){return row&&requiresPreviousSession(row.id);});
     const durableHere=durableHereRows.length;
     // Une file d'une autre caserne reste intacte et ne doit pas empêcher
     // l'ouverture de CIS05 ; elle ne sera jamais envoyée avec ce compte.
