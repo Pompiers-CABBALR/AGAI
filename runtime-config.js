@@ -4,10 +4,10 @@
 window.AGAI_CONFIG = Object.freeze({
   supabaseUrl: 'https://lpzblzqxmoiwghvkhqnt.supabase.co',
   supabasePublishableKey: 'sb_publishable_dkzyaOmA-FeBhL4c1z_KZw_nOdOTWuL',
-  // Chaque ouverture et synchronisation exige une identité Supabase et un
-  // statut de personnel autorisé par le serveur.
-  accountLinkMode: 'on',
-  personnelOnlineGateEnabled: true,
+  // Retour temporaire à la connexion précédente après l'essai V0022.
+  // La fermeture des anciens accès à la base n'a pas été appliquée.
+  accountLinkMode: 'canary',
+  personnelOnlineGateEnabled: false,
   accountLinkCanaryLogins: ['dacheville.thibaut', 'lericque.brian', 'accoley.leo', 'degryse.herve', 'douvrin.pascal', 'dumoulin.sebastien', 'francois.laurent', 'maerten.mathis', 'marien.matthis', 'smagliante.enzo', 'millecamps.alicia', 'canneson.eric', 'leriche.valery'],
   accountLinkNewCanaryLogins: ['millecamps.alicia', 'canneson.eric', 'leriche.valery'],
   accountLinkEndpoint: '',
