@@ -7488,6 +7488,11 @@ function rI(){
   // Si tireur PILP et filtre sélect. ou mes-sel : ajouter aussi les PILP sélectionnées
   let listPilpSel=tireur?PILP_IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l):[];
   if(flt==='all'){
+    // « Tout » est la vue opérationnelle du jour : une intervention ouverte
+    // les jours précédents n'y reste pas après sa clôture, même si cette
+    // clôture a eu lieu aujourd'hui. Elle reste dans « Terminées » ce jour-là,
+    // puis dans l'historique.
+    list=list.filter(iv=>iv.s!=='terminee'||isTdy(iv));
     // en mode "Tout", on n'ajoute pas les PILP (elles sont dans leur propre menu)
     listPilpSel=[];
   } else if(flt==='mes-sel'){
@@ -17387,7 +17392,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0009';
+const APP_VERSION='V202610_0010';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
