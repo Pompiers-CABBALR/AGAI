@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AGAI — état local de synchronisation</title>
+  <style>
+    body{font:16px/1.5 system-ui,sans-serif;background:#f3f4f7;color:#172033;margin:0}
+    main{max-width:650px;margin:5vh auto;padding:24px;background:white;border:1px solid #dfe3eb;border-radius:14px}
+    h1{font-size:1.35rem;margin:0 0 12px} pre{white-space:pre-wrap;background:#eef3fa;padding:14px;border-radius:8px}
+  </style>
+</head>
+<body>
+<main>
+  <h1>État local de synchronisation</h1>
+  <p>Lecture seule : cette page affiche uniquement le nombre d’actions en attente par caserne et catégorie. Elle n’affiche aucun contenu d’intervention, nom ou mot de passe. Elle n’envoie rien au serveur.</p>
+  <pre id="result">Lecture en cours…</pre>
+</main>
+<script>
+(async function(){
+  const output=document.getElementById('result');
+  const classify=function(id){
+    const parts=String(id||'').split('__');
+    const station=/^(CIS\d+|EMAJ|_GLOBAL)$/.test(parts[0]||'')?parts[0]:'autre';
+    const kind=/^[A-Za-z]+$/.test(parts[1]||'')?parts[1]:'autre';
+    return station+' / '+kind;
+  };
+  const grouped=function(rows){
+    const counts={};
+    rows.forEach(function(row){
+      const key=classify(row.id)+(row.deleted?' / suppression':'');
+      counts[key]=(counts[key]||0)+1;
+    });
+    return Object.keys(counts).sort().map(function(key){return key+' : '+counts[key];});
+  };
+  try{
+    const pending=JSON.parse(localStorage.getItem('agai_rc_pending_dirty')||'[]');
+    const pendingRows=Array.isArray(pending)?pending.map(function(id){return{id:id,deleted:false};}):[];
+    let durable=[];
+    const databases=typeof indexedDB.databases==='function'?await indexedDB.databases():[];
+    if(databases.some(function(info){return info.name==='agai-sync-outbox';})){
+      const db=await new Promise(function(resolve,reject){
+        const request=indexedDB.open('agai-sync-outbox',1);
+        request.onupgradeneeded=function(){request.transaction.abort();};
+        request.onsuccess=function(){resolve(request.result);};
+        request.onerror=function(){reject(request.error);};
+      });
+      try{
+        if(db.objectStoreNames.contains('records'))durable=await new Promise(function(resolve,reject){
+          const request=db.transaction('records','readonly').objectStore('records').getAll();
+          request.onsuccess=function(){resolve((request.result||[]).map(function(entry){
+            return{id:entry&&entry.id,deleted:entry&&entry.row&&entry.row.deleted===true};
+          }));};
+          request.onerror=function(){reject(request.error);};
+        });
+      }finally{db.close();}
+    }
+    output.textContent='Actions signalées en attente : '+pendingRows.length+'\n'
+      +(grouped(pendingRows).join('\n')||'aucune')
+      +'\n\nActions dans la file durable : '+durable.length+'\n'
+      +(grouped(durable).join('\n')||'aucune');
+  }catch(error){output.textContent='Lecture locale impossible : '+String(error&&error.name||'erreur');}
+})();
+</script>
+</body>
+</html>
