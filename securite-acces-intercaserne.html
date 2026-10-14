@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AGAI — contrôle des accès entre casernes</title>
+  <style>
+    body { font: 16px/1.5 system-ui, sans-serif; background: #f3f4f7; color: #172033; margin: 0; }
+    main { max-width: 560px; margin: 5vh auto; padding: 24px; background: white; border: 1px solid #dfe3eb; border-radius: 14px; }
+    h1 { font-size: 1.35rem; margin: 0 0 12px; }
+    label { display: block; margin: 14px 0 5px; font-weight: 600; }
+    input { box-sizing: border-box; width: 100%; padding: 11px; border: 1px solid #aab3c1; border-radius: 8px; font: inherit; }
+    button { margin-top: 18px; padding: 11px 16px; border: 0; border-radius: 8px; color: white; background: #b7382d; font: inherit; cursor: pointer; }
+    button:disabled { opacity: .55; cursor: wait; }
+    #result { margin-top: 20px; padding: 12px; border-radius: 8px; background: #eef3fa; white-space: pre-line; }
+    .small { color: #596579; font-size: .9rem; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Contrôle d’accès entre casernes</h1>
+  <p>Ce contrôle en lecture seule vérifie votre nouvelle connexion et les limites d’accès à votre caserne. Il ne modifie aucune intervention et n’active pas la bascule générale.</p>
+  <form id="check-form">
+    <label for="login">Identifiant AGAI</label>
+    <input id="login" name="login" autocomplete="username" required>
+    <label for="password">Mot de passe AGAI</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required>
+    <button id="check-button" type="submit">Vérifier mon accès</button>
+  </form>
+  <div id="result" role="status" aria-live="polite">Aucun contrôle lancé.</div>
+  <p class="small" style="margin-top:16px">Cette page ne conserve ni mot de passe ni jeton. Fermez-la après le contrôle.</p>
+</main>
+<script src="runtime-config.js"></script>
+<script>
+(() => {
+  const config = window.AGAI_CONFIG || {};
+  const base = String(config.supabaseUrl || '').replace(/\/$/, '');
+  const apiKey = String(config.supabasePublishableKey || '');
+  const form = document.getElementById('check-form');
+  const button = document.getElementById('check-button');
+  const result = document.getElementById('result');
+  const loginField = document.getElementById('login');
+  const passwordField = document.getElementById('password');
+  const request = async (url, options) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    try { return await fetch(url, { ...options, signal: controller.signal, cache: 'no-store' }); }
+    finally { clearTimeout(timer); }
+  };
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!base || !apiKey) { result.textContent = 'Configuration absente.'; return; }
+    const login = loginField.value.trim().toLowerCase();
+    const password = passwordField.value;
+    button.disabled = true;
+    result.textContent = 'Vérification en cours…';
+    let token = '';
+    try {
+      const signed = await request(base + '/functions/v1/agai-account-link', {
+        method: 'POST', headers: { apikey: apiKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'login', login, password }),
+      });
+      const identity = await signed.json().catch(() => ({}));
+      if (!signed.ok || identity.personnelEnforcementEnabled !== true || identity.login !== login
+        || !identity.session?.access_token || !identity.caserneId) {
+        result.textContent = 'Connexion en ligne non concluante (HTTP ' + signed.status + '). Bascule non activée.';
+        return;
+      }
+      token = identity.session.access_token;
+      const headers = { apikey: apiKey, Authorization: 'Bearer ' + token };
+      const checked = await request(base + '/functions/v1/agai-account-link', {
+        method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'account_status' }),
+      });
+      const status = await checked.json().catch(() => ({}));
+      if (!checked.ok || status.canLogin !== true || status.login !== login
+        || status.caserneId !== identity.caserneId) {
+        result.textContent = 'Statut du personnel non confirmé (HTTP ' + checked.status + '). Bascule non activée.';
+        return;
+      }
+      const own = identity.caserneId;
+      const foreign = own === 'CIS05' ? 'CIS03' : 'CIS05';
+      const ownResponse = await request(base + '/rest/v1/records?caserne=eq.' + encodeURIComponent(own) + '&select=id&limit=1', { headers });
+      const foreignResponse = await request(base + '/rest/v1/records?caserne=eq.' + encodeURIComponent(foreign) + '&select=id&limit=1', { headers });
+      const ownRows = await ownResponse.json().catch(() => null);
+      const foreignRows = await foreignResponse.json().catch(() => null);
+      const globalRole = ['superadmin', 'chef_corps'].includes(identity.appRole);
+      if (!ownResponse.ok || !Array.isArray(ownRows) || ownRows.length !== 1
+        || !foreignResponse.ok || !Array.isArray(foreignRows)
+        || foreignRows.length !== (globalRole ? 1 : 0)) {
+        result.textContent = 'Droits de lecture non conformes. Bascule non activée.';
+        return;
+      }
+      result.textContent = 'Connexion ' + own + ' : OK\nStatut du personnel : OK\nLecture ' + own + ' : OK\n'
+        + (globalRole ? 'Lecture inter-casernes autorisée : OK' : 'Lecture ' + foreign + ' refusée : OK')
+        + '\nAucune écriture effectuée. Bascule générale non activée.';
+    } catch (_) {
+      result.textContent = 'Service momentanément indisponible. Aucune donnée modifiée.';
+    } finally {
+      token = '';
+      passwordField.value = '';
+      button.disabled = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>

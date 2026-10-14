@@ -12,9 +12,9 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 })
 
 const normalizeLogin = (value: unknown) => String(value ?? '').trim().toLowerCase()
-// Déploiement préparatoire : aucun secret ne peut activer les restrictions
-// avant la bascule coordonnée des accès aux données.
-const personnelEnforcement = false
+// La connexion et chaque vérification de session appliquent le statut serveur.
+// Ce verrou est déployé avant la fermeture de l'ancien accès anonyme.
+const personnelEnforcement = true
 const pilotCreateOnlyLogins = new Set([
   'millecamps.alicia',
   'canneson.eric',
@@ -56,7 +56,7 @@ function technicalEmail(login: string, caserneId: string) {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-  if (req.method === 'GET') return json({ status: 'ready', version: 'v239.6-prep', pilotCreateOnlyLogins: [...pilotCreateOnlyLogins],
+  if (req.method === 'GET') return json({ status: 'ready', version: 'v240-auth-cutover', pilotCreateOnlyLogins: [...pilotCreateOnlyLogins],
     personnelEnforcementEnabled: personnelEnforcement })
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405)
 
