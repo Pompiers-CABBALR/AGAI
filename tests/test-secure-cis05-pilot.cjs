@@ -50,6 +50,7 @@ for (const file of ['modules/03-security-js.js', 'app.js']) {
         type: pendingId.includes('__login__') ? 'login' : 'iv',
         data: { login: pendingId.endsWith('__own') ? 'pilote' : 'autre' } }],
       _rcDiscardPilotLoginTombstones: async rows => rows,
+      _agaiClearCoveredGlobalPending: async (signed, rows) => rows,
       _rcPull: async () => { pulls++; return true; },
       CU: null, GLOBAL_ROLE: null, CURRENT_CASERNE_ID: null,
       CASERNE_DATA: {}, GLOBAL_ACCOUNTS: [],

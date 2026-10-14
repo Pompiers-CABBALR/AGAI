@@ -96,6 +96,56 @@ async function _agaiOnlineBootstrapLogin(login,password){
     return {session:Object.assign({},result.session,{_agai_link_login:normalized}),profile:result.profile};
   }catch(error){console.warn('[AGAI][ACCÈS] Connexion en ligne indisponible :',error);return null;}
 }
+function _agaiGlobalPendingCoveredByRemote(local,remote){
+  if(!local||!remote||!Array.isArray(remote.GLOBAL_ACCOUNTS))return false;
+  const same=function(a,b){return JSON.stringify(_rcCanonicalSyncValue(a))===JSON.stringify(_rcCanonicalSyncValue(b));};
+  const withoutCredential=function(account){
+    const safe=Object.assign({},account);
+    ['p','password_hash','passwordHash'].forEach(function(key){delete safe[key];});
+    return safe;
+  };
+  for(const key of Object.keys(local)){
+    if(key==='LOGIN_HISTORY'||key==='LOGIN_HISTORY_DELETED')continue;
+    const left=key==='GLOBAL_ACCOUNTS'?(local.GLOBAL_ACCOUNTS||[]).map(withoutCredential):local[key];
+    const right=key==='GLOBAL_ACCOUNTS'?(remote.GLOBAL_ACCOUNTS||[]).map(withoutCredential):remote[key];
+    if(!same(left,right))return false;
+  }
+  const remoteDeletes=remote.LOGIN_HISTORY_DELETED||{};
+  if(Object.keys(local.LOGIN_HISTORY_DELETED||{}).some(function(id){return !Object.prototype.hasOwnProperty.call(remoteDeletes,id);}))return false;
+  const remoteHistory=new Map((remote.LOGIN_HISTORY||[]).filter(function(entry){return entry&&entry.id;}).map(function(entry){return [entry.id,entry];}));
+  return (local.LOGIN_HISTORY||[]).every(function(entry){
+    return entry&&entry.id&&(Object.prototype.hasOwnProperty.call(remoteDeletes,entry.id)
+      ||(remoteHistory.has(entry.id)&&same(entry,remoteHistory.get(entry.id))));
+  });
+}
+async function _agaiClearCoveredGlobalPending(signed,durableRows){
+  const globalId='_GLOBAL'+RC_SEP+'global'+RC_SEP+'main';
+  if(!_rcPendingDirty.has(globalId))return durableRows;
+  let localRow=(durableRows||[]).find(function(row){return row&&row.id===globalId;});
+  const originalCache=localStorage.getItem(JB_CACHE_KEY);
+  if(!localRow&&originalCache){
+    try{localRow=_rcSplitAll(JSON.parse(originalCache)).find(function(row){return row.id===globalId;});}
+    catch(error){return durableRows;}
+  }
+  if(!localRow||!localRow.data||!signed||!signed.session||!signed.session.access_token)return durableRows;
+  const originalSignature=_rcSyncSignature(localRow);
+  try{
+    const response=await _agaiAuthFetchWithTimeout(SB_REST+'/records?id=eq.'+encodeURIComponent(globalId)+'&select=data&limit=1',{
+      headers:{apikey:SB_KEY,Authorization:'Bearer '+signed.session.access_token}
+    },8000);
+    if(!response.ok)return durableRows;
+    const rows=await response.json();
+    if(!Array.isArray(rows)||!rows[0]||!_agaiGlobalPendingCoveredByRemote(localRow.data,rows[0].data))return durableRows;
+    if(originalCache!==localStorage.getItem(JB_CACHE_KEY))return durableRows;
+    const latestRows=await _rcOutboxGetRows();
+    const latestGlobal=latestRows.find(function(row){return row&&row.id===globalId;});
+    if(latestGlobal&&_rcSyncSignature(latestGlobal)!==originalSignature)return durableRows;
+    if(!await _rcOutboxDelete([globalId]))return durableRows;
+    _rcPendingDirty.delete(globalId);
+    _rcPersistPendingDirty();
+    return (durableRows||[]).filter(function(row){return row&&row.id!==globalId;});
+  }catch(error){return durableRows;}
+}
 async function _agaiOnlinePrepareLogin(login,password){
   const signed=await _agaiOnlineBootstrapLogin(login,password);
   if(!signed||!USE_RECORDS||typeof _rcOutboxGetRows!=='function'||typeof _rcPull!=='function')return null;
@@ -110,7 +160,8 @@ async function _agaiOnlinePrepareLogin(login,password){
     const requiresPreviousSession=function(id){
       return ownOrGlobal(id)&&!String(id||'').includes(RC_SEP+'login'+RC_SEP);
     };
-    const durableRows=await _rcDiscardPilotLoginTombstones(await _rcOutboxGetRows());
+    const durableRows=await _agaiClearCoveredGlobalPending(signed,
+      await _rcDiscardPilotLoginTombstones(await _rcOutboxGetRows()));
     // Les anciennes traces de connexion d'autres comptes restent dans la file,
     // mais ne sont ni un obstacle pour CIS05 ni transmises sous ce titulaire.
     _rcForeignLoginPendingIds=new Set(durableRows.filter(function(row){
