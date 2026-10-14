@@ -13,9 +13,10 @@
 <body>
 <main>
   <h1>État local de synchronisation</h1>
-  <p>Lecture seule : cette page affiche uniquement le nombre d’actions en attente par caserne et catégorie. Elle n’affiche aucun contenu d’intervention, nom ou mot de passe. Elle n’envoie rien au serveur.</p>
+  <p>Lecture seule : cette page affiche le nombre d’actions en attente et, pour la configuration générale, les noms des rubriques différentes de la copie serveur. Elle n’affiche aucun contenu d’intervention, nom ou mot de passe. Elle lit le serveur sans lui envoyer la copie locale.</p>
   <pre id="result">Lecture en cours…</pre>
 </main>
+<script src="runtime-config.js"></script>
 <script>
 (async function(){
   const output=document.getElementById('result');
@@ -33,6 +34,25 @@
     });
     return Object.keys(counts).sort().map(function(key){return key+' : '+counts[key];});
   };
+  const canonical=function(value){
+    if(Array.isArray(value))return value.map(canonical);
+    if(value&&typeof value==='object'){
+      const result={};
+      Object.keys(value).sort().forEach(function(key){result[key]=canonical(value[key]);});
+      return result;
+    }
+    return value;
+  };
+  const dbGlobalRequest=function(){
+    const config=window.AGAI_CONFIG||{};
+    const key=config.supabasePublishableKey;
+    const base=config.supabaseUrl;
+    if(!key||!base)throw new Error('Configuration publique indisponible');
+    return{
+      url:base+'/rest/v1/records?id=eq._GLOBAL__global__main&select=data&limit=1',
+      headers:{apikey:key}
+    };
+  };
   try{
     const pending=JSON.parse(localStorage.getItem('agai_rc_pending_dirty')||'[]');
     const pendingRows=Array.isArray(pending)?pending.map(function(id){return{id:id,deleted:false};}):[];
@@ -49,16 +69,35 @@
         if(db.objectStoreNames.contains('records'))durable=await new Promise(function(resolve,reject){
           const request=db.transaction('records','readonly').objectStore('records').getAll();
           request.onsuccess=function(){resolve((request.result||[]).map(function(entry){
-            return{id:entry&&entry.id,deleted:entry&&entry.row&&entry.row.deleted===true};
+            return{id:entry&&entry.id,deleted:entry&&entry.row&&entry.row.deleted===true,
+              data:entry&&entry.id==='_GLOBAL__global__main'&&entry.row&&entry.row.data};
           }));};
           request.onerror=function(){reject(request.error);};
         });
       }finally{db.close();}
     }
+    let comparison='';
+    const localGlobal=durable.find(function(row){return row.id==='_GLOBAL__global__main';});
+    if(localGlobal){
+      try{
+        const request=dbGlobalRequest();
+        const response=await fetch(request.url,{method:'GET',headers:request.headers,cache:'no-store'});
+        if(!response.ok)throw new Error('HTTP '+response.status);
+        const remoteRows=await response.json();
+        const remote=remoteRows&&remoteRows[0]&&remoteRows[0].data;
+        const local=localGlobal.data;
+        if(!remote||!local)throw new Error('copie indisponible');
+        const keys=new Set(Object.keys(remote).concat(Object.keys(local)));
+        const differences=Array.from(keys).sort().filter(function(key){
+          return JSON.stringify(canonical(remote[key]))!==JSON.stringify(canonical(local[key]));
+        });
+        comparison='\n\nConfiguration générale : '+(differences.length?differences.join(', '):'copie locale identique au serveur');
+      }catch(error){comparison='\n\nComparaison serveur indisponible : '+String(error&&error.message||'erreur');}
+    }
     output.textContent='Actions signalées en attente : '+pendingRows.length+'\n'
       +(grouped(pendingRows).join('\n')||'aucune')
       +'\n\nActions dans la file durable : '+durable.length+'\n'
-      +(grouped(durable).join('\n')||'aucune');
+      +(grouped(durable).join('\n')||'aucune')+comparison;
   }catch(error){output.textContent='Lecture locale impossible : '+String(error&&error.name||'erreur');}
 })();
 </script>
