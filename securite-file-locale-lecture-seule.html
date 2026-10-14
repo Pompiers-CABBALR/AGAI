@@ -67,6 +67,30 @@
       +', seulement local : '+Array.from(localKeys).filter(function(key){return !remoteKeys.has(key);}).length
       +', seulement serveur : '+Array.from(remoteKeys).filter(function(key){return !localKeys.has(key);}).length;
   };
+  const historyCrossCheck=function(local,remote){
+    const localHistory=new Set((local.LOGIN_HISTORY||[]).map(function(item){return item&&item.id;}).filter(Boolean));
+    const remoteHistory=new Set((remote.LOGIN_HISTORY||[]).map(function(item){return item&&item.id;}).filter(Boolean));
+    const localDeletes=new Set(Object.keys(local.LOGIN_HISTORY_DELETED||{}));
+    const remoteDeletes=new Set(Object.keys(remote.LOGIN_HISTORY_DELETED||{}));
+    const localOnly=Array.from(localHistory).filter(function(id){return !remoteHistory.has(id);});
+    const remoteOnly=Array.from(remoteHistory).filter(function(id){return !localHistory.has(id);});
+    return 'Connexions seulement locales déjà supprimées sur serveur : '
+      +localOnly.filter(function(id){return remoteDeletes.has(id);}).length+'/'+localOnly.length
+      +'\nConnexions seulement serveur déjà supprimées en local : '
+      +remoteOnly.filter(function(id){return localDeletes.has(id);}).length+'/'+remoteOnly.length;
+  };
+  const accountCrossCheck=function(localAccounts,remoteAccounts){
+    const localById=new Map((localAccounts||[]).filter(function(item){return item&&item.l;}).map(function(item){return[item.l,item];}));
+    const remoteById=new Map((remoteAccounts||[]).filter(function(item){return item&&item.l;}).map(function(item){return[item.l,item];}));
+    let changedWithoutCredential=0;
+    localById.forEach(function(account,id){
+      const remote=remoteById.get(id);if(!remote)return;
+      const localSafe=Object.assign({},account),remoteSafe=Object.assign({},remote);
+      ['p','password_hash','passwordHash'].forEach(function(key){delete localSafe[key];delete remoteSafe[key];});
+      if(JSON.stringify(canonical(localSafe))!==JSON.stringify(canonical(remoteSafe)))changedWithoutCredential++;
+    });
+    return 'Comptes différents hors empreinte de mot de passe : '+changedWithoutCredential;
+  };
   try{
     const pending=JSON.parse(localStorage.getItem('agai_rc_pending_dirty')||'[]');
     const pendingRows=Array.isArray(pending)?pending.map(function(id){return{id:id,deleted:false};}):[];
@@ -109,8 +133,10 @@
         comparison='\n\nConfiguration générale : '+(differences.length?differences.join(', '):'copie locale identique au serveur')
           +'\nDernière mise en file locale : '+(localGlobal.queuedAt?new Date(localGlobal.queuedAt).toLocaleString('fr-FR'):'non datée')
           +'\nComptes : '+identityCounts(local.GLOBAL_ACCOUNTS,remote.GLOBAL_ACCOUNTS,'l')
+          +'\n'+accountCrossCheck(local.GLOBAL_ACCOUNTS,remote.GLOBAL_ACCOUNTS)
           +'\nHistorique des connexions : '+identityCounts(local.LOGIN_HISTORY,remote.LOGIN_HISTORY,'id')
-          +'\nSuppressions de connexions : '+keyCounts(local.LOGIN_HISTORY_DELETED,remote.LOGIN_HISTORY_DELETED);
+          +'\nSuppressions de connexions : '+keyCounts(local.LOGIN_HISTORY_DELETED,remote.LOGIN_HISTORY_DELETED)
+          +'\n'+historyCrossCheck(local,remote);
       }catch(error){comparison='\n\nComparaison serveur indisponible : '+String(error&&error.message||'erreur');}
     }
     output.textContent='Actions signalées en attente : '+pendingRows.length+'\n'
