@@ -1246,6 +1246,11 @@ function rI(){
   // Si tireur PILP et filtre sélect. ou mes-sel : ajouter aussi les PILP sélectionnées
   let listPilpSel=tireur?PILP_IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l):[];
   if(flt==='all'){
+    // « Tout » est la vue opérationnelle du jour : une intervention ouverte
+    // les jours précédents n'y reste pas après sa clôture, même si cette
+    // clôture a eu lieu aujourd'hui. Elle reste dans « Terminées » ce jour-là,
+    // puis dans l'historique.
+    list=list.filter(iv=>iv.s!=='terminee'||isTdy(iv));
     // en mode "Tout", on n'ajoute pas les PILP (elles sont dans leur propre menu)
     listPilpSel=[];
   } else if(flt==='mes-sel'){
