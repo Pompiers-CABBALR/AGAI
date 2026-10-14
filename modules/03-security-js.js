@@ -110,7 +110,7 @@ async function _agaiOnlinePrepareLogin(login,password){
     const requiresPreviousSession=function(id){
       return ownOrGlobal(id)&&!String(id||'').includes(RC_SEP+'login'+RC_SEP);
     };
-    const durableRows=await _rcOutboxGetRows();
+    const durableRows=await _rcDiscardPilotLoginTombstones(await _rcOutboxGetRows());
     // Les anciennes traces de connexion d'autres comptes restent dans la file,
     // mais ne sont ni un obstacle pour CIS05 ni transmises sous ce titulaire.
     _rcForeignLoginPendingIds=new Set(durableRows.filter(function(row){

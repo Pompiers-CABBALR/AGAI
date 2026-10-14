@@ -1868,10 +1868,10 @@ async function _rcOutboxDelete(ids){
   });
 }
 // Les pierres tombales de l'historique sont un entretien automatique, pas des
-// saisies opérationnelles. Le pilote Auth n'a pas le droit de les supprimer au
-// nom d'autres agents ; retirer uniquement ces essais techniques de sa file.
+// saisies opérationnelles. En mode Auth, le navigateur ne peut pas supprimer
+// les journaux d'autres agents ; retirer seulement ces essais de sa file.
 async function _rcDiscardPilotLoginTombstones(rows){
-  if(!PERSONNEL_SECURE_CIS05_PILOT)return rows;
+  if(!PERSONNEL_SECURE_CIS05_PILOT&&!PERSONNEL_ONLINE_GATE)return rows;
   const obsolete=(rows||[]).filter(function(row){return row&&row.type==='login'&&row.deleted===true;});
   if(!obsolete.length)return rows;
   const ids=obsolete.map(function(row){return row.id;});
@@ -2870,7 +2870,7 @@ async function _rcPushRecords(records){
 // les éléments des listes locales, sinon la suppression ne se propage pas.
 async function _rcMarkDeleted(caserne, type, recordIds){
   if(!USE_RECORDS) return; // en mode normal, rien à faire
-  if(PERSONNEL_SECURE_CIS05_PILOT&&type==='login')return;
+  if((PERSONNEL_SECURE_CIS05_PILOT||PERSONNEL_ONLINE_GATE)&&type==='login')return;
   if(!recordIds || !recordIds.length) return;
   const rows=recordIds.map(function(rid){
     return {id:_rcId(caserne,type,rid),caserne:caserne,type:type,data:{id:rid,_deleted:true},deleted:true};
@@ -3408,7 +3408,7 @@ async function _rcPull(silent){
     );
     const loginRetention=loginHistoryRetentionPartition(mergedLoginHistory);
     data.LOGIN_HISTORY=loginRetention.kept;
-    if(loginRetention.removed.length&&GLOBAL_ROLE==='superadmin'&&!PERSONNEL_SECURE_CIS05_PILOT){
+    if(loginRetention.removed.length&&GLOBAL_ROLE==='superadmin'&&!PERSONNEL_ONLINE_GATE){
       const deletedAt=new Date().toISOString(),deleteGroups={};
       loginRetention.removed.forEach(function(entry){
         data.LOGIN_HISTORY_DELETED[entry.id]=deletedAt;
@@ -3475,7 +3475,7 @@ async function _rcPull(silent){
       }
     }
     _applyDataObject(data);
-    if(loginRetention.removed.length&&GLOBAL_ROLE==='superadmin'&&!PERSONNEL_SECURE_CIS05_PILOT){
+    if(loginRetention.removed.length&&GLOBAL_ROLE==='superadmin'&&!PERSONNEL_ONLINE_GATE){
       window.setTimeout(function(){if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();saveData(true);},0);
     }
     _postLoadInit();

@@ -49,6 +49,7 @@ for (const file of ['modules/03-security-js.js', 'app.js']) {
       _rcOutboxGetRows: async () => [{ id: pendingId, caserne: pendingId.slice(0, 5),
         type: pendingId.includes('__login__') ? 'login' : 'iv',
         data: { login: pendingId.endsWith('__own') ? 'pilote' : 'autre' } }],
+      _rcDiscardPilotLoginTombstones: async rows => rows,
       _rcPull: async () => { pulls++; return true; },
       CU: null, GLOBAL_ROLE: null, CURRENT_CASERNE_ID: null,
       CASERNE_DATA: {}, GLOBAL_ACCOUNTS: [],
@@ -99,7 +100,7 @@ for (const file of ['modules/17-animal-js.js', 'app.js']) {
   vm.runInNewContext(source.slice(scopeStart, scopeEnd) + '\nglobalThis.inScope=_rcPendingIdInScope;', context);
   assert.equal(context.inScope('CIS05__login__foreign'), false);
   assert.equal(context.inScope('CIS05__login__own'), true);
-  assert.match(source, /loginRetention\.removed\.length&&GLOBAL_ROLE==='superadmin'&&!PERSONNEL_SECURE_CIS05_PILOT/);
+  assert.match(source, /loginRetention\.removed\.length&&GLOBAL_ROLE==='superadmin'&&!PERSONNEL_ONLINE_GATE/);
   const protectStart = source.indexOf('async function _rcProtectSensitiveGlobalRow(');
   const protectEnd = source.indexOf('async function _rcSendAtomicOperationalRow(', protectStart);
   const protectContext = { PERSONNEL_SECURE_CIS05_PILOT: true };
