@@ -87,7 +87,7 @@ async function _agaiOnlineBootstrapLogin(login,password){
   try{
     const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{
       method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','x-device-id':agaiDeviceId()},
-      body:JSON.stringify({mode:'login',login:normalized,password:password})
+      body:JSON.stringify({mode:PERSONNEL_SECURE_CIS05_PILOT?'pilot_login':'login',login:normalized,password:password})
     },8000);
     const result=await response.json().catch(function(){return{};});
     if(!response.ok||result.personnelEnforcementEnabled!==true||!result.session||!result.session.access_token
@@ -153,7 +153,7 @@ async function _agaiOnlineCheckSavedSession(login,caserneId){
   try{
     const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{
       method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+session.access_token,'Content-Type':'application/json'},
-      body:JSON.stringify({mode:'account_status'})
+      body:JSON.stringify({mode:PERSONNEL_SECURE_CIS05_PILOT?'pilot_account_status':'account_status'})
     },8000);
     const result=await response.json().catch(function(){return{};});
     if(!response.ok||result.personnelEnforcementEnabled!==true||result.canLogin!==true

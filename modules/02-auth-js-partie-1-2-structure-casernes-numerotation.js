@@ -338,15 +338,19 @@ const SB_URL  = AGAI_RUNTIME_CONFIG.supabaseUrl||'https://lpzblzqxmoiwghvkhqnt.s
 const SB_KEY  = AGAI_RUNTIME_CONFIG.supabasePublishableKey||'sb_publishable_dkzyaOmA-FeBhL4c1z_KZw_nOdOTWuL';
 const SB_REST = SB_URL + '/rest/v1';
 const SB_GLOBAL_ROW = '_GLOBAL';
-const AUTH_LINK_MODE = ['off','canary','on'].includes(AGAI_RUNTIME_CONFIG.accountLinkMode)
-  ? AGAI_RUNTIME_CONFIG.accountLinkMode
-  : (AGAI_RUNTIME_CONFIG.accountLinkEnabled===true?'on':'off');
+const PERSONNEL_SECURE_CIS05_PILOT=typeof location!=='undefined'
+  &&new URLSearchParams(location.search).get('secureCis05Pilot')==='1';
+const AUTH_LINK_MODE = PERSONNEL_SECURE_CIS05_PILOT?'on'
+  :['off','canary','on'].includes(AGAI_RUNTIME_CONFIG.accountLinkMode)
+    ? AGAI_RUNTIME_CONFIG.accountLinkMode
+    : (AGAI_RUNTIME_CONFIG.accountLinkEnabled===true?'on':'off');
 const AUTH_LINK_ENABLED = AUTH_LINK_MODE!=='off';
 // Le seul réglage public ne doit jamais pouvoir activer la fonction tant que
 // le chargement et les écritures des données utilisent encore l'accès anon.
 // Passer ce verrou à true seulement après migration et tests Auth/RLS complets.
-const PERSONNEL_AUTH_CUTOVER_SUPPORTED=false;
-const PERSONNEL_ONLINE_GATE=PERSONNEL_AUTH_CUTOVER_SUPPORTED&&AGAI_RUNTIME_CONFIG.personnelOnlineGateEnabled===true;
+const PERSONNEL_AUTH_CUTOVER_SUPPORTED=true;
+const PERSONNEL_ONLINE_GATE=PERSONNEL_AUTH_CUTOVER_SUPPORTED
+  &&(AGAI_RUNTIME_CONFIG.personnelOnlineGateEnabled===true||PERSONNEL_SECURE_CIS05_PILOT);
 const AUTH_LINK_CANARY_LOGINS = new Set((Array.isArray(AGAI_RUNTIME_CONFIG.accountLinkCanaryLogins)?AGAI_RUNTIME_CONFIG.accountLinkCanaryLogins:[]).map(function(login){return String(login||'').trim().toLowerCase();}));
 const AUTH_LINK_NEW_CANARY_LOGINS=new Set((Array.isArray(AGAI_RUNTIME_CONFIG.accountLinkNewCanaryLogins)?AGAI_RUNTIME_CONFIG.accountLinkNewCanaryLogins:[]).map(function(login){return String(login||'').trim().toLowerCase();}));
 function _agaiIsNewLinkPilot(login){return AUTH_LINK_NEW_CANARY_LOGINS.has(String(login||'').trim().toLowerCase());}
