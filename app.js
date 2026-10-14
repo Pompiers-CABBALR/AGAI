@@ -492,7 +492,6 @@ const SB_KEY  = AGAI_RUNTIME_CONFIG.supabasePublishableKey||'sb_publishable_dkzy
 const SB_REST = SB_URL + '/rest/v1';
 const SB_GLOBAL_ROW = '_GLOBAL';
 const PERSONNEL_SECURE_CIS05_PILOT=typeof location!=='undefined'
-  &&AGAI_RUNTIME_CONFIG.personnelOnlineGateEnabled!==true
   &&new URLSearchParams(location.search).get('secureCis05Pilot')==='1';
 const AUTH_LINK_MODE = PERSONNEL_SECURE_CIS05_PILOT?'on'
   :['off','canary','on'].includes(AGAI_RUNTIME_CONFIG.accountLinkMode)
@@ -17437,7 +17436,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0017';
+const APP_VERSION='V202610_0016';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
