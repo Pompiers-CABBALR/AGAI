@@ -91,6 +91,33 @@
     });
     return 'Comptes différents hors empreinte de mot de passe : '+changedWithoutCredential;
   };
+  const coveredPendingCheck=function(local,remote){
+    const same=function(left,right){return JSON.stringify(canonical(left))===JSON.stringify(canonical(right));};
+    const withoutCredential=function(account){
+      const safe=Object.assign({},account);
+      ['p','password_hash','passwordHash'].forEach(function(key){delete safe[key];});
+      return safe;
+    };
+    const otherDifferences=Object.keys(local).filter(function(key){
+      if(key==='LOGIN_HISTORY'||key==='LOGIN_HISTORY_DELETED')return false;
+      const left=key==='GLOBAL_ACCOUNTS'?(local.GLOBAL_ACCOUNTS||[]).map(withoutCredential):local[key];
+      const right=key==='GLOBAL_ACCOUNTS'?(remote.GLOBAL_ACCOUNTS||[]).map(withoutCredential):remote[key];
+      return !same(left,right);
+    });
+    const remoteDeletes=remote.LOGIN_HISTORY_DELETED||{};
+    const missingDeletes=Object.keys(local.LOGIN_HISTORY_DELETED||{}).filter(function(id){
+      return !Object.prototype.hasOwnProperty.call(remoteDeletes,id);
+    }).length;
+    const remoteHistory=new Map((remote.LOGIN_HISTORY||[]).filter(function(entry){return entry&&entry.id;}).map(function(entry){return [entry.id,entry];}));
+    const unmatchedHistory=(local.LOGIN_HISTORY||[]).filter(function(entry){
+      return !entry||!entry.id||!(Object.prototype.hasOwnProperty.call(remoteDeletes,entry.id)
+        ||(remoteHistory.has(entry.id)&&same(entry,remoteHistory.get(entry.id))));
+    }).length;
+    return '\nÉquivalence nécessaire pour libérer la file : '+(otherDifferences.length||missingDeletes||unmatchedHistory?'NON':'OUI')
+      +'\nAutres rubriques non équivalentes : '+(otherDifferences.join(', ')||'aucune')
+      +'\nSuppressions locales absentes du serveur : '+missingDeletes
+      +'\nConnexions locales non couvertes ou différentes : '+unmatchedHistory;
+  };
   try{
     const pending=JSON.parse(localStorage.getItem('agai_rc_pending_dirty')||'[]');
     const pendingRows=Array.isArray(pending)?pending.map(function(id){return{id:id,deleted:false};}):[];
@@ -151,7 +178,8 @@
           +'\n'+accountCrossCheck(local.GLOBAL_ACCOUNTS,remote.GLOBAL_ACCOUNTS)
           +'\nHistorique des connexions : '+identityCounts(local.LOGIN_HISTORY,remote.LOGIN_HISTORY,'id')
           +'\nSuppressions de connexions : '+keyCounts(local.LOGIN_HISTORY_DELETED,remote.LOGIN_HISTORY_DELETED)
-          +'\n'+historyCrossCheck(local,remote);
+          +'\n'+historyCrossCheck(local,remote)
+          +coveredPendingCheck(local,remote);
       }catch(error){comparison='\n\nComparaison serveur indisponible : '+String(error&&error.message||'erreur');}
     }
     output.textContent='Actions signalées en attente : '+pendingRows.length+'\n'
