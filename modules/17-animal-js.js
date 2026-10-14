@@ -1142,6 +1142,12 @@ function _writeLocalCache(data){
   let compact;
   try{compact=_stripHeavyForPush(data);}
   catch(error){console.warn('[AGAI] Allègement du cache impossible :',error);return false;}
+  if(PERSONNEL_ONLINE_GATE){
+    if(Array.isArray(compact.GLOBAL_ACCOUNTS))compact.GLOBAL_ACCOUNTS=compact.GLOBAL_ACCOUNTS.map(_rcAccountWithoutCredential);
+    Object.values(compact.CASERNE_DATA||{}).forEach(function(caserne){
+      if(caserne&&Array.isArray(caserne.users))caserne.users=caserne.users.map(_rcAccountWithoutCredential);
+    });
+  }
   const serialized=JSON.stringify(compact);
   try{_agaiLastDataSnapshot=JSON.parse(serialized);}catch(snapshotError){_agaiLastDataSnapshot=null;}
   try{localStorage.setItem(JB_CACHE_KEY,serialized);window._agaiLocalCacheLimited=false;return true;}
@@ -1541,6 +1547,7 @@ function _sbAssembleRows(rows){
 
 // ── PUSH Supabase : upsert ligne par ligne ──
 async function _sbPush(data){
+  if(PERSONNEL_ONLINE_GATE)return;
   if (_sbSaving) { window.setTimeout(function(){ _sbPush(data); }, 1000); return; }
   _sbSaving = true; _jbSetStatus('saving');
   try {
@@ -1584,6 +1591,7 @@ async function _sbPush(data){
 
 // ── PULL Supabase : lit toutes les lignes et fusionne ──
 async function _sbPull(silent){
+  if(PERSONNEL_ONLINE_GATE)return false;
   if (_sbSaving) return true;
   try {
     if (!silent) _jbSetStatus('loading');
@@ -1645,6 +1653,7 @@ async function _sbPull(silent){
 
 // ── Temps réel Supabase via WebSocket ──
 function _sbStartRealtime(){
+  if(PERSONNEL_ONLINE_GATE)return;
   try {
     if (_sbRealtime) { try{ _sbRealtime.close(); }catch(e){} _sbRealtime = null; }
     const dataToken=_agaiDataAccessToken();
@@ -1692,6 +1701,7 @@ function _sbStartRealtime(){
 
 // ── Polling de secours (si WebSocket indisponible) ──
 function _sbStartPolling(){
+  if(PERSONNEL_ONLINE_GATE)return;
   if (_sbPollTimer) clearInterval(_sbPollTimer);
   _sbPollTimer = window.setInterval(function(){
     if (_sbSaving) return;
@@ -1704,6 +1714,7 @@ function _sbStartPolling(){
 
 // ── MIGRATION : copie le bin JSONBin complet vers Supabase ──
 async function _sbMigrateFromJsonbin(){
+  if(PERSONNEL_ONLINE_GATE)return;
   if(!confirm('Migrer toutes les données JSONBin vers Supabase ?\n\nCela COPIE les données (rien n\'est supprimé côté JSONBin).\nÀ faire une seule fois, avant de basculer en mode Supabase.'))return;
   _jbSetStatus('saving');
   try{
@@ -1740,7 +1751,8 @@ async function _sbMigrateFromJsonbin(){
 
 const RC_SEP = '__'; // séparateur d'id : CIS02__iv__APL_2026_000009
 const RC_REST = SB_URL + '/rest/v1/records';
-const RC_ATOMIC_RPC = SB_URL + '/rest/v1/rpc/agai_atomic_upsert_record';
+const RC_ATOMIC_RPC = SB_URL + '/rest/v1/rpc/'
+  + (PERSONNEL_ONLINE_GATE?'agai_atomic_upsert_record_auth':'agai_atomic_upsert_record');
 const RC_ATOMIC_HEALTH_RPC = SB_URL + '/rest/v1/rpc/agai_atomic_health';
 let _rcAtomicServerState='unknown';
 let _rcAtomicServerCheckedAt=0;
@@ -2112,6 +2124,14 @@ function _rcScheduleRetry(delay){
 // que sa version locale est nécessairement plus lourde que la version envoyée.
 function _rcTransportRow(row){
   if(!row)return row;
+  if(PERSONNEL_ONLINE_GATE&&row.type==='user'&&row.data){
+    return Object.assign({},row,{data:_rcAccountWithoutCredential(row.data)});
+  }
+  if(PERSONNEL_ONLINE_GATE&&row.type==='global'&&row.data){
+    const globalData=Object.assign({},row.data);
+    if(Array.isArray(globalData.GLOBAL_ACCOUNTS))globalData.GLOBAL_ACCOUNTS=globalData.GLOBAL_ACCOUNTS.map(_rcAccountWithoutCredential);
+    return Object.assign({},row,{data:globalData});
+  }
   if((row.type==='iv'||row.type==='pilp')&&row.data){
     const lite=Object.assign({},row.data);
     delete lite.frelonPhotos;
@@ -3052,13 +3072,23 @@ async function _rcSendRowsWithIsolation(rows,currentUser){
   }
   const atomicRows=(rows||[]).filter(function(row){return row&&row._atomicEligible&&(row.type==='iv'||row.type==='pilp');});
   const standardRows=(rows||[]).filter(function(row){return !atomicRows.includes(row);});
+  // Ne jamais contourner le RPC opérationnel après la bascule Auth.
+  if(PERSONNEL_ONLINE_GATE){
+    for(let index=standardRows.length-1;index>=0;index--){
+      const row=standardRows[index];
+      if(row&&(row.type==='iv'||row.type==='pilp')){
+        failures.push({row:row,status:403,detail:'AGAI_SECURE_OPERATION_REQUIRES_RPC'});
+        standardRows.splice(index,1);
+      }
+    }
+  }
   for(const row of atomicRows){
     const result=await _rcSendAtomicOperationalRow(row,currentUser);
     if(result.ok)succeeded.push(row);
     // Un dossier à numérotation provisoire ne doit jamais contourner la
     // transaction serveur : la clôture doit attribuer son numéro définitif.
     // En cas de panne, on garde seulement cette fiche dans la file locale.
-    else if(result.fallback&&!(row.data&&row.data._numberingScheme==='dual-v1'))await send([row]);
+    else if(result.fallback&&!PERSONNEL_ONLINE_GATE&&!(row.data&&row.data._numberingScheme==='dual-v1'))await send([row]);
     else failures.push({row:row,status:result.status||0,detail:result.detail||''});
   }
   for(let index=0;index<standardRows.length;index+=10)await send(standardRows.slice(index,index+10));
@@ -3560,6 +3590,7 @@ function _rcStartPolling(){
 
 // ── Migration : copie les données actuelles (cache local) vers la table records ──
 async function _rcMigrate(){
+  if(PERSONNEL_ONLINE_GATE)return;
   if(!confirm('Migrer toutes les données actuelles vers le nouveau système (records) ?\n\nCela COPIE les données, rien n\'est supprimé.\nÀ faire une seule fois avant de basculer USE_RECORDS.')) return;
   _jbSetStatus('saving');
   try {

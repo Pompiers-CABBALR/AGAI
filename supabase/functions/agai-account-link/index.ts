@@ -70,8 +70,9 @@ Deno.serve(async (req) => {
   try { payload = await req.json() } catch { return json({ error: 'invalid_json' }, 400) }
   const mode = String(payload.mode ?? 'login')
 
-  if (mode === 'login' || mode === 'pilot_link') {
+  if (mode === 'login' || mode === 'pilot_link' || mode === 'pilot_login') {
     const createOnly = mode === 'pilot_link'
+    const pilotLogin = mode === 'pilot_login'
     const login = normalizeLogin(payload.login)
     const password = String(payload.password ?? '')
     if (createOnly && !pilotCreateOnlyLogins.has(login)) return json({ error: 'pilot_not_allowed' }, 403)
@@ -87,7 +88,9 @@ Deno.serve(async (req) => {
       await admin.from('agai_auth_attempts').upsert({ login, failed_count: failed, locked_until: delay ? new Date(Date.now() + delay * 1000).toISOString() : null, last_attempt_at: new Date().toISOString() })
       return json({ error: 'invalid_credentials' }, 401)
     }
-    if (personnelEnforcement) {
+    // Le pilote CIS05 exige le contrôle serveur sans modifier le mode historique.
+    if (pilotLogin && credential.caserne_id !== 'CIS05') return json({ error: 'pilot_not_allowed' }, 403)
+    if (personnelEnforcement || pilotLogin) {
       const access = await admin.rpc('agai_personnel_can_login', { p_login: login })
       if (access.error) return json({ error: 'personnel_access_unavailable' }, 503)
       if (access.data !== true) return json({ error: 'account_unavailable' }, 403)
@@ -100,6 +103,7 @@ Deno.serve(async (req) => {
     // Le pilote ne doit jamais modifier le mot de passe ou les métadonnées d'un compte déjà lié.
     if (createOnly && authUserId) return json({ error: 'already_linked' }, 409)
     if (!authUserId) {
+      if (pilotLogin) return json({ error: 'identity_link_missing' }, 409)
       const created = await admin.auth.admin.createUser({
         email,
         password,
@@ -144,7 +148,7 @@ Deno.serve(async (req) => {
       lastName: credential.last_name,
     }
     return json({ status: 'linked', version: 'v239', login, caserneId: credential.caserne_id, appRole: credential.app_role,
-      personnelEnforcementEnabled: personnelEnforcement, authUserId, session: signed.data.session, profile })
+      personnelEnforcementEnabled: personnelEnforcement || pilotLogin, authUserId, session: signed.data.session, profile })
   }
 
   const authorization = req.headers.get('Authorization') ?? ''
@@ -159,9 +163,18 @@ Deno.serve(async (req) => {
   const callerRole = String(callerCredential.app_role ?? '')
   const callerStation = String(callerCredential.caserne_id ?? '')
 
-  if (mode === 'account_status') {
-    if (!personnelEnforcement) return json({ error: 'personnel_enforcement_disabled' }, 503)
+  if (mode === 'account_status' || mode === 'pilot_account_status') {
+    const pilotStatus = mode === 'pilot_account_status'
+    if (!personnelEnforcement && !pilotStatus) return json({ error: 'personnel_enforcement_disabled' }, 503)
     if (!callerLogin) return json({ error: 'identity_unavailable' }, 403)
+    if (pilotStatus) {
+      if (callerStation !== 'CIS05') return json({ error: 'pilot_not_allowed' }, 403)
+      const { data: link, error: linkError } = await admin.from('agai_auth_links')
+        .select('auth_user_id,caserne_id,app_role').eq('login', callerLogin).maybeSingle()
+      if (linkError) return json({ error: 'identity_link_unavailable' }, 503)
+      if (!link || link.auth_user_id !== caller.data.user.id || link.caserne_id !== callerStation || link.app_role !== callerRole)
+        return json({ error: 'identity_link_invalid' }, 403)
+    }
     const loginAllowed = await admin.rpc('agai_personnel_can_login', { p_login: callerLogin })
     const operationAllowed = await admin.rpc('agai_personnel_can_operate', { p_login: callerLogin })
     if (loginAllowed.error || operationAllowed.error) return json({ error: 'personnel_access_unavailable' }, 503)

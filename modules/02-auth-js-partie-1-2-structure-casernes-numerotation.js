@@ -34,10 +34,11 @@ function personnelStatusAt(user,date){
   if(transfer&&personnelIsoDate(transfer.start)&&personnelIsoDate(transfer.start)<=day)return'mutation';
   const periods=Array.isArray(user._personnelPeriods)?user._personnelPeriods:[];
   const active=periods.filter(function(period){
-    if(!period||period.cancelledAt||!['arret','disponibilite'].includes(period.kind))return false;
+    if(!period||period.cancelledAt||!['arret','disponibilite','suspension'].includes(period.kind))return false;
     const start=personnelIsoDate(period.start),end=personnelIsoDate(period.end),cancelled=personnelIsoDate(period.cancelledFrom);
     return !!start&&start<=day&&(!end||day<=end)&&(!cancelled||day<cancelled);
   });
+  if(active.some(function(period){return period.kind==='suspension';}))return'suspension';
   if(active.some(function(period){return period.kind==='disponibilite';}))return'disponibilite';
   if(active.length)return'arret';
   return'actif';
@@ -58,7 +59,7 @@ function personnelCanOperateForPeriod(user,startDate,endDate){
   if((Array.isArray(user._personnelExits)?user._personnelExits:[]).some(blockedFrom)
     ||blockedFrom(user._personnelExit)||blockedFrom(user._personnelTransferredOut))return false;
   return !(Array.isArray(user._personnelPeriods)?user._personnelPeriods:[]).some(function(period){
-    if(!period||period.cancelledAt||!['arret','disponibilite'].includes(period.kind))return false;
+    if(!period||period.cancelledAt||!['arret','disponibilite','suspension'].includes(period.kind))return false;
     const from=personnelIsoDate(period.start),through=personnelIsoDate(period.end),cancelled=personnelIsoDate(period.cancelledFrom);
     return !!from&&from<=end&&(!through||through>=start)&&(!cancelled||cancelled>start);
   });
@@ -91,7 +92,7 @@ function personnelUnavailableForPeriod(logins,startDate,endDate){
 }
 function personnelApplyDecision(user,status,startDate,endDate,actor,recordedAt){
   const start=personnelIsoDate(startDate),end=endDate?personnelIsoDate(endDate):'';
-  if(!user||!start||!['actif','arret','disponibilite','demission','licenciement','retraite'].includes(status)
+  if(!user||!start||!['actif','arret','disponibilite','suspension','demission','licenciement','retraite'].includes(status)
     ||(endDate&&!end)||(end&&end<start)||(status==='disponibilite'&&!end)
     ||(['demission','licenciement','retraite'].includes(status)&&end))return false;
   if(!Array.isArray(user._personnelPeriods))user._personnelPeriods=[];
@@ -106,7 +107,7 @@ function personnelApplyDecision(user,status,startDate,endDate,actor,recordedAt){
     if(!exit.cancelledFrom||exit.cancelledFrom>start)exit.cancelledFrom=start;
   });
   user._personnelExit=null;
-  if(status==='arret'||status==='disponibilite')user._personnelPeriods.push({kind:status,start:start,end:end||null});
+  if(['arret','disponibilite','suspension'].includes(status))user._personnelPeriods.push({kind:status,start:start,end:end||null});
   else if(status!=='actif'){
     user._personnelExit={kind:status,start:start};
     user._personnelExits.push(user._personnelExit);

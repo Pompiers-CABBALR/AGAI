@@ -43,7 +43,7 @@ function sortByName(list){
 function fullName(u){return u?u.nom+' '+u.prenom:'';}
 function fullNameAff(u){return u?(u.nom+' '+u.prenom).trim():'';}
 function shortName(u){return u?u.nom+' '+u.prenom.charAt(0)+'.':'';}
-const PERSONNEL_STATUS_LABELS={actif:'Actif',arret:'Arrêt de travail',disponibilite:'Mise en disponibilité',demission:'Démission',licenciement:'Licenciement',retraite:'Retraite',mutation:'Mutation'};
+const PERSONNEL_STATUS_LABELS={actif:'Actif',arret:'Arrêt de travail',disponibilite:'Mise en disponibilité',suspension:'Suspension administrative',demission:'Démission',licenciement:'Licenciement',retraite:'Retraite',mutation:'Mutation'};
 function rAdm(){
   // Reconstruire les selects grade/fonction seulement si le formulaire est fermé
   const addFormOpen = document.getElementById('admin-add')&&document.getElementById('admin-add').style.display!=='none';
@@ -166,12 +166,13 @@ function personnelLifecycleSyncFields(){
   const status=document.getElementById('personnel-lifecycle-status')?.value||'';
   const end=document.getElementById('personnel-lifecycle-end');
   if(end){
-    end.disabled=!['arret','disponibilite'].includes(status);
+    end.disabled=!['arret','disponibilite','suspension'].includes(status);
     if(end.disabled)end.value='';
   }
   const hint=document.getElementById('personnel-lifecycle-hint');
   if(hint)hint.textContent=status==='arret'?'Fin facultative si elle n’est pas encore connue. Aucun motif médical n’est enregistré.'
     :status==='disponibilite'?'Une date de fin est obligatoire ; l’accès reprend automatiquement le lendemain.'
+    :status==='suspension'?'Accès entièrement bloqué pendant la suspension. La date de fin est facultative si elle n’est pas connue.'
     :status==='actif'?'Réactivation immédiate uniquement. L’historique passé reste conservé.'
     :'Le dossier reste dans l’historique, mais quitte la liste active et perd son accès.';
 }
@@ -186,7 +187,7 @@ function openPersonnelLifecycle(encodedLogin){
   const today=personnelLocalDate();
   document.getElementById('mt').textContent='Suivi du personnel — '+fullName(user);
   document.getElementById('mi').textContent='Statut actuel : '+(PERSONNEL_STATUS_LABELS[current]||current);
-  const options=['actif','arret','disponibilite','demission','licenciement','retraite'];
+  const options=['actif','arret','disponibilite','suspension','demission','licenciement','retraite'];
   document.getElementById('mb').innerHTML=(editable
     ?'<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Choisissez un statut et sa date d’effet. Les interventions et les autres activités passées restent dans l’historique.</div>'
       +'<label class="fg"><span class="fgl">Situation</span><select class="fi" id="personnel-lifecycle-status" onchange="personnelLifecycleSyncFields()">'
@@ -213,7 +214,7 @@ function savePersonnelLifecycle(encodedLogin){
   const endValue=document.getElementById('personnel-lifecycle-end')?.value||'';
   const end=endValue?personnelIsoDate(endValue):'';
   const today=personnelLocalDate();
-  if(!start||!['actif','arret','disponibilite','demission','licenciement','retraite'].includes(status)
+  if(!start||!['actif','arret','disponibilite','suspension','demission','licenciement','retraite'].includes(status)
     ||(endValue&&!end)||(end&&end<start)||(status==='disponibilite'&&!end)
     ||(['demission','licenciement','retraite'].includes(status)&&end)){
     showToast('Dates ou situation invalides.','warn');return;

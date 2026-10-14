@@ -187,10 +187,11 @@ function personnelStatusAt(user,date){
   if(transfer&&personnelIsoDate(transfer.start)&&personnelIsoDate(transfer.start)<=day)return'mutation';
   const periods=Array.isArray(user._personnelPeriods)?user._personnelPeriods:[];
   const active=periods.filter(function(period){
-    if(!period||period.cancelledAt||!['arret','disponibilite'].includes(period.kind))return false;
+    if(!period||period.cancelledAt||!['arret','disponibilite','suspension'].includes(period.kind))return false;
     const start=personnelIsoDate(period.start),end=personnelIsoDate(period.end),cancelled=personnelIsoDate(period.cancelledFrom);
     return !!start&&start<=day&&(!end||day<=end)&&(!cancelled||day<cancelled);
   });
+  if(active.some(function(period){return period.kind==='suspension';}))return'suspension';
   if(active.some(function(period){return period.kind==='disponibilite';}))return'disponibilite';
   if(active.length)return'arret';
   return'actif';
@@ -211,7 +212,7 @@ function personnelCanOperateForPeriod(user,startDate,endDate){
   if((Array.isArray(user._personnelExits)?user._personnelExits:[]).some(blockedFrom)
     ||blockedFrom(user._personnelExit)||blockedFrom(user._personnelTransferredOut))return false;
   return !(Array.isArray(user._personnelPeriods)?user._personnelPeriods:[]).some(function(period){
-    if(!period||period.cancelledAt||!['arret','disponibilite'].includes(period.kind))return false;
+    if(!period||period.cancelledAt||!['arret','disponibilite','suspension'].includes(period.kind))return false;
     const from=personnelIsoDate(period.start),through=personnelIsoDate(period.end),cancelled=personnelIsoDate(period.cancelledFrom);
     return !!from&&from<=end&&(!through||through>=start)&&(!cancelled||cancelled>start);
   });
@@ -244,7 +245,7 @@ function personnelUnavailableForPeriod(logins,startDate,endDate){
 }
 function personnelApplyDecision(user,status,startDate,endDate,actor,recordedAt){
   const start=personnelIsoDate(startDate),end=endDate?personnelIsoDate(endDate):'';
-  if(!user||!start||!['actif','arret','disponibilite','demission','licenciement','retraite'].includes(status)
+  if(!user||!start||!['actif','arret','disponibilite','suspension','demission','licenciement','retraite'].includes(status)
     ||(endDate&&!end)||(end&&end<start)||(status==='disponibilite'&&!end)
     ||(['demission','licenciement','retraite'].includes(status)&&end))return false;
   if(!Array.isArray(user._personnelPeriods))user._personnelPeriods=[];
@@ -259,7 +260,7 @@ function personnelApplyDecision(user,status,startDate,endDate,actor,recordedAt){
     if(!exit.cancelledFrom||exit.cancelledFrom>start)exit.cancelledFrom=start;
   });
   user._personnelExit=null;
-  if(status==='arret'||status==='disponibilite')user._personnelPeriods.push({kind:status,start:start,end:end||null});
+  if(['arret','disponibilite','suspension'].includes(status))user._personnelPeriods.push({kind:status,start:start,end:end||null});
   else if(status!=='actif'){
     user._personnelExit={kind:status,start:start};
     user._personnelExits.push(user._personnelExit);
@@ -10238,7 +10239,7 @@ function sortByName(list){
 function fullName(u){return u?u.nom+' '+u.prenom:'';}
 function fullNameAff(u){return u?(u.nom+' '+u.prenom).trim():'';}
 function shortName(u){return u?u.nom+' '+u.prenom.charAt(0)+'.':'';}
-const PERSONNEL_STATUS_LABELS={actif:'Actif',arret:'Arrêt de travail',disponibilite:'Mise en disponibilité',demission:'Démission',licenciement:'Licenciement',retraite:'Retraite',mutation:'Mutation'};
+const PERSONNEL_STATUS_LABELS={actif:'Actif',arret:'Arrêt de travail',disponibilite:'Mise en disponibilité',suspension:'Suspension administrative',demission:'Démission',licenciement:'Licenciement',retraite:'Retraite',mutation:'Mutation'};
 function rAdm(){
   // Reconstruire les selects grade/fonction seulement si le formulaire est fermé
   const addFormOpen = document.getElementById('admin-add')&&document.getElementById('admin-add').style.display!=='none';
@@ -10361,12 +10362,13 @@ function personnelLifecycleSyncFields(){
   const status=document.getElementById('personnel-lifecycle-status')?.value||'';
   const end=document.getElementById('personnel-lifecycle-end');
   if(end){
-    end.disabled=!['arret','disponibilite'].includes(status);
+    end.disabled=!['arret','disponibilite','suspension'].includes(status);
     if(end.disabled)end.value='';
   }
   const hint=document.getElementById('personnel-lifecycle-hint');
   if(hint)hint.textContent=status==='arret'?'Fin facultative si elle n’est pas encore connue. Aucun motif médical n’est enregistré.'
     :status==='disponibilite'?'Une date de fin est obligatoire ; l’accès reprend automatiquement le lendemain.'
+    :status==='suspension'?'Accès entièrement bloqué pendant la suspension. La date de fin est facultative si elle n’est pas connue.'
     :status==='actif'?'Réactivation immédiate uniquement. L’historique passé reste conservé.'
     :'Le dossier reste dans l’historique, mais quitte la liste active et perd son accès.';
 }
@@ -10381,7 +10383,7 @@ function openPersonnelLifecycle(encodedLogin){
   const today=personnelLocalDate();
   document.getElementById('mt').textContent='Suivi du personnel — '+fullName(user);
   document.getElementById('mi').textContent='Statut actuel : '+(PERSONNEL_STATUS_LABELS[current]||current);
-  const options=['actif','arret','disponibilite','demission','licenciement','retraite'];
+  const options=['actif','arret','disponibilite','suspension','demission','licenciement','retraite'];
   document.getElementById('mb').innerHTML=(editable
     ?'<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Choisissez un statut et sa date d’effet. Les interventions et les autres activités passées restent dans l’historique.</div>'
       +'<label class="fg"><span class="fgl">Situation</span><select class="fi" id="personnel-lifecycle-status" onchange="personnelLifecycleSyncFields()">'
@@ -10408,7 +10410,7 @@ function savePersonnelLifecycle(encodedLogin){
   const endValue=document.getElementById('personnel-lifecycle-end')?.value||'';
   const end=endValue?personnelIsoDate(endValue):'';
   const today=personnelLocalDate();
-  if(!start||!['actif','arret','disponibilite','demission','licenciement','retraite'].includes(status)
+  if(!start||!['actif','arret','disponibilite','suspension','demission','licenciement','retraite'].includes(status)
     ||(endValue&&!end)||(end&&end<start)||(status==='disponibilite'&&!end)
     ||(['demission','licenciement','retraite'].includes(status)&&end)){
     showToast('Dates ou situation invalides.','warn');return;
@@ -12894,7 +12896,14 @@ function delEngin(idx){
   saveData();rAstrEquipes();
 }
 
+function requireSecureCrossStationWorkflow(){
+  if(typeof PERSONNEL_ONLINE_GATE==='undefined'||!PERSONNEL_ONLINE_GATE)return true;
+  showToast('Transfert ou renfort entre casernes indisponible : validation serveur requise. Aucune modification effectuée.','warn');
+  return false;
+}
+
 function transfererIV(id){
+  if(!requireSecureCrossStationWorkflow())return;
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
   const casOptions=CASERNES.filter(c=>c.id!==CURRENT_CASERNE_ID)
     .map(c=>`<option value="${c.id}">${c.nom}</option>`).join('');
@@ -12918,6 +12927,7 @@ function transfererIV(id){
   document.getElementById('mo').style.display='flex';
 }
 function confirmerTransfert(id){
+  if(!requireSecureCrossStationWorkflow())return;
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
   const destId=document.getElementById('tr-dest').value;
   const motif=document.getElementById('tr-motif').value.trim();
@@ -14504,6 +14514,7 @@ function syncInternalReinforcementSource(child){
 }
 
 function showRenfortModal(ivId,forcePersonnel){
+  if(!requireSecureCrossStationWorkflow())return;
   const iv=interventionById(ivId);if(!iv)return;
   if(!requireCurrentUserOperationalManager(iv,'La demande de renfort'))return;
   if(forcePersonnel===undefined)forcePersonnel=false;
@@ -14557,6 +14568,7 @@ function updateRenfortType(){
 }
 
 function envoyerRenfort(ivId){
+  if(!requireSecureCrossStationWorkflow())return;
   const iv=interventionById(ivId);if(!iv)return;
   if(!requireCurrentUserOperationalManager(iv,'La demande de renfort'))return;
   const checkedType=document.querySelector('input[name="renfort-type"]:checked')?.value;
@@ -14662,6 +14674,7 @@ function supprimerDemandesRenfortSansReponse(iv,caserneSourceId){
 }
 
 function repondreRenfort(cid,renfortId,reponse){
+  if(!requireSecureCrossStationWorkflow())return;
   const d=CASERNE_DATA[cid];if(!d)return;
   const r=d.renforts.find(function(x){return x.id===renfortId;});if(!r)return;
   r.statut=reponse;
@@ -14690,6 +14703,7 @@ function repondreRenfort(cid,renfortId,reponse){
 }
 
 function showRenfortEquipageModal(cid,renfortId){
+  if(!requireSecureCrossStationWorkflow())return;
   const r=CASERNE_DATA[cid]?.renforts?.find(function(x){return x.id===renfortId;});if(!r)return;
   if(r.statut==='en-cours'||r.statut==='termine'){
     showToast('Ce renfort a déjà été composé et enregistré.','warn');return;
@@ -14773,6 +14787,7 @@ function buildRenfortEquipRow(idx,login,role,r){
 }
 
 function confirmerRenfortEquipage(cid,renfortId,confirmed){
+  if(!requireSecureCrossStationWorkflow())return;
   const r=CASERNE_DATA[cid]?.renforts?.find(function(x){return x.id===renfortId;});if(!r)return;
   if(r.statut==='en-cours'||r.statut==='termine'){
     showToast('Ce renfort a déjà été composé et enregistré.','warn');return;
@@ -14885,6 +14900,7 @@ function confirmerRenfortEquipage(cid,renfortId,confirmed){
 }
 
 function cloturerRenfort(cid,renfortId,confirmed){
+  if(!requireSecureCrossStationWorkflow())return;
   const r=CASERNE_DATA[cid]?.renforts?.find(function(x){return x.id===renfortId;});if(!r)return;
   if(r.statut==='termine'){showToast('Ce renfort est déjà clôturé.','warn');return;}
   const ivLocale=(CASERNE_DATA[cid]?.ivs||[]).find(function(iv){return iv._renfortId===renfortId;});
@@ -14910,6 +14926,7 @@ function cloturerRenfort(cid,renfortId,confirmed){
 
 // Annulation ciblée d'un renfort pour une seule UT (seulement si pas encore répondu)
 function annulerRenfortUT(ivId,renfortId,cid){
+  if(!requireSecureCrossStationWorkflow())return;
   const ivSrc=IVS.find(function(iv){return iv.id===ivId;});if(!ivSrc)return;
   const rSrc=ivSrc._renforts?.find(function(x){return x.id===renfortId;});if(!rSrc)return;
   // Vérifier que l'UT n'a pas encore répondu
@@ -20220,6 +20237,12 @@ function _writeLocalCache(data){
   let compact;
   try{compact=_stripHeavyForPush(data);}
   catch(error){console.warn('[AGAI] Allègement du cache impossible :',error);return false;}
+  if(PERSONNEL_ONLINE_GATE){
+    if(Array.isArray(compact.GLOBAL_ACCOUNTS))compact.GLOBAL_ACCOUNTS=compact.GLOBAL_ACCOUNTS.map(_rcAccountWithoutCredential);
+    Object.values(compact.CASERNE_DATA||{}).forEach(function(caserne){
+      if(caserne&&Array.isArray(caserne.users))caserne.users=caserne.users.map(_rcAccountWithoutCredential);
+    });
+  }
   const serialized=JSON.stringify(compact);
   try{_agaiLastDataSnapshot=JSON.parse(serialized);}catch(snapshotError){_agaiLastDataSnapshot=null;}
   try{localStorage.setItem(JB_CACHE_KEY,serialized);window._agaiLocalCacheLimited=false;return true;}
@@ -20619,6 +20642,7 @@ function _sbAssembleRows(rows){
 
 // ── PUSH Supabase : upsert ligne par ligne ──
 async function _sbPush(data){
+  if(PERSONNEL_ONLINE_GATE)return;
   if (_sbSaving) { window.setTimeout(function(){ _sbPush(data); }, 1000); return; }
   _sbSaving = true; _jbSetStatus('saving');
   try {
@@ -20662,6 +20686,7 @@ async function _sbPush(data){
 
 // ── PULL Supabase : lit toutes les lignes et fusionne ──
 async function _sbPull(silent){
+  if(PERSONNEL_ONLINE_GATE)return false;
   if (_sbSaving) return true;
   try {
     if (!silent) _jbSetStatus('loading');
@@ -20723,6 +20748,7 @@ async function _sbPull(silent){
 
 // ── Temps réel Supabase via WebSocket ──
 function _sbStartRealtime(){
+  if(PERSONNEL_ONLINE_GATE)return;
   try {
     if (_sbRealtime) { try{ _sbRealtime.close(); }catch(e){} _sbRealtime = null; }
     const dataToken=_agaiDataAccessToken();
@@ -20770,6 +20796,7 @@ function _sbStartRealtime(){
 
 // ── Polling de secours (si WebSocket indisponible) ──
 function _sbStartPolling(){
+  if(PERSONNEL_ONLINE_GATE)return;
   if (_sbPollTimer) clearInterval(_sbPollTimer);
   _sbPollTimer = window.setInterval(function(){
     if (_sbSaving) return;
@@ -20782,6 +20809,7 @@ function _sbStartPolling(){
 
 // ── MIGRATION : copie le bin JSONBin complet vers Supabase ──
 async function _sbMigrateFromJsonbin(){
+  if(PERSONNEL_ONLINE_GATE)return;
   if(!confirm('Migrer toutes les données JSONBin vers Supabase ?\n\nCela COPIE les données (rien n\'est supprimé côté JSONBin).\nÀ faire une seule fois, avant de basculer en mode Supabase.'))return;
   _jbSetStatus('saving');
   try{
@@ -20818,7 +20846,8 @@ async function _sbMigrateFromJsonbin(){
 
 const RC_SEP = '__'; // séparateur d'id : CIS02__iv__APL_2026_000009
 const RC_REST = SB_URL + '/rest/v1/records';
-const RC_ATOMIC_RPC = SB_URL + '/rest/v1/rpc/agai_atomic_upsert_record';
+const RC_ATOMIC_RPC = SB_URL + '/rest/v1/rpc/'
+  + (PERSONNEL_ONLINE_GATE?'agai_atomic_upsert_record_auth':'agai_atomic_upsert_record');
 const RC_ATOMIC_HEALTH_RPC = SB_URL + '/rest/v1/rpc/agai_atomic_health';
 let _rcAtomicServerState='unknown';
 let _rcAtomicServerCheckedAt=0;
@@ -21190,6 +21219,14 @@ function _rcScheduleRetry(delay){
 // que sa version locale est nécessairement plus lourde que la version envoyée.
 function _rcTransportRow(row){
   if(!row)return row;
+  if(PERSONNEL_ONLINE_GATE&&row.type==='user'&&row.data){
+    return Object.assign({},row,{data:_rcAccountWithoutCredential(row.data)});
+  }
+  if(PERSONNEL_ONLINE_GATE&&row.type==='global'&&row.data){
+    const globalData=Object.assign({},row.data);
+    if(Array.isArray(globalData.GLOBAL_ACCOUNTS))globalData.GLOBAL_ACCOUNTS=globalData.GLOBAL_ACCOUNTS.map(_rcAccountWithoutCredential);
+    return Object.assign({},row,{data:globalData});
+  }
   if((row.type==='iv'||row.type==='pilp')&&row.data){
     const lite=Object.assign({},row.data);
     delete lite.frelonPhotos;
@@ -22130,13 +22167,22 @@ async function _rcSendRowsWithIsolation(rows,currentUser){
   }
   const atomicRows=(rows||[]).filter(function(row){return row&&row._atomicEligible&&(row.type==='iv'||row.type==='pilp');});
   const standardRows=(rows||[]).filter(function(row){return !atomicRows.includes(row);});
+  if(PERSONNEL_ONLINE_GATE){
+    for(let index=standardRows.length-1;index>=0;index--){
+      const row=standardRows[index];
+      if(row&&(row.type==='iv'||row.type==='pilp')){
+        failures.push({row:row,status:403,detail:'AGAI_SECURE_OPERATION_REQUIRES_RPC'});
+        standardRows.splice(index,1);
+      }
+    }
+  }
   for(const row of atomicRows){
     const result=await _rcSendAtomicOperationalRow(row,currentUser);
     if(result.ok)succeeded.push(row);
     // Un dossier à numérotation provisoire ne doit jamais contourner la
     // transaction serveur : la clôture doit attribuer son numéro définitif.
     // En cas de panne, on garde seulement cette fiche dans la file locale.
-    else if(result.fallback&&!(row.data&&row.data._numberingScheme==='dual-v1'))await send([row]);
+    else if(result.fallback&&!PERSONNEL_ONLINE_GATE&&!(row.data&&row.data._numberingScheme==='dual-v1'))await send([row]);
     else failures.push({row:row,status:result.status||0,detail:result.detail||''});
   }
   for(let index=0;index<standardRows.length;index+=10)await send(standardRows.slice(index,index+10));
@@ -22638,6 +22684,7 @@ function _rcStartPolling(){
 
 // ── Migration : copie les données actuelles (cache local) vers la table records ──
 async function _rcMigrate(){
+  if(PERSONNEL_ONLINE_GATE)return;
   if(!confirm('Migrer toutes les données actuelles vers le nouveau système (records) ?\n\nCela COPIE les données, rien n\'est supprimé.\nÀ faire une seule fois avant de basculer USE_RECORDS.')) return;
   _jbSetStatus('saving');
   try {

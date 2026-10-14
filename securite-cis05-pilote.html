@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AGAI — vérification de sécurité CIS05</title>
+  <style>
+    body { font: 16px/1.5 system-ui, sans-serif; background: #f3f4f7; color: #172033; margin: 0; }
+    main { max-width: 560px; margin: 5vh auto; padding: 24px; background: white; border: 1px solid #dfe3eb; border-radius: 14px; }
+    h1 { font-size: 1.35rem; margin: 0 0 12px; }
+    p { margin: 0 0 16px; }
+    label { display: block; margin: 14px 0 5px; font-weight: 600; }
+    input { box-sizing: border-box; width: 100%; padding: 11px; border: 1px solid #aab3c1; border-radius: 8px; font: inherit; }
+    button { margin-top: 18px; padding: 11px 16px; border: 0; border-radius: 8px; color: white; background: #b7382d; font: inherit; cursor: pointer; }
+    button:disabled { opacity: .55; cursor: wait; }
+    #result { margin-top: 20px; padding: 12px; border-radius: 8px; background: #eef3fa; white-space: pre-line; }
+    .small { color: #596579; font-size: .9rem; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Vérification de sécurité — CIS05</h1>
+  <p>Ce contrôle vérifie la connexion en ligne, l’accès aux données et une écriture technique de Lapugnoy. Il ne modifie aucune intervention et ne remplace pas l’application habituelle.</p>
+  <form id="check-form">
+    <label for="login">Identifiant AGAI</label>
+    <input id="login" name="login" autocomplete="username" required>
+    <label for="password">Mot de passe AGAI</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required>
+    <button id="check-button" type="submit">Vérifier mon accès</button>
+  </form>
+  <div id="result" role="status" aria-live="polite">Aucun contrôle lancé.</div>
+  <p class="small" style="margin-top:16px">Aucun mot de passe ou jeton n’est conservé dans le navigateur par cette page. Fermez-la après le contrôle.</p>
+</main>
+<script src="runtime-config.js"></script>
+<script>
+(() => {
+  const config = window.AGAI_CONFIG || {};
+  const base = String(config.supabaseUrl || '').replace(/\/$/, '');
+  const apiKey = String(config.supabasePublishableKey || '');
+  const form = document.getElementById('check-form');
+  const button = document.getElementById('check-button');
+  const result = document.getElementById('result');
+  const loginField = document.getElementById('login');
+  const passwordField = document.getElementById('password');
+  const fail = (message) => { result.textContent = message; };
+  const request = async (url, options) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    try { return await fetch(url, { ...options, signal: controller.signal, cache: 'no-store' }); }
+    finally { clearTimeout(timer); }
+  };
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!base || !apiKey) { fail('Configuration Supabase absente.'); return; }
+    const login = loginField.value.trim().toLowerCase();
+    const password = passwordField.value;
+    button.disabled = true;
+    result.textContent = 'Vérification en cours…';
+    let token = '';
+    try {
+      const signed = await request(base + '/functions/v1/agai-account-link', {
+        method: 'POST', headers: { apikey: apiKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'pilot_login', login, password }),
+      });
+      const identity = await signed.json().catch(() => ({}));
+      if (!signed.ok || identity.personnelEnforcementEnabled !== true || identity.login !== login
+        || identity.caserneId !== 'CIS05' || !identity.session?.access_token) {
+        fail('Accès pilote refusé ou indisponible. Code : ' + signed.status + '. Aucun dossier n’a été modifié.');
+        return;
+      }
+      token = identity.session.access_token;
+      const headers = { apikey: apiKey, Authorization: 'Bearer ' + token };
+      const checked = await request(base + '/functions/v1/agai-account-link', {
+        method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'pilot_account_status' }),
+      });
+      const status = await checked.json().catch(() => ({}));
+      if (!checked.ok || status.canLogin !== true || status.login !== login || status.caserneId !== 'CIS05') {
+        fail('Identité confirmée, mais contrôle du personnel refusé. Code : ' + checked.status + '.');
+        return;
+      }
+      const station = await request(base + '/rest/v1/records?caserne=eq.CIS05&select=id&limit=1', { headers });
+      const foreign = await request(base + '/rest/v1/records?caserne=eq.CIS03&select=id&limit=1', { headers });
+      const ownRows = await station.json().catch(() => null);
+      const foreignRows = await foreign.json().catch(() => null);
+      const crossStationRole = ['superadmin', 'chef_corps'].includes(identity.appRole);
+      if (!station.ok || !Array.isArray(ownRows) || ownRows.length !== 1) {
+        fail('Lecture CIS05 non concluante (HTTP ' + station.status + '). Ne pas activer la nouvelle connexion.');
+        return;
+      }
+      if (!foreign.ok || !Array.isArray(foreignRows)) {
+        fail('Lecture CIS03 non concluante (HTTP ' + foreign.status + '). Ne pas activer la nouvelle connexion.');
+        return;
+      }
+      if (foreignRows.length !== (crossStationRole ? 1 : 0)) {
+        fail('Droits inter-casernes inattendus pour le rôle ' + identity.appRole
+          + ' (CIS03 : ' + foreignRows.length + ' fiche affichée). Ne pas activer la nouvelle connexion.');
+        return;
+      }
+      const testId = 'CIS05__login__auth-pilot-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10);
+      const written = await request(base + '/rest/v1/records?select=id,updated_by,deleted', {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+        body: JSON.stringify({ id: testId, caserne: 'CIS05', type: 'login',
+          data: { login, kind: 'auth-write-pilot' }, deleted: true, updated_by: 'client-untrusted' }),
+      });
+      const writtenRows = await written.json().catch(() => null);
+      if (!written.ok || !Array.isArray(writtenRows) || writtenRows.length !== 1
+        || writtenRows[0].id !== testId || writtenRows[0].updated_by !== login || writtenRows[0].deleted !== true) {
+        fail('Écriture Auth CIS05 non concluante (HTTP ' + written.status + '). Ne pas activer la nouvelle connexion.');
+        return;
+      }
+      result.textContent = 'Connexion CIS05 : OK\nSuivi du personnel : OK\nLecture CIS05 : OK\n'
+        + (crossStationRole ? 'Lecture CIS03 autorisée pour le superadministrateur : OK'
+          : 'Lecture CIS03 refusée pour ce rôle : OK')
+        + '\nÉcriture Auth CIS05 : OK (ligne technique déjà masquée)'
+        + '\nÉcritures d’interventions : non testées, bascule non activée.';
+    } catch (_) {
+      fail('Service momentanément indisponible. Aucune intervention n’a été modifiée.');
+    } finally {
+      token = '';
+      passwordField.value = '';
+      button.disabled = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>
+

@@ -2224,7 +2224,14 @@ function delEngin(idx){
   saveData();rAstrEquipes();
 }
 
+function requireSecureCrossStationWorkflow(){
+  if(typeof PERSONNEL_ONLINE_GATE==='undefined'||!PERSONNEL_ONLINE_GATE)return true;
+  showToast('Transfert ou renfort entre casernes indisponible : validation serveur requise. Aucune modification effectuée.','warn');
+  return false;
+}
+
 function transfererIV(id){
+  if(!requireSecureCrossStationWorkflow())return;
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
   const casOptions=CASERNES.filter(c=>c.id!==CURRENT_CASERNE_ID)
     .map(c=>`<option value="${c.id}">${c.nom}</option>`).join('');
@@ -2248,6 +2255,7 @@ function transfererIV(id){
   document.getElementById('mo').style.display='flex';
 }
 function confirmerTransfert(id){
+  if(!requireSecureCrossStationWorkflow())return;
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
   const destId=document.getElementById('tr-dest').value;
   const motif=document.getElementById('tr-motif').value.trim();
@@ -3834,6 +3842,7 @@ function syncInternalReinforcementSource(child){
 }
 
 function showRenfortModal(ivId,forcePersonnel){
+  if(!requireSecureCrossStationWorkflow())return;
   const iv=interventionById(ivId);if(!iv)return;
   if(!requireCurrentUserOperationalManager(iv,'La demande de renfort'))return;
   if(forcePersonnel===undefined)forcePersonnel=false;
@@ -3887,6 +3896,7 @@ function updateRenfortType(){
 }
 
 function envoyerRenfort(ivId){
+  if(!requireSecureCrossStationWorkflow())return;
   const iv=interventionById(ivId);if(!iv)return;
   if(!requireCurrentUserOperationalManager(iv,'La demande de renfort'))return;
   const checkedType=document.querySelector('input[name="renfort-type"]:checked')?.value;
@@ -3992,6 +4002,7 @@ function supprimerDemandesRenfortSansReponse(iv,caserneSourceId){
 }
 
 function repondreRenfort(cid,renfortId,reponse){
+  if(!requireSecureCrossStationWorkflow())return;
   const d=CASERNE_DATA[cid];if(!d)return;
   const r=d.renforts.find(function(x){return x.id===renfortId;});if(!r)return;
   r.statut=reponse;
@@ -4020,6 +4031,7 @@ function repondreRenfort(cid,renfortId,reponse){
 }
 
 function showRenfortEquipageModal(cid,renfortId){
+  if(!requireSecureCrossStationWorkflow())return;
   const r=CASERNE_DATA[cid]?.renforts?.find(function(x){return x.id===renfortId;});if(!r)return;
   if(r.statut==='en-cours'||r.statut==='termine'){
     showToast('Ce renfort a déjà été composé et enregistré.','warn');return;
@@ -4103,6 +4115,7 @@ function buildRenfortEquipRow(idx,login,role,r){
 }
 
 function confirmerRenfortEquipage(cid,renfortId,confirmed){
+  if(!requireSecureCrossStationWorkflow())return;
   const r=CASERNE_DATA[cid]?.renforts?.find(function(x){return x.id===renfortId;});if(!r)return;
   if(r.statut==='en-cours'||r.statut==='termine'){
     showToast('Ce renfort a déjà été composé et enregistré.','warn');return;
@@ -4215,6 +4228,7 @@ function confirmerRenfortEquipage(cid,renfortId,confirmed){
 }
 
 function cloturerRenfort(cid,renfortId,confirmed){
+  if(!requireSecureCrossStationWorkflow())return;
   const r=CASERNE_DATA[cid]?.renforts?.find(function(x){return x.id===renfortId;});if(!r)return;
   if(r.statut==='termine'){showToast('Ce renfort est déjà clôturé.','warn');return;}
   const ivLocale=(CASERNE_DATA[cid]?.ivs||[]).find(function(iv){return iv._renfortId===renfortId;});
@@ -4240,6 +4254,7 @@ function cloturerRenfort(cid,renfortId,confirmed){
 
 // Annulation ciblée d'un renfort pour une seule UT (seulement si pas encore répondu)
 function annulerRenfortUT(ivId,renfortId,cid){
+  if(!requireSecureCrossStationWorkflow())return;
   const ivSrc=IVS.find(function(iv){return iv.id===ivId;});if(!ivSrc)return;
   const rSrc=ivSrc._renforts?.find(function(x){return x.id===renfortId;});if(!rSrc)return;
   // Vérifier que l'UT n'a pas encore répondu
