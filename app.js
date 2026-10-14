@@ -1479,11 +1479,13 @@ async function _agaiOnlinePrepareLogin(login,password){
         ||String(id||'').startsWith('_GLOBAL'+RC_SEP);
     };
     const pendingHere=Array.from(_rcPendingDirty).filter(ownOrGlobal).length;
-    const durableHere=(await _rcOutboxGetRows()).filter(function(row){return row&&ownOrGlobal(row.id);}).length;
+    const durableHereRows=(await _rcOutboxGetRows()).filter(function(row){return row&&ownOrGlobal(row.id);});
+    const durableHere=durableHereRows.length;
     // Une file d'une autre caserne reste intacte et ne doit pas empêcher
     // l'ouverture de CIS05 ; elle ne sera jamais envoyée avec ce compte.
     if(pendingHere||durableHere||_rcSaving||_rcPulling){
-      if(PERSONNEL_SECURE_CIS05_PILOT)console.warn('[AGAI][PILOTE] Connexion différée : '+JSON.stringify({pendingHere,durableHere,saving:_rcSaving,pulling:_rcPulling}));
+      if(PERSONNEL_SECURE_CIS05_PILOT)console.warn('[AGAI][PILOTE] Connexion différée : '+JSON.stringify({pendingHere,durableHere,saving:_rcSaving,pulling:_rcPulling,
+        kinds:durableHereRows.map(function(row){return row.caserne+'/'+row.type+'/'+(row.type==='login'?(row.data&&row.data.login===signed.profile.login?'titulaire':'autre'):'');})}));
       return null;
     }
   }catch(error){return null;}
@@ -17425,7 +17427,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0013';
+const APP_VERSION='V202610_0014';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -21557,6 +21559,9 @@ function _rcRenderRealtimeViews(){
   }catch(e){}
 }
 function _rcRequestRealtimePull(delay){
+  // Les événements pageshow/online peuvent survenir avant la connexion.
+  // En mode sécurisé, aucune lecture ne doit partir avec un faux jeton.
+  if(PERSONNEL_ONLINE_GATE&&!_agaiAuthAccessToken())return;
   _rcRealtimePullPending=true;
   if(_rcRealtimePullTimer)clearTimeout(_rcRealtimePullTimer);
   const circuitWait=typeof _agaiServerCircuitWaitMs==='function'?_agaiServerCircuitWaitMs():0;
@@ -21702,6 +21707,7 @@ function _rcApplyRealtimeRecord(record){
 }
 window.addEventListener('online',function(){
   if(!USE_RECORDS)return;
+  if(PERSONNEL_ONLINE_GATE&&!_agaiAuthAccessToken())return;
   if(_rcPendingDirty.size)_rcScheduleRetry(0);
   _rcNeedsRecoveryPull=true;
   _rcRequestRealtimePull(150);
@@ -21709,6 +21715,7 @@ window.addEventListener('online',function(){
 });
 document.addEventListener('visibilitychange',function(){
   if(!USE_RECORDS||document.visibilityState!=='visible')return;
+  if(PERSONNEL_ONLINE_GATE&&!_agaiAuthAccessToken())return;
   // Safari iOS peut conserver un WebSocket apparemment ouvert après la mise
   // en veille tout en ayant perdu des événements. Une relecture paginée remet
   // alors immédiatement l'appareil au même niveau que le PC.
@@ -21723,7 +21730,9 @@ document.addEventListener('visibilitychange',function(){
   }
 });
 window.addEventListener('pageshow',function(){
-  if(USE_RECORDS){_rcResetOutboxDb();_rcRequestRealtimePull(200);}
+  if(USE_RECORDS&&(!PERSONNEL_ONLINE_GATE||_agaiAuthAccessToken())){
+    _rcResetOutboxDb();_rcRequestRealtimePull(200);
+  }
 },{passive:true});
 
 // Construit un id global unique
@@ -22206,6 +22215,7 @@ async function _rcSendRowsWithIsolation(rows,currentUser){
 }
 
 async function _rcPush(fullPush){
+  if(PERSONNEL_ONLINE_GATE&&!_agaiAuthAccessToken())return;
   if(_rcSaving){ _rcScheduleRetry(800); return; }
   // Une file issue d'une ancienne version doit d'abord être comparée au serveur.
   // Cette barrière empêche notamment les centaines de lignes fantômes de partir
@@ -22399,6 +22409,7 @@ async function _rcFetchAllActiveRows(scopeFilter){
 
 // ── PULL : lit tous les enregistrements et reconstruit l'état ──
 async function _rcPull(silent){
+  if(PERSONNEL_ONLINE_GATE&&!_agaiAuthAccessToken())return false;
   if(_rcSaving||_rcPulling) return !PERSONNEL_ONLINE_GATE;
   // Traiter d'abord la file locale, puis poursuivre la réception. L'overlay
   // protège les modifications locales : une action bloquée ne doit plus cacher

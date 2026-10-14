@@ -62,6 +62,17 @@ for (const file of ['modules/03-security-js.js', 'app.js']) {
   }
 }
 
+for (const file of ['modules/17-animal-js.js', 'app.js']) {
+  const source = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+  for (const functionName of ['_rcRequestRealtimePull', '_rcPush', '_rcPull']) {
+    const start = source.indexOf(`function ${functionName}(`);
+    const asyncStart = source.indexOf(`async function ${functionName}(`);
+    const body = source.slice(Math.max(start, asyncStart), Math.max(start, asyncStart) + 300);
+    assert.match(body, /PERSONNEL_ONLINE_GATE&&!_agaiAuthAccessToken\(\)/,
+      `${file}: ${functionName} doit attendre la session Auth`);
+  }
+}
+
 Promise.all(testCases.map(async ({ result, expected, pulls }) => {
   assert.equal(!!(await result), expected);
   assert.equal(pulls(), expected ? 1 : 0);

@@ -108,11 +108,13 @@ async function _agaiOnlinePrepareLogin(login,password){
         ||String(id||'').startsWith('_GLOBAL'+RC_SEP);
     };
     const pendingHere=Array.from(_rcPendingDirty).filter(ownOrGlobal).length;
-    const durableHere=(await _rcOutboxGetRows()).filter(function(row){return row&&ownOrGlobal(row.id);}).length;
+    const durableHereRows=(await _rcOutboxGetRows()).filter(function(row){return row&&ownOrGlobal(row.id);});
+    const durableHere=durableHereRows.length;
     // Une file d'une autre caserne reste intacte et ne doit pas empêcher
     // l'ouverture de CIS05 ; elle ne sera jamais envoyée avec ce compte.
     if(pendingHere||durableHere||_rcSaving||_rcPulling){
-      if(PERSONNEL_SECURE_CIS05_PILOT)console.warn('[AGAI][PILOTE] Connexion différée : '+JSON.stringify({pendingHere,durableHere,saving:_rcSaving,pulling:_rcPulling}));
+      if(PERSONNEL_SECURE_CIS05_PILOT)console.warn('[AGAI][PILOTE] Connexion différée : '+JSON.stringify({pendingHere,durableHere,saving:_rcSaving,pulling:_rcPulling,
+        kinds:durableHereRows.map(function(row){return row.caserne+'/'+row.type+'/'+(row.type==='login'?(row.data&&row.data.login===signed.profile.login?'titulaire':'autre'):'');})}));
       return null;
     }
   }catch(error){return null;}
