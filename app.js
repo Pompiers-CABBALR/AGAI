@@ -1482,7 +1482,7 @@ async function _agaiOnlinePrepareLogin(login,password){
     const requiresPreviousSession=function(id){
       return ownOrGlobal(id)&&!String(id||'').includes(RC_SEP+'login'+RC_SEP);
     };
-    const durableRows=await _rcDiscardPilotLoginTombstones(await _rcOutboxGetRows());
+    const durableRows=await _rcOutboxGetRows();
     // Les anciennes traces de connexion d'autres comptes restent dans la file,
     // mais ne sont ni un obstacle pour CIS05 ni transmises sous ce titulaire.
     _rcForeignLoginPendingIds=new Set(durableRows.filter(function(row){
@@ -17437,7 +17437,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0018';
+const APP_VERSION='V202610_0017';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -20991,10 +20991,10 @@ async function _rcOutboxDelete(ids){
   });
 }
 // Les pierres tombales de l'historique sont un entretien automatique, pas des
-// saisies opérationnelles. En mode Auth, le navigateur ne peut pas supprimer
-// les journaux d'autres agents ; retirer seulement ces essais de sa file.
+// saisies opérationnelles. Le pilote Auth n'a pas le droit de les supprimer au
+// nom d'autres agents ; retirer uniquement ces essais techniques de sa file.
 async function _rcDiscardPilotLoginTombstones(rows){
-  if(!PERSONNEL_SECURE_CIS05_PILOT&&!PERSONNEL_ONLINE_GATE)return rows;
+  if(!PERSONNEL_SECURE_CIS05_PILOT)return rows;
   const obsolete=(rows||[]).filter(function(row){return row&&row.type==='login'&&row.deleted===true;});
   if(!obsolete.length)return rows;
   const ids=obsolete.map(function(row){return row.id;});
@@ -21993,7 +21993,7 @@ async function _rcPushRecords(records){
 // les éléments des listes locales, sinon la suppression ne se propage pas.
 async function _rcMarkDeleted(caserne, type, recordIds){
   if(!USE_RECORDS) return; // en mode normal, rien à faire
-  if((PERSONNEL_SECURE_CIS05_PILOT||PERSONNEL_ONLINE_GATE)&&type==='login')return;
+  if(PERSONNEL_SECURE_CIS05_PILOT&&type==='login')return;
   if(!recordIds || !recordIds.length) return;
   const rows=recordIds.map(function(rid){
     return {id:_rcId(caserne,type,rid),caserne:caserne,type:type,data:{id:rid,_deleted:true},deleted:true};
@@ -22530,7 +22530,7 @@ async function _rcPull(silent){
     );
     const loginRetention=loginHistoryRetentionPartition(mergedLoginHistory);
     data.LOGIN_HISTORY=loginRetention.kept;
-    if(loginRetention.removed.length&&GLOBAL_ROLE==='superadmin'&&!PERSONNEL_ONLINE_GATE){
+    if(loginRetention.removed.length&&GLOBAL_ROLE==='superadmin'&&!PERSONNEL_SECURE_CIS05_PILOT){
       const deletedAt=new Date().toISOString(),deleteGroups={};
       loginRetention.removed.forEach(function(entry){
         data.LOGIN_HISTORY_DELETED[entry.id]=deletedAt;
@@ -22597,7 +22597,7 @@ async function _rcPull(silent){
       }
     }
     _applyDataObject(data);
-    if(loginRetention.removed.length&&GLOBAL_ROLE==='superadmin'&&!PERSONNEL_ONLINE_GATE){
+    if(loginRetention.removed.length&&GLOBAL_ROLE==='superadmin'&&!PERSONNEL_SECURE_CIS05_PILOT){
       window.setTimeout(function(){if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();saveData(true);},0);
     }
     _postLoadInit();

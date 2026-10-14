@@ -28,41 +28,14 @@ for (const file of ['modules/02-auth-js-partie-1-2-structure-casernes-numerotati
 }
 
 const version = JSON.parse(read('version.json')).version;
-assert.equal(version, 'V202610_0018');
-assert.match(read('modules/15-storage-js.js'), /const APP_VERSION='V202610_0018'/);
-assert.match(read('app.js'), /const APP_VERSION='V202610_0018'/);
+assert.equal(version, 'V202610_0017');
+assert.match(read('modules/15-storage-js.js'), /const APP_VERSION='V202610_0017'/);
+assert.match(read('app.js'), /const APP_VERSION='V202610_0017'/);
 for (const script of read('index.html').matchAll(/(?:src|href)="[^"]+\?v=(V\d+_\d+)"/g)) {
   assert.equal(script[1], version, `ressource non alignée : ${script[0]}`);
 }
 assert.match(read('modules/03-security-js.js'), /PERSONNEL_SECURE_CIS05_PILOT\?'pilot_login':'login'/);
 assert.match(read('modules/17-animal-js.js'), /PERSONNEL_ONLINE_GATE\?'agai_atomic_upsert_record_auth':'agai_atomic_upsert_record'/);
-for (const file of ['modules/17-animal-js.js', 'app.js']) {
-  const source = read(file);
-  assert.match(source, /if\(!PERSONNEL_SECURE_CIS05_PILOT&&!PERSONNEL_ONLINE_GATE\)return rows;/);
-  assert.match(source, /if\(\(PERSONNEL_SECURE_CIS05_PILOT\|\|PERSONNEL_ONLINE_GATE\)&&type==='login'\)return;/);
-  assert.doesNotMatch(source, /loginRetention\.removed\.length&&GLOBAL_ROLE==='superadmin'&&!PERSONNEL_SECURE_CIS05_PILOT/);
-  const start = source.indexOf('async function _rcDiscardPilotLoginTombstones(');
-  const end = source.indexOf('async function _rcReconcileOutboxWithRemote(', start);
-  const removed = [];
-  const pending = new Set(['old-login', 'intervention']);
-  const context = {
-    PERSONNEL_SECURE_CIS05_PILOT: false, PERSONNEL_ONLINE_GATE: true,
-    _rcOutboxDelete: async ids => { removed.push(...ids); return true; },
-    _rcPendingDirty: pending, _rcPersistPendingDirty: () => {},
-  };
-  vm.runInNewContext(source.slice(start, end)
-    + '\nglobalThis.clean=_rcDiscardPilotLoginTombstones;', context);
-  context.clean([
-    { id: 'old-login', type: 'login', deleted: true },
-    { id: 'intervention', type: 'iv', deleted: false },
-  ]).then(rows => {
-    assert.deepEqual(removed, ['old-login']);
-    assert.deepEqual(Array.from(rows, row => row.id), ['intervention']);
-    assert.equal(pending.has('old-login'), false);
-    assert.equal(pending.has('intervention'), true);
-  }).catch(error => { console.error(error); process.exitCode = 1; });
-}
-assert.match(read('modules/03-security-js.js'), /_rcDiscardPilotLoginTombstones\(await _rcOutboxGetRows\(\)\)/);
 assert.match(read('supabase/functions/agai-account-link/index.ts'), /const personnelEnforcement = true/);
 
 const checkPage = read('securite-acces-intercaserne.html');
