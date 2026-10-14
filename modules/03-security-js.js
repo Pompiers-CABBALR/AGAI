@@ -102,7 +102,19 @@ async function _agaiOnlinePrepareLogin(login,password){
   // Ne jamais envoyer les actions d'un autre compte avec la session qui vient
   // d'etre ouverte. Une file locale doit etre resynchronisee avant la bascule.
   try{
-    if(_rcPendingDirty.size||_rcSaving||_rcPulling||(await _rcOutboxGetRows()).length)return null;
+    const ownStation=signed.profile.caserneId;
+    const ownOrGlobal=function(id){
+      return String(id||'').startsWith(ownStation+RC_SEP)
+        ||String(id||'').startsWith('_GLOBAL'+RC_SEP);
+    };
+    const pendingHere=Array.from(_rcPendingDirty).filter(ownOrGlobal).length;
+    const durableHere=(await _rcOutboxGetRows()).filter(function(row){return row&&ownOrGlobal(row.id);}).length;
+    // Une file d'une autre caserne reste intacte et ne doit pas empêcher
+    // l'ouverture de CIS05 ; elle ne sera jamais envoyée avec ce compte.
+    if(pendingHere||durableHere||_rcSaving||_rcPulling){
+      if(PERSONNEL_SECURE_CIS05_PILOT)console.warn('[AGAI][PILOTE] Connexion différée : actions locales de cette caserne ou synchronisation active', {pendingHere,durableHere,saving:_rcSaving,pulling:_rcPulling});
+      return null;
+    }
   }catch(error){return null;}
   const previous={user:CU,role:GLOBAL_ROLE,station:CURRENT_CASERNE_ID};
   // Une autre personne peut s'identifier sans fermer l'onglet. Les fiches du

@@ -3263,7 +3263,17 @@ async function _rcFetchAllActiveRows(scopeFilter){
     const query='?deleted=eq.false&select=id,caserne,type,data,deleted&order=id.asc&limit='+RC_PULL_PAGE_SIZE
       +fixedScope+(lastId?'&id=gt.'+encodeURIComponent(lastId):'');
     const resp=await _agaiFetchWithTimeout(RC_REST+query,{headers:_sbHeaders},45000);
-    if(!resp.ok)throw new Error('records GET HTTP '+resp.status+' (page '+(page+1)+')');
+    if(!resp.ok){
+      if(PERSONNEL_SECURE_CIS05_PILOT){
+        const detail=await resp.json().catch(function(){return{};});
+        console.warn('[AGAI][PILOTE] Lecture Auth refusée',{
+          status:resp.status,code:String(detail.code||''),message:String(detail.message||'').slice(0,160),
+          tokenPresent:!!_agaiAuthAccessToken(),sessionPresent:!!_agaiReadAuthSession(),
+          loginPresent:!!(CU&&CU.l),scope:_rcSyncScopeCaserne()
+        });
+      }
+      throw new Error('records GET HTTP '+resp.status+' (page '+(page+1)+')');
+    }
     const batch=await resp.json();
     if(!Array.isArray(batch))throw new Error('Données records invalides (page '+(page+1)+')');
     rows.push.apply(rows,batch);

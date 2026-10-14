@@ -1473,7 +1473,19 @@ async function _agaiOnlinePrepareLogin(login,password){
   // Ne jamais envoyer les actions d'un autre compte avec la session qui vient
   // d'etre ouverte. Une file locale doit etre resynchronisee avant la bascule.
   try{
-    if(_rcPendingDirty.size||_rcSaving||_rcPulling||(await _rcOutboxGetRows()).length)return null;
+    const ownStation=signed.profile.caserneId;
+    const ownOrGlobal=function(id){
+      return String(id||'').startsWith(ownStation+RC_SEP)
+        ||String(id||'').startsWith('_GLOBAL'+RC_SEP);
+    };
+    const pendingHere=Array.from(_rcPendingDirty).filter(ownOrGlobal).length;
+    const durableHere=(await _rcOutboxGetRows()).filter(function(row){return row&&ownOrGlobal(row.id);}).length;
+    // Une file d'une autre caserne reste intacte et ne doit pas empêcher
+    // l'ouverture de CIS05 ; elle ne sera jamais envoyée avec ce compte.
+    if(pendingHere||durableHere||_rcSaving||_rcPulling){
+      if(PERSONNEL_SECURE_CIS05_PILOT)console.warn('[AGAI][PILOTE] Connexion différée : actions locales de cette caserne ou synchronisation active', {pendingHere,durableHere,saving:_rcSaving,pulling:_rcPulling});
+      return null;
+    }
   }catch(error){return null;}
   const previous={user:CU,role:GLOBAL_ROLE,station:CURRENT_CASERNE_ID};
   // Une autre personne peut s'identifier sans fermer l'onglet. Les fiches du
@@ -17413,7 +17425,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0011';
+const APP_VERSION='V202610_0012';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -22361,7 +22373,17 @@ async function _rcFetchAllActiveRows(scopeFilter){
     const query='?deleted=eq.false&select=id,caserne,type,data,deleted&order=id.asc&limit='+RC_PULL_PAGE_SIZE
       +fixedScope+(lastId?'&id=gt.'+encodeURIComponent(lastId):'');
     const resp=await _agaiFetchWithTimeout(RC_REST+query,{headers:_sbHeaders},45000);
-    if(!resp.ok)throw new Error('records GET HTTP '+resp.status+' (page '+(page+1)+')');
+    if(!resp.ok){
+      if(PERSONNEL_SECURE_CIS05_PILOT){
+        const detail=await resp.json().catch(function(){return{};});
+        console.warn('[AGAI][PILOTE] Lecture Auth refusée',{
+          status:resp.status,code:String(detail.code||''),message:String(detail.message||'').slice(0,160),
+          tokenPresent:!!_agaiAuthAccessToken(),sessionPresent:!!_agaiReadAuthSession(),
+          loginPresent:!!(CU&&CU.l),scope:_rcSyncScopeCaserne()
+        });
+      }
+      throw new Error('records GET HTTP '+resp.status+' (page '+(page+1)+')');
+    }
     const batch=await resp.json();
     if(!Array.isArray(batch))throw new Error('Données records invalides (page '+(page+1)+')');
     rows.push.apply(rows,batch);
