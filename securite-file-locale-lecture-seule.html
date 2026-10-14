@@ -116,7 +116,21 @@
       }finally{db.close();}
     }
     let comparison='';
-    const localGlobal=durable.find(function(row){return row.id==='_GLOBAL__global__main';});
+    let localGlobal=durable.find(function(row){return row.id==='_GLOBAL__global__main';});
+    if(!localGlobal&&pendingRows.some(function(row){return row.id==='_GLOBAL__global__main';})){
+      const cache=JSON.parse(localStorage.getItem('agai_jb_cache')||'null');
+      if(cache){
+        const keys=['v','CASERNES','GLOBAL_ACCOUNTS','NAT','ACT_TYPES','REPORT_TYPES','COM','ENGIN_TYPES',
+          'APL_COUNTER','INT_GLOBAL_COUNTER','INT_CAS_COUNTER','PILP_COUNTER','DISPOS_UNLOCKED',
+          'DISPO_REQUESTS','LOGIN_HISTORY','LOGIN_HISTORY_DELETED'];
+        const data={};
+        keys.forEach(function(key){if(cache[key]!==undefined)data[key]=cache[key];});
+        ['_cabbalrActif','_initCabbalr','_global'].forEach(function(key){
+          if(cache.CASERNE_DATA&&cache.CASERNE_DATA[key]!==undefined)data[key]=cache.CASERNE_DATA[key];
+        });
+        localGlobal={data:data,fromCache:true};
+      }
+    }
     if(localGlobal){
       try{
         const request=dbGlobalRequest();
@@ -130,7 +144,8 @@
         const differences=Array.from(keys).sort().filter(function(key){
           return JSON.stringify(canonical(remote[key]))!==JSON.stringify(canonical(local[key]));
         });
-        comparison='\n\nConfiguration générale : '+(differences.length?differences.join(', '):'copie locale identique au serveur')
+        comparison='\n\nConfiguration générale ('+(localGlobal.fromCache?'cache local':'file durable')+') : '
+          +(differences.length?differences.join(', '):'copie locale identique au serveur')
           +'\nDernière mise en file locale : '+(localGlobal.queuedAt?new Date(localGlobal.queuedAt).toLocaleString('fr-FR'):'non datée')
           +'\nComptes : '+identityCounts(local.GLOBAL_ACCOUNTS,remote.GLOBAL_ACCOUNTS,'l')
           +'\n'+accountCrossCheck(local.GLOBAL_ACCOUNTS,remote.GLOBAL_ACCOUNTS)
