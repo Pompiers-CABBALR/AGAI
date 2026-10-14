@@ -112,7 +112,7 @@ async function _agaiOnlinePrepareLogin(login,password){
     // Une file d'une autre caserne reste intacte et ne doit pas empêcher
     // l'ouverture de CIS05 ; elle ne sera jamais envoyée avec ce compte.
     if(pendingHere||durableHere||_rcSaving||_rcPulling){
-      if(PERSONNEL_SECURE_CIS05_PILOT)console.warn('[AGAI][PILOTE] Connexion différée : actions locales de cette caserne ou synchronisation active', {pendingHere,durableHere,saving:_rcSaving,pulling:_rcPulling});
+      if(PERSONNEL_SECURE_CIS05_PILOT)console.warn('[AGAI][PILOTE] Connexion différée : '+JSON.stringify({pendingHere,durableHere,saving:_rcSaving,pulling:_rcPulling}));
       return null;
     }
   }catch(error){return null;}

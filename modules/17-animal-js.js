@@ -3266,11 +3266,13 @@ async function _rcFetchAllActiveRows(scopeFilter){
     if(!resp.ok){
       if(PERSONNEL_SECURE_CIS05_PILOT){
         const detail=await resp.json().catch(function(){return{};});
-        console.warn('[AGAI][PILOTE] Lecture Auth refusée',{
+        const session=_agaiReadAuthSession();
+        console.warn('[AGAI][PILOTE] Lecture Auth refusée : '+JSON.stringify({
           status:resp.status,code:String(detail.code||''),message:String(detail.message||'').slice(0,160),
-          tokenPresent:!!_agaiAuthAccessToken(),sessionPresent:!!_agaiReadAuthSession(),
+          tokenPresent:!!_agaiAuthAccessToken(),sessionPresent:!!session,
+          expiresInSeconds:session?Math.round(Number(session.expires_at||0)-Date.now()/1000):null,
           loginPresent:!!(CU&&CU.l),scope:_rcSyncScopeCaserne()
-        });
+        }));
       }
       throw new Error('records GET HTTP '+resp.status+' (page '+(page+1)+')');
     }

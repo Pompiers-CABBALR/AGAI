@@ -1483,7 +1483,7 @@ async function _agaiOnlinePrepareLogin(login,password){
     // Une file d'une autre caserne reste intacte et ne doit pas empêcher
     // l'ouverture de CIS05 ; elle ne sera jamais envoyée avec ce compte.
     if(pendingHere||durableHere||_rcSaving||_rcPulling){
-      if(PERSONNEL_SECURE_CIS05_PILOT)console.warn('[AGAI][PILOTE] Connexion différée : actions locales de cette caserne ou synchronisation active', {pendingHere,durableHere,saving:_rcSaving,pulling:_rcPulling});
+      if(PERSONNEL_SECURE_CIS05_PILOT)console.warn('[AGAI][PILOTE] Connexion différée : '+JSON.stringify({pendingHere,durableHere,saving:_rcSaving,pulling:_rcPulling}));
       return null;
     }
   }catch(error){return null;}
@@ -17425,7 +17425,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0012';
+const APP_VERSION='V202610_0013';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -22376,11 +22376,13 @@ async function _rcFetchAllActiveRows(scopeFilter){
     if(!resp.ok){
       if(PERSONNEL_SECURE_CIS05_PILOT){
         const detail=await resp.json().catch(function(){return{};});
-        console.warn('[AGAI][PILOTE] Lecture Auth refusée',{
+        const session=_agaiReadAuthSession();
+        console.warn('[AGAI][PILOTE] Lecture Auth refusée : '+JSON.stringify({
           status:resp.status,code:String(detail.code||''),message:String(detail.message||'').slice(0,160),
-          tokenPresent:!!_agaiAuthAccessToken(),sessionPresent:!!_agaiReadAuthSession(),
+          tokenPresent:!!_agaiAuthAccessToken(),sessionPresent:!!session,
+          expiresInSeconds:session?Math.round(Number(session.expires_at||0)-Date.now()/1000):null,
           loginPresent:!!(CU&&CU.l),scope:_rcSyncScopeCaserne()
-        });
+        }));
       }
       throw new Error('records GET HTTP '+resp.status+' (page '+(page+1)+')');
     }
