@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AGAI — contrôle d’écriture CIS05</title>
+  <style>
+    body { font: 16px/1.5 system-ui, sans-serif; background: #f3f4f7; color: #172033; margin: 0; }
+    main { max-width: 580px; margin: 5vh auto; padding: 24px; background: white; border: 1px solid #dfe3eb; border-radius: 14px; }
+    h1 { font-size: 1.35rem; margin: 0 0 12px; }
+    p { margin: 0 0 16px; }
+    label { display: block; margin: 14px 0 5px; font-weight: 600; }
+    input { box-sizing: border-box; width: 100%; padding: 11px; border: 1px solid #aab3c1; border-radius: 8px; font: inherit; }
+    button { margin-top: 18px; padding: 11px 16px; border: 0; border-radius: 8px; color: white; background: #b7382d; font: inherit; cursor: pointer; }
+    button:disabled { opacity: .55; cursor: wait; }
+    #result { margin-top: 20px; padding: 12px; border-radius: 8px; background: #eef3fa; white-space: pre-line; }
+    .small { color: #596579; font-size: .9rem; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Contrôle d’écriture — CIS05</h1>
+  <p>Ce contrôle vérifie le droit d’enregistrer une fiche technique avec la nouvelle connexion. Il n’utilise aucune intervention réelle. Il ne se lance que si Supabase confirme d’abord le mode « transaction annulée ».</p>
+  <form id="check-form">
+    <label for="login">Identifiant AGAI</label>
+    <input id="login" name="login" autocomplete="username" required>
+    <label for="password">Mot de passe AGAI</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required>
+    <button id="check-button" type="submit">Lancer le contrôle encadré</button>
+  </form>
+  <div id="result" role="status" aria-live="polite">Aucun contrôle lancé. La bascule générale reste désactivée.</div>
+  <p class="small" style="margin-top:16px">Cette page ne conserve ni mot de passe ni jeton. Elle n’active pas la nouvelle connexion pour les collègues. Fermez-la après le contrôle.</p>
+</main>
+<script src="runtime-config.js"></script>
+<script>
+(() => {
+  const config = window.AGAI_CONFIG || {};
+  const base = String(config.supabaseUrl || '').replace(/\/$/, '');
+  const apiKey = String(config.supabasePublishableKey || '');
+  const form = document.getElementById('check-form');
+  const button = document.getElementById('check-button');
+  const result = document.getElementById('result');
+  const loginField = document.getElementById('login');
+  const passwordField = document.getElementById('password');
+  const fail = (message) => { result.textContent = message + '\nBascule générale non activée.'; };
+  const request = async (url, options) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+    try { return await fetch(url, { ...options, signal: controller.signal, cache: 'no-store' }); }
+    finally { clearTimeout(timer); }
+  };
+  const rollbackApplied = (response) => /(?:^|,)\s*tx=rollback(?:,|$)/i
+    .test(response.headers.get('Preference-Applied') || '');
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!base || !apiKey) { fail('Configuration Supabase absente.'); return; }
+    const login = loginField.value.trim().toLowerCase();
+    const password = passwordField.value;
+    button.disabled = true;
+    result.textContent = 'Vérification de l’identité et de la possibilité d’annuler la transaction…';
+    let token = '';
+    try {
+      const signed = await request(base + '/functions/v1/agai-account-link', {
+        method: 'POST', headers: { apikey: apiKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'pilot_login', login, password }),
+      });
+      const identity = await signed.json().catch(() => ({}));
+      if (!signed.ok || identity.personnelEnforcementEnabled !== true || identity.login !== login
+        || identity.caserneId !== 'CIS05' || !identity.session?.access_token) {
+        fail('Connexion au pilote refusée (HTTP ' + signed.status + '). Aucun contrôle d’écriture lancé.');
+        return;
+      }
+      token = identity.session.access_token;
+      const headers = { apikey: apiKey, Authorization: 'Bearer ' + token };
+      const checked = await request(base + '/functions/v1/agai-account-link', {
+        method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'pilot_account_status' }),
+      });
+      const status = await checked.json().catch(() => ({}));
+      if (!checked.ok || status.login !== login || status.caserneId !== 'CIS05'
+        || status.canLogin !== true || status.canOperate !== true) {
+        fail('Droits du personnel non confirmés (HTTP ' + checked.status + '). Aucun contrôle d’écriture lancé.');
+        return;
+      }
+
+      // Précontrôle sans écriture : ne jamais appeler le RPC si PostgREST ne
+      // confirme pas explicitement que la transaction de cette requête sera annulée.
+      const preflight = await request(base + '/rest/v1/records?caserne=eq.CIS05&select=id&limit=1', {
+        headers: { ...headers, Prefer: 'tx=rollback' },
+      });
+      if (!preflight.ok || !rollbackApplied(preflight)) {
+        fail('Annulation transactionnelle non confirmée par Supabase. Aucun essai d’intervention lancé.');
+        return;
+      }
+
+      const suffix = crypto.randomUUID();
+      const testId = 'CIS05__iv__auth-write-dry-run-' + suffix;
+      const dryRun = await request(base + '/rest/v1/rpc/agai_atomic_upsert_record_auth', {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json', Prefer: 'tx=rollback' },
+        body: JSON.stringify({
+          p_id: testId, p_caserne: 'CIS05', p_type: 'iv',
+          // Supprimée dès l’écriture et sans départ ni clôture : aucune
+          // attribution de numéro, même si le serveur ignorait la préférence.
+          p_data: { id: 'auth-write-dry-run-' + suffix, s: 'en-attente',
+            _statusRevision: 0, _serverRevision: 0 },
+          p_deleted: true, p_updated_by: 'client-untrusted',
+          p_expected_revision: 0, p_expected_record_revision: 0,
+          p_device_id: 'security-control', p_app_version: 'V202610_0016',
+          p_action_id: 'security-control-' + suffix,
+        }),
+      });
+      const writeResult = await dryRun.json().catch(() => null);
+      if (!dryRun.ok || !rollbackApplied(dryRun) || !writeResult || writeResult.ok !== true
+        || writeResult.id !== testId || writeResult.status !== 'en-attente') {
+        fail('Écriture atomique non concluante (HTTP ' + dryRun.status + '). Référence technique : ' + testId);
+        return;
+      }
+      const absent = await request(base + '/rest/v1/records?id=eq.' + encodeURIComponent(testId)
+        + '&select=id&limit=1', { headers });
+      const existing = await absent.json().catch(() => null);
+      if (!absent.ok || !Array.isArray(existing) || existing.length !== 0) {
+        fail('La fiche technique semble persister : arrêt immédiat. Référence : ' + testId);
+        return;
+      }
+      result.textContent = 'Connexion CIS05 : OK\nDroit d’écrire avec l’identité réelle : OK'
+        + '\nTransaction annulée et fiche technique absente : OK'
+        + '\nNumérotation et clôture : non testées\nBascule générale non activée.';
+    } catch (_) {
+      fail('Contrôle interrompu ou service indisponible. Aucune intervention réelle n’a été utilisée.');
+    } finally {
+      token = '';
+      passwordField.value = '';
+      button.disabled = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>
