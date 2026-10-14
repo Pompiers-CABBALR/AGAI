@@ -8,14 +8,13 @@ const inlineScript = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].at(-1)?
 assert.ok(inlineScript, 'Script du contrôle introuvable');
 new vm.Script(inlineScript);
 
-const testId = 'CIS05__iv__auth-write-dry-run-fixed-uuid';
-const response = (body, { status = 200, applied = false } = {}) => ({
+const testId = 'CIS05__iv__auth-write-dry-run-00000000-0000-4000-8000-000000000001';
+const response = (body, { status = 200 } = {}) => ({
   ok: status >= 200 && status < 300, status,
-  headers: { get: name => name === 'Preference-Applied' && applied ? 'tx=rollback' : null },
   json: async () => body,
 });
 
-async function scenario({ preflightApplied, rpcApplied = true, persisted = false }) {
+async function scenario({ rpcOk = true, persisted = false, canOperate = true }) {
   let submit;
   const calls = [];
   const elements = {
@@ -28,7 +27,6 @@ async function scenario({ preflightApplied, rpcApplied = true, persisted = false
   const context = {
     window: { AGAI_CONFIG: { supabaseUrl: 'https://example.supabase.co', supabasePublishableKey: 'public-key' } },
     document: { getElementById: id => elements[id] },
-    crypto: { randomUUID: () => 'fixed-uuid' },
     AbortController, setTimeout, clearTimeout,
     fetch: async (url, options) => {
       calls.push({ url, options });
@@ -38,13 +36,15 @@ async function scenario({ preflightApplied, rpcApplied = true, persisted = false
           ? response({ personnelEnforcementEnabled: true, login: 'dacheville.thibaut',
             caserneId: 'CIS05', session: { access_token: 'test-token' } })
           : response({ login: 'dacheville.thibaut', caserneId: 'CIS05',
-            canLogin: true, canOperate: true });
+            canLogin: true, canOperate });
       }
-      if (url.includes('/rpc/agai_atomic_upsert_record_auth')) {
-        return response({ ok: true, id: testId, status: 'en-attente' }, { applied: rpcApplied });
+      if (url.includes('/rpc/agai_auth_write_probe_cis05')) {
+        return response(rpcOk
+          ? { ok: true, id: testId, status: 'en-attente', rolledBack: true }
+          : { ok: false }, { status: rpcOk ? 200 : 403 });
       }
       if (url.includes('id=eq.')) return response(persisted ? [{ id: testId }] : []);
-      return response([{ id: 'sample' }], { applied: preflightApplied });
+      throw new Error('Requête inattendue : ' + url);
     },
   };
   vm.runInNewContext(inlineScript, context);
@@ -54,28 +54,23 @@ async function scenario({ preflightApplied, rpcApplied = true, persisted = false
 }
 
 async function main() {
-  const refused = await scenario({ preflightApplied: false });
+  const refused = await scenario({ canOperate: false });
   assert.equal(refused.calls.some(call => call.url.includes('/rpc/')), false,
-    'Sans confirmation du rollback, le RPC ne doit jamais être appelé');
-  assert.match(refused.message, /Annulation transactionnelle non confirmée/);
+    'Sans droit opérationnel, le RPC ne doit jamais être appelé');
+  assert.match(refused.message, /Droits du personnel non confirmés/);
 
-  const successful = await scenario({ preflightApplied: true });
+  const successful = await scenario({});
   const rpc = successful.calls.find(call => call.url.includes('/rpc/'));
-  assert.ok(rpc, 'Le RPC doit être appelé après précontrôle réussi');
-  assert.equal(rpc.options.headers.Prefer, 'tx=rollback');
-  const payload = JSON.parse(rpc.options.body);
-  assert.equal(payload.p_id, testId);
-  assert.equal(payload.p_deleted, true);
-  assert.equal(payload.p_data.s, 'en-attente');
-  assert.equal(Object.hasOwn(payload.p_data, '_numCaserne'), false);
-  assert.equal(Object.hasOwn(payload.p_data, '_numMois'), false);
-  assert.match(successful.message, /Transaction annulée et fiche technique absente : OK/);
+  assert.ok(rpc, 'Le RPC isolé doit être appelé après contrôle des droits');
+  assert.equal(rpc.options.body, '{}');
+  assert.equal(Object.hasOwn(rpc.options.headers, 'Prefer'), false);
+  assert.match(successful.message, /Essai annulé et fiche technique absente : OK/);
 
-  const missingConfirmation = await scenario({ preflightApplied: true, rpcApplied: false });
-  assert.match(missingConfirmation.message, /Écriture atomique non concluante/);
-  const persisted = await scenario({ preflightApplied: true, persisted: true });
+  const failedRpc = await scenario({ rpcOk: false });
+  assert.match(failedRpc.message, /Contrôle d’écriture non concluant/);
+  const persisted = await scenario({ persisted: true });
   assert.match(persisted.message, /fiche technique semble persister/);
-  console.log('Contrôle CIS05 : aucune écriture si rollback non confirmé, fiche masquée et absence vérifiées.');
+  console.log('Contrôle CIS05 : droits vérifiés, RPC isolé et absence de fiche vérifiés.');
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });

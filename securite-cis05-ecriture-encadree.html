@@ -20,7 +20,7 @@
 <body>
 <main>
   <h1>Contrôle d’écriture — CIS05</h1>
-  <p>Ce contrôle vérifie le droit d’enregistrer une fiche technique avec la nouvelle connexion. Il n’utilise aucune intervention réelle. Il ne se lance que si Supabase confirme d’abord le mode « transaction annulée ».</p>
+  <p>Ce contrôle vérifie le droit d’enregistrer une fiche technique avec la nouvelle connexion. Il n’utilise aucune intervention réelle : le serveur annule l’essai dans la même opération, puis vérifie que la fiche est absente.</p>
   <form id="check-form">
     <label for="login">Identifiant AGAI</label>
     <input id="login" name="login" autocomplete="username" required>
@@ -49,16 +49,13 @@
     try { return await fetch(url, { ...options, signal: controller.signal, cache: 'no-store' }); }
     finally { clearTimeout(timer); }
   };
-  const rollbackApplied = (response) => /(?:^|,)\s*tx=rollback(?:,|$)/i
-    .test(response.headers.get('Preference-Applied') || '');
-
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (!base || !apiKey) { fail('Configuration Supabase absente.'); return; }
     const login = loginField.value.trim().toLowerCase();
     const password = passwordField.value;
     button.disabled = true;
-    result.textContent = 'Vérification de l’identité et de la possibilité d’annuler la transaction…';
+    result.textContent = 'Vérification de l’identité et du contrôle d’écriture isolé…';
     let token = '';
     try {
       const signed = await request(base + '/functions/v1/agai-account-link', {
@@ -84,37 +81,20 @@
         return;
       }
 
-      // Précontrôle sans écriture : ne jamais appeler le RPC si PostgREST ne
-      // confirme pas explicitement que la transaction de cette requête sera annulée.
-      const preflight = await request(base + '/rest/v1/records?caserne=eq.CIS05&select=id&limit=1', {
-        headers: { ...headers, Prefer: 'tx=rollback' },
-      });
-      if (!preflight.ok || !rollbackApplied(preflight)) {
-        fail('Annulation transactionnelle non confirmée par Supabase. Aucun essai d’intervention lancé.');
-        return;
-      }
-
-      const suffix = crypto.randomUUID();
-      const testId = 'CIS05__iv__auth-write-dry-run-' + suffix;
-      const dryRun = await request(base + '/rest/v1/rpc/agai_atomic_upsert_record_auth', {
+      // Le RPC serveur utilise une sous-transaction annulée avant de retourner.
+      // Sans ce RPC, aucune tentative d'écriture n'est effectuée par cette page.
+      const dryRun = await request(base + '/rest/v1/rpc/agai_auth_write_probe_cis05', {
         method: 'POST',
-        headers: { ...headers, 'Content-Type': 'application/json', Prefer: 'tx=rollback' },
-        body: JSON.stringify({
-          p_id: testId, p_caserne: 'CIS05', p_type: 'iv',
-          // Supprimée dès l’écriture et sans départ ni clôture : aucune
-          // attribution de numéro, même si le serveur ignorait la préférence.
-          p_data: { id: 'auth-write-dry-run-' + suffix, s: 'en-attente',
-            _statusRevision: 0, _serverRevision: 0 },
-          p_deleted: true, p_updated_by: 'client-untrusted',
-          p_expected_revision: 0, p_expected_record_revision: 0,
-          p_device_id: 'security-control', p_app_version: 'V202610_0016',
-          p_action_id: 'security-control-' + suffix,
-        }),
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: '{}',
       });
       const writeResult = await dryRun.json().catch(() => null);
-      if (!dryRun.ok || !rollbackApplied(dryRun) || !writeResult || writeResult.ok !== true
-        || writeResult.id !== testId || writeResult.status !== 'en-attente') {
-        fail('Écriture atomique non concluante (HTTP ' + dryRun.status + '). Référence technique : ' + testId);
+      const testId = String(writeResult?.id || '');
+      if (!dryRun.ok || !writeResult || writeResult.ok !== true
+        || writeResult.rolledBack !== true || writeResult.status !== 'en-attente'
+        || !/^CIS05__iv__auth-write-dry-run-[0-9a-f-]{36}$/i.test(testId)) {
+        fail('Contrôle d’écriture non concluant (HTTP ' + dryRun.status
+          + '). Aucune bascule effectuée.');
         return;
       }
       const absent = await request(base + '/rest/v1/records?id=eq.' + encodeURIComponent(testId)
@@ -125,7 +105,7 @@
         return;
       }
       result.textContent = 'Connexion CIS05 : OK\nDroit d’écrire avec l’identité réelle : OK'
-        + '\nTransaction annulée et fiche technique absente : OK'
+        + '\nEssai annulé et fiche technique absente : OK'
         + '\nNumérotation et clôture : non testées\nBascule générale non activée.';
     } catch (_) {
       fail('Contrôle interrompu ou service indisponible. Aucune intervention réelle n’a été utilisée.');
