@@ -53,6 +53,20 @@
       headers:{apikey:key}
     };
   };
+  const identityCounts=function(localItems,remoteItems,key){
+    const localIds=new Set((Array.isArray(localItems)?localItems:[]).map(function(item){return item&&item[key];}).filter(Boolean));
+    const remoteIds=new Set((Array.isArray(remoteItems)?remoteItems:[]).map(function(item){return item&&item[key];}).filter(Boolean));
+    return 'local : '+localIds.size+', serveur : '+remoteIds.size
+      +', seulement local : '+Array.from(localIds).filter(function(id){return !remoteIds.has(id);}).length
+      +', seulement serveur : '+Array.from(remoteIds).filter(function(id){return !localIds.has(id);}).length;
+  };
+  const keyCounts=function(localObject,remoteObject){
+    const localKeys=new Set(Object.keys(localObject||{}));
+    const remoteKeys=new Set(Object.keys(remoteObject||{}));
+    return 'local : '+localKeys.size+', serveur : '+remoteKeys.size
+      +', seulement local : '+Array.from(localKeys).filter(function(key){return !remoteKeys.has(key);}).length
+      +', seulement serveur : '+Array.from(remoteKeys).filter(function(key){return !localKeys.has(key);}).length;
+  };
   try{
     const pending=JSON.parse(localStorage.getItem('agai_rc_pending_dirty')||'[]');
     const pendingRows=Array.isArray(pending)?pending.map(function(id){return{id:id,deleted:false};}):[];
@@ -70,7 +84,8 @@
           const request=db.transaction('records','readonly').objectStore('records').getAll();
           request.onsuccess=function(){resolve((request.result||[]).map(function(entry){
             return{id:entry&&entry.id,deleted:entry&&entry.row&&entry.row.deleted===true,
-              data:entry&&entry.id==='_GLOBAL__global__main'&&entry.row&&entry.row.data};
+              data:entry&&entry.id==='_GLOBAL__global__main'&&entry.row&&entry.row.data,
+              queuedAt:entry&&entry.id==='_GLOBAL__global__main'&&entry.queuedAt};
           }));};
           request.onerror=function(){reject(request.error);};
         });
@@ -91,7 +106,11 @@
         const differences=Array.from(keys).sort().filter(function(key){
           return JSON.stringify(canonical(remote[key]))!==JSON.stringify(canonical(local[key]));
         });
-        comparison='\n\nConfiguration générale : '+(differences.length?differences.join(', '):'copie locale identique au serveur');
+        comparison='\n\nConfiguration générale : '+(differences.length?differences.join(', '):'copie locale identique au serveur')
+          +'\nDernière mise en file locale : '+(localGlobal.queuedAt?new Date(localGlobal.queuedAt).toLocaleString('fr-FR'):'non datée')
+          +'\nComptes : '+identityCounts(local.GLOBAL_ACCOUNTS,remote.GLOBAL_ACCOUNTS,'l')
+          +'\nHistorique des connexions : '+identityCounts(local.LOGIN_HISTORY,remote.LOGIN_HISTORY,'id')
+          +'\nSuppressions de connexions : '+keyCounts(local.LOGIN_HISTORY_DELETED,remote.LOGIN_HISTORY_DELETED);
       }catch(error){comparison='\n\nComparaison serveur indisponible : '+String(error&&error.message||'erreur');}
     }
     output.textContent='Actions signalées en attente : '+pendingRows.length+'\n'
