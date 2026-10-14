@@ -2970,7 +2970,6 @@ async function _rcProtectSensitiveGlobalRow(rows){
   if(PERSONNEL_SECURE_CIS05_PILOT){
     return (rows||[]).filter(function(row){return !(row&&row.type==='global'&&row.caserne==='_GLOBAL');});
   }
-  if(typeof isSuperAdmin==='function'&&isSuperAdmin())return rows;
   const globalRow=(rows||[]).find(function(row){return row&&row.type==='global'&&row.caserne==='_GLOBAL';});
   if(!globalRow)return rows;
   try{
