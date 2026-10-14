@@ -2191,6 +2191,15 @@ function _rcSyncSignature(row){
   const transport=_rcTransportRow(row);
   return JSON.stringify(_rcCanonicalSyncValue({data:transport&&transport.data,deleted:!!(transport&&transport.deleted)}));
 }
+function _rcSentSignatureAfterProtectedPush(row,sourceSignatures){
+  // L'accusé de réception concerne la version locale envoyée, pas les champs
+  // distants ajoutés juste avant l'envoi pour protéger les comptes et l'historique.
+  if(row&&row.type==='global'&&row.caserne==='_GLOBAL'
+    &&sourceSignatures&&Object.prototype.hasOwnProperty.call(sourceSignatures,row.id)){
+    return sourceSignatures[row.id];
+  }
+  return _rcSyncSignature(row);
+}
 function _rcTrackChangedRecords(previousData,nextData){
   if(!USE_RECORDS||!nextData)return;
   const previousRows=previousData?_rcSplitAll(previousData):[];
@@ -3187,6 +3196,11 @@ async function _rcPush(fullPush){
       if(_rcPendingDirty.size)_rcScheduleRetry();
       return;
     }
+    // La protection de la ligne globale fusionne des valeurs du serveur avant
+    // l'envoi. Garder la signature locale d'origine pour reconnaître l'envoi
+    // confirmé sans confondre cette fusion avec une nouvelle édition locale.
+    const sourceSignatures={};
+    rows.forEach(function(row){sourceSignatures[row.id]=_rcSyncSignature(row);});
     // Allègement : retirer photos lourdes des interventions (réutilise la logique existante)
     rows = rows.map(_rcTransportRow);
     const hadGlobalRow=rows.some(function(row){return row&&row.type==='global'&&row.caserne==='_GLOBAL';});
@@ -3236,7 +3250,7 @@ async function _rcPush(fullPush){
       sendResult.failures=stillBlocking;
     }
     const pushedRows=sendResult.succeeded;
-    pushedRows.forEach(function(row){sentSignatures[row.id]=_rcSyncSignature(row);});
+    pushedRows.forEach(function(row){sentSignatures[row.id]=_rcSentSignatureAfterProtectedPush(row,sourceSignatures);});
     _writeLocalCache(_buildDataObject());
     _rcLastPush = Date.now();
     // Une modification indépendante pendant l'envoi ne doit plus maintenir
