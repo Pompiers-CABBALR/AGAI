@@ -8,8 +8,8 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const config = read('runtime-config.js');
 const configContext = { window: {} };
 vm.runInNewContext(config, configContext);
-assert.equal(configContext.window.AGAI_CONFIG.accountLinkMode, 'on');
-assert.equal(configContext.window.AGAI_CONFIG.personnelOnlineGateEnabled, true);
+assert.equal(configContext.window.AGAI_CONFIG.accountLinkMode, 'canary');
+assert.equal(configContext.window.AGAI_CONFIG.personnelOnlineGateEnabled, false);
 
 for (const file of ['modules/02-auth-js-partie-1-2-structure-casernes-numerotation.js', 'app.js']) {
   const source = read(file);
@@ -22,15 +22,17 @@ for (const file of ['modules/02-auth-js-partie-1-2-structure-casernes-numerotati
     };
     vm.runInNewContext(source.slice(start, end)
       + '\nglobalThis.result={mode:AUTH_LINK_MODE,gate:PERSONNEL_ONLINE_GATE,pilot:PERSONNEL_SECURE_CIS05_PILOT};', context);
-    assert.equal(JSON.stringify(context.result), JSON.stringify({ mode: 'on', gate: true, pilot: false }),
+    assert.equal(JSON.stringify(context.result), JSON.stringify(search
+      ? { mode: 'on', gate: true, pilot: true }
+      : { mode: 'canary', gate: false, pilot: false }),
       `${file}: configuration ${search || 'principale'}`);
   }
 }
 
 const version = JSON.parse(read('version.json')).version;
-assert.equal(version, 'V202610_0024');
-assert.match(read('modules/15-storage-js.js'), /const APP_VERSION='V202610_0024'/);
-assert.match(read('app.js'), /const APP_VERSION='V202610_0024'/);
+assert.equal(version, 'V202610_0025');
+assert.match(read('modules/15-storage-js.js'), /const APP_VERSION='V202610_0025'/);
+assert.match(read('app.js'), /const APP_VERSION='V202610_0025'/);
 for (const script of read('index.html').matchAll(/(?:src|href)="[^"]+\?v=(V\d+_\d+)"/g)) {
   assert.equal(script[1], version, `ressource non alignée : ${script[0]}`);
 }
