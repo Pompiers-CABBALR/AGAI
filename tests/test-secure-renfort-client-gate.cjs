@@ -11,7 +11,7 @@ const auth = fs.readFileSync(path.join(root, 'modules/02-auth-js-partie-1-2-stru
 const pause = fs.readFileSync(path.join(root, 'supabase/migrations/20261014232000_renfort_rpc_paused.sql'), 'utf8');
 const lockOrder = fs.readFileSync(path.join(root, 'supabase/renfort-consistent-lock-order-APPLIED.sql'), 'utf8');
 
-assert.match(config, /secureRenfortsEnabled:\s*false/);
+assert.match(config, /secureRenfortsEnabled:\s*true/);
 assert.match(auth, /get\('secureRenfortPilot'\)==='1'/);
 assert.match(index, /modules\/22-renforts-auth-js\.js/);
 assert.match(pause, /revoke execute on function public\.agai_renfort_send/i);
@@ -63,4 +63,4 @@ assert.equal(active.getRenfortsEnAttente().length,0,'ancien panneau désactivé'
 active.updateRenfortBadge();
 assert.equal(badge.textContent,1,'badge issu du nouveau circuit');
 
-console.log('Renforts : interface nouvelle disponible en pilote, désactivée par défaut ; ancien parcours fermé.');
+console.log('Renforts : nouveau circuit actif par défaut ; ancien parcours fermé.');

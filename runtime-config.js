@@ -8,9 +8,8 @@ window.AGAI_CONFIG = Object.freeze({
   // La fermeture des anciens accès à la base reste une étape distincte.
   accountLinkMode: 'on',
   personnelOnlineGateEnabled: true,
-  // Le circuit des renforts reste fermé dans l'application habituelle
-  // tant que le parcours complet sur deux appareils n'est pas validé.
-  secureRenfortsEnabled: false,
+  // Renforts Auth ouverts après essais CIS05/CIS03 ; transferts toujours fermés.
+  secureRenfortsEnabled: true,
   accountLinkCanaryLogins: ['dacheville.thibaut', 'lericque.brian', 'accoley.leo', 'degryse.herve', 'douvrin.pascal', 'dumoulin.sebastien', 'francois.laurent', 'maerten.mathis', 'marien.matthis', 'smagliante.enzo', 'millecamps.alicia', 'canneson.eric', 'leriche.valery'],
   accountLinkNewCanaryLogins: ['millecamps.alicia', 'canneson.eric', 'leriche.valery'],
   accountLinkEndpoint: '',

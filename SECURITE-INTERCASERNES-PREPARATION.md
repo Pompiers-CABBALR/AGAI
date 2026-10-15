@@ -1,9 +1,9 @@
 # Transferts et renforts entre casernes — préparation
 
-État au 15 octobre 2026 : la connexion Auth générale est active, mais les
-transferts d’interventions et les renforts entre casernes restent désactivés.
-Ne pas retirer `requireSecureCrossStationWorkflow()` avant la mise en place
-et la vérification d’un parcours serveur dédié. Le contrôle automatique
+État au 15 octobre 2026 : la connexion Auth générale est active. Les renforts
+entre casernes utilisent le nouveau parcours serveur après les essais CIS05 ↔
+CIS03 ; les transferts d’interventions restent désactivés. Conserver
+`requireSecureCrossStationWorkflow()` sur l’ancien circuit. Le contrôle automatique
 `tests/test-cross-station-safety.cjs` protège les neuf points d’entrée de
 l’ancien circuit dans l’application monolithique et les modules publiés.
 Un contrôle en lecture seule sur la base a confirmé qu’un compte ordinaire
@@ -139,6 +139,30 @@ l'essai guidé, sans intervention réelle ni numéro APL. Elle doit être
 supprimée précisément après le test, avec vérification des demandes et fiches
 de renfort associées. Tant que l'essai sur les deux appareils n'est pas
 terminé, les renforts ne sont pas annoncés comme ouverts à tous.
+
+Essai sur appareils du 15 octobre : le lien sans `secureRenfortPilot=1` a été
+refusé par le verrou de l'ancien circuit, sans écriture. Avec le lien pilote,
+une demande **personnel** CIS05 → CIS03 a été envoyée, acceptée, démarrée et
+clôturée. Le premier départ sous le compte superadministrateur a révélé que
+deux vérifications serveur exigeaient encore sa caserne d'origine ; les
+correctifs `renfort-superadmin-destination-review.sql` et
+`renfort-superadmin-locked-source-review.sql` ont été appliqués. Un parcours
+départ/clôture en transaction annulée puis le parcours sur appareil ont réussi.
+La fiche de renfort CIS03 a été terminée et la fiche source CIS05 est restée
+sélectionnée à ce stade.
+
+Second essai sur appareils du 15 octobre : la même fiche technique, passée
+temporairement « en cours », a envoyé une demande **complète avec camion**
+CIS05 → CIS03. L'acceptation, le départ avec VTU-01 et un agent CIS03, puis la
+clôture ont chacun été confirmés dans l'interface et par lecture du serveur ;
+« Sync OK » était affiché après départ et clôture. Les deux demandes étaient
+`termine` et les deux fiches CIS03 `terminee`. Le nettoyage a ensuite marqué
+les trois fiches techniques supprimées et retiré les deux demandes d'essai :
+zéro fiche technique visible et zéro demande d'essai restent. Le journal
+d'audit et le compteur de renfort CIS03 (2) sont conservés, pour ne pas
+réattribuer les numéros consommés. Les essais n'ont engagé aucun véhicule
+réel. La version `V202610_0030` active le nouveau circuit par défaut ; le
+circuit historique et les transferts restent fermés.
 
 1. Rouvrir les **renforts** en premier, avec une demande et des transitions
    contrôlées par le serveur. Les trois anciens « acceptés » restent de

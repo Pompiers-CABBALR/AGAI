@@ -1,5 +1,4 @@
-// Nouveau circuit Auth. Le drapeau runtime reste volontairement ferme tant
-// que le correctif de verrouillage et les essais sur appareil ne sont pas finis.
+// Nouveau circuit Auth : demandes et transitions vérifiées côté serveur.
 let _secureRenfortRows=[];
 let _secureRenfortFetchedAt=0;
 let _secureRenfortFetchPromise=null;
