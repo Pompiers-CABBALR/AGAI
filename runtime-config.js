@@ -8,11 +8,11 @@ window.AGAI_CONFIG = Object.freeze({
   // La fermeture des anciens accès à la base reste une étape distincte.
   accountLinkMode: 'on',
   personnelOnlineGateEnabled: true,
-  // Renforts Auth ouverts après essais CIS05/CIS03 ; transferts toujours fermés.
+  // Renforts et transferts utilises uniquement avec Auth et controles serveur.
   secureRenfortsEnabled: true,
   // Tout nouvel APL est attribué en ligne par le serveur.
   secureAplNumberingEnabled: true,
-  secureTransfersEnabled: false,
+  secureTransfersEnabled: true,
   accountLinkCanaryLogins: ['dacheville.thibaut', 'lericque.brian', 'accoley.leo', 'degryse.herve', 'douvrin.pascal', 'dumoulin.sebastien', 'francois.laurent', 'maerten.mathis', 'marien.matthis', 'smagliante.enzo', 'millecamps.alicia', 'canneson.eric', 'leriche.valery'],
   accountLinkNewCanaryLogins: ['millecamps.alicia', 'canneson.eric', 'leriche.valery'],
   accountLinkEndpoint: '',

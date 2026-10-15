@@ -13,7 +13,7 @@ const guardSql = read('supabase/migrations/20261015231500_enforce_secure_apl_ass
 const allocatorSql = read('supabase/migrations/20261015230000_secure_apl_allocation.sql');
 
 assert.match(config, /secureAplNumberingEnabled:\s*true/);
-assert.match(config, /secureTransfersEnabled:\s*false/);
+assert.match(config, /secureTransfersEnabled:\s*true/);
 assert.match(numbering, /get\('secureTransferPilot'\)==='1'/);
 assert.match(numbering, /SECURE_TRANSFERS_ENABLED=PERSONNEL_ONLINE_GATE&&SECURE_APL_ENABLED/);
 assert.match(read('index.html'), /modules\/24-secure-transfers-js\.js/);
@@ -125,5 +125,5 @@ assert.ok(start >= 0 && end > start);
   assert.equal(keyCleared, true, 'clé conservée jusqu’à confirmation serveur et relecture');
   assert.equal(button.disabled, false);
   assert.equal(notices.at(-1).kind, 'success');
-  console.log('Transferts : droits de chef, APL serveur, reprise idempotente et bascule fermée.');
+  console.log('Transferts : droits de chef, APL serveur, reprise idempotente et ancien circuit verrouillé.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
