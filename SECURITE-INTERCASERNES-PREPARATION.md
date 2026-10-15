@@ -129,6 +129,17 @@ demande et de renfort orphelins. Ne pas annoncer l'activation générale tant
 que l'envoi, la réponse, le départ et la clôture depuis les deux casernes
 n'ont pas été observés.
 
+Version pilote `V202610_0029` publiée le 15 octobre : les droits d'exécution
+des cinq RPC Auth ont été ouverts aux sessions authentifiées par la migration
+`supabase/renfort-pilot-rpc-enable-APPLIED.sql`. Le serveur applique toujours
+les contrôles de rôle, de caserne, de statut de la fiche, d'équipage et de
+véhicule ; les sessions anonymes restent refusées. Le drapeau général reste
+fermé. La fiche `CIS05__iv__AGAI_RENFORT_TEST_20261015` a été créée pour
+l'essai guidé, sans intervention réelle ni numéro APL. Elle doit être
+supprimée précisément après le test, avec vérification des demandes et fiches
+de renfort associées. Tant que l'essai sur les deux appareils n'est pas
+terminé, les renforts ne sont pas annoncés comme ouverts à tous.
+
 1. Rouvrir les **renforts** en premier, avec une demande et des transitions
    contrôlées par le serveur. Les trois anciens « acceptés » restent de
    l’historique et ne sont pas réinjectés dans ce nouveau circuit.
