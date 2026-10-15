@@ -77,24 +77,28 @@ async function _agaiAuthFetchWithTimeout(url,options,timeoutMs){
 // chaque ouverture et chaque reprise d'AGAI doit recevoir un accord serveur.
 let _agaiOnlineAccessTimer=null;
 let _agaiOnlineAccessInFlight=false;
+// Catégorie locale uniquement : jamais de mot de passe, jeton ni réponse serveur.
+let _agaiLoginFailureReason='';
 function _agaiOnlineAccessReady(){
   return PERSONNEL_ONLINE_GATE&&AUTH_LINK_MODE==='on'&&typeof navigator!=='undefined'&&navigator.onLine!==false;
 }
 async function _agaiOnlineBootstrapLogin(login,password){
-  if(!_agaiOnlineAccessReady())return null;
+  if(!_agaiOnlineAccessReady()){_agaiLoginFailureReason='offline';return null;}
   const normalized=String(login||'').trim().toLowerCase();
-  if(!normalized||!password)return null;
+  if(!normalized||!password){_agaiLoginFailureReason='input';return null;}
   try{
     const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{
       method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','x-device-id':agaiDeviceId()},
       body:JSON.stringify({mode:PERSONNEL_SECURE_CIS05_PILOT?'pilot_login':'login',login:normalized,password:password})
     },8000);
     const result=await response.json().catch(function(){return{};});
-    if(!response.ok||result.personnelEnforcementEnabled!==true||!result.session||!result.session.access_token
+    if(!response.ok){_agaiLoginFailureReason=response.status===400||response.status===401||response.status===403?'refused':'service';return null;}
+    if(result.personnelEnforcementEnabled!==true||!result.session||!result.session.access_token
       ||result.login!==normalized||!result.profile||result.profile.login!==normalized
-      ||result.profile.caserneId!==result.caserneId||result.profile.appRole!==result.appRole)return null;
+      ||result.profile.caserneId!==result.caserneId||result.profile.appRole!==result.appRole){_agaiLoginFailureReason='service';return null;}
+    _agaiLoginFailureReason='';
     return {session:Object.assign({},result.session,{_agai_link_login:normalized}),profile:result.profile};
-  }catch(error){console.warn('[AGAI][ACCÈS] Connexion en ligne indisponible :',error);return null;}
+  }catch(error){_agaiLoginFailureReason='network';console.warn('[AGAI][ACCÈS] Connexion en ligne indisponible :',error);return null;}
 }
 function _agaiGlobalPendingCoveredByRemote(local,remote){
   if(!local||!remote||!Array.isArray(remote.GLOBAL_ACCOUNTS))return false;
@@ -147,8 +151,12 @@ async function _agaiClearCoveredGlobalPending(signed,durableRows){
   }catch(error){return durableRows;}
 }
 async function _agaiOnlinePrepareLogin(login,password){
+  _agaiLoginFailureReason='';
   const signed=await _agaiOnlineBootstrapLogin(login,password);
-  if(!signed||!USE_RECORDS||typeof _rcOutboxGetRows!=='function'||typeof _rcPull!=='function')return null;
+  if(!signed)return null;
+  if(!USE_RECORDS||typeof _rcOutboxGetRows!=='function'||typeof _rcPull!=='function'){
+    _agaiLoginFailureReason='configuration';return null;
+  }
   // Ne jamais envoyer les actions d'un autre compte avec la session qui vient
   // d'etre ouverte. Une file locale doit etre resynchronisee avant la bascule.
   try{
@@ -173,11 +181,12 @@ async function _agaiOnlinePrepareLogin(login,password){
     // Une file d'une autre caserne reste intacte et ne doit pas empêcher
     // l'ouverture de CIS05 ; elle ne sera jamais envoyée avec ce compte.
     if(pendingHere||durableHere||_rcSaving||_rcPulling){
+      _agaiLoginFailureReason=pendingHere||durableHere?'pending':'busy';
       if(PERSONNEL_SECURE_CIS05_PILOT)console.warn('[AGAI][PILOTE] Connexion différée : '+JSON.stringify({pendingHere,durableHere,saving:_rcSaving,pulling:_rcPulling,
         kinds:durableHereRows.map(function(row){return row.caserne+'/'+row.type+'/'+(row.type==='login'?(row.data&&row.data.login===signed.profile.login?'titulaire':'autre'):'');})}));
       return null;
     }
-  }catch(error){return null;}
+  }catch(error){_agaiLoginFailureReason='storage';return null;}
   const previous={user:CU,role:GLOBAL_ROLE,station:CURRENT_CASERNE_ID};
   // Une autre personne peut s'identifier sans fermer l'onglet. Les fiches du
   // precedent compte ne doivent pas servir de repli si le serveur ne les rend pas.
@@ -191,8 +200,9 @@ async function _agaiOnlinePrepareLogin(login,password){
   CURRENT_CASERNE_ID=profile.appRole==='chef_corps'?null:profile.caserneId;
   _agaiStoreAuthSession(signed.session);
   try{
-    if(await _rcPull(false))return signed;
+    if(await _rcPull(false)){_agaiLoginFailureReason='';return signed;}
   }catch(error){console.warn('[AGAI][ACCÈS] Chargement authentifié impossible :',error);}
+  _agaiLoginFailureReason='data';
   _agaiStoreAuthSession(null);
   CU=previous.user;GLOBAL_ROLE=previous.role;CURRENT_CASERNE_ID=previous.station;
   return null;

@@ -83,7 +83,18 @@ async function doLogin(){
     const onlineBootstrap=PERSONNEL_ONLINE_GATE?await _agaiOnlinePrepareLogin(l,p):null;
     if(PERSONNEL_ONLINE_GATE&&!onlineBootstrap){
       lerr.style.display='block';
-      lerr.textContent='Connexion en ligne impossible, ou actions locales encore en attente. Vérifiez la synchronisation et réessayez.';
+      const reason=typeof _agaiLoginFailureReason==='string'?_agaiLoginFailureReason:'';
+      lerr.textContent=reason==='pending'
+        ?'Des actions locales de votre caserne restent à transmettre. Touchez « Diagnostiquer ma connexion ».'
+        :reason==='data'
+          ?'Votre identité est vérifiée, mais les données ne chargent pas. Touchez « Diagnostiquer ma connexion ».'
+          :reason==='busy'
+            ?'Une synchronisation est déjà en cours. Patientez puis réessayez.'
+            :reason==='storage'
+              ?'Le stockage local ne peut pas être vérifié. Touchez « Diagnostiquer ma connexion ».'
+              :reason==='refused'
+                ?'Connexion refusée. Vérifiez vos identifiants ou contactez un administrateur.'
+                :'Connexion en ligne indisponible. Vérifiez Internet puis touchez « Diagnostiquer ma connexion ».';
       return;
     }
     // ── 1. Vérifier comptes globaux (P1 : verifyPassword async) ──
