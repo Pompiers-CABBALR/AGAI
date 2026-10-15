@@ -1499,7 +1499,7 @@ function oM(id){
           :`<button class="btn sel-btn sm" onclick="cS('${iv.id}','selectionne')">☑ Sélectionner</button>`
         }
         ${canSuperAdminOperateForAnotherChief()?`<button class="btn gn sm" onclick="showSuperAdminDirectClosureModal('${iv.id}')">🛡️ Saisir et clôturer</button>`:''}
-        ${!iv._isRenfort&&chef?`<button class="btn sm" style="color:#E67E22;border-color:#E67E22;" onclick="transfererIV('${iv.id}')">&#x1F500; Transférer</button>`:''}
+        ${!iv._isRenfort&&(chef||isAgres())?`<button class="btn sm" style="color:#E67E22;border-color:#E67E22;" onclick="transfererIV('${iv.id}')">&#x1F500; Transférer</button>`:''}
         ${!iv._isRenfort&&chef&&iv.n&&(iv.n.toLowerCase().includes('animal')||iv.n.toLowerCase().includes('animaux'))?`<button class="btn sm" style="color:#27AE60;border-color:#27AE60;" onclick="refugeAnimalier('${iv.id}')">&#x1F43E; Refuge animalier</button>`:''}
         ${!iv._isRenfort&&chef?`<button class="btn sm" style="color:#888;border-color:#ccc;" onclick="annulerIV('${iv.id}')">✕ Annuler</button>`:''}
       </div>`;
@@ -2296,12 +2296,14 @@ function verifierSuiteAdresseIntrouvable(id){
   const followup={motif,detail};
   if(isPilpIntervention(iv))clotPilp(id,{_followup:followup});else clot(id,{_followup:followup});
 }
-function creerSuiteApresCloture(iv,followup,h){
+function creerSuiteApresCloture(iv,followup,h,allocation){
   if(!followup||iv._followupNewId)return null;
-  const annee=new Date().getFullYear(),apl=nextAplNum(annee),pilp=isPilpIntervention(iv);
+  const apl=allocation?allocation.apl:nextAplNum(new Date().getFullYear());
+  const annee=Number(apl.slice(4,8)),pilp=isPilpIntervention(iv);
   const note='Suite de '+(interventionDisplayCallNumber(iv)||iv.id)+' — '+followup.motif+' : '+followup.detail;
   const tels=getInterventionPhones(iv);
   const base={id:pilp?nextPilpId(annee):makeInterventionRecordId(apl),_numApl:apl,
+    _aplReservationKey:allocation?allocation.actionKey:null,
     n:iv.n,_natureAppelInitiale:iv._natureAppelInitiale||iv.n,
     addr:iv.addr,_addrBase:interventionBaseAddressForDuplicate(iv),_addressCoordinates:Array.isArray(iv._addressCoordinates)?iv._addressCoordinates.slice():null,
     _gpsCoordinates:Array.isArray(iv._gpsCoordinates)?iv._gpsCoordinates.slice():null,com:iv.com,h,op:CU.l,s:'en-attente',
@@ -2329,6 +2331,7 @@ function creerSuiteApresCloture(iv,followup,h){
   markOperationalInterventionDirty(iv);markOperationalInterventionDirty(base);
   return base;
 }
+const _followupAplInFlight=new Set();
 function clot(id,options){
   const iv=interventionById(id);if(!iv)return;
   if(isPilpReadOnlyForCurrentUser(iv)){
@@ -2362,6 +2365,18 @@ function clot(id,options){
     return;
   }
   if(!opts.directClosure&&opts._closeSnapshot!==operationalCloseSnapshot(iv)){showToast('La fiche a changé : rouvrez-la avant de clôturer.','warn');return;}
+  if(opts._followup&&SECURE_APL_ENABLED&&!opts._followupAllocation){
+    if(_followupAplInFlight.has(id))return;
+    _followupAplInFlight.add(id);
+    allocateNewApl('suite','suite:'+id).then(function(allocation){
+      _followupAplInFlight.delete(id);
+      clot(id,Object.assign({},opts,{_followupAllocation:allocation}));
+    }).catch(function(error){
+      _followupAplInFlight.delete(id);
+      showToast(error&&error.message||'Suite non créée : numéro APL indisponible.','warn');
+    });
+    return;
+  }
   if(!beginOperationalAction(iv,'cloture',['en-cours','avis-passage']))return;
   const endTime=opts.superAdminManual?opts.endTime:opts._closeTime||getHHMM(N());
   const h=opts.superAdminManual?manualOperationalTimelineStamp(iv,endTime,true):opts._closeStamp||getH(N());
@@ -2404,9 +2419,10 @@ function clot(id,options){
     iv._pdfAttestation=iv._pdfAttestations[0]||'';
   }
   if(!iv.eng&&selEng)iv.eng=selEng;
-  if(opts._followup)creerSuiteApresCloture(iv,opts._followup,h);
+  if(opts._followup)creerSuiteApresCloture(iv,opts._followup,h,opts._followupAllocation);
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);cM();refreshOperationalInterventionViews();rAccueil();rStatsHeader(); // push immédiat : clôture d'intervention
+  if(opts._followupAllocation)clearAplCreationActionKey('suite','suite:'+id);
   setTimeout(function(){showNextSelectedInterventionModal(iv);},80);
 }
 function clotAvis(id){

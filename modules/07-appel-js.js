@@ -1027,7 +1027,15 @@ function _captureAppelDetails(){
   return Object.keys(d).length?d:null;
 }
 
-function enr(){
+let _appelEnrInFlight=false;
+function _appelFormSnapshot(){
+  const fields=Array.from(document.querySelectorAll('#tab-appel input, #tab-appel textarea, #tab-appel select'));
+  return JSON.stringify([selNat,selC2,appelResumeAvisId,
+    fields.map(function(field){return [field.id,field.value,field.checked];}),
+    getAppelNids(),getAppelAnimals()]);
+}
+async function enr(){
+  if(_appelEnrInFlight){showToast('Enregistrement déjà en cours.','warn');return;}
   if(!vF())return;
   const avisCible=appelResumeAvisId?interventionById(appelResumeAvisId):null;
   if(appelResumeAvisId&&(!avisCible||!avisCible._avisEnAttente||avisCible.s==='annulee')){showToast('Cet avis a déjà été traité. Actualisez la liste avant de reprendre un appel.','warn');return;}
@@ -1036,7 +1044,7 @@ function enr(){
   const gpsError=document.getElementById('fa-gps-error');if(gpsError)gpsError.style.display=gps.valid?'none':'block';
   if(!gps.valid)return;
   const h=hoA?getH(hoA):getH(N());
-  const annee=new Date().getFullYear();
+  let annee=new Date().getFullYear();
   const addrBase=formatInterventionStreetAddress(document.getElementById('fa').value),addrComp=document.getElementById('fa2').value.trim(),addr=addrComp?addrBase+' — '+addrComp:addrBase,com=selC2;
   document.getElementById('fa').value=addrBase;
   const pilpDirect=!!(avisCible&&isPilpIntervention(avisCible))||!!(document.getElementById('chk-pilp-direct')&&document.getElementById('chk-pilp-direct').checked);
@@ -1052,7 +1060,20 @@ function enr(){
   const exIv=avisCible?(isPilpIntervention(avisCible)?[]:[avisCible]):findMatchingPendingAvisPassages(IVS,_adr,natureAppel,com).filter(iv=>!iv._isPilip);
   const exPilp=avisCible?(isPilpIntervention(avisCible)?[avisCible]:[]):findMatchingPendingAvisPassages(PILP_IVS,_adr,natureAppel,com);
   // Seul l'appel reçoit son numéro ici. Les numéros d'intervention sont attribués au passage En cours.
-  const numApl=nextAplNum(annee);
+  _appelEnrInFlight=true;
+  const aplContext='appel-'+CURRENT_CASERNE_ID;
+  const sessionCaserne=CURRENT_CASERNE_ID,sessionLogin=CU&&CU.l;
+  try{
+  const formSnapshot=_appelFormSnapshot();
+  const allocation=await allocateNewApl('appel',aplContext);
+  if(CURRENT_CASERNE_ID!==sessionCaserne||!CU||CU.l!==sessionLogin){
+    showToast('La session a changé. Recommencez cet appel.','warn');return;
+  }
+  if(_appelFormSnapshot()!==formSnapshot||!vF()){
+    showToast('Le formulaire a changé pendant la numérotation. Vérifiez-le et réessayez.','warn');return;
+  }
+  const numApl=allocation.apl;
+  annee=Number(numApl.slice(4,8));
   let det=document.getElementById('fo').value.trim();
   const appelDetails=_captureAppelDetails();
   const tels=getAppelPhones();
@@ -1067,7 +1088,7 @@ function enr(){
     const primaryNid=nidsAppel[0]||{};
     const primaryHeight=pilpHeightNumber(primaryNid.hauteur);
     const newPilp={
-      id:nextPilpId(annee),ivRef:null,_numApl:numApl,
+      id:nextPilpId(annee),ivRef:null,_numApl:numApl,_aplReservationKey:allocation.actionKey,
       // Aucun numéro d'intervention tant que la PILP reste en attente.
       n:'Nid de frelons asiatiques — PILP',addr,_addrBase:addrBase,_addressCoordinates:addrSelectedCoords?addrSelectedCoords.slice():null,_gpsCoordinates:gps.coordinates,com,h,
       req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,_additionalRequesters:additionalRequesters,reqDispo,_nidsAppel:nidsAppel,_erp:erp,_urgence:erp,
@@ -1084,12 +1105,13 @@ function enr(){
     const cm=document.getElementById('cm');cm.style.display='block';
     cm.innerHTML='&#x1F3AF; PILP créée — <strong>'+escHtml(newPilp.id)+'</strong><br><span style="font-family:monospace;font-size:11px;">'+escHtml(numApl)+'</span>';
     saveData(true);
+    clearAplCreationActionKey('appel',aplContext);
     rF();rI();rAccueil();gS(1);
     setTimeout(()=>{cm.style.display='none';},5000);
     return;
   }
   // Enregistrement normal — id = numéro APL, numéro INT attribué à la clôture
-  const newIv={id:makeInterventionRecordId(numApl),_numApl:numApl,
+  const newIv={id:makeInterventionRecordId(numApl),_numApl:numApl,_aplReservationKey:allocation.actionKey,
     n:natureAppel,_natureAppelInitiale:selNat,addr,_addrBase:addrBase,_addressCoordinates:addrSelectedCoords?addrSelectedCoords.slice():null,_gpsCoordinates:gps.coordinates,com,h,op:CU.l,s:'en-attente',det,eng:null,_sdis:document.getElementById('chk-sdis')?.checked||false,_erp:erp,_urgence:erp,_animauxAppel:animauxAppel,_nidsAppel:nidsAppel,
     req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,_additionalRequesters:additionalRequesters,reqDispo,
     obs:'',agr:null,rappels:exIv.length+exPilp.length,avisIds:exIv.concat(exPilp).map(iv=>iv.id),_appelDetails:appelDetails,
@@ -1099,6 +1121,7 @@ function enr(){
   if(CD())CD().ivs=IVS;
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true); // push immédiat : sinon un pull peut écraser le nouvel appel avant sauvegarde
+  clearAplCreationActionKey('appel',aplContext);
   const cm=document.getElementById('cm');cm.style.display='block';
   cm.innerHTML=`✅ Appel enregistré — <strong>${numApl}</strong>
     <br><span style="font-family:monospace;font-size:11px;">&#x1F4C5; ${h} | ${CU.l}</span>
@@ -1108,6 +1131,8 @@ function enr(){
   gS(1);
   // Masquer le bandeau de confirmation après 5s
   setTimeout(()=>{cm.style.display='none';},5000);
+  }catch(error){showToast(error&&error.message||'Appel non enregistré : numéro APL indisponible.','warn');}
+  finally{_appelEnrInFlight=false;}
 }
 function annulerAppel(ivId){
   const iv=IVS.find(v=>v.id===ivId);

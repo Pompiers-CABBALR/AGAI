@@ -513,6 +513,18 @@ function clotPilp(id,options){
     return;
   }
   if(opts._closeSnapshot!==operationalCloseSnapshot(iv)){showToast('La fiche a changé : rouvrez-la avant de clôturer.','warn');return;}
+  if(opts._followup&&SECURE_APL_ENABLED&&!opts._followupAllocation){
+    if(_followupAplInFlight.has(id))return;
+    _followupAplInFlight.add(id);
+    allocateNewApl('suite','suite:'+id).then(function(allocation){
+      _followupAplInFlight.delete(id);
+      clotPilp(id,Object.assign({},opts,{_followupAllocation:allocation}));
+    }).catch(function(error){
+      _followupAplInFlight.delete(id);
+      showToast(error&&error.message||'Suite PILP non créée : numéro APL indisponible.','warn');
+    });
+    return;
+  }
   if(!beginOperationalAction(iv,'cloture-pilp',['en-cours']))return;
   const h=opts._closeStamp||getH(N());
   if(avis){
@@ -527,9 +539,10 @@ function clotPilp(id,options){
   } else {
     iv.s='terminee';iv._hFin=opts._closeTime||getHHMM(N());pushTL(iv,'terminee',CU.l,'',h);
     (iv.avisIds||[]).forEach(aid=>{const av=PILP_IVS.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';pushTL(av,'terminee',CU.l+' (fusion)','',h);}});
-    if(opts._followup)creerSuiteApresCloture(iv,opts._followup,h);
+    if(opts._followup)creerSuiteApresCloture(iv,opts._followup,h,opts._followupAllocation);
     if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
     saveData(true);
+    if(opts._followupAllocation)clearAplCreationActionKey('suite','suite:'+id);
     cM();rPilp();rI();rAccueil();
   }
 }

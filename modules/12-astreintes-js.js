@@ -2402,21 +2402,34 @@ function demandeEchelleToiture(ivId){
   </div>`;
   document.getElementById('mo').style.display='flex';
 }
-function confirmerEchelleToiture(ivId){
+const _secondaryAplInFlight=new Set();
+async function confirmerEchelleToiture(ivId){
   const iv=interventionById(ivId);if(!iv)return;
   if(!requireCurrentUserOperationalManager(iv,'La demande d’échelle'))return;
+  const operation='echelle:'+ivId;
+  if(_secondaryAplInFlight.has(operation))return;
+  _secondaryAplInFlight.add(operation);
+  try{
   const obs=document.getElementById('et-obs').value.trim();
-  const h=getH(N());const annee=new Date().getFullYear();
-  const numApl=nextAplNum(annee);
+  const h=getH(N());
+  const allocation=await allocateNewApl('echelle',operation);
+  if(interventionById(ivId)!==iv||document.getElementById('et-obs').value.trim()!==obs
+     ||!requireCurrentUserOperationalManager(iv,'La demande d’échelle')){
+    showToast('La demande a changé : vérifiez-la avant de réessayer.','warn');return;
+  }
+  const numApl=allocation.apl;
   incCallCounter();
-  const newIv={id:makeInterventionRecordId(numApl),_numApl:numApl,n:iv.n,addr:iv.addr,addrComp:iv.addrComp||'',com:iv.com,
+  const newIv={id:makeInterventionRecordId(numApl),_numApl:numApl,_aplReservationKey:allocation.actionKey,n:iv.n,addr:iv.addr,addrComp:iv.addrComp||'',com:iv.com,
     h,op:CU.l,s:'en-attente',det:obs,eng:null,req:iv.req,tel:iv.tel,obs:'',agr:null,
     rappels:0,avisIds:[],_echelleToiture:true,tl:[mkTL('en-attente',h,CU.l)]};
   IVS.unshift(newIv);
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);
+  clearAplCreationActionKey('echelle',operation);
   showToast('Demande avec \u00e9chelle enregistr\u00e9e \u2713','success');
   cM();rI();rAccueil();
+  }catch(error){showToast(error&&error.message||'Demande non enregistrée.','warn');}
+  finally{_secondaryAplInFlight.delete(operation);}
 }
 // ── Inter. SDIS ──
 function demandeEPA(ivId){
@@ -2434,21 +2447,33 @@ function demandeEPA(ivId){
     +'</div></div>';
   document.getElementById('mo').style.display='flex';
 }
-function confirmerEPA(ivId){
+async function confirmerEPA(ivId){
   const iv=interventionById(ivId);if(!iv)return;
   if(!requireCurrentUserOperationalManager(iv,'La demande EPA'))return;
+  const operation='epa:'+ivId;
+  if(_secondaryAplInFlight.has(operation))return;
+  _secondaryAplInFlight.add(operation);
+  try{
   const obs=document.getElementById('epa-obs').value.trim();
-  const h=getH(N());const annee=new Date().getFullYear();
-  const numApl=nextAplNum(annee);
+  const h=getH(N());
+  const allocation=await allocateNewApl('epa',operation);
+  if(interventionById(ivId)!==iv||document.getElementById('epa-obs').value.trim()!==obs
+     ||!requireCurrentUserOperationalManager(iv,'La demande EPA')){
+    showToast('La demande a changé : vérifiez-la avant de réessayer.','warn');return;
+  }
+  const numApl=allocation.apl;
   incCallCounter();
-  const newIv={id:makeInterventionRecordId(numApl),_numApl:numApl,n:iv.n,addr:iv.addr,addrComp:iv.addrComp||'',com:iv.com,
+  const newIv={id:makeInterventionRecordId(numApl),_numApl:numApl,_aplReservationKey:allocation.actionKey,n:iv.n,addr:iv.addr,addrComp:iv.addrComp||'',com:iv.com,
     h,op:CU.l,s:'en-attente',det:obs,eng:null,req:iv.req,tel:iv.tel,obs:'',agr:null,
     rappels:0,avisIds:[],_epa:true,tl:[mkTL('en-attente',h,CU.l)]};
   IVS.unshift(newIv);
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);
+  clearAplCreationActionKey('epa',operation);
   showToast('Demande EPA enregistr\u00e9e \u2713','success');
   cM();rI();rAccueil();
+  }catch(error){showToast(error&&error.message||'Demande non enregistrée.','warn');}
+  finally{_secondaryAplInFlight.delete(operation);}
 }
 function demandeSDIS(ivId){
   const iv=interventionById(ivId);if(!iv)return;
@@ -2470,19 +2495,27 @@ function demandeSDIS(ivId){
   </div>`;
   document.getElementById('mo').style.display='flex';
 }
-function confirmerSDIS(ivId){
+async function confirmerSDIS(ivId){
   const iv=interventionById(ivId);if(!iv)return;
   if(!requireCurrentUserOperationalManager(iv,'Le passage en intervention SDIS'))return;
   if(!canUseOperationalStartInterface()){showToast('La mise en cours d’une intervention SDIS est réservée au mobile ou à la tablette.','warn');return;}
-  if(!beginOperationalAction(iv,'conversion-sdis',[iv.s]))return;
-  const h=getH(N());const annee=new Date().getFullYear();
+  const operation='sdis:'+ivId;
+  if(_secondaryAplInFlight.has(operation))return;
+  _secondaryAplInFlight.add(operation);
+  try{
+  const previousStatus=iv.s,previousRevision=iv._serverRevision;
+  const allocation=await allocateNewApl('sdis',operation);
+  if(interventionById(ivId)!==iv||iv.s!==previousStatus||iv._serverRevision!==previousRevision
+     ||!requireCurrentUserOperationalManager(iv,'Le passage en intervention SDIS'))return;
+  if(!beginOperationalAction(iv,'conversion-sdis',[previousStatus]))return;
+  const h=getH(N());
   iv.s='terminee';
   supprimerDemandesRenfortSansReponse(iv,CURRENT_CASERNE_ID);
   pushTL(iv,'terminee',CU.l,'Recréée en inter. SDIS',h);
-  const numApl=nextAplNum(annee);
+  const numApl=allocation.apl;
   incCallCounter();
   const newIv={
-    id:makeInterventionRecordId(numApl),_numApl:numApl,n:iv.n,addr:iv.addr,addrComp:iv.addrComp||'',com:iv.com,
+    id:makeInterventionRecordId(numApl),_numApl:numApl,_aplReservationKey:allocation.actionKey,n:iv.n,addr:iv.addr,addrComp:iv.addrComp||'',com:iv.com,
     h,op:CU.l,s:'en-cours',det:iv.det,eng:iv.eng,req:iv.req,tel:iv.tel,obs:'',
     agr:iv.agr||CU.l,rappels:0,avisIds:[],_sdis:true,_refOrig:iv.id,
     tl:[]
@@ -2493,9 +2526,12 @@ function confirmerSDIS(ivId){
   assignInterventionNumbersAtStart(newIv);
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);
+  clearAplCreationActionKey('sdis',operation);
   cM();rI();rAccueil();
   // Ouvrir directement la nouvelle intervention
   setTimeout(()=>oM(newIv.id),100);
+  }catch(error){showToast(error&&error.message||'Conversion non enregistrée.','warn');}
+  finally{_secondaryAplInFlight.delete(operation);}
 }
 // ── Heure affichage HH:MM ──
 function getHHMM(d){return pad(d.getHours())+':'+pad(d.getMinutes());}

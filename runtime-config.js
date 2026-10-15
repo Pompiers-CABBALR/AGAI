@@ -10,6 +10,9 @@ window.AGAI_CONFIG = Object.freeze({
   personnelOnlineGateEnabled: true,
   // Renforts Auth ouverts après essais CIS05/CIS03 ; transferts toujours fermés.
   secureRenfortsEnabled: true,
+  // Numérotation et transferts testés séparément avant ouverture générale.
+  secureAplNumberingEnabled: false,
+  secureTransfersEnabled: false,
   accountLinkCanaryLogins: ['dacheville.thibaut', 'lericque.brian', 'accoley.leo', 'degryse.herve', 'douvrin.pascal', 'dumoulin.sebastien', 'francois.laurent', 'maerten.mathis', 'marien.matthis', 'smagliante.enzo', 'millecamps.alicia', 'canneson.eric', 'leriche.valery'],
   accountLinkNewCanaryLogins: ['millecamps.alicia', 'canneson.eric', 'leriche.valery'],
   accountLinkEndpoint: '',

@@ -356,6 +356,14 @@ const SECURE_RENFORTS_PILOT=typeof location!=='undefined'
   &&new URLSearchParams(location.search).get('secureRenfortPilot')==='1';
 const SECURE_RENFORTS_ENABLED=PERSONNEL_ONLINE_GATE
   &&(AGAI_RUNTIME_CONFIG.secureRenfortsEnabled===true||SECURE_RENFORTS_PILOT);
+const SECURE_TRANSFERS_PILOT=typeof location!=='undefined'
+  &&new URLSearchParams(location.search).get('secureTransferPilot')==='1';
+const SECURE_APL_PILOT=typeof location!=='undefined'
+  &&(new URLSearchParams(location.search).get('secureAplPilot')==='1'||SECURE_TRANSFERS_PILOT);
+const SECURE_APL_ENABLED=PERSONNEL_ONLINE_GATE
+  &&(AGAI_RUNTIME_CONFIG.secureAplNumberingEnabled===true||SECURE_APL_PILOT);
+const SECURE_TRANSFERS_ENABLED=PERSONNEL_ONLINE_GATE&&SECURE_APL_ENABLED
+  &&(AGAI_RUNTIME_CONFIG.secureTransfersEnabled===true||SECURE_TRANSFERS_PILOT);
 const AUTH_LINK_CANARY_LOGINS = new Set((Array.isArray(AGAI_RUNTIME_CONFIG.accountLinkCanaryLogins)?AGAI_RUNTIME_CONFIG.accountLinkCanaryLogins:[]).map(function(login){return String(login||'').trim().toLowerCase();}));
 const AUTH_LINK_NEW_CANARY_LOGINS=new Set((Array.isArray(AGAI_RUNTIME_CONFIG.accountLinkNewCanaryLogins)?AGAI_RUNTIME_CONFIG.accountLinkNewCanaryLogins:[]).map(function(login){return String(login||'').trim().toLowerCase();}));
 function _agaiIsNewLinkPilot(login){return AUTH_LINK_NEW_CANARY_LOGINS.has(String(login||'').trim().toLowerCase());}
@@ -614,6 +622,47 @@ function nextAplNum(annee){
   });
   APL_COUNTER[y]=max+1;
   return 'APL_'+y+'_'+String(APL_COUNTER[y]).padStart(APL_NUM_DIGITS,'0');
+}
+
+function aplCreationActionKey(purpose,context){
+  const storageKey='agai_apl_action_'+purpose+'_'+context;
+  let key='';
+  try{key=localStorage.getItem(storageKey)||'';}catch(_error){}
+  if(!key){
+    if(!globalThis.crypto||typeof crypto.randomUUID!=='function')
+      throw new Error('Numérotation sécurisée indisponible sur cet appareil.');
+    key=crypto.randomUUID();
+    try{localStorage.setItem(storageKey,key);}catch(_error){}
+  }
+  return key;
+}
+function clearAplCreationActionKey(purpose,context){
+  try{localStorage.removeItem('agai_apl_action_'+purpose+'_'+context);}catch(_error){}
+}
+async function allocateNewApl(purpose,context){
+  if(!SECURE_APL_ENABLED)return {apl:nextAplNum(new Date().getFullYear()),actionKey:null};
+  const token=_agaiAuthAccessToken();
+  if(!token||typeof navigator==='undefined'||navigator.onLine===false)
+    throw new Error('Connexion requise pour obtenir un nouveau numéro APL.');
+  const actionKey=aplCreationActionKey(purpose,context);
+  let response;
+  try{
+    response=await _agaiAuthFetchWithTimeout(SB_URL+'/rest/v1/rpc/agai_reserve_apl',{
+      method:'POST',
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+      body:JSON.stringify({p_action_key:actionKey,p_purpose:purpose})
+    },12000);
+  }catch(_error){throw new Error('Attribution du numéro APL impossible. Réessayez avec la connexion active.');}
+  if(!response.ok){
+    if(response.status===401||response.status===403)
+      throw new Error('Accès à la numérotation refusé. Reconnectez-vous.');
+    throw new Error('Attribution du numéro APL refusée (HTTP '+response.status+').');
+  }
+  const result=await response.json();
+  if(!result||!/^APL_[0-9]{4}_[0-9]{6,}$/.test(result.apl||'')
+     ||result.actionKey!==actionKey)
+    throw new Error('Réponse de numérotation invalide. Aucune fiche créée.');
+  return {apl:result.apl,actionKey};
 }
 
 // Le numero APL reste lisible par les utilisateurs, mais ne sert plus de cle
