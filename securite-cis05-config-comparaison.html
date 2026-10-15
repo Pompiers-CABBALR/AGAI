@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AGAI — comparaison de la configuration CIS05</title>
+  <style>
+    body { font: 16px/1.5 system-ui,sans-serif; background: #f3f4f7; color: #172033; margin: 0; }
+    main { max-width: 580px; margin: 5vh auto; padding: 24px; background: white; border: 1px solid #dfe3eb; border-radius: 14px; }
+    h1 { font-size: 1.35rem; margin: 0 0 12px; }
+    label { display: block; margin: 14px 0 5px; font-weight: 600; }
+    input { box-sizing: border-box; width: 100%; padding: 11px; border: 1px solid #aab3c1; border-radius: 8px; font: inherit; }
+    button { margin-top: 18px; padding: 11px 16px; border: 0; border-radius: 8px; color: white; background: #b7382d; font: inherit; cursor: pointer; }
+    button:disabled { opacity: .55; cursor: wait; }
+    #result { margin-top: 20px; padding: 12px; border-radius: 8px; background: #eef3fa; white-space: pre-line; }
+    .small { color: #596579; font-size: .9rem; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Comparaison de la configuration — CIS05</h1>
+  <p>À ouvrir sur le téléphone où la connexion est bloquée, dans le même navigateur habituel. Ce contrôle compare la fiche locale en attente à la fiche du serveur. Il n’affiche aucune valeur et ne modifie ni la configuration ni la file locale.</p>
+  <form id="check-form">
+    <label for="login">Identifiant AGAI</label>
+    <input id="login" name="login" autocomplete="username" required>
+    <label for="password">Mot de passe AGAI</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required>
+    <button id="check-button" type="submit">Comparer sans rien modifier</button>
+  </form>
+  <div id="result" role="status" aria-live="polite">Aucun contrôle lancé.</div>
+  <p class="small">Cette page ne conserve ni mot de passe ni jeton. Ne supprimez pas les données du site, même si les copies sont identiques. Fermez la page après le contrôle.</p>
+</main>
+<script src="runtime-config.js"></script>
+<script src="securite-cis05-config-comparaison.js"></script>
+</body>
+</html>
