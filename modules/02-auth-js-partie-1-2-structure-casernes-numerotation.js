@@ -352,6 +352,10 @@ const AUTH_LINK_ENABLED = AUTH_LINK_MODE!=='off';
 const PERSONNEL_AUTH_CUTOVER_SUPPORTED=true;
 const PERSONNEL_ONLINE_GATE=PERSONNEL_AUTH_CUTOVER_SUPPORTED
   &&(AGAI_RUNTIME_CONFIG.personnelOnlineGateEnabled===true||PERSONNEL_SECURE_CIS05_PILOT);
+const SECURE_RENFORTS_PILOT=typeof location!=='undefined'
+  &&new URLSearchParams(location.search).get('secureRenfortPilot')==='1';
+const SECURE_RENFORTS_ENABLED=PERSONNEL_ONLINE_GATE
+  &&(AGAI_RUNTIME_CONFIG.secureRenfortsEnabled===true||SECURE_RENFORTS_PILOT);
 const AUTH_LINK_CANARY_LOGINS = new Set((Array.isArray(AGAI_RUNTIME_CONFIG.accountLinkCanaryLogins)?AGAI_RUNTIME_CONFIG.accountLinkCanaryLogins:[]).map(function(login){return String(login||'').trim().toLowerCase();}));
 const AUTH_LINK_NEW_CANARY_LOGINS=new Set((Array.isArray(AGAI_RUNTIME_CONFIG.accountLinkNewCanaryLogins)?AGAI_RUNTIME_CONFIG.accountLinkNewCanaryLogins:[]).map(function(login){return String(login||'').trim().toLowerCase();}));
 function _agaiIsNewLinkPilot(login){return AUTH_LINK_NEW_CANARY_LOGINS.has(String(login||'').trim().toLowerCase());}

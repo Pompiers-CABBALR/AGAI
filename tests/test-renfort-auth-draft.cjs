@@ -1,0 +1,40 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const sql = fs.readFileSync(path.join(__dirname, '../supabase/migrations/20261014224500_secure_renfort_requests.sql'), 'utf8');
+const numbering = fs.readFileSync(path.join(__dirname, '../supabase/renfort-server-numbering-APPLIED.sql'), 'utf8');
+const source = fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8');
+
+assert.match(sql, /create table public\.agai_renfort_requests/i);
+assert.match(sql, /alter table public\.agai_renfort_requests enable row level security/i);
+assert.match(sql, /grant select on public\.agai_renfort_requests to authenticated/i);
+assert.doesNotMatch(sql, /grant (?:insert|update|delete|all) on public\.agai_renfort_requests to authenticated/i);
+assert.match(sql, /revoke all on public\.agai_renfort_requests from public, anon, authenticated/i);
+assert.match(sql, /access\.can_login/i);
+assert.match(sql, /access\.caserne_id in \(source_caserne,destination_caserne\)/i);
+assert.match(sql, /actor\.can_operate/i);
+assert.match(sql, /source_row\.caserne<>actor\.caserne_id/i);
+assert.match(sql, /source_row\.data->>'s' not in \('selectionne','en-cours'\)/i);
+assert.match(sql, /perform pg_advisory_xact_lock\(hashtext\('agai-renfort-key:/i);
+assert.match(sql, /AGAI_RENFORT_KEY_REUSED/);
+assert.match(sql, /request_row\.status<>'en-attente'/i);
+assert.match(sql, /requested_by<>actor\.login/i);
+assert.match(sql, /p_answer not in \('accepte','refuse'\)/i);
+assert.match(sql, /create function agai_private\.start_renfort/i);
+assert.match(sql, /create function agai_private\.finish_renfort/i);
+assert.match(sql, /public\.agai_atomic_upsert_record_auth\(/i);
+assert.match(sql, /AGAI_RENFORT_PERSONNEL_UNAVAILABLE/);
+assert.match(sql, /AGAI_RENFORT_STALE_RECORD/);
+assert.match(sql, /current_record_revision is distinct from p_expected_record_revision/i);
+assert.match(sql, /'renfort-start:'\|\|p_action_key::text/i);
+assert.match(sql, /'renfort-finish:'\|\|p_action_key::text/i);
+assert.match(numbering, /public\.agai_allocate_number\(/i);
+assert.match(numbering, /'renfort:'\|\|request_row\.destination_caserne/);
+assert.match(numbering, /'_numRenfort',allocated_renfort_number/);
+assert.match(numbering, /'_numGlobal',source_row\.data->'_numGlobal'/);
+assert.match(sql, /-- Les demandes historiques de public\.renforts ne sont ni copiees ni rejouees/i);
+assert.doesNotMatch(sql, /update public\.records|delete from public\.records|update public\.renforts/i);
+assert.match(source, /function requireSecureCrossStationWorkflow\(\)\s*\{[\s\S]*?return false;/);
+
+console.log('Socle renfort Auth : droits, identité, idempotence, départ et clôture contrôlés ; ancien circuit toujours fermé.');
