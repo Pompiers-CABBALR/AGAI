@@ -9,10 +9,10 @@ const config = read('runtime-config.js');
 const numbering = read('modules/02-auth-js-partie-1-2-structure-casernes-numerotation.js');
 const client = read('modules/24-secure-transfers-js.js');
 const transferSql = read('supabase/migrations/20261015230500_secure_transfers_closed.sql');
-const guardSql = read('supabase/apl-assignment-guard-review.sql');
+const guardSql = read('supabase/migrations/20261015231500_enforce_secure_apl_assignment.sql');
 const allocatorSql = read('supabase/migrations/20261015230000_secure_apl_allocation.sql');
 
-assert.match(config, /secureAplNumberingEnabled:\s*false/);
+assert.match(config, /secureAplNumberingEnabled:\s*true/);
 assert.match(config, /secureTransfersEnabled:\s*false/);
 assert.match(numbering, /get\('secureTransferPilot'\)==='1'/);
 assert.match(numbering, /SECURE_TRANSFERS_ENABLED=PERSONNEL_ONLINE_GATE&&SECURE_APL_ENABLED/);
@@ -37,6 +37,8 @@ assert.match(transferSql, /assigned:=agai_private\.reserve_apl\(p_action_key,'tr
 assert.match(transferSql, /perform public\.agai_atomic_upsert_record\([\s\S]*?destination_record_id[\s\S]*?perform public\.agai_atomic_upsert_record\([\s\S]*?p_source_record_id/);
 assert.match(guardSql, /AGAI_APL_RESERVATION_REQUIRED/);
 assert.match(guardSql, /reservation\.auth_user_id is distinct from \(select auth\.uid\(\)\)/);
+assert.match(guardSql, /tg_op='UPDATE' and not old\.deleted/);
+assert.match(guardSql, /before insert or update of data,deleted,type,caserne/);
 
 const start = numbering.indexOf('function aplCreationActionKey(');
 const end = numbering.indexOf('// Le numero APL reste lisible', start);

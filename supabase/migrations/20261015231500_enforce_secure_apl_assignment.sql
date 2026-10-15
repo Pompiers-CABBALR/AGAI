@@ -1,6 +1,5 @@
--- Etape finale, a appliquer uniquement apres publication et verification de
--- tous les createurs d'APL : bloque les anciennes versions qui calculent un
--- numero sur le telephone. Non applique par ce fichier de preparation.
+-- Derniere etape de la bascule : chaque nouvel APL doit provenir du serveur.
+-- A appliquer seulement apres publication du client compatible et arret des saisies.
 begin;
 
 create or replace function agai_private.guard_new_apl_assignment()
@@ -19,7 +18,12 @@ begin
      or coalesce(new.data->>'_isRenfort','false')='true' then
     return new;
   end if;
-  if tg_op='UPDATE' and old.data->>'_numApl' is not distinct from apl then
+  -- Une fiche supprimee ne doit pas pouvoir etre reactivee en contournant
+  -- le controle, meme si elle portait deja le meme APL. Idem en cas de
+  -- changement de type ou de caserne.
+  if tg_op='UPDATE' and not old.deleted
+     and old.type=new.type and old.caserne=new.caserne
+     and old.data->>'_numApl' is not distinct from apl then
     return new;
   end if;
   if apl is null or apl !~ '^APL_[0-9]{4}_[0-9]+$' then
@@ -73,7 +77,7 @@ revoke execute on function agai_private.guard_new_apl_assignment()
 
 drop trigger if exists agai_guard_new_apl_assignment on public.records;
 create trigger agai_guard_new_apl_assignment
-  before insert or update of data,deleted on public.records
+  before insert or update of data,deleted,type,caserne on public.records
   for each row execute function agai_private.guard_new_apl_assignment();
 
 commit;
