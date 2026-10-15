@@ -51,6 +51,7 @@ for (const file of ['modules/03-security-js.js', 'app.js']) {
         data: { login: pendingId.endsWith('__own') ? 'pilote' : 'autre' } }],
       _rcDiscardPilotLoginTombstones: async rows => rows,
       _agaiClearCoveredGlobalPending: async (signed, rows) => rows,
+      _agaiClearCoveredCis05ConfigPending: async (signed, rows) => rows,
       _rcPull: async () => { pulls++; return true; },
       CU: null, GLOBAL_ROLE: null, CURRENT_CASERNE_ID: null,
       CASERNE_DATA: {}, GLOBAL_ACCOUNTS: [],

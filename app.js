@@ -1518,6 +1518,73 @@ async function _agaiClearCoveredGlobalPending(signed,durableRows){
     return (durableRows||[]).filter(function(row){return row&&row.id!==globalId;});
   }catch(error){return durableRows;}
 }
+async function _agaiDeleteIdenticalCis05ConfigOutbox(row,signature){
+  const db=await _rcOpenOutboxDb();
+  if(!db||!db.objectStoreNames.contains(RC_OUTBOX_STORE))return false;
+  return new Promise(function(resolve){
+    let tx;
+    try{
+      tx=db.transaction(RC_OUTBOX_STORE,'readwrite');
+      const store=tx.objectStore(RC_OUTBOX_STORE);
+      const request=store.get(row.id);
+      request.onsuccess=function(){
+        const current=request.result&&request.result.row;
+        // Lecture et suppression dans la même transaction : une nouvelle
+        // modification locale ne doit jamais être effacée à sa place.
+        if(!current||current.id!==row.id||current.caserne!=='CIS05'||current.type!=='config'
+          ||current.deleted!==false||_rcSyncSignature(current)!==signature){tx.abort();return;}
+        store.delete(row.id);
+      };
+      request.onerror=function(){tx.abort();};
+      tx.oncomplete=function(){resolve(true);};
+      tx.onabort=function(){resolve(false);};
+      tx.onerror=function(){resolve(false);};
+    }catch(error){try{if(tx)tx.abort();}catch(_error){}resolve(false);}
+  });
+}
+async function _agaiClearCoveredCis05ConfigPending(signed,durableRows){
+  const id='CIS05'+RC_SEP+'config'+RC_SEP+'main';
+  if(!signed||!signed.profile||signed.profile.caserneId!=='CIS05'
+    ||!signed.session||!signed.session.access_token||_rcSaving||_rcPulling)return durableRows;
+  const local=(durableRows||[]).find(function(row){return row&&row.id===id;});
+  if(!local||local.caserne!=='CIS05'||local.type!=='config'||local.deleted!==false
+    ||!local.data||typeof local.data!=='object'||Array.isArray(local.data))return durableRows;
+  const signature=_rcSyncSignature(local);
+  // Le cache peut contenir une édition plus récente que le cliché durable.
+  // Dans ce cas, conserver la file et exiger une vraie reprise de cette édition.
+  const originalCache=localStorage.getItem(JB_CACHE_KEY);
+  if(originalCache){
+    try{
+      const cached=_rcSplitAll(JSON.parse(originalCache)).find(function(row){return row&&row.id===id;});
+      if(!cached||_rcSyncSignature(cached)!==signature)return durableRows;
+    }catch(error){return durableRows;}
+  }
+  try{
+    const response=await _agaiAuthFetchWithTimeout(SB_REST+'/records?id=eq.'+encodeURIComponent(id)
+      +'&select=id,caserne,type,data,deleted&limit=1',{
+        headers:{apikey:SB_KEY,Authorization:'Bearer '+signed.session.access_token},cache:'no-store'
+      },8000);
+    if(!response.ok)return durableRows;
+    const rows=await response.json();
+    const remote=Array.isArray(rows)&&rows.length===1?rows[0]:null;
+    if(!remote||remote.id!==id||remote.caserne!=='CIS05'||remote.type!=='config'
+      ||remote.deleted!==false||_rcSyncSignature(remote)!==signature
+      ||originalCache!==localStorage.getItem(JB_CACHE_KEY)||_rcSaving||_rcPulling)return durableRows;
+    if(!await _agaiDeleteIdenticalCis05ConfigOutbox(local,signature))return durableRows;
+    _rcPendingDirty.delete(id);
+    _rcClearDeferred([id]);
+    _rcPersistPendingDirty();
+    // Une autre fenêtre peut avoir recréé la ligne pendant le contrôle.
+    // Relire les deux files ; au moindre doute, la connexion reste bloquée.
+    const remaining=await _rcOutboxGetRows();
+    const savedPending=JSON.parse(localStorage.getItem(RC_PENDING_DIRTY_KEY)||'[]');
+    if(!Array.isArray(savedPending)||savedPending.includes(id)
+      ||remaining.some(function(row){return row&&row.id===id;})){
+      _rcPendingDirty.add(id);_rcPersistPendingDirty();
+    }
+    return remaining;
+  }catch(error){_rcPendingDirty.add(id);_rcPersistPendingDirty();return durableRows;}
+}
 async function _agaiOnlinePrepareLogin(login,password){
   const signed=await _agaiOnlineBootstrapLogin(login,password);
   if(!signed||!USE_RECORDS||typeof _rcOutboxGetRows!=='function'||typeof _rcPull!=='function')return null;
@@ -1532,8 +1599,9 @@ async function _agaiOnlinePrepareLogin(login,password){
     const requiresPreviousSession=function(id){
       return ownOrGlobal(id)&&!String(id||'').includes(RC_SEP+'login'+RC_SEP);
     };
-    const durableRows=await _agaiClearCoveredGlobalPending(signed,
-      await _rcDiscardPilotLoginTombstones(await _rcOutboxGetRows()));
+    const durableRows=await _agaiClearCoveredCis05ConfigPending(signed,
+      await _agaiClearCoveredGlobalPending(signed,
+        await _rcDiscardPilotLoginTombstones(await _rcOutboxGetRows())));
     // Les anciennes traces de connexion d'autres comptes restent dans la file,
     // mais ne sont ni un obstacle pour CIS05 ni transmises sous ce titulaire.
     _rcForeignLoginPendingIds=new Set(durableRows.filter(function(row){
@@ -17521,7 +17589,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0027';
+const APP_VERSION='V202610_0028';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
