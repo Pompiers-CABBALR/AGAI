@@ -129,6 +129,8 @@ async function doLogin(){
         syncCaserneContext();
         CU={l:ga.l,prenom:ga.prenom,nom:ga.nom,grade:ga.grade,rights:[],rl:'Chef de Corps',caserneId:'EMAJ',appRole:'chef_corps'};
       }
+      dismissAppKeyboard();
+      document.getElementById('lp').value='';
       document.getElementById('lw').style.display='none';
       const ap=document.getElementById('app');ap.style.display='flex';ap.style.flexDirection='column';
       const cas=CC();
@@ -207,6 +209,8 @@ async function doLogin(){
     CU.appRole=deriveAccountRole(CU);
     const cas=CC();
     if(cas)setCaserneTheme(cas.couleur);
+    dismissAppKeyboard();
+    document.getElementById('lp').value='';
     document.getElementById('lw').style.display='none';
     const ap=document.getElementById('app');ap.style.display='flex';ap.style.flexDirection='column';
     document.getElementById('t2u').textContent=CU.l+(cas?' — '+cas.nom:'');

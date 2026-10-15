@@ -1439,6 +1439,7 @@ function interventionAppelDetailValue(iv,key,value){
   return isSingleAnimal?text.replace(/^\s*1\.\s*/,''):text;
 }
 function oM(id){
+  dismissAppKeyboard();
   const iv=interventionById(id);if(!iv)return;
   const pilpScope=isPilpIntervention(iv);
   const pilpReadOnly=isPilpReadOnlyForCurrentUser(iv);
@@ -1778,11 +1779,13 @@ function setAgr2(ivId,login){
 let _modalLocked = false;
 function cM(){
   if(_modalLocked)return;
+  dismissAppKeyboard();
+  if(typeof closeLargeSignature==='function')closeLargeSignature();
   const mo=document.getElementById('mo'),panel=mo&&mo.querySelector('.mod');
   if(mo&&mo.classList.contains('cr-modal-overlay'))window._activeReportDraftIvId=null;
   deactivateMobileModalField();
   if(mo)mo.style.display='none';
-  if(mo)mo.classList.remove('cr-modal-overlay','pec-modal-overlay','pec-form-active');
+  if(mo)mo.classList.remove('cr-modal-overlay','pec-modal-overlay','pec-form-active','autorisation-modal-overlay');
   if(mo)mo.classList.remove('address-edit-modal');
   if(panel)panel.scrollTop=0;
 }
@@ -1835,6 +1838,20 @@ function registerMobileModalFields(root){
     field.addEventListener('input',keep,{passive:true});
   });
 }
+// Tous les formulaires du panneau partagé utilisent le viewport visible quand
+// le clavier mobile s'ouvre, même si leur écran n'a pas d'enregistrement dédié.
+let _mobileModalGeneratedField=0;
+document.addEventListener('focusin',function(event){
+  if(window.innerWidth>900)return;
+  const overlay=document.getElementById('mo');
+  const field=event.target;
+  if(!overlay||overlay.style.display==='none'||!overlay.contains(field)
+    ||!field.matches||!field.matches('input:not([type="checkbox"]):not([type="radio"]),textarea,select'))return;
+  if(!field.id)field.id='mobile-modal-field-'+(++_mobileModalGeneratedField);
+  window._activeMobileModalFieldId=field.id;
+  overlay.classList.add('keyboard-aware-modal');
+  setTimeout(keepMobileModalFieldVisible,80);
+});
 function prepareAnimalModal(formActive){
   const overlay=document.getElementById('mo');
   if(!overlay)return;

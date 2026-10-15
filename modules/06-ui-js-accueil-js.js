@@ -400,6 +400,7 @@ function showT(id,btn){
     applyNavRights();
     return;
   }
+  dismissAppKeyboard();
   document.querySelectorAll('.sec').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.nb').forEach(b=>b.classList.remove('active'));
   document.getElementById('tab-'+id).classList.add('active');

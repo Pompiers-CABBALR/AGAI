@@ -2359,6 +2359,8 @@ async function _restoreSessionAfterLoad(){
 }
 
 function doLoginSuccess(){
+  dismissAppKeyboard();
+  const loginPassword=document.getElementById('lp');if(loginPassword)loginPassword.value='';
   // Synchroniser fonctionsFormateur sur CU depuis USERS (au cas où CU est une copie)
   if(CU){
     const u=USERS.find(x=>x.l===CU.l);

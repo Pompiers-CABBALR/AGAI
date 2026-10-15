@@ -28,9 +28,9 @@ for (const file of ['modules/02-auth-js-partie-1-2-structure-casernes-numerotati
 }
 
 const version = JSON.parse(read('version.json')).version;
-assert.equal(version, 'V202610_0033');
-assert.match(read('modules/15-storage-js.js'), /const APP_VERSION='V202610_0033'/);
-assert.match(read('app.js'), /const APP_VERSION='V202610_0033'/);
+assert.match(version, /^V\d{6}_\d{4}$/);
+assert.ok(read('modules/15-storage-js.js').includes("const APP_VERSION='" + version + "'"));
+assert.ok(read('app.js').includes("const APP_VERSION='" + version + "'"));
 for (const script of read('index.html').matchAll(/(?:src|href)="[^"]+\?v=(V\d+_\d+)"/g)) {
   assert.equal(script[1], version, `ressource non alignée : ${script[0]}`);
 }

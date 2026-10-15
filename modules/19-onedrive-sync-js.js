@@ -1179,6 +1179,7 @@ function actToggleForm(){
   const panel=document.getElementById('act-form-panel');
   const btn=document.getElementById('act-new-btn');
   const willOpen=panel.style.display==='none'||panel.style.display==='';
+  if(!willOpen)dismissAppKeyboard();
   panel.style.display=willOpen?'block':'none';
   if(btn){btn.style.display=willOpen?'none':'';btn.textContent='+ Nouvelle activité';}
   if(willOpen){
@@ -1239,14 +1240,16 @@ function rActiviteList(){
         const canSee=actCanSeeDetail(a);
         const printCount=(a.impressions||[]).length;
         const pb=printCount?` 🖨×${printCount}`:'';
-        return `<div class="hm" onclick="${canSee?`actVoirDetail('${a.id}')`:''}">
-          <span style="font-family:monospace;font-size:10px;color:var(--t3);">${a.date.slice(8,10)}/${m}/${y}</span>
-          <span style="flex:1;font-size:12px;color:var(--t);">${ico} ${a.type}</span>
-          <span style="font-size:11px;color:var(--t2);">${a.hDebut||''}${a.hFin?' → '+a.hFin:''} ${(a.duree||a.hDebut&&a.hFin)?'· '+dureeFormatHHMM(a.duree,a.hDebut,a.hFin):''} · ${nbP}p${pb}</span>
+        return `<div class="hm activity-history-row" onclick="${canSee?`actVoirDetail('${a.id}')`:''}">
+          <span class="activity-history-date" style="font-family:monospace;font-size:10px;color:var(--t3);">${a.date.slice(8,10)}/${m}/${y}</span>
+          <span class="activity-history-title" style="flex:1;font-size:12px;color:var(--t);">${ico} ${a.type}</span>
+          <span class="activity-history-meta" style="font-size:11px;color:var(--t2);">${a.hDebut||''}${a.hFin?' → '+a.hFin:''} ${(a.duree||a.hDebut&&a.hFin)?'· '+dureeFormatHHMM(a.duree,a.hDebut,a.hFin):''} · ${nbP}p${pb}</span>
+          <span class="activity-history-actions">
           ${!canSee?'<span style="font-size:10px;color:var(--t3);">🔒</span>':''}
-          ${canSee?`<button class="btn sm" style="background:var(--rd);color:#fff;font-size:10px;padding:1px 5px;margin-left:4px;" onclick="event.stopPropagation();actImprimerRapport('${a.id}')">🖨</button>`:''}
+          ${canSee&&canOpenInterventionPdfOnThisDevice()?`<button class="btn sm" style="background:var(--rd);color:#fff;font-size:10px;padding:1px 5px;margin-left:4px;" onclick="event.stopPropagation();actImprimerRapport('${a.id}')">🖨</button>`:''}
           ${isAdmin?`<button class="btn sm" style="font-size:10px;padding:1px 5px;" onclick="event.stopPropagation();actEditer('${a.id}')">✏️</button>`:''}
           ${isSuperAdmin()?`<button class="btn sm danger" style="font-size:10px;padding:1px 5px;" onclick="event.stopPropagation();deleteActivite('${a.id}')">🗑</button>`:''}
+          </span>
         </div>`;
       }).join('')}</div>`;
     }).join('')}</div></div>`;
@@ -1284,6 +1287,7 @@ function saveActivite(){
   actGetData().push(entry);
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true); // push immédiat : sinon l'activité peut être écrasée au prochain pull
+  dismissAppKeyboard();
   // Reset form
   ['act-date','act-hdebut','act-hfin','act-cr'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('act-duree').value='';
@@ -1299,6 +1303,7 @@ function saveActivite(){
 
 // ── Voir détail ──
 function actVoirDetail(id){
+  dismissAppKeyboard();
   const data=actGetData();
   const a=data.find(x=>x.id===id);
   if(!a)return;
@@ -1332,7 +1337,7 @@ function actVoirDetail(id){
     ${printHtml}
     ${histHtml}
     <div class="brow" style="margin-top:12px;">
-      <button class="btn sm" style="background:var(--rd);color:#fff;" onclick="actImprimerRapport('${id}')">🖨 Imprimer rapport</button>
+      ${canOpenInterventionPdfOnThisDevice()?`<button class="btn sm" style="background:var(--rd);color:#fff;" onclick="actImprimerRapport('${id}')">🖨 Imprimer rapport</button>`:desktopOnlyInterventionPdfMessageHTML()}
       ${canEdit?`<button class="btn sm" onclick="cM();actEditer('${id}')">✏️ Modifier</button>`:''}
       ${isSuperAdmin()?`<button class="btn sm danger" onclick="cM();deleteActivite('${id}')">🗑 Supprimer</button>`:''}
     </div>
@@ -1342,6 +1347,7 @@ function actVoirDetail(id){
 
 // ── Modifier (admin/superadmin uniquement) ──
 function actEditer(id){
+  dismissAppKeyboard();
   if(!isAdminModeActive()){showToast('Accès réservé aux administrateurs','warn');return;}
   const data=actGetData();
   const a=data.find(x=>x.id===id);
@@ -1408,6 +1414,10 @@ function actSaveEdit(id){
 
 // ── Impression rapport ──
 function actImprimerRapport(id){
+  if(!canOpenInterventionPdfOnThisDevice()){
+    showToast('Les rapports d’activité de service sont consultables uniquement sur ordinateur.','warn');
+    return;
+  }
   const data=actGetData();
   const a=data.find(x=>x.id===id);
   if(!a){showToast('Activité introuvable','warn');return;}

@@ -170,7 +170,7 @@ function showAutorisationModal(ivId, nidIndex) {
   document.getElementById('mt').textContent = 'Autorisation & Attestation';
   document.getElementById('mi').textContent = iv.n + ' \u2014 ' + iv.com;
   document.getElementById('mb').innerHTML =
-    '<div style="max-height:70vh;overflow-y:auto;padding:4px 0;">'
+    '<div class="aut-form-scroll">'
     + (activeNid?'<div style="background:#EFF6FF;border:1px solid #93C5FD;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#1D4ED8;"><strong>Nid '+(activeIndex+1)+' sur '+nids.length+'</strong> — '+escHtml([activeNid.nature,activeNid.localisation,activeNid.hauteur,activeNid.taille].filter(Boolean).join(' · '))+'</div>':'')
     + '<div style="background:#FEF0E7;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#854F0B;">Remplissez le formulaire puis g\u00e9n\u00e9rez l\'aper\u00e7u PDF ou envoyez l\'attestation par mail.</div>'
     + '<div class="fg"><div class="fgl">Qualit\u00e9 du demandeur</div>'
@@ -197,18 +197,22 @@ function showAutorisationModal(ivId, nidIndex) {
     + '<div class="fg"><div class="fgl">Date de signature</div><input class="fi" id="aut-sig-date" type="date" value="' + (saved.sigDate || dateDefault) + '"/></div>'
     + '<div class="fg"><div class="fgl">Lieu de signature</div><input class="fi" id="aut-sig-lieu" type="text" value="' + (saved.sigLieu || iv.com || '') + '"/></div></div>'
     + '<div class="fg"><div class="fgl" style="margin-bottom:6px;">Signature du demandeur</div>'
-    + '<div style="border:2px solid var(--brd);border-radius:10px;background:#fff;overflow:hidden;position:relative;">'
-    + '<canvas id="aut-signature" width="600" height="150" style="width:100%;height:150px;touch-action:none;cursor:crosshair;display:block;"></canvas>'
-    + '<button type="button" onclick="clearSignature()" style="position:absolute;top:6px;right:6px;background:rgba(255,255,255,.9);border:1px solid var(--brd);border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer;">Effacer</button>'
+    + '<div class="aut-signature-preview">'
+    + '<canvas id="aut-signature" width="600" height="150" style="width:100%;height:150px;display:block;pointer-events:none;"></canvas>'
+    + '<button type="button" class="aut-signature-open" onclick="openLargeSignature()" aria-label="Ouvrir la signature en grand">Signer ou modifier en grand ↗</button>'
     + '<div id="aut-sig-hint" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:12px;color:#ccc;pointer-events:none;">Signer ici</div>'
     + '</div></div>'
     + '<div class="brow" style="margin-top:12px;flex-wrap:wrap;gap:6px;">'
     + (canOpenInterventionPdfOnThisDevice()?'<button class="btn sm" style="background:#185FA5;color:#fff;" onclick="previewAutorisationPDF(\'' + ivId + '\',\'autorisation\')">&#x1F4CB; Autorisation</button>':desktopOnlyInterventionPdfMessageHTML())
     + '<button class="btn sm" style="background:#E67E22;color:#fff;" onclick="envoyerAttestationMail(\'' + ivId + '\')">&#x2709;&#xFE0F; Envoyer attestation</button>'
-    + '<button class="btn sm" onclick="saveAutorisationData(\'' + ivId + '\')">&#x1F4BE; Sauvegarder</button>'
+    + '<button class="btn sm" onclick="saveAutorisationData(\'' + ivId + '\')">&#x1F4BE; Sauvegarder formulaire et signature</button>'
     + (nids.length>1?'<button class="btn sm" onclick="saveAutorisationData(\''+ivId+'\');showAutorisationNidPicker(\''+ivId+'\')">← Tous les nids</button>':'')
     + '</div></div>';
-  document.getElementById('mo').style.display = 'flex';
+  _sigCurrentIvId=ivId;
+  const overlay=document.getElementById('mo');
+  overlay.classList.add('autorisation-modal-overlay');
+  registerMobileModalFields(document.getElementById('mb'));
+  openModalAtTop();
   setTimeout(function() {
     autToggleAutre();
     initSignatureCanvas();
@@ -264,23 +268,98 @@ function saveAutorisationData(ivId) {
 }
 
 let _sigCanvas = null, _sigCtx = null, _sigDrawing = false, _sigHasSig = false;
+let _sigCurrentIvId='';
+let _largeSigState=null;
 function initSignatureCanvas() {
   _sigCanvas = document.getElementById('aut-signature');
   if (!_sigCanvas) return;
   _sigCtx = _sigCanvas.getContext('2d');
+  _sigHasSig=false;
   _sigCtx.strokeStyle = '#1a1a2e'; _sigCtx.lineWidth = 2.5; _sigCtx.lineCap = 'round'; _sigCtx.lineJoin = 'round';
-  function getPos(e) {
-    const r = _sigCanvas.getBoundingClientRect(), sx = _sigCanvas.width/r.width, sy = _sigCanvas.height/r.height;
-    if (e.touches) return {x:(e.touches[0].clientX-r.left)*sx,y:(e.touches[0].clientY-r.top)*sy};
-    return {x:(e.clientX-r.left)*sx,y:(e.clientY-r.top)*sy};
+}
+function openLargeSignature(){
+  if(!_sigCanvas||_largeSigState)return;
+  if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();
+  const overlay=document.createElement('div');
+  overlay.className='aut-large-signature';
+  overlay.innerHTML='<div class="aut-large-signature-head"><strong>Signature du requérant</strong><span>Tournez le téléphone à l’horizontale pour signer plus facilement.</span></div>'
+    +'<div class="aut-large-signature-pad"><canvas aria-label="Zone de signature"></canvas></div>'
+    +'<div class="aut-large-signature-actions"><button type="button" class="btn" data-action="clear">Effacer le tracé</button><button type="button" class="btn" data-action="cancel">Annuler</button><button type="button" class="btn" data-action="confirm">Valider la signature</button></div>';
+  document.body.appendChild(overlay);
+  const canvas=overlay.querySelector('canvas'),ctx=canvas.getContext('2d');
+  const state={overlay,canvas,ctx,hasSig:_sigHasSig,drawing:false,enteredFullscreen:false,initialized:false};
+  _largeSigState=state;
+  function fit(){
+    if(_largeSigState!==state)return;
+    const old=state.initialized&&state.hasSig?document.createElement('canvas'):null;
+    if(old){old.width=canvas.width;old.height=canvas.height;old.getContext('2d').drawImage(canvas,0,0);}
+    const bounds=canvas.getBoundingClientRect(),ratio=Math.min(window.devicePixelRatio||1,2);
+    canvas.width=Math.max(1,Math.round(bounds.width*ratio));
+    canvas.height=Math.max(1,Math.round(bounds.height*ratio));
+    ctx.strokeStyle='#172033';ctx.lineWidth=Math.max(3,3*ratio);ctx.lineCap='round';ctx.lineJoin='round';
+    if(old){
+      ctx.drawImage(old,0,0,canvas.width,canvas.height);
+    }else if(!state.initialized&&_sigHasSig){
+      ctx.drawImage(_sigCanvas,0,0,canvas.width,canvas.height);
+    }
+    state.initialized=true;
   }
-  function start(e){_sigDrawing=true;_sigHasSig=true;const h=document.getElementById('aut-sig-hint');if(h)h.style.display='none';const p=getPos(e);_sigCtx.beginPath();_sigCtx.moveTo(p.x,p.y);e.preventDefault();}
-  function draw(e){if(!_sigDrawing)return;const p=getPos(e);_sigCtx.lineTo(p.x,p.y);_sigCtx.stroke();e.preventDefault();}
-  function stop(){_sigDrawing=false;}
-  _sigCanvas.addEventListener('mousedown',start);_sigCanvas.addEventListener('mousemove',draw);
-  _sigCanvas.addEventListener('mouseup',stop);_sigCanvas.addEventListener('mouseleave',stop);
-  _sigCanvas.addEventListener('touchstart',start,{passive:false});_sigCanvas.addEventListener('touchmove',draw,{passive:false});
-  _sigCanvas.addEventListener('touchend',stop);
+  state.fit=fit;
+  requestAnimationFrame(fit);
+  window.addEventListener('resize',fit);
+  if(window.visualViewport)window.visualViewport.addEventListener('resize',fit);
+  const point=function(event){const rect=canvas.getBoundingClientRect();return {x:(event.clientX-rect.left)*canvas.width/rect.width,y:(event.clientY-rect.top)*canvas.height/rect.height};};
+  canvas.addEventListener('pointerdown',function(event){
+    event.preventDefault();try{canvas.setPointerCapture(event.pointerId);}catch(error){}
+    const p=point(event);ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p.x+.01,p.y+.01);ctx.stroke();
+    state.drawing=true;state.hasSig=true;
+  });
+  canvas.addEventListener('pointermove',function(event){
+    if(!state.drawing)return;
+    event.preventDefault();const p=point(event);ctx.lineTo(p.x,p.y);ctx.stroke();
+  });
+  ['pointerup','pointercancel','lostpointercapture'].forEach(function(type){canvas.addEventListener(type,function(){state.drawing=false;});});
+  overlay.addEventListener('click',function(event){
+    const action=event.target&&event.target.dataset&&event.target.dataset.action;
+    if(action==='clear'){ctx.clearRect(0,0,canvas.width,canvas.height);state.hasSig=false;}
+    if(action==='cancel')closeLargeSignature();
+    if(action==='confirm'){
+      if(!state.hasSig){showToast('Veuillez signer avant de valider.','warn');return;}
+      _sigCtx.clearRect(0,0,_sigCanvas.width,_sigCanvas.height);
+      _sigCtx.drawImage(canvas,0,0,_sigCanvas.width,_sigCanvas.height);
+      _sigHasSig=true;
+      const hint=document.getElementById('aut-sig-hint');if(hint)hint.style.display='none';
+      closeLargeSignature();
+      saveAutorisationData(_sigCurrentIvId);
+    }
+  });
+  const keydown=function(event){if(event.key==='Escape')closeLargeSignature();};
+  state.keydown=keydown;document.addEventListener('keydown',keydown);
+  if(overlay.requestFullscreen){
+    try{
+      const fullscreen=overlay.requestFullscreen();
+      if(fullscreen&&typeof fullscreen.then==='function')fullscreen.then(function(){
+        if(_largeSigState!==state)return;
+        state.enteredFullscreen=true;
+        if(screen.orientation&&screen.orientation.lock){
+          try{const lock=screen.orientation.lock('landscape');if(lock&&lock.catch)lock.catch(function(){});}catch(error){}
+        }
+        requestAnimationFrame(fit);
+      }).catch(function(){});
+    }catch(error){}
+  }
+}
+function closeLargeSignature(){
+  const state=_largeSigState;if(!state)return;
+  _largeSigState=null;
+  window.removeEventListener('resize',state.fit);
+  if(window.visualViewport)window.visualViewport.removeEventListener('resize',state.fit);
+  document.removeEventListener('keydown',state.keydown);
+  if(screen.orientation&&screen.orientation.unlock)try{screen.orientation.unlock();}catch(error){}
+  if(state.enteredFullscreen&&document.fullscreenElement===state.overlay&&document.exitFullscreen){
+    try{const exit=document.exitFullscreen();if(exit&&exit.catch)exit.catch(function(){});}catch(error){}
+  }
+  state.overlay.remove();
 }
 function clearSignature(){
   if(!_sigCtx||!_sigCanvas)return;

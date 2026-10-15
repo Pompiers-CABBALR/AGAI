@@ -84,7 +84,15 @@ function jourDate(startDate,d){
   const dd=new Date(startDate);dd.setDate(dd.getDate()+d);return dd;
 }
 
-function getSlotsPerDay(granularity){return Math.floor(1440/granularity);}
+function validDispoGranularity(value){
+  const minutes=Number(value);
+  return Number.isInteger(minutes)&&minutes>0&&1440%minutes===0?minutes:60;
+}
+function dispoGranularityFor(login){
+  const eq=getEquipeOfUser(login);
+  return validDispoGranularity(eq&&eq.granularity||ASTR_CONFIG&&ASTR_CONFIG.granularity);
+}
+function getSlotsPerDay(granularity){return Math.floor(1440/validDispoGranularity(granularity));}
 function slotToLabel(slotIdx,granularity){
   const totalMin=slotIdx*granularity;
   const h=Math.floor(totalMin/60),m=totalMin%60;
@@ -93,14 +101,14 @@ function slotToLabel(slotIdx,granularity){
 // Retourne le label d'un slot : chaque jour commence à startHour
 function slotToLabelDay(dayIdx,slotIdx,granularity){
   const startHour=ASTR_CONFIG.weekStartHour??0;
-  const totalMin=(startHour*60+slotIdx*granularity)%1440;
+  const totalMin=(startHour*60+slotIdx*validDispoGranularity(granularity))%1440;
   const h=Math.floor(totalMin/60),m=totalMin%60;
   return `${pad(h)}h${m>0?pad(m):''}`;
 }
 // Retourne le nb de slots pour un jour donné
 function getSlotsForDay(dayIdx,granularity){
   // Chaque jour affiché = 24h complets démarrant à startHour
-  return Math.floor(1440/granularity);
+  return getSlotsPerDay(granularity);
 }
 function equipeBelongsToCurrentCaserne(e){return !!(e&&(!e.caserneId||e.caserneId===CURRENT_CASERNE_ID));}
 function getEquipeOfUser(login){return EQUIPES.find(e=>equipeBelongsToCurrentCaserne(e)&&Array.isArray(e.membres)&&e.membres.includes(login));}
@@ -195,7 +203,7 @@ function rAstrPlanning(){
   document.getElementById('astr-week-label').textContent=weekLabel(mon);
   const now=new Date();
   const todayStr=getDS(now);
-  const gran=EQUIPES.reduce((mn,e)=>Math.min(mn,e.granularity),60)||ASTR_CONFIG.granularity;
+  const gran=EQUIPES.reduce((mn,e)=>Math.min(mn,validDispoGranularity(e.granularity)),60);
 
   // Équipes de garde
   const _pv=PLANNING_ROTATIONS[wk];
@@ -363,8 +371,7 @@ function rAstrPlanning(){
     // Lignes agents
     allRows.forEach(function({u,eqColor}){
       const login=u.l;
-      const uEq=getEquipeOfUser(login);
-      const uGran=uEq?uEq.granularity:ASTR_CONFIG.granularity;
+      const uGran=dispoGranularityFor(login);
       const roleKey=getRoleKey(u);
 
       html+=`<tr>`;
@@ -527,7 +534,7 @@ function oAstrCellDetailSansEq(wk,dayIdx,slotIdx){
   const sansEq=USERS.filter(u=>!EQUIPES.some(e=>e.membres.includes(u.l)));
   const mon=new Date(wk.slice(0,4)+'-'+wk.slice(4,6)+'-'+wk.slice(6,8));
   const dd=new Date(mon);dd.setDate(dd.getDate()+dayIdx);
-  const gran=ASTR_CONFIG.granularity;
+  const gran=validDispoGranularity(ASTR_CONFIG.granularity);
   const label=`${jourLabel(dayIdx,true)} ${dd.getDate()}/${dd.getMonth()+1} — ${slotToLabelDay(dayIdx,slotIdx,gran)}`;
   const agents=sansEq.map(u=>{
     const dispo=personnelDispoSlotAllowed(wk,u.l,dayIdx,slotIdx,gran)&&DISPOS[wk]?.[u.l]?.[`${dayIdx}_${slotIdx}`]===true;
@@ -605,8 +612,7 @@ function showDispoSub(sub,btn){
 // ── Demandes de modification de dispos ──
 function showDispoRequestModal(wk,login){
   const u=USERS.find(x=>x.l===login);
-  const eq=getEquipeOfUser(login);
-  const gran=eq?eq.granularity:ASTR_CONFIG.granularity;
+  const gran=dispoGranularityFor(login);
   const mon=new Date(wk.slice(0,4)+'-'+wk.slice(4,6)+'-'+wk.slice(6,8));
   const MOIS_FR=['janv.','f\u00e9vr.','mars','avr.','mai','juin','juil.','ao\u00fbt','sept.','oct.','nov.','d\u00e9c.'];
   const startHour=ASTR_CONFIG.weekStartHour||0;
@@ -708,7 +714,7 @@ function envoyerDispoRequest(wk,login){
   const checkedSlots=Array.from(document.querySelectorAll('input[name="req-slots"]:checked'));
   if(!checkedSlots.length){showToast('S\u00e9lectionnez au moins un cr\u00e9neau.','warn');return;}
 
-  const gran=(function(){const eq=getEquipeOfUser(login);return eq?eq.granularity:ASTR_CONFIG.granularity;})();
+  const gran=dispoGranularityFor(login);
   const startHour=ASTR_CONFIG.weekStartHour||0;
   const mon=new Date(wk.slice(0,4)+'-'+wk.slice(4,6)+'-'+wk.slice(6,8));
   const MOIS_FR=['janv.','f\u00e9vr.','mars','avr.','mai','juin','juil.','ao\u00fbt','sept.','oct.','nov.','d\u00e9c.'];
@@ -771,7 +777,7 @@ function repondreDispoRequest(wk,reqId,reponse){
   const req=DISPO_REQUESTS[wk].find(function(r){return r.id===reqId;});
   if(!req)return;
   if(reponse==='accepte'){
-    const eq=getEquipeOfUser(req.login),gran=eq?eq.granularity:ASTR_CONFIG.granularity;
+    const gran=dispoGranularityFor(req.login);
     if((req.slots||[]).some(function(slot){return slot&&slot.newVal==='true'&&!personnelDispoKeyAllowed(wk,req.login,slot.key,gran);})){showToast('Demande refusée : la situation du personnel interdit ces disponibilités.','warn');return;}
   }
   req.statut=reponse;
@@ -865,7 +871,7 @@ function personnelPiquetMemberAllowed(wk,login,jour,debut,fin){
 function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWeek,myEq){
   const u=USERS.find(x=>x.l===login)||{prenom:login,nom:''};
   const eq=getEquipeOfUser(login)||(myEq&&myEq.membres&&myEq.membres.includes(login)?myEq:null);
-  const agGran=eq?eq.granularity:ASTR_CONFIG.granularity;
+  const agGran=dispoGranularityFor(login);
   const isMe=login===CU.l;
   const isFuture=astrDispoWeek>=1;
   const isCurrent=astrDispoWeek===0;
@@ -962,7 +968,7 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
       const dragVal=isDispo?'true':isIndispo?'false':'null';
       h+='<div class="dispo-cell" style="flex:0 0 '+_cw+'px;width:'+_cw+'px;box-sizing:border-box;height:28px;background:'+bg+';cursor:'+cursor+';transition:background .1s;border-radius:3px;border:1px solid #fff;user-select:none;"'
         +' title="'+(allowed?dispoDayLabel(wk,d,true)+' '+slotToLabelDay(d,s,agGran):'Indisponible durant la situation du personnel')+'"'
-        +' data-wk="'+wk+'" data-login="'+login+'" data-d="'+d+'" data-s="'+s+'" data-val="'+dragVal+'" data-personnel-allowed="'+(allowed?'true':'false')+'"'
+        +' data-wk="'+wk+'" data-login="'+login+'" data-d="'+d+'" data-s="'+s+'" data-val="'+dragVal+'" data-personnel-allowed="'+(allowed?'true':'false')+'" data-can-edit="'+(canEdit&&allowed?'true':'false')+'"'
         +(oc?' onclick="'+oc+'"':'')+'></div>';
     }
     h+='</div>';
@@ -1007,8 +1013,8 @@ function rAstrDispo(){
   // Afficher/cacher sous-onglets selon droits
   const dispoEquipeBtn=document.getElementById('dispo-btn-equipe');
   const dispoAutresBtn=document.getElementById('dispo-btn-autres');
-  if(dispoEquipeBtn)dispoEquipeBtn.style.display=(isResp||isAdmin)?'':'none';
-  if(dispoAutresBtn)dispoAutresBtn.style.display=(isResp||isAdmin)?'':'none';
+  if(dispoEquipeBtn)dispoEquipeBtn.style.display=(isResp||isAdmin||isSuperAdmin())?'':'none';
+  if(dispoAutresBtn)dispoAutresBtn.style.display=(isResp||isAdmin||isSuperAdmin())?'':'none';
 
   // Deadline
   const dlDate=getDeadlineDate(astrDispoWeek);
@@ -1188,7 +1194,8 @@ function markDispoSlotsChanged(wk,login,keys){
 function toggleDispoCell(wk,login,d,s,el,eqColor){
   // Ignore le click synthétique généré juste après un geste tactile (évite le double-toggle)
   if(_dispoTouchHandled && (Date.now()-_dispoTouchHandled)<600){return;}
-  const eq=getEquipeOfUser(login),gran=eq?eq.granularity:ASTR_CONFIG.granularity;
+  if(el.dataset.canEdit!=='true')return;
+  const gran=dispoGranularityFor(login);
   if(!personnelDispoSlotAllowed(wk,login,d,s,gran)){showToast('Créneau indisponible pour cet agent.','warn');return;}
   _jbEditLock=Date.now();
   if(!DISPOS[wk])DISPOS[wk]={};
@@ -1205,7 +1212,7 @@ function toggleDispoCell(wk,login,d,s,el,eqColor){
 let _dragActive=false,_dragTargetVal=true,_dispoTouchHandled=0;
 let _dispoGestureCell=null,_dispoGestureX=0,_dispoGestureY=0,_dispoGestureMoved=false;
 function startDispoDrag(el){
-  if(el.dataset.personnelAllowed==='false')return;
+  if(el.dataset.canEdit!=='true')return;
   _jbEditLock=Date.now();
   _dragActive=true;
   // Gris (jamais renseigné) devient vert ; ensuite alternance vert ↔ rouge.
@@ -1218,8 +1225,9 @@ function continueDispoDrag(el){
   applyDispoDrag(el);
 }
 function applyDispoDrag(el){
+  if(el.dataset.canEdit!=='true')return;
   const wk=el.dataset.wk,login=el.dataset.login,d=parseInt(el.dataset.d),s=parseInt(el.dataset.s);
-  const eq=getEquipeOfUser(login),gran=eq?eq.granularity:ASTR_CONFIG.granularity;
+  const gran=dispoGranularityFor(login);
   if(!personnelDispoSlotAllowed(wk,login,d,s,gran))return;
   if(!DISPOS[wk])DISPOS[wk]={};
   if(!DISPOS[wk][login])DISPOS[wk][login]={};
@@ -1239,7 +1247,7 @@ function _dispoCellAtPoint(x,y){
   return null;
 }
 function _beginDispoGesture(cell,x,y){
-  if(cell.dataset.personnelAllowed==='false')return;
+  if(cell.dataset.canEdit!=='true')return;
   _dispoGestureCell=cell;
   _dispoGestureX=x;
   _dispoGestureY=y;
@@ -1327,8 +1335,7 @@ function setAllDispoFor(wk,login,val,eqColor,allowClear){
   if(!canEdit){showToast('Modification non autoris\u00e9e pour cette semaine.','warn');return;}
   if(!DISPOS[wk])DISPOS[wk]={};
   if(!DISPOS[wk][login])DISPOS[wk][login]={};
-  const eq=getEquipeOfUser(login);
-  const gran=eq?eq.granularity:ASTR_CONFIG.granularity;
+  const gran=dispoGranularityFor(login);
   const slots=getSlotsPerDay(gran);
   const changedKeys=[];
   for(let d=0;d<7;d++)for(let s=0;s<slots;s++){
@@ -1642,8 +1649,9 @@ function rAstrPiquets(){
     html+='<div class="panel" style="padding:8px;margin-bottom:6px;"><div style="font-size:11px;font-weight:600;color:#888;margin-bottom:6px;">Sans &eacute;quipe</div>';
     sortByGradeThenName(sansEqPiquet).forEach(function(u){
       const dispos=DISPOS[wk]?.[u.l]||{};
-      const nb=Object.entries(dispos).filter(function(entry){return entry[1]===true&&personnelDispoKeyAllowed(wk,u.l,entry[0],ASTR_CONFIG.granularity);}).length;
-      const total=getSlotsPerDay(ASTR_CONFIG.granularity)*7;
+      const gran=dispoGranularityFor(u.l);
+      const nb=Object.entries(dispos).filter(function(entry){return entry[1]===true&&personnelDispoKeyAllowed(wk,u.l,entry[0],gran);}).length;
+      const total=getSlotsPerDay(gran)*7;
       const pct=total>0?Math.round(nb/total*100):0;
       const pctColor=pctDispoColor(pct); // échelle progressive : rouge ≤25%, vert ≥75%
       const nbPiquet=(PIQUETS[wk]||[]).filter(function(p){
