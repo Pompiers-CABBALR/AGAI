@@ -10,6 +10,7 @@ const numbering = read('modules/02-auth-js-partie-1-2-structure-casernes-numerot
 const client = read('modules/24-secure-transfers-js.js');
 const transferSql = read('supabase/migrations/20261015230500_secure_transfers_closed.sql');
 const guardSql = read('supabase/migrations/20261015231500_enforce_secure_apl_assignment.sql');
+const guardUpsertFixSql = read('supabase/migrations/20261017134842_allow_existing_apl_upsert.sql');
 const allocatorSql = read('supabase/migrations/20261015230000_secure_apl_allocation.sql');
 
 assert.match(config, /secureAplNumberingEnabled:\s*true/);
@@ -39,6 +40,12 @@ assert.match(guardSql, /AGAI_APL_RESERVATION_REQUIRED/);
 assert.match(guardSql, /reservation\.auth_user_id is distinct from \(select auth\.uid\(\)\)/);
 assert.match(guardSql, /tg_op='UPDATE' and not old\.deleted/);
 assert.match(guardSql, /before insert or update of data,deleted,type,caserne/);
+assert.match(guardUpsertFixSql, /tg_op='INSERT' and exists/);
+assert.match(guardUpsertFixSql, /existing\.id=new\.id and not existing\.deleted/);
+assert.match(guardUpsertFixSql, /existing\.type=new\.type and existing\.caserne=new\.caserne/);
+assert.match(guardUpsertFixSql, /existing\.data->>'_numApl' is not distinct from apl/);
+assert.match(guardUpsertFixSql, /tg_op='UPDATE' and not old\.deleted/);
+assert.match(guardUpsertFixSql, /AGAI_APL_RESERVATION_INVALID/);
 
 const start = numbering.indexOf('function aplCreationActionKey(');
 const end = numbering.indexOf('// Le numero APL reste lisible', start);
