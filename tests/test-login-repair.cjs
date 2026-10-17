@@ -8,7 +8,7 @@ const source = fs.readFileSync(path.join(root, 'modules/23-login-repair-js.js'),
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 assert.match(html, /onclick="agaiOpenLoginRepair\(\)"/);
 assert.match(html, /modules\/23-login-repair-js\.js/);
-assert.match(source, /link\.href='securite-file-locale-lecture-seule\.html'/);
+assert.match(source, /link\.href='securite-file-locale-lecture-seule\.html\?version=ce4be86'/);
 assert.match(fs.readFileSync(path.join(root, 'securite-file-locale-lecture-seule.html'), 'utf8'), /href="\.\/">Retour à AGAI/);
 assert.doesNotMatch(source, /\bfetch\s*\(|localStorage\.clear\s*\(|indexedDB\.deleteDatabase\s*\(/);
 

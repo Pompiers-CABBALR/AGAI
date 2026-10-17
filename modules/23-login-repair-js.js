@@ -92,7 +92,7 @@ function _agaiLoginRepairPanel(message,allowReset){
   }
   if(!allowReset){
     const link=document.createElement('a');
-    link.href='securite-file-locale-lecture-seule.html';
+    link.href='securite-file-locale-lecture-seule.html?version=ce4be86';
     link.textContent='Voir le détail des actions en lecture seule';
     link.className='login-repair-start';
     panel.appendChild(link);
