@@ -29,8 +29,8 @@
     return safe;
   };
   const loginConflictDecision = (local, remote) => {
-    if (!local || !remote || remote.id !== 'CIS05__login__' + local.id
-      || remote.caserne !== 'CIS05' || remote.type !== 'login'
+    if (!local || !remote || remote.id !== local.caserneId + '__login__' + local.id
+      || remote.caserne !== local.caserneId || remote.type !== 'login'
       || remote.deleted !== false || !remote.data || remote.data.id !== local.id
       || remote.data.login !== local.login || local.actif !== false
       || remote.data.actif !== false || !Number.isFinite(Date.parse(local.hConnexion || ''))
@@ -104,6 +104,9 @@
     let otherSeparateCovered = 0;
     let otherSeparateDifferent = 0;
     let otherSeparateNotVisible = 0;
+    let otherLocalNewer = 0;
+    let otherRemoteNewer = 0;
+    let otherChronologyUnclear = 0;
     const separateDifferences = [];
     let safeDecision = '';
     let safeConflicts = 0;
@@ -126,7 +129,13 @@
       }
       else if (Array.isArray(rows) && rows.length === 1) {
         const remoteRow = rows[0];
-        if (!ownEntry) otherSeparateDifferent++;
+        if (!ownEntry) {
+          otherSeparateDifferent++;
+          const decision = loginConflictDecision(entry, remoteRow);
+          if (decision === 'local') otherLocalNewer++;
+          else if (decision === 'remote') otherRemoteNewer++;
+          else otherChronologyUnclear++;
+        }
         else {
           safeDecision = loginConflictDecision(entry, remoteRow);
           if (safeDecision) safeConflicts++;
@@ -158,10 +167,14 @@
     let deletionSeparateActive = 0;
     let deletionSeparateDeleted = 0;
     let deletionSeparateNotVisible = 0;
+    let deletionTargetOwn = 0;
+    let deletionTargetOther = 0;
+    let deletionTargetClosed = 0;
+    let deletionTargetOpenOrUnknown = 0;
     for (const id of missingDeleteIds.slice(0, 3)) {
       if (!/^[A-Za-z0-9_-]{1,120}$/.test(id)) { deletionSeparateNotVisible++; continue; }
       const response = await request(base + '/rest/v1/records?id=like.'
-        + encodeURIComponent('*__login__' + id) + '&select=id,caserne,type,deleted&limit=3', {
+        + encodeURIComponent('*__login__' + id) + '&select=id,caserne,type,data,deleted&limit=3', {
         method: 'GET', headers: { apikey: apiKey, Authorization: 'Bearer ' + token }
       });
       if (!response.ok) throw new Error('Lecture d’un marqueur impossible');
@@ -170,8 +183,15 @@
       const matching = rows.filter(row => row?.id?.endsWith('__login__' + id)
         && row.type === 'login');
       if (!matching.length) deletionSeparateNotVisible++;
-      matching.forEach(row => { if (row.deleted) deletionSeparateDeleted++;
-        else deletionSeparateActive++; });
+      matching.forEach(row => {
+        if (row.deleted) { deletionSeparateDeleted++; return; }
+        deletionSeparateActive++;
+        if (row.data?.login === login) deletionTargetOwn++;
+        else if (typeof row.data?.login === 'string') deletionTargetOther++;
+        if (row.data?.actif === false
+          && Number.isFinite(Date.parse(row.data?.hDeconnexion || ''))) deletionTargetClosed++;
+        else deletionTargetOpenOrUnknown++;
+      });
     }
     return { text: 'Copie locale couverte par le serveur : ' + (covered ? 'OUI' : 'NON')
       + '\nAutres rubriques différentes : ' + (otherDifferences.join(', ') || 'aucune')
@@ -179,8 +199,11 @@
       + '\nParmi ces suppressions, connexion du compte saisi encore dans l’historique serveur : ' + ownMissingDeletes
       + '\nConnexion d’un autre compte encore dans l’historique serveur : ' + otherMissingDeletes
       + '\nCible absente de l’historique serveur : ' + absentMissingDeletes
-      + '\nMarqueur : trace séparée encore active / déjà supprimée / non visible : '
+      + '\nMarqueur : trace séparée présente / déjà supprimée / non visible : '
       + deletionSeparateActive + ' / ' + deletionSeparateDeleted + ' / ' + deletionSeparateNotVisible
+      + '\nMarqueur : compte saisi / autre compte : ' + deletionTargetOwn + ' / ' + deletionTargetOther
+      + '\nMarqueur : session clôturée / ouverte ou incertaine : '
+      + deletionTargetClosed + ' / ' + deletionTargetOpenOrUnknown
       + '\nConnexions locales non couvertes ou différentes : ' + unmatchedEntries.length
       + '\nParmi elles, connexions du compte saisi à CIS05 : ' + ownUnmatched
       + '\nAutre trace : même compte dans une autre caserne / autre compte : '
@@ -188,6 +211,8 @@
       + '\nAutre trace déjà présente dans l’historique global serveur : ' + otherInRemoteHistory
       + '\nAutre trace séparée identique / différente / non visible : '
       + otherSeparateCovered + ' / ' + otherSeparateDifferent + ' / ' + otherSeparateNotVisible
+      + '\nAutre trace différente : copie locale plus récente / serveur au moins aussi récent / chronologie incertaine : '
+      + otherLocalNewer + ' / ' + otherRemoteNewer + ' / ' + otherChronologyUnclear
       + '\nParmi elles, traces déjà enregistrées séparément sur le serveur : ' + separatelyStored
       + '\nTraces séparées absentes du serveur : ' + separatelyAbsent
       + '\nTraces différentes à chronologie vérifiable : ' + safeConflicts
