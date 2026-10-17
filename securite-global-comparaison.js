@@ -10,6 +10,9 @@
   const result = document.getElementById('result');
   const loginField = document.getElementById('login');
   const passwordField = document.getElementById('password');
+  passwordField.addEventListener('input', () => {
+    if (!repairButton.hidden) repairButton.disabled = !passwordField.value;
+  });
   const canonical = value => {
     if (Array.isArray(value)) return value.map(canonical);
     if (value && typeof value === 'object') {
@@ -202,6 +205,7 @@
         && loginLocal.row.deleted === false && equal(loginLocal.row.data, entry)
         && local.entries.length === 2 && local.pending.length === 2
         && local.pending.includes(recordId) && local.pending.includes(loginId));
+      repairButton.disabled = true;
       if (!repairButton.hidden) result.textContent += '\nUne reprise de cette seule trace est disponible. Ressaisis ton mot de passe, puis confirme avec le second bouton.';
     } catch (_) {
       result.textContent = 'Contrôle indisponible sur cet appareil. Rien n’a été modifié ; conserve la file locale.';
@@ -211,13 +215,20 @@
     }
   });
   repairButton.addEventListener('click', async () => {
+    if (!passwordField.value) {
+      result.textContent = 'Ressaisis ton mot de passe AGAI avant de confirmer la reprise. Rien n’a été modifié.';
+      return;
+    }
     repairButton.hidden = true;
     button.disabled = true;
     result.textContent = 'Reprise limitée de la trace de connexion en cours…';
+    let stage = 'lecture locale';
     try {
       const login = loginField.value.trim().toLowerCase();
       const snapshot = await readLocal();
+      stage = 'identité';
       const token = await authenticate(login);
+      stage = 'comparaison serveur';
       const remoteGlobal = await remoteRow(recordId, token);
       if (!remoteGlobal || remoteGlobal.caserne !== '_GLOBAL' || remoteGlobal.type !== 'global'
         || remoteGlobal.deleted !== false || !remoteGlobal.data) throw new Error('copie serveur absente');
@@ -236,6 +247,7 @@
       const existing = await remoteRow(loginId, token);
       if (existing && !sameLoginRow(localLogin, existing)) throw new Error('trace serveur différente');
       if (!existing) {
+        stage = 'transmission de la trace';
         const response = await request(base + '/rest/v1/records', {
           method: 'POST', headers: { apikey: apiKey, Authorization: 'Bearer ' + token,
             'Content-Type': 'application/json', Prefer: 'return=minimal' },
@@ -244,12 +256,14 @@
         });
         if (!response.ok) throw new Error('trace non enregistrée');
       }
+      stage = 'vérification de la trace';
       const confirmed = await remoteRow(loginId, token);
       if (!sameLoginRow(localLogin, confirmed)) throw new Error('accusé de réception absent');
+      stage = 'libération locale';
       await clearVerifiedLocalQueue(snapshot, loginId);
       result.textContent = 'Trace de connexion confirmée sur le serveur. Les deux indicateurs locaux correspondants ont été libérés. Ferme cette page, puis reconnecte-toi dans AGAI sur l’ordinateur. Aucune fiche d’intervention n’a été modifiée.';
     } catch (_) {
-      result.textContent = 'Reprise non terminée. Ne supprime aucune donnée ; relance le contrôle et transmets son résultat. Aucune fiche d’intervention n’a été modifiée.';
+      result.textContent = 'Reprise non terminée à l’étape « ' + stage + ' ». Ne supprime aucune donnée ; relance le contrôle et transmets ce message. Aucune fiche d’intervention n’a été modifiée.';
     } finally {
       passwordField.value = '';
       button.disabled = false;
