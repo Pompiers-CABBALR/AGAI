@@ -28,6 +28,23 @@
     ['p', 'password_hash', 'passwordHash'].forEach(key => { delete safe[key]; });
     return safe;
   };
+  const loginConflictDecision = (local, remote) => {
+    if (!local || !remote || remote.id !== 'CIS05__login__' + local.id
+      || remote.caserne !== 'CIS05' || remote.type !== 'login'
+      || remote.deleted !== false || !remote.data || remote.data.id !== local.id
+      || remote.data.login !== local.login || local.actif !== false
+      || remote.data.actif !== false || !Number.isFinite(Date.parse(local.hConnexion || ''))
+      || (local.hDeconnexion && !Number.isFinite(Date.parse(local.hDeconnexion)))
+      || (remote.data.hDeconnexion && !Number.isFinite(Date.parse(remote.data.hDeconnexion)))) return '';
+    const allowed = new Set(['lastSeenAt', 'hDeconnexion', 'fermetureAuto']);
+    const keys = new Set(Object.keys(local).concat(Object.keys(remote.data)));
+    if ([...keys].some(key => !allowed.has(key) && !equal(local[key], remote.data[key]))) return '';
+    const localClosed = Date.parse(local.hDeconnexion || '');
+    const remoteClosed = Date.parse(remote.data.hDeconnexion || '');
+    if (!Number.isFinite(localClosed) && !Number.isFinite(remoteClosed)) return '';
+    if (Number.isFinite(localClosed) && (!Number.isFinite(remoteClosed) || localClosed > remoteClosed)) return 'local';
+    return 'remote';
+  };
   const request = async (url, options) => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 10000);
@@ -83,6 +100,7 @@
         || (remoteHistory.has(entry.id) && equal(entry, remoteHistory.get(entry.id)))));
     let separatelyStored = 0;
     const separateDifferences = [];
+    let safeDecision = '';
     if (unmatchedEntries.length > 10) throw new Error('Trop de traces à contrôler');
     for (const entry of unmatchedEntries) {
       if (!entry || !entry.id || entry.login !== login || entry.caserneId !== 'CIS05') continue;
@@ -98,6 +116,7 @@
         && rows[0].deleted === false && equal(entry, rows[0].data)) separatelyStored++;
       else if (Array.isArray(rows) && rows.length === 1) {
         const remoteRow = rows[0];
+        safeDecision = loginConflictDecision(entry, remoteRow);
         if (remoteRow.deleted !== false) separateDifferences.push('trace marquée supprimée');
         else if (remoteRow.caserne !== 'CIS05' || remoteRow.type !== 'login'
           || remoteRow.data?.login !== login) separateDifferences.push('identité ou type différent');
@@ -114,9 +133,12 @@
       + '\nConnexions locales non couvertes ou différentes : ' + unmatchedEntries.length
       + '\nParmi elles, traces déjà enregistrées séparément sur le serveur : ' + separatelyStored
       + '\nTrace séparée présente mais différente : ' + (separateDifferences.join(' ; ') || 'non')
+      + '\nRésolution sûre des heures de déconnexion : '
+      + (safeDecision === 'local' ? 'copie locale plus récente'
+        : safeDecision === 'remote' ? 'copie serveur au moins aussi récente' : 'non établie')
       + '\nAucune donnée ni file locale modifiée. Transmets seulement ces lignes à ton administrateur.',
       recoverable: !otherDifferences.length && !missingDeletes
-        && unmatchedEntries.length === 1 && !separateDifferences.length,
+        && unmatchedEntries.length === 1 && (!separateDifferences.length || !!safeDecision),
       missingEntry: unmatchedEntries.length === 1 ? unmatchedEntries[0] : null };
   };
   const authenticate = async login => {
@@ -135,7 +157,7 @@
   };
   const remoteRow = async (id, token) => {
     const response = await request(base + '/rest/v1/records?id=eq.' + encodeURIComponent(id)
-      + '&select=id,caserne,type,data,deleted&limit=1', {
+      + '&select=id,caserne,type,data,deleted,updated_at&limit=1', {
       method: 'GET', headers: { apikey: apiKey, Authorization: 'Bearer ' + token }
     });
     if (!response.ok) throw new Error('lecture serveur indisponible');
@@ -261,7 +283,24 @@
         || !equal(localLogin.data, entry)) throw new Error('trace locale différente');
       stage = 'lecture de la trace serveur';
       const existing = await remoteRow(loginId, token);
-      if (existing && !sameLoginRow(localLogin, existing)) throw new Error('trace serveur différente');
+      const decision = existing && !sameLoginRow(localLogin, existing)
+        ? loginConflictDecision(localLogin.data, existing) : '';
+      if (existing && !sameLoginRow(localLogin, existing) && !decision)
+        throw new Error('trace serveur différente ou chronologie incertaine');
+      if (decision === 'local') {
+        if (!existing.updated_at) throw new Error('version serveur absente');
+        stage = 'actualisation ciblée de la trace';
+        const response = await request(base + '/rest/v1/records?id=eq.' + encodeURIComponent(loginId)
+          + '&updated_at=eq.' + encodeURIComponent(existing.updated_at)
+          + '&select=id', {
+          method: 'PATCH', headers: { apikey: apiKey, Authorization: 'Bearer ' + token,
+            'Content-Type': 'application/json', Prefer: 'return=representation' },
+          body: JSON.stringify({ data: localLogin.data, updated_by: login })
+        });
+        const rows = await response.json().catch(() => null);
+        if (!response.ok || !Array.isArray(rows) || rows.length !== 1 || rows[0].id !== loginId)
+          throw new Error('mise à jour non confirmée');
+      }
       if (!existing) {
         stage = 'transmission de la trace';
         const response = await request(base + '/rest/v1/records', {
@@ -274,10 +313,14 @@
       }
       stage = 'vérification de la trace';
       const confirmed = await remoteRow(loginId, token);
-      if (!sameLoginRow(localLogin, confirmed)) throw new Error('accusé de réception absent');
+      if (decision === 'remote') {
+        if (!confirmed || confirmed.updated_at !== existing.updated_at
+          || !equal(confirmed.data, existing.data) || confirmed.deleted !== false)
+          throw new Error('la trace serveur a changé');
+      } else if (!sameLoginRow(localLogin, confirmed)) throw new Error('accusé de réception absent');
       stage = 'libération locale';
       await clearVerifiedLocalQueue(snapshot, loginId);
-      result.textContent = 'Trace de connexion confirmée sur le serveur. Les deux indicateurs locaux correspondants ont été libérés. Ferme cette page, puis reconnecte-toi dans AGAI sur l’ordinateur. Aucune fiche d’intervention n’a été modifiée.';
+      result.textContent = 'Trace de connexion vérifiée sur le serveur ; la déconnexion la plus récente est conservée. Les deux indicateurs locaux correspondants ont été libérés. Ferme cette page, puis reconnecte-toi dans AGAI sur l’ordinateur. Aucune fiche d’intervention n’a été modifiée.';
     } catch (error) {
       const detail = String(error && error.message || 'contrôle indisponible').slice(0,100);
       result.textContent = 'Reprise non terminée à l’étape « ' + stage + ' » : ' + detail
