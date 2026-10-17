@@ -228,15 +228,17 @@
       const snapshot = await readLocal();
       stage = 'identité';
       const token = await authenticate(login);
-      stage = 'comparaison serveur';
+      stage = 'lecture de la copie générale';
       const remoteGlobal = await remoteRow(recordId, token);
       if (!remoteGlobal || remoteGlobal.caserne !== '_GLOBAL' || remoteGlobal.type !== 'global'
         || remoteGlobal.deleted !== false || !remoteGlobal.data) throw new Error('copie serveur absente');
+      stage = 'analyse de la copie générale';
       const checked = await compare(snapshot.global, remoteGlobal.data, token, login);
       const entry = checked.missingEntry;
       if (!checked.recoverable || !entry || entry.login !== login || entry.caserneId !== 'CIS05')
         throw new Error('conditions de reprise non réunies');
       const loginId = entry.caserneId + '__login__' + entry.id;
+      stage = 'contrôle de la file locale';
       if (snapshot.entries.length !== 2 || snapshot.pending.length !== 2
         || !snapshot.pending.includes(recordId) || !snapshot.pending.includes(loginId))
         throw new Error('autres actions locales présentes');
@@ -244,6 +246,7 @@
       if (!localLogin || localLogin.id !== loginId || localLogin.caserne !== 'CIS05'
         || localLogin.type !== 'login' || localLogin.deleted !== false
         || !equal(localLogin.data, entry)) throw new Error('trace locale différente');
+      stage = 'lecture de la trace serveur';
       const existing = await remoteRow(loginId, token);
       if (existing && !sameLoginRow(localLogin, existing)) throw new Error('trace serveur différente');
       if (!existing) {
@@ -262,8 +265,10 @@
       stage = 'libération locale';
       await clearVerifiedLocalQueue(snapshot, loginId);
       result.textContent = 'Trace de connexion confirmée sur le serveur. Les deux indicateurs locaux correspondants ont été libérés. Ferme cette page, puis reconnecte-toi dans AGAI sur l’ordinateur. Aucune fiche d’intervention n’a été modifiée.';
-    } catch (_) {
-      result.textContent = 'Reprise non terminée à l’étape « ' + stage + ' ». Ne supprime aucune donnée ; relance le contrôle et transmets ce message. Aucune fiche d’intervention n’a été modifiée.';
+    } catch (error) {
+      const detail = String(error && error.message || 'contrôle indisponible').slice(0,100);
+      result.textContent = 'Reprise non terminée à l’étape « ' + stage + ' » : ' + detail
+        + '. Ne supprime aucune donnée ; transmets ce message. Aucune fiche d’intervention n’a été modifiée.';
     } finally {
       passwordField.value = '';
       button.disabled = false;
