@@ -268,7 +268,9 @@ async function _agaiOnlinePrepareLogin(login,password){
   CURRENT_CASERNE_ID=profile.appRole==='chef_corps'?null:profile.caserneId;
   _agaiStoreAuthSession(signed.session);
   try{
-    if(await _rcPull(false)){_agaiLoginFailureReason='';return signed;}
+    // La page de connexion n'a pas besoin de construire les onglets masqués.
+    // Ils seront rendus à leur ouverture, après le chargement vérifié.
+    if(await _rcPull(false,true)){_agaiLoginFailureReason='';return signed;}
   }catch(error){console.warn('[AGAI][ACCÈS] Chargement authentifié impossible :',error);}
   _agaiLoginFailureReason='data';
   _agaiStoreAuthSession(null);

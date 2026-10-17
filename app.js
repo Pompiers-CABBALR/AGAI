@@ -1631,7 +1631,8 @@ async function _agaiOnlinePrepareLogin(login,password){
   CURRENT_CASERNE_ID=profile.appRole==='chef_corps'?null:profile.caserneId;
   _agaiStoreAuthSession(signed.session);
   try{
-    if(await _rcPull(false))return signed;
+    // Les onglets masqués seront construits à leur ouverture, après l'accès.
+    if(await _rcPull(false,true))return signed;
   }catch(error){console.warn('[AGAI][ACCÈS] Chargement authentifié impossible :',error);}
   _agaiStoreAuthSession(null);
   CU=previous.user;GLOBAL_ROLE=previous.role;CURRENT_CASERNE_ID=previous.station;
@@ -17593,7 +17594,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0039';
+const APP_VERSION='V202610_0040';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -22622,8 +22623,16 @@ async function _rcFetchAllActiveRows(scopeFilter){
   throw new Error('Chargement records incomplet : trop de pages');
 }
 
+function _rcRenderViewsAfterPull(deferViewsUntilLogin){
+  if(deferViewsUntilLogin)return;
+  try{rI();}catch(e){}try{rPilp();}catch(e){}try{rAccueil();}catch(e){}try{rHist();}catch(e){}try{rAstrDispo();}catch(e){}try{rAstrEquipes();}catch(e){}
+  const isTyping = document.getElementById('admin-add') && document.getElementById('admin-add').style.display!=='none'
+    && (document.getElementById('nu-prenom')?.value || document.getElementById('nu-nom')?.value || document.getElementById('nu-mdp')?.value);
+  if(!isTyping){ try{rAdm();}catch(e){} }
+}
+
 // ── PULL : lit tous les enregistrements et reconstruit l'état ──
-async function _rcPull(silent){
+async function _rcPull(silent,deferViewsUntilLogin){
   if(PERSONNEL_ONLINE_GATE&&!_agaiAuthAccessToken())return false;
   if(_rcSaving||_rcPulling) return !PERSONNEL_ONLINE_GATE;
   // Traiter d'abord la file locale, puis poursuivre la réception. L'overlay
@@ -22777,10 +22786,7 @@ async function _rcPull(silent){
     _postLoadInit();
     if(activeCid) syncCaserneContext();
     _writeLocalCache(data);
-    try{rI();}catch(e){}try{rPilp();}catch(e){}try{rAccueil();}catch(e){}try{rHist();}catch(e){}try{rAstrDispo();}catch(e){}try{rAstrEquipes();}catch(e){}
-    const isTyping = document.getElementById('admin-add') && document.getElementById('admin-add').style.display!=='none'
-      && (document.getElementById('nu-prenom')?.value || document.getElementById('nu-nom')?.value || document.getElementById('nu-mdp')?.value);
-    if(!isTyping){ try{rAdm();}catch(e){} }
+    _rcRenderViewsAfterPull(deferViewsUntilLogin);
     if(_rcPendingDirty.size)_rcScheduleRetry(0);
     _rcLastSyncError='';
     window._agaiSyncHealth.lastPullOkAt=Date.now();
