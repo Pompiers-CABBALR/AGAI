@@ -101,12 +101,16 @@
         || (remoteHistory.has(entry.id) && equal(entry, remoteHistory.get(entry.id)))));
     let separatelyStored = 0;
     let separatelyAbsent = 0;
+    let otherSeparateCovered = 0;
+    let otherSeparateDifferent = 0;
+    let otherSeparateNotVisible = 0;
     const separateDifferences = [];
     let safeDecision = '';
     let safeConflicts = 0;
     if (unmatchedEntries.length > 10) throw new Error('Trop de traces à contrôler');
     for (const entry of unmatchedEntries) {
-      if (!entry || !entry.id || entry.login !== login || entry.caserneId !== 'CIS05') continue;
+      if (!entry || !entry.id || !/^(CIS\d+|EMAJ)$/.test(entry.caserneId || '')) continue;
+      const ownEntry = entry.login === login && entry.caserneId === 'CIS05';
       const id = entry.caserneId + '__login__' + entry.id;
       const response = await request(base + '/rest/v1/records?id=eq.' + encodeURIComponent(id)
         + '&select=id,caserne,type,data,deleted&limit=1', {
@@ -115,20 +119,29 @@
       if (!response.ok) throw new Error('Lecture d’une trace impossible');
       const rows = await response.json();
       if (Array.isArray(rows) && rows.length === 1 && rows[0].id === id
-        && rows[0].caserne === 'CIS05' && rows[0].type === 'login'
-        && rows[0].deleted === false && equal(entry, rows[0].data)) separatelyStored++;
+        && rows[0].caserne === entry.caserneId && rows[0].type === 'login'
+        && rows[0].deleted === false && equal(entry, rows[0].data)) {
+        separatelyStored++;
+        if (!ownEntry) otherSeparateCovered++;
+      }
       else if (Array.isArray(rows) && rows.length === 1) {
         const remoteRow = rows[0];
-        safeDecision = loginConflictDecision(entry, remoteRow);
-        if (safeDecision) safeConflicts++;
-        if (remoteRow.deleted !== false) separateDifferences.push('trace marquée supprimée');
-        else if (remoteRow.caserne !== 'CIS05' || remoteRow.type !== 'login'
-          || remoteRow.data?.login !== login) separateDifferences.push('identité ou type différent');
+        if (!ownEntry) otherSeparateDifferent++;
         else {
-          const keys = new Set(Object.keys(entry).concat(Object.keys(remoteRow.data || {})));
-          separateDifferences.push('champs : ' + ([...keys].filter(key => !equal(entry[key], remoteRow.data?.[key])).join(', ') || 'structure'));
+          safeDecision = loginConflictDecision(entry, remoteRow);
+          if (safeDecision) safeConflicts++;
+          if (remoteRow.deleted !== false) separateDifferences.push('trace marquée supprimée');
+          else if (remoteRow.caserne !== 'CIS05' || remoteRow.type !== 'login'
+            || remoteRow.data?.login !== login) separateDifferences.push('identité ou type différent');
+          else {
+            const keys = new Set(Object.keys(entry).concat(Object.keys(remoteRow.data || {})));
+            separateDifferences.push('champs : ' + ([...keys].filter(key => !equal(entry[key], remoteRow.data?.[key])).join(', ') || 'structure'));
+          }
         }
-      } else if (Array.isArray(rows) && rows.length === 0) separatelyAbsent++;
+      } else if (Array.isArray(rows) && rows.length === 0) {
+        separatelyAbsent++;
+        if (!ownEntry) otherSeparateNotVisible++;
+      }
     }
     const covered = !otherDifferences.length && !missingDeletes && !unmatchedEntries.length;
     const ownMissingDeletes = missingDeleteIds.filter(id => remoteHistory.get(id)?.login === login).length;
@@ -137,14 +150,44 @@
     const absentMissingDeletes = missingDeletes - ownMissingDeletes - otherMissingDeletes;
     const ownUnmatched = unmatchedEntries.filter(entry => entry?.login === login
       && entry?.caserneId === 'CIS05').length;
+    const otherUnmatched = unmatchedEntries.filter(entry => entry?.login !== login
+      || entry?.caserneId !== 'CIS05');
+    const sameAccountOtherStation = otherUnmatched.filter(entry => entry?.login === login).length;
+    const differentAccount = otherUnmatched.filter(entry => entry?.login !== login).length;
+    const otherInRemoteHistory = otherUnmatched.filter(entry => remoteHistory.has(entry?.id)).length;
+    let deletionSeparateActive = 0;
+    let deletionSeparateDeleted = 0;
+    let deletionSeparateNotVisible = 0;
+    for (const id of missingDeleteIds.slice(0, 3)) {
+      if (!/^[A-Za-z0-9_-]{1,120}$/.test(id)) { deletionSeparateNotVisible++; continue; }
+      const response = await request(base + '/rest/v1/records?id=like.'
+        + encodeURIComponent('*__login__' + id) + '&select=id,caserne,type,deleted&limit=3', {
+        method: 'GET', headers: { apikey: apiKey, Authorization: 'Bearer ' + token }
+      });
+      if (!response.ok) throw new Error('Lecture d’un marqueur impossible');
+      const rows = await response.json();
+      if (!Array.isArray(rows)) throw new Error('Réponse du marqueur invalide');
+      const matching = rows.filter(row => row?.id?.endsWith('__login__' + id)
+        && row.type === 'login');
+      if (!matching.length) deletionSeparateNotVisible++;
+      matching.forEach(row => { if (row.deleted) deletionSeparateDeleted++;
+        else deletionSeparateActive++; });
+    }
     return { text: 'Copie locale couverte par le serveur : ' + (covered ? 'OUI' : 'NON')
       + '\nAutres rubriques différentes : ' + (otherDifferences.join(', ') || 'aucune')
       + '\nSuppressions locales absentes du serveur : ' + missingDeletes
       + '\nParmi ces suppressions, connexion du compte saisi encore dans l’historique serveur : ' + ownMissingDeletes
       + '\nConnexion d’un autre compte encore dans l’historique serveur : ' + otherMissingDeletes
       + '\nCible absente de l’historique serveur : ' + absentMissingDeletes
+      + '\nMarqueur : trace séparée encore active / déjà supprimée / non visible : '
+      + deletionSeparateActive + ' / ' + deletionSeparateDeleted + ' / ' + deletionSeparateNotVisible
       + '\nConnexions locales non couvertes ou différentes : ' + unmatchedEntries.length
       + '\nParmi elles, connexions du compte saisi à CIS05 : ' + ownUnmatched
+      + '\nAutre trace : même compte dans une autre caserne / autre compte : '
+      + sameAccountOtherStation + ' / ' + differentAccount
+      + '\nAutre trace déjà présente dans l’historique global serveur : ' + otherInRemoteHistory
+      + '\nAutre trace séparée identique / différente / non visible : '
+      + otherSeparateCovered + ' / ' + otherSeparateDifferent + ' / ' + otherSeparateNotVisible
       + '\nParmi elles, traces déjà enregistrées séparément sur le serveur : ' + separatelyStored
       + '\nTraces séparées absentes du serveur : ' + separatelyAbsent
       + '\nTraces différentes à chronologie vérifiable : ' + safeConflicts

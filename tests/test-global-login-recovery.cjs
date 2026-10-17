@@ -48,7 +48,17 @@ assert.equal(choose(local, row({ ...local, hDeconnexion: 'date invalide' })), ''
   assert.match(checked.text, /Suppressions locales absentes du serveur : 1/);
   assert.match(checked.text, /connexion du compte saisi encore dans l’historique serveur : 1/);
   assert.match(checked.text, /Traces séparées absentes du serveur : 1/);
+  assert.match(checked.text, /Marqueur : trace séparée encore active \/ déjà supprimée \/ non visible : 0 \/ 0 \/ 1/);
   assert.match(checked.text, /non établie pour l’ensemble des traces/);
   assert.equal(checked.recoverable, false);
+  const other = { ...second, id: 'other-account', login: 'autre.compte' };
+  const another = await context.testCompare(
+    { LOGIN_HISTORY: [local, other], LOGIN_HISTORY_DELETED: {} },
+    { LOGIN_HISTORY: [{ ...other, hDeconnexion: '2026-10-17T15:00:00.000Z' }],
+      LOGIN_HISTORY_DELETED: {} }, 'token', local.login);
+  assert.match(another.text, /Autre trace : même compte dans une autre caserne \/ autre compte : 0 \/ 1/);
+  assert.match(another.text, /Autre trace déjà présente dans l’historique global serveur : 1/);
+  assert.match(another.text, /Autre trace séparée identique \/ différente \/ non visible : 0 \/ 0 \/ 1/);
+  assert.equal(another.recoverable, false);
   console.log('Reprise de connexion : deux traces et une suppression restent en lecture seule.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
