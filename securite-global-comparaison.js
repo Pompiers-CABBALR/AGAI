@@ -82,6 +82,7 @@
       !entry || !entry.id || !(Object.prototype.hasOwnProperty.call(remoteDeletes, entry.id)
         || (remoteHistory.has(entry.id) && equal(entry, remoteHistory.get(entry.id)))));
     let separatelyStored = 0;
+    const separateDifferences = [];
     if (unmatchedEntries.length > 10) throw new Error('Trop de traces à contrôler');
     for (const entry of unmatchedEntries) {
       if (!entry || !entry.id || entry.login !== login || entry.caserneId !== 'CIS05') continue;
@@ -95,6 +96,16 @@
       if (Array.isArray(rows) && rows.length === 1 && rows[0].id === id
         && rows[0].caserne === 'CIS05' && rows[0].type === 'login'
         && rows[0].deleted === false && equal(entry, rows[0].data)) separatelyStored++;
+      else if (Array.isArray(rows) && rows.length === 1) {
+        const remoteRow = rows[0];
+        if (remoteRow.deleted !== false) separateDifferences.push('trace marquée supprimée');
+        else if (remoteRow.caserne !== 'CIS05' || remoteRow.type !== 'login'
+          || remoteRow.data?.login !== login) separateDifferences.push('identité ou type différent');
+        else {
+          const keys = new Set(Object.keys(entry).concat(Object.keys(remoteRow.data || {})));
+          separateDifferences.push('champs : ' + ([...keys].filter(key => !equal(entry[key], remoteRow.data?.[key])).join(', ') || 'structure'));
+        }
+      }
     }
     const covered = !otherDifferences.length && !missingDeletes && !unmatchedEntries.length;
     return { text: 'Copie locale couverte par le serveur : ' + (covered ? 'OUI' : 'NON')
@@ -102,8 +113,10 @@
       + '\nSuppressions locales absentes du serveur : ' + missingDeletes
       + '\nConnexions locales non couvertes ou différentes : ' + unmatchedEntries.length
       + '\nParmi elles, traces déjà enregistrées séparément sur le serveur : ' + separatelyStored
+      + '\nTrace séparée présente mais différente : ' + (separateDifferences.join(' ; ') || 'non')
       + '\nAucune donnée ni file locale modifiée. Transmets seulement ces lignes à ton administrateur.',
-      recoverable: !otherDifferences.length && !missingDeletes && unmatchedEntries.length === 1,
+      recoverable: !otherDifferences.length && !missingDeletes
+        && unmatchedEntries.length === 1 && !separateDifferences.length,
       missingEntry: unmatchedEntries.length === 1 ? unmatchedEntries[0] : null };
   };
   const authenticate = async login => {
