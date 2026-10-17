@@ -21,10 +21,25 @@ function functionSource(source, name) {
 }
 
 test('la fiche animal couvre l’écran tandis que sa liste reste compacte', () => {
-  assert.match(css, /\.mov\.pec-modal-overlay\s*\{[^}]*top:0;/);
+  assert.match(css, /\.mov\.pec-modal-overlay\s*\{[^}]*top:var\(--visual-offset-top\);/);
   assert.match(css, /\.mov\.pec-modal-overlay:not\(\.pec-form-active\)\s*\{[^}]*align-items:flex-end;/);
   assert.match(css, /\.mov\.pec-modal-overlay:not\(\.pec-form-active\) \.mod\s*\{[^}]*height:auto;/);
   assert.match(css, /\.mov\.pec-modal-overlay\.pec-form-active #mb\{overflow:hidden;\}/);
+});
+
+test('l’indicateur de synchronisation reste derrière les fenêtres de saisie', () => {
+  const overlayLayer = Number(css.match(/\.mov\{[^}]*z-index:(\d+)/)?.[1]);
+  assert.ok(overlayLayer > 0);
+  for (const file of ['modules/17-animal-js.js', 'app.js']) {
+    const indicatorLayer = Number(read(file).match(/el\.style\.cssText='position:fixed;bottom:8px;right:8px;z-index:(\d+)/)?.[1]);
+    assert.ok(indicatorLayer > 0 && indicatorLayer < overlayLayer, file);
+  }
+});
+
+test('le décalage du viewport est actualisé même sans redimensionnement', () => {
+  for (const file of ['modules/00-preambule.js', 'app.js']) {
+    assert.match(read(file), /window\.visualViewport\.addEventListener\('scroll',syncViewportMetrics,\{passive:true\}\)/);
+  }
 });
 
 for (const file of ['modules/08-interventions-js.js', 'app.js']) {

@@ -832,7 +832,7 @@ body{min-height:var(--app-height);}
      réapparaître la liste des interventions derrière le formulaire. */
   .mov.pec-modal-overlay{
     position:fixed;
-    top:0;
+    top:var(--visual-offset-top);
     right:0;
     bottom:auto;
     left:0;

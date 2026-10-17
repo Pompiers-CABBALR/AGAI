@@ -971,7 +971,8 @@ function _jbSetStatus(state){
   if(state==='error'){window._agaiSyncHealth.lastErrorAt=Date.now();window._agaiSyncHealth.lastError=syncError||'Erreur de synchronisation';}
   const lastOkLabel=state==='ok'&&window._agaiSyncHealth.lastOkAt?' · '+new Date(window._agaiSyncHealth.lastOkAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):'';
   el.textContent=c.txt+lastOkLabel+((state==='pending'||state==='error')&&queued?' ('+queued+' en attente)':'')+(queuedElsewhere?' · '+queuedElsewhere+' autre caserne en attente':'');
-  el.style.cssText='position:fixed;bottom:8px;right:8px;z-index:9999;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;background:'+c.bg+';color:'+c.color+';box-shadow:0 1px 4px rgba(0,0,0,.15);cursor:pointer;';
+  // Rester visible sur l'application, mais sous les fenêtres de saisie (z-index 200).
+  el.style.cssText='position:fixed;bottom:8px;right:8px;z-index:150;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;background:'+c.bg+';color:'+c.color+';box-shadow:0 1px 4px rgba(0,0,0,.15);cursor:pointer;';
   el.title=(state==='error'&&syncError?syncError:(state==='pending'?'Des actions de cette caserne restent à transmettre — cliquer pour les relancer maintenant':state==='ok'&&window._agaiLocalCacheLimited?'Supabase synchronisé — cache hors ligne limité sur cet appareil':'Dernière synchronisation réussie : '+(window._agaiSyncHealth.lastOkAt?new Date(window._agaiSyncHealth.lastOkAt).toLocaleString('fr-FR'):'—')+' — cliquer pour synchroniser maintenant'))+(queuedElsewhere?' Une action d’une autre caserne reste conservée sur cet appareil ; revenir à cette caserne pour la transmettre.':'');
   el.onclick=function(){
     if(state==='error'&&syncError)alert('Diagnostic de synchronisation\n\n'+syncError+'\n\nVersion : '+APP_VERSION);

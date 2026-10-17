@@ -52,6 +52,7 @@ window.addEventListener('resize',syncViewportMetrics,{passive:true});
 window.addEventListener('orientationchange',syncViewportMetrics,{passive:true});
 window.addEventListener('pageshow',syncViewportMetrics,{passive:true});
 if(window.visualViewport)window.visualViewport.addEventListener('resize',syncViewportMetrics,{passive:true});
+if(window.visualViewport)window.visualViewport.addEventListener('scroll',syncViewportMetrics,{passive:true});
 function dismissAppKeyboard(){
   const active=document.activeElement;
   if(active&&/^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName))active.blur();
