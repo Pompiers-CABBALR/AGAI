@@ -58,7 +58,7 @@
       return entry.row.data;
     } finally { db.close(); }
   };
-  const compare = (local, remote) => {
+  const compare = async (local, remote, token, login) => {
     const otherDifferences = Object.keys(local).filter(key => {
       if (key === 'LOGIN_HISTORY' || key === 'LOGIN_HISTORY_DELETED') return false;
       const left = key === 'GLOBAL_ACCOUNTS' ? (local.GLOBAL_ACCOUNTS || []).map(withoutCredential) : local[key];
@@ -70,14 +70,30 @@
       !Object.prototype.hasOwnProperty.call(remoteDeletes, id)).length;
     const remoteHistory = new Map((remote.LOGIN_HISTORY || [])
       .filter(entry => entry && entry.id).map(entry => [entry.id, entry]));
-    const unmatchedHistory = (local.LOGIN_HISTORY || []).filter(entry =>
+    const unmatchedEntries = (local.LOGIN_HISTORY || []).filter(entry =>
       !entry || !entry.id || !(Object.prototype.hasOwnProperty.call(remoteDeletes, entry.id)
-        || (remoteHistory.has(entry.id) && equal(entry, remoteHistory.get(entry.id))))).length;
-    const covered = !otherDifferences.length && !missingDeletes && !unmatchedHistory;
+        || (remoteHistory.has(entry.id) && equal(entry, remoteHistory.get(entry.id)))));
+    let separatelyStored = 0;
+    if (unmatchedEntries.length > 10) throw new Error('Trop de traces à contrôler');
+    for (const entry of unmatchedEntries) {
+      if (!entry || !entry.id || entry.login !== login || entry.caserneId !== 'CIS05') continue;
+      const id = entry.caserneId + '__login__' + entry.id;
+      const response = await request(base + '/rest/v1/records?id=eq.' + encodeURIComponent(id)
+        + '&select=id,caserne,type,data,deleted&limit=1', {
+        method: 'GET', headers: { apikey: apiKey, Authorization: 'Bearer ' + token }
+      });
+      if (!response.ok) throw new Error('Lecture d’une trace impossible');
+      const rows = await response.json();
+      if (Array.isArray(rows) && rows.length === 1 && rows[0].id === id
+        && rows[0].caserne === 'CIS05' && rows[0].type === 'login'
+        && rows[0].deleted === false && equal(entry, rows[0].data)) separatelyStored++;
+    }
+    const covered = !otherDifferences.length && !missingDeletes && !unmatchedEntries.length;
     return 'Copie locale couverte par le serveur : ' + (covered ? 'OUI' : 'NON')
       + '\nAutres rubriques différentes : ' + (otherDifferences.join(', ') || 'aucune')
       + '\nSuppressions locales absentes du serveur : ' + missingDeletes
-      + '\nConnexions locales non couvertes ou différentes : ' + unmatchedHistory
+      + '\nConnexions locales non couvertes ou différentes : ' + unmatchedEntries.length
+      + '\nParmi elles, traces déjà enregistrées séparément sur le serveur : ' + separatelyStored
       + '\nAucune donnée ni file locale modifiée. Transmets seulement ces lignes à ton administrateur.';
   };
   form.addEventListener('submit', async event => {
@@ -113,7 +129,7 @@
         result.textContent = 'Copie générale du serveur inaccessible. Rien n’a été modifié ; conserve la file locale.';
         return;
       }
-      result.textContent = compare(local, rows[0].data);
+      result.textContent = await compare(local, rows[0].data, identity.session.access_token, login);
     } catch (_) {
       result.textContent = 'Contrôle indisponible sur cet appareil. Rien n’a été modifié ; conserve la file locale.';
     } finally {
