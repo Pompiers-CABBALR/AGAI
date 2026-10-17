@@ -19,18 +19,19 @@
 <body>
 <main>
   <h1>Comparer la copie générale en attente</h1>
-  <p>Ouvre cette page sur l’ordinateur où la connexion est bloquée, dans le navigateur habituel. Ce contrôle lit la file locale et le serveur sans les modifier. Il n’affiche ni valeur de configuration, ni nom, ni mot de passe.</p>
+  <p>Ouvre cette page sur l’ordinateur où la connexion est bloquée, dans le navigateur habituel. Ferme les autres onglets AGAI avant une éventuelle reprise. La comparaison est en lecture seule ; la reprise demande une confirmation distincte et ne concerne qu’une trace de connexion déjà contrôlée.</p>
   <form id="check-form">
     <label for="login">Identifiant AGAI</label>
     <input id="login" name="login" autocomplete="username" required>
     <label for="password">Mot de passe AGAI</label>
     <input id="password" name="password" type="password" autocomplete="current-password" required>
     <button id="check-button" type="submit">Comparer sans rien modifier</button>
+    <button id="repair-button" type="button" hidden>Transmettre uniquement la trace de connexion</button>
   </form>
   <pre id="result" role="status" aria-live="polite">Aucune comparaison effectuée.</pre>
-  <small>Cette page ne conserve ni mot de passe ni jeton. Ne supprime pas les données du site après le contrôle.</small>
+  <small>Cette page ne conserve ni mot de passe ni jeton dans le stockage du navigateur. Ne supprime pas les données du site.</small>
 </main>
 <script src="runtime-config.js"></script>
-<script src="securite-global-comparaison.js?version=d347d1c"></script>
+<script src="securite-global-comparaison.js?version=reprise-20261017"></script>
 </body>
 </html>
