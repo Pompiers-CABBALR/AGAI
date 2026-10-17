@@ -1797,7 +1797,9 @@ const RC_FALLBACK_POLL_MS = 5*60*1000;
 const RC_REALTIME_SAFETY_PULL_MS = 15*60*1000;
 let _rcLastSafetyPullAt=Date.now();
 // Pages réduites pour rester utilisable lorsque l'API Supabase est dégradée.
-const RC_PULL_PAGE_SIZE = 100;
+// Rester sous la limite usuelle de 1000 lignes de l'API, tout en réduisant
+// le nombre d'allers-retours nécessaires au chargement d'une grosse caserne.
+const RC_PULL_PAGE_SIZE = 500;
 const RC_PENDING_DIRTY_KEY = 'agai_rc_pending_dirty';
 const RC_PENDING_SINCE_KEY = 'agai_rc_pending_since';
 const RC_DEFERRED_DIRTY_KEY = 'agai_rc_deferred_dirty';
@@ -3331,7 +3333,10 @@ async function _rcFetchAllActiveRows(scopeFilter){
     const batch=await resp.json();
     if(!Array.isArray(batch))throw new Error('Données records invalides (page '+(page+1)+')');
     rows.push.apply(rows,batch);
-    if(batch.length<RC_PULL_PAGE_SIZE)return _rcUniqueRowsById(rows);
+    // La limite réelle du serveur peut être inférieure à celle demandée.
+    // Seule une page vide prouve que la lecture est terminée : s'arrêter sur
+    // une page courte laisserait des interventions invisibles après connexion.
+    if(!batch.length)return _rcUniqueRowsById(rows);
     const nextId=String(batch[batch.length-1]&&batch[batch.length-1].id||'');
     if(!nextId||nextId===lastId)throw new Error('Pagination records incohérente (page '+(page+1)+')');
     lastId=nextId;
