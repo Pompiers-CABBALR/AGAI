@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AGAI — comparaison de la configuration générale</title>
+  <style>
+    body{font:16px/1.5 system-ui,sans-serif;background:#f3f4f7;color:#172033;margin:0}
+    main{max-width:650px;margin:5vh auto;padding:24px;background:white;border:1px solid #dfe3eb;border-radius:14px}
+    h1{font-size:1.35rem;margin:0 0 12px}
+    label{display:block;margin:12px 0 4px;font-weight:600}
+    input{box-sizing:border-box;width:100%;padding:12px;border:1px solid #aab6c8;border-radius:8px;font:inherit}
+    button{margin-top:16px;padding:12px 16px;background:#bd382c;border:0;border-radius:8px;color:white;font:inherit;cursor:pointer}
+    button:disabled{opacity:.6;cursor:wait}
+    pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#eef3fa;padding:14px;border-radius:8px}
+    small{color:#52627a}
+  </style>
+</head>
+<body>
+<main>
+  <h1>Comparer la copie générale en attente</h1>
+  <p>Ouvre cette page sur l’ordinateur où la connexion est bloquée, dans le navigateur habituel. Ce contrôle lit la file locale et le serveur sans les modifier. Il n’affiche ni valeur de configuration, ni nom, ni mot de passe.</p>
+  <form id="check-form">
+    <label for="login">Identifiant AGAI</label>
+    <input id="login" name="login" autocomplete="username" required>
+    <label for="password">Mot de passe AGAI</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required>
+    <button id="check-button" type="submit">Comparer sans rien modifier</button>
+  </form>
+  <pre id="result" role="status" aria-live="polite">Aucune comparaison effectuée.</pre>
+  <small>Cette page ne conserve ni mot de passe ni jeton. Ne supprime pas les données du site après le contrôle.</small>
+</main>
+<script src="runtime-config.js"></script>
+<script src="securite-global-comparaison.js"></script>
+</body>
+</html>
