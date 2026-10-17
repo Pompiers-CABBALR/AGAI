@@ -832,7 +832,7 @@ body{min-height:var(--app-height);}
      réapparaître la liste des interventions derrière le formulaire. */
   .mov.pec-modal-overlay{
     position:fixed;
-    top:var(--visual-offset-top);
+    top:0;
     right:0;
     bottom:auto;
     left:0;
@@ -843,6 +843,18 @@ body{min-height:var(--app-height);}
     padding:0;
     background:#fff;
     overflow:hidden;
+  }
+  .mov.pec-modal-overlay:not(.pec-form-active){
+    align-items:flex-end;
+    background:rgba(15,23,42,.5);
+  }
+  .mov.pec-modal-overlay:not(.pec-form-active) .mod{
+    height:auto;
+    max-height:calc(var(--app-height) - max(20px,var(--safe-top)));
+    border-radius:20px 20px 0 0;
+  }
+  .mov.pec-modal-overlay:not(.pec-form-active) #mb{
+    flex:0 1 auto;
   }
   .mov.pec-modal-overlay .mod{
     display:flex;
@@ -886,6 +898,12 @@ body{min-height:var(--app-height);}
     scroll-padding-bottom:24px;
     -webkit-overflow-scrolling:touch;
     touch-action:pan-y;
+  }
+  .mov.pec-modal-overlay .pec-form-scroll input,
+  .mov.pec-modal-overlay .pec-form-scroll textarea,
+  .mov.pec-modal-overlay .pec-form-scroll select{
+    scroll-margin-top:20px;
+    scroll-margin-bottom:80px;
   }
   .mov.pec-modal-overlay .mclose{
     min-height:48px;

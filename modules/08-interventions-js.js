@@ -1797,9 +1797,12 @@ function keepMobileModalFieldVisible(){
   const scrollHost=field.closest&&field.closest('.pec-form-scroll');
   if(scrollHost){
     const fieldRect=field.getBoundingClientRect(),hostRect=scrollHost.getBoundingClientRect();
+    const viewport=window.visualViewport;
+    const viewportBottom=viewport?viewport.offsetTop+viewport.height:window.innerHeight;
+    const visibleBottom=Math.min(hostRect.bottom,viewportBottom);
     const margin=16;
-    if(fieldRect.bottom>hostRect.bottom-margin){
-      scrollHost.scrollTop+=fieldRect.bottom-(hostRect.bottom-margin);
+    if(fieldRect.bottom>visibleBottom-margin){
+      scrollHost.scrollTop+=fieldRect.bottom-(visibleBottom-margin);
     }else if(fieldRect.top<hostRect.top+margin){
       scrollHost.scrollTop-=hostRect.top+margin-fieldRect.top;
     }
@@ -1814,7 +1817,7 @@ function activateMobileModalField(fieldId){
   window._activeMobileModalFieldId=fieldId;
   overlay.classList.add('keyboard-aware-modal');
   const keep=function(){setTimeout(keepMobileModalFieldVisible,80);};
-  field.addEventListener('focus',keep,{passive:true});
+  field.addEventListener('focus',function(){keep();setTimeout(keepMobileModalFieldVisible,350);},{passive:true});
   field.addEventListener('input',keep,{passive:true});
   requestAnimationFrame(keep);
 }
@@ -1832,6 +1835,7 @@ function registerMobileModalFields(root){
     const keep=function(){
       window._activeMobileModalFieldId=field.id;
       setTimeout(keepMobileModalFieldVisible,80);
+      setTimeout(keepMobileModalFieldVisible,350);
     };
     field.addEventListener('focus',keep,{passive:true});
     field.addEventListener('input',keep,{passive:true});
