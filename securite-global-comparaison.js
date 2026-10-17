@@ -91,16 +91,19 @@
       return !equal(left, right);
     });
     const remoteDeletes = remote.LOGIN_HISTORY_DELETED || {};
-    const missingDeletes = Object.keys(local.LOGIN_HISTORY_DELETED || {}).filter(id =>
-      !Object.prototype.hasOwnProperty.call(remoteDeletes, id)).length;
+    const missingDeleteIds = Object.keys(local.LOGIN_HISTORY_DELETED || {}).filter(id =>
+      !Object.prototype.hasOwnProperty.call(remoteDeletes, id));
+    const missingDeletes = missingDeleteIds.length;
     const remoteHistory = new Map((remote.LOGIN_HISTORY || [])
       .filter(entry => entry && entry.id).map(entry => [entry.id, entry]));
     const unmatchedEntries = (local.LOGIN_HISTORY || []).filter(entry =>
       !entry || !entry.id || !(Object.prototype.hasOwnProperty.call(remoteDeletes, entry.id)
         || (remoteHistory.has(entry.id) && equal(entry, remoteHistory.get(entry.id)))));
     let separatelyStored = 0;
+    let separatelyAbsent = 0;
     const separateDifferences = [];
     let safeDecision = '';
+    let safeConflicts = 0;
     if (unmatchedEntries.length > 10) throw new Error('Trop de traces à contrôler');
     for (const entry of unmatchedEntries) {
       if (!entry || !entry.id || entry.login !== login || entry.caserneId !== 'CIS05') continue;
@@ -117,6 +120,7 @@
       else if (Array.isArray(rows) && rows.length === 1) {
         const remoteRow = rows[0];
         safeDecision = loginConflictDecision(entry, remoteRow);
+        if (safeDecision) safeConflicts++;
         if (remoteRow.deleted !== false) separateDifferences.push('trace marquée supprimée');
         else if (remoteRow.caserne !== 'CIS05' || remoteRow.type !== 'login'
           || remoteRow.data?.login !== login) separateDifferences.push('identité ou type différent');
@@ -124,17 +128,30 @@
           const keys = new Set(Object.keys(entry).concat(Object.keys(remoteRow.data || {})));
           separateDifferences.push('champs : ' + ([...keys].filter(key => !equal(entry[key], remoteRow.data?.[key])).join(', ') || 'structure'));
         }
-      }
+      } else if (Array.isArray(rows) && rows.length === 0) separatelyAbsent++;
     }
     const covered = !otherDifferences.length && !missingDeletes && !unmatchedEntries.length;
+    const ownMissingDeletes = missingDeleteIds.filter(id => remoteHistory.get(id)?.login === login).length;
+    const otherMissingDeletes = missingDeleteIds.filter(id => remoteHistory.has(id)
+      && remoteHistory.get(id)?.login !== login).length;
+    const absentMissingDeletes = missingDeletes - ownMissingDeletes - otherMissingDeletes;
+    const ownUnmatched = unmatchedEntries.filter(entry => entry?.login === login
+      && entry?.caserneId === 'CIS05').length;
     return { text: 'Copie locale couverte par le serveur : ' + (covered ? 'OUI' : 'NON')
       + '\nAutres rubriques différentes : ' + (otherDifferences.join(', ') || 'aucune')
       + '\nSuppressions locales absentes du serveur : ' + missingDeletes
+      + '\nParmi ces suppressions, connexion du compte saisi encore dans l’historique serveur : ' + ownMissingDeletes
+      + '\nConnexion d’un autre compte encore dans l’historique serveur : ' + otherMissingDeletes
+      + '\nCible absente de l’historique serveur : ' + absentMissingDeletes
       + '\nConnexions locales non couvertes ou différentes : ' + unmatchedEntries.length
+      + '\nParmi elles, connexions du compte saisi à CIS05 : ' + ownUnmatched
       + '\nParmi elles, traces déjà enregistrées séparément sur le serveur : ' + separatelyStored
+      + '\nTraces séparées absentes du serveur : ' + separatelyAbsent
+      + '\nTraces différentes à chronologie vérifiable : ' + safeConflicts
       + '\nTrace séparée présente mais différente : ' + (separateDifferences.join(' ; ') || 'non')
       + '\nRésolution sûre des heures de déconnexion : '
-      + (safeDecision === 'local' ? 'copie locale plus récente'
+      + (unmatchedEntries.length !== 1 ? 'non établie pour l’ensemble des traces'
+        : safeDecision === 'local' ? 'copie locale plus récente'
         : safeDecision === 'remote' ? 'copie serveur au moins aussi récente' : 'non établie')
       + '\nAucune donnée ni file locale modifiée. Transmets seulement ces lignes à ton administrateur.',
       recoverable: !otherDifferences.length && !missingDeletes
