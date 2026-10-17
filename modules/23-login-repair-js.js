@@ -90,6 +90,13 @@ function _agaiLoginRepairPanel(message,allowReset){
     button.onclick=agaiResetLoginAfterCheck;
     panel.appendChild(button);
   }
+  if(!allowReset){
+    const link=document.createElement('a');
+    link.href='securite-file-locale-lecture-seule.html';
+    link.textContent='Voir le détail des actions en lecture seule';
+    link.className='login-repair-start';
+    panel.appendChild(link);
+  }
 }
 
 async function agaiOpenLoginRepair(){
