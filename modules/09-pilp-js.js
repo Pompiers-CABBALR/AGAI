@@ -326,8 +326,9 @@ function rPilp(){
   // Lecture seule : consulter PILP ne déclenche aucune écriture Supabase.
   // Même règle que la liste Interventions : les statuts actifs restent visibles,
   // tandis qu'une terminée disparaît dès le changement de journée.
-  const pilpTermineeAujourdhui=function(iv){return interventionWasClosedOnDay(iv,TDP);};
-  const pilpJour=PILP_IVS.filter(function(iv){return isTdy(iv)||['en-attente','selectionne','en-cours'].includes(iv.s)||pilpTermineeAujourdhui(iv);});
+  const currentDay=getDS(N());
+  const pilpTermineeAujourdhui=function(iv){return interventionWasClosedOnDay(iv,currentDay);};
+  const pilpJour=PILP_IVS.filter(function(iv){return iv.s==='terminee'?pilpTermineeAujourdhui(iv):(isTdy(iv)||['en-attente','selectionne','en-cours'].includes(iv.s));});
   // Compteurs récapitulatifs PILP
   document.getElementById('pilp-nb1').textContent=PILP_IVS.filter(iv=>iv.s==='en-attente').length;
   document.getElementById('pilp-nb2s').textContent=PILP_IVS.filter(iv=>iv.s==='selectionne').length;

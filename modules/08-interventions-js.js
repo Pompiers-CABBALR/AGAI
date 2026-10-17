@@ -196,9 +196,11 @@ function interventionIsClosureTimelineEntry(entry){
   return !!entry&&entry.s==='terminee'&&!/^Rappel du requérant\b/i.test(String(entry.note||'').trim());
 }
 function interventionWasClosedOnDay(iv,day){
-  return !!(iv&&iv.s==='terminee'&&Array.isArray(iv.tl)&&iv.tl.some(function(entry){
-    return interventionIsClosureTimelineEntry(entry)&&String(entry.h||'').startsWith(day);
-  }));
+  if(!iv||iv.s!=='terminee')return false;
+  const closure=interventionTimelineStamp(iv,'terminee',true);
+  // Une ancienne fiche sans chronologie de clôture reste visible le jour de
+  // l'appel ; sinon seule la dernière clôture détermine le jour affiché.
+  return closure?closure.startsWith(day):String(iv.h||'').startsWith(day);
 }
 function interventionTimelineStamp(iv,status,latest){
   const entries=(Array.isArray(iv&&iv.tl)?iv.tl:[]).filter(function(entry){
@@ -1184,8 +1186,9 @@ function rI(){
   document.getElementById('nb2s').textContent=ti.filter(iv=>iv.s==='selectionne').length;
   document.getElementById('nb2').textContent=IVS.filter(iv=>iv._avisEnAttente&&!iv._isPilip&&!iv._lienPilpSourceId&&iv.s!=='annulee').length;
   document.getElementById('nb3').textContent=ti.filter(iv=>iv.s==='en-cours').length;
-  const isTermAuj=iv=>interventionWasClosedOnDay(iv,TDP);
-  document.getElementById('nb4').textContent=IVS.filter(iv=>!iv._isPilip&&(isTdy(iv)?iv.s==='terminee':isTermAuj(iv))).length;
+  const currentDay=getDS(N());
+  const isTermAuj=iv=>interventionWasClosedOnDay(iv,currentDay);
+  document.getElementById('nb4').textContent=IVS.filter(iv=>!iv._isPilip&&isTermAuj(iv)).length;
 
   // Avis de passage EN ATTENTE DE RAPPEL — interventions terminées où l'équipe a
   // laissé un avis (requérant absent). Reste affiché jusqu'au rappel du requérant.
@@ -1240,17 +1243,13 @@ function rI(){
   }else if(routeReopen){routeReopen.style.display='none';routeReopen.innerHTML='';}
   // Liste
   const tireur=isTireurPILP();
-  // Une intervention est visible si : créée aujourd'hui OU statut actif (quelle que soit la date) OU clôturée aujourd'hui
-  const isTermineeAujourdhui=iv=>interventionWasClosedOnDay(iv,TDP);
-  let list=IVS.filter(iv=>(isTdy(iv)||['en-attente','selectionne','en-cours'].includes(iv.s)||isTermineeAujourdhui(iv))&&iv.s!=='avis-passage'&&!iv._isPilip&&iv.s!=='annulee');
+  // Statuts actifs quelle que soit la date ; terminées uniquement le jour de leur clôture.
+  let list=IVS.filter(iv=>(iv.s==='terminee'?isTermAuj(iv):(isTdy(iv)||['en-attente','selectionne','en-cours'].includes(iv.s)))&&iv.s!=='avis-passage'&&!iv._isPilip&&iv.s!=='annulee');
   // Si tireur PILP et filtre sélect. ou mes-sel : ajouter aussi les PILP sélectionnées
   let listPilpSel=tireur?PILP_IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l):[];
   if(flt==='all'){
-    // « Tout » est la vue opérationnelle du jour : une intervention ouverte
-    // les jours précédents n'y reste pas après sa clôture, même si cette
-    // clôture a eu lieu aujourd'hui. Elle reste dans « Terminées » ce jour-là,
-    // puis dans l'historique.
-    list=list.filter(iv=>iv.s!=='terminee'||isTdy(iv));
+    // « Tout » comprend les interventions clôturées aujourd'hui, même si
+    // leur appel a été créé un jour précédent.
     // en mode "Tout", on n'ajoute pas les PILP (elles sont dans leur propre menu)
     listPilpSel=[];
   } else if(flt==='mes-sel'){
