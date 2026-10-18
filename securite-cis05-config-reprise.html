@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AGAI — reprise locale de la configuration CIS05</title>
+  <style>
+    body { font: 16px/1.5 system-ui,sans-serif; background:#f3f4f7; color:#172033; margin:0; }
+    main { max-width:580px; margin:5vh auto; padding:24px; background:white; border:1px solid #dfe3eb; border-radius:14px; }
+    h1 { font-size:1.35rem; margin:0 0 12px; }
+    label { display:block; margin:14px 0 5px; font-weight:600; }
+    input:not([type=checkbox]) { box-sizing:border-box; width:100%; padding:11px; border:1px solid #aab3c1; border-radius:8px; font:inherit; }
+    button { margin-top:18px; padding:11px 16px; border:0; border-radius:8px; color:white; background:#b7382d; font:inherit; cursor:pointer; }
+    button:disabled { opacity:.55; cursor:not-allowed; }
+    #result { margin-top:20px; padding:12px; border-radius:8px; background:#eef3fa; white-space:pre-line; }
+    #confirm-area[hidden] { display:none; }
+    .small { color:#596579; font-size:.9rem; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Reprise de la configuration CIS05 sur ce téléphone</h1>
+  <p>Fermez d’abord les autres onglets AGAI de ce navigateur, sans vider ses données. Cette page vérifie la copie locale et le serveur. Elle ne touche à aucune intervention, aucun compte et aucune trace de connexion.</p>
+  <form id="check-form">
+    <label for="login">Identifiant AGAI de ce téléphone</label>
+    <input id="login" autocomplete="username" required>
+    <label for="password">Mot de passe AGAI</label>
+    <input id="password" type="password" autocomplete="current-password" required>
+    <button id="check-button" type="submit">Vérifier sans modifier</button>
+  </form>
+  <div id="result" role="status" aria-live="polite">Aucun contrôle lancé.</div>
+  <div id="confirm-area" hidden>
+    <label><input id="no-edit" type="checkbox"> Je confirme qu’aucun réglage de planning ou d’astreinte n’a été modifié sur ce téléphone depuis la dernière connexion réussie, et je souhaite reprendre la configuration du serveur.</label>
+    <p class="small">Avant de libérer la seule configuration en attente, une sauvegarde locale sera créée et vérifiée dans ce navigateur. Si une donnée change pendant l’opération, la reprise s’arrête.</p>
+    <button id="recovery-button" type="button" disabled>Sauvegarder puis libérer uniquement cette configuration</button>
+  </div>
+  <p class="small">Ne communiquez jamais votre mot de passe. N’effacez pas les données du site. En cas de doute ou d’erreur, arrêtez-vous et transmettez le message affiché.</p>
+</main>
+<script src="runtime-config.js"></script>
+<script src="securite-cis05-config-reprise.js"></script>
+</body>
+</html>
