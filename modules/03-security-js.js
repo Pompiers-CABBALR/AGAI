@@ -287,22 +287,27 @@ async function _agaiOnlineSignIn(account,password){
   return signed&&signed.profile.caserneId===account.caserneId?signed.session:null;
 }
 async function _agaiOnlineCheckSavedSession(login,caserneId){
-  if(!_agaiOnlineAccessReady())return false;
+  // Un contrôle impossible n'est pas un refus d'accès. En particulier, iOS et
+  // Android peuvent signaler une coupure réseau fugace alors que l'app est au
+  // premier plan. Le serveur reste seul juge des écritures pendant la coupure.
+  if(!_agaiOnlineAccessReady())return 'unavailable';
   let session=_agaiAuthSession;
-  if(!session)try{session=JSON.parse(localStorage.getItem(AUTH_LINK_SESSION_KEY)||'null');}catch(error){return false;}
-  if(!session||session._agai_link_login!==login||!session.access_token)return false;
+  if(!session)try{session=JSON.parse(localStorage.getItem(AUTH_LINK_SESSION_KEY)||'null');}catch(error){return 'unavailable';}
+  if(!session||session._agai_link_login!==login||!session.access_token)return 'unavailable';
   if(Number(session.expires_at)*1000<Date.now()+30000){
-    if(!session.refresh_token)return false;
+    if(!session.refresh_token)return 'unavailable';
     try{
       const refreshed=await _agaiAuthFetchWithTimeout(SB_URL+'/auth/v1/token?grant_type=refresh_token',{
         method:'POST',headers:{'apikey':SB_KEY,'Content-Type':'application/json'},
         body:JSON.stringify({refresh_token:session.refresh_token})
       },8000);
       const payload=await refreshed.json().catch(function(){return{};});
-      if(!refreshed.ok||!payload.access_token)return false;
+      // Une réponse de renouvellement manquante ou une course entre deux
+      // renouvellements ne prouve pas que le compte a été suspendu.
+      if(!refreshed.ok||!payload.access_token)return 'unavailable';
       session=Object.assign({},payload,{_agai_link_login:login});
       _agaiStoreAuthSession(session);
-    }catch(error){return false;}
+    }catch(error){return 'unavailable';}
   }
   try{
     const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{
@@ -310,11 +315,15 @@ async function _agaiOnlineCheckSavedSession(login,caserneId){
       body:JSON.stringify({mode:PERSONNEL_SECURE_CIS05_PILOT?'pilot_account_status':'account_status'})
     },8000);
     const result=await response.json().catch(function(){return{};});
-    if(!response.ok||result.personnelEnforcementEnabled!==true||result.canLogin!==true
-      ||result.login!==login||result.caserneId!==caserneId)return false;
-    if(_agaiAuthSession!==session)_agaiStoreAuthSession(session);
-    return true;
-  }catch(error){console.warn('[AGAI][ACCÈS] Vérification en ligne indisponible :',error);return false;}
+    if(response.status===403)return 'denied';
+    if(!response.ok)return 'unavailable';
+    if(result.personnelEnforcementEnabled!==true||typeof result.canLogin!=='boolean'
+      ||typeof result.login!=='string'||typeof result.caserneId!=='string')return 'unavailable';
+    if(result.canLogin===false||result.login!==login||result.caserneId!==caserneId)return 'denied';
+    // Ne jamais réinstaller un ancien jeton : un renouvellement ou une
+    // déconnexion a pu intervenir pendant la requête account_status.
+    return 'allowed';
+  }catch(error){console.warn('[AGAI][ACCÈS] Vérification en ligne indisponible :',error);return 'unavailable';}
 }
 function _agaiOnlineStopChecks(){
   if(_agaiOnlineAccessTimer){clearInterval(_agaiOnlineAccessTimer);_agaiOnlineAccessTimer=null;}
@@ -324,11 +333,11 @@ async function _agaiOnlineCheckCurrent(){
   _agaiOnlineAccessInFlight=true;
   const login=CU.l,caserneId=CU.caserneId,token=SESSION_TOKEN;
   try{
-    const allowed=await _agaiOnlineCheckSavedSession(login,caserneId);
-    if(!allowed&&CU&&CU.l===login&&SESSION_TOKEN===token){
+    const access=await _agaiOnlineCheckSavedSession(login,caserneId);
+    if(access==='denied'&&CU&&CU.l===login&&SESSION_TOKEN===token){
       doLogout();
       const error=document.getElementById('lerr');
-      if(error){error.style.display='block';error.textContent='Accès suspendu ou vérification Internet impossible. Reconnectez-vous lorsque la connexion est disponible.';}
+      if(error){error.style.display='block';error.textContent='Accès suspendu ou refusé par le serveur. Contactez votre administrateur.';}
     }
   }finally{_agaiOnlineAccessInFlight=false;}
 }
@@ -353,7 +362,9 @@ async function _agaiSetPersonnelStatusServer(login,status,startsOn,endsOn){
 document.addEventListener('visibilitychange',function(){
   if(PERSONNEL_ONLINE_GATE&&CU&&!document.hidden)_agaiOnlineCheckCurrent();
 });
-window.addEventListener('offline',function(){
+// Le signal « offline » n'est jamais une preuve de révocation. Le contrôle
+// reprend au retour du réseau, ainsi que par le minuteur périodique.
+window.addEventListener('online',function(){
   if(PERSONNEL_ONLINE_GATE&&CU)_agaiOnlineCheckCurrent();
 });
 async function _agaiRefreshAuthSession(){

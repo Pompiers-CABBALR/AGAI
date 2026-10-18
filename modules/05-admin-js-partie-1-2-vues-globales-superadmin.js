@@ -2267,11 +2267,17 @@ async function _restoreSessionAfterLoad(){
     }
     return false;
   }
-  if(PERSONNEL_ONLINE_GATE&&!await _agaiOnlineCheckSavedSession(stored.login,stored.caserneId)){
-    try{localStorage.removeItem(SESSION_STORAGE_KEY);}catch(error){}
-    _agaiStoreAuthSession(null);
+  const restoredAccess=PERSONNEL_ONLINE_GATE
+    ?await _agaiOnlineCheckSavedSession(stored.login,stored.caserneId):'allowed';
+  if(restoredAccess!=='allowed'){
+    if(restoredAccess==='denied'){
+      try{localStorage.removeItem(SESSION_STORAGE_KEY);}catch(error){}
+      _agaiStoreAuthSession(null);
+    }
     const error=document.getElementById('lerr');
-    if(error){error.style.display='block';error.textContent='AGAI nécessite Internet pour vérifier votre accès. Reconnectez-vous lorsque le service est disponible.';}
+    if(error){error.style.display='block';error.textContent=restoredAccess==='denied'
+      ?'Accès suspendu ou refusé par le serveur. Contactez votre administrateur.'
+      :'AGAI ne peut pas encore vérifier votre accès. Votre session locale est conservée ; réessayez lorsque le réseau revient.';}
     return false;
   }
 

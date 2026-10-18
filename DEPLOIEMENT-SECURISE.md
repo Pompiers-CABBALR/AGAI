@@ -1,5 +1,20 @@
 # AGAI — déploiement sécurisé
 
+## Correctif V202610_0042 — session conservée lors d'une panne de vérification
+
+Sans migration Supabase. Le contrôle périodique et celui
+effectué au retour au premier plan distinguent désormais un refus explicite du
+serveur d'une coupure réseau, d'un délai dépassé ou d'une réponse incomplète.
+Seul le refus confirmé ferme la session ; une vérification indisponible conserve
+la session et reprend au retour du réseau ou au contrôle périodique. Les
+écritures restent soumises à l'authentification et aux règles serveur. Une
+restauration de session échouant faute de réseau ne supprime plus la session
+locale. Le test `tests/test-online-session-check.cjs` couvre ces cas. Avant
+publication, vérifier `Sync OK` et l'absence de saisie en cours sur les
+appareils concernés ; après publication, contrôler la version, une connexion
+stable et un retour réseau sans déconnexion intempestive, sans modifier de
+fiche réelle pour cet essai.
+
 ## V202610_0006 — ordre des véhicules
 
 Les VTU apparaissent avant les VPI dans les
