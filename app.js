@@ -17639,7 +17639,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0043';
+const APP_VERSION='V202610_0044';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -20667,7 +20667,10 @@ function _agaiQueueSessionRestore(){
   if(CU||_agaiSessionRestorePromise)return;
   _agaiSessionRestorePromise=Promise.resolve().then(_restoreSessionAfterLoad)
     .catch(function(error){console.warn('[AGAI] Restauration de session impossible:',error);})
-    .finally(function(){_agaiSessionRestorePromise=null;});
+    .finally(function(){
+      document.documentElement.classList.remove('agai-restoring-session');
+      _agaiSessionRestorePromise=null;
+    });
 }
 window.addEventListener('online',function(){
   if(PERSONNEL_ONLINE_GATE&&!CU&&_readStoredSession())_agaiQueueSessionRestore();

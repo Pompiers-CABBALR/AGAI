@@ -1,5 +1,26 @@
 # AGAI — déploiement sécurisé
 
+## Correctif V202610_0044 — connexion stable et reprise visible
+
+Sans migration de base ni modification des fiches. L'authentification
+réutilise une identité Auth déjà à jour et ne réécrit plus son mot de passe à
+chaque connexion. Une identité dont le mot de passe ou les métadonnées ont
+réellement divergé est réparée uniquement dans ce cas. Cela évite de révoquer
+les sessions d'autres appareils au simple fait de se connecter et enlève un
+appel serveur du parcours normal. Après actualisation, une session locale
+encore valide affiche « Reprise de votre session… » jusqu'à la fin du contrôle
+et du chargement, au lieu de montrer momentanément un formulaire de connexion.
+Un accès refusé ou un chargement impossible continue d'ouvrir le formulaire
+avec son message ; aucune file locale n'est effacée.
+
+Avant déploiement, confirmer l'absence de saisie en cours et « Sync OK ».
+Déployer d'abord la fonction Edge `agai-account-link`, puis publier la page
+V202610_0044. Après publication, vérifier sur un appareil connecté qu'une
+actualisation revient à l'accueil sans ressaisie des identifiants, et sur un
+autre appareil qu'une connexion n'interrompt pas la première session. Ne pas
+créer ou modifier de fiche réelle pour ce contrôle. Si la reprise échoue,
+recueillir le message exact et ne supprimer aucune donnée du navigateur.
+
 ## Correctif V202610_0043 — session restaurée après actualisation
 
 Sans migration Supabase ni modification de fiche. Avec le contrôle d'accès en

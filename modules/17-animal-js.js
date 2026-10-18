@@ -1342,7 +1342,10 @@ function _agaiQueueSessionRestore(){
   if(CU||_agaiSessionRestorePromise)return;
   _agaiSessionRestorePromise=Promise.resolve().then(_restoreSessionAfterLoad)
     .catch(function(error){console.warn('[AGAI] Restauration de session impossible:',error);})
-    .finally(function(){_agaiSessionRestorePromise=null;});
+    .finally(function(){
+      document.documentElement.classList.remove('agai-restoring-session');
+      _agaiSessionRestorePromise=null;
+    });
 }
 window.addEventListener('online',function(){
   if(PERSONNEL_ONLINE_GATE&&!CU&&_readStoredSession())_agaiQueueSessionRestore();

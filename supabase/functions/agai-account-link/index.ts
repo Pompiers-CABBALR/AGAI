@@ -127,14 +127,34 @@ Deno.serve(async (req) => {
       } else link = inserted.data
     }
 
-    // createUser a déjà posé ces champs pour le pilote. L'ancien mode conserve sa mise à jour habituelle.
-    if (!createOnly) {
-      const metadata = { agai_login: login, caserne_id: credential.caserne_id, app_role: credential.app_role }
-      const updated = await admin.auth.admin.updateUserById(authUserId, { password, email, email_confirm: true, app_metadata: metadata, user_metadata: { first_name: credential.first_name, last_name: credential.last_name } })
-      if (updated.error) return json({ error: 'identity_update_failed' }, 503)
-    }
     const publicClient = createClient(url, anonKey, { auth: { persistSession: false, autoRefreshToken: false } })
-    const signed = await publicClient.auth.signInWithPassword({ email, password })
+    let signed = await publicClient.auth.signInWithPassword({ email, password })
+    // Réécrire le mot de passe à chaque connexion révoque les sessions déjà
+    // ouvertes sur les autres appareils et ralentit inutilement l'accès.
+    // L'empreinte métier a déjà été vérifiée ci-dessus : ne réparer l'identité
+    // Auth que si son mot de passe a réellement pris du retard. Une mise à jour
+    // des droits ne touche jamais au mot de passe et reste exceptionnelle.
+    const repairPassword = !createOnly && signed.error?.code === 'invalid_credentials'
+    if (signed.error && !repairPassword) return json({ error: 'session_creation_failed' }, 503)
+    const authUser = signed.data.user
+    const repairMetadata = !createOnly && !repairPassword && authUser && (
+      authUser.email !== email ||
+      authUser.app_metadata?.agai_login !== login ||
+      authUser.app_metadata?.caserne_id !== credential.caserne_id ||
+      authUser.app_metadata?.app_role !== credential.app_role ||
+      authUser.user_metadata?.first_name !== credential.first_name ||
+      authUser.user_metadata?.last_name !== credential.last_name
+    )
+    if (repairPassword || repairMetadata) {
+      const metadata = { agai_login: login, caserne_id: credential.caserne_id, app_role: credential.app_role }
+      const updated = await admin.auth.admin.updateUserById(authUserId, {
+        ...(repairPassword ? { password } : {}), email, email_confirm: true,
+        app_metadata: metadata,
+        user_metadata: { first_name: credential.first_name, last_name: credential.last_name },
+      })
+      if (updated.error) return json({ error: 'identity_update_failed' }, 503)
+      signed = await publicClient.auth.signInWithPassword({ email, password })
+    }
     if (signed.error || !signed.data.session) return json({ error: 'session_creation_failed' }, 503)
     await admin.from('agai_auth_links').update({ last_login_at: new Date().toISOString(), last_device_id: String(req.headers.get('x-device-id') ?? '').slice(0, 120), caserne_id: credential.caserne_id, app_role: credential.app_role }).eq('login', login)
     // Un appareil neuf ne peut plus télécharger les fiches pour retrouver le
