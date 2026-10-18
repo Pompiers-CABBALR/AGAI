@@ -1,5 +1,21 @@
 # AGAI — déploiement sécurisé
 
+## Correctif V202610_0043 — session restaurée après actualisation
+
+Sans migration Supabase ni modification de fiche. Avec le contrôle d'accès en
+ligne, l'initialisation relance désormais la restauration de la session après
+chargement des scripts. L'accès est revérifié sur le serveur, les données sont
+reçues sous l'identité enregistrée sans envoi préalable de la file locale,
+puis l'interface est ouverte avec le même jeton de session applicatif. Un
+contrôle temporairement indisponible laisse la session et la file locale en
+place ; un refus explicite reste bloquant. Une connexion manuelle lancée au
+même moment attend la fin de cette restauration pour éviter une concurrence.
+Le test `tests/test-online-session-reload.cjs` couvre l'ordre des opérations,
+les interruptions et le refus serveur. Avant publication, vérifier l'absence
+de saisie en cours et `Sync OK` sur les appareils concernés ; après publication,
+faire actualiser un appareil connecté et vérifier le retour à l'accueil sans
+nouvelle connexion, sans modifier d'intervention réelle.
+
 ## Correctif V202610_0042 — session conservée lors d'une panne de vérification
 
 Sans migration Supabase. Le contrôle périodique et celui

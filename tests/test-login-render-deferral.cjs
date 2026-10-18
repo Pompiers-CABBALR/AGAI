@@ -26,7 +26,7 @@ for (const [file, authFile] of [
   test(`${file}: la connexion diffère uniquement le rendu des onglets masqués`, () => {
     const source = read(file);
     assert.match(read(authFile), /if\(await _rcPull\(false,true\)\)/);
-    assert.match(source, /async function _rcPull\(silent,deferViewsUntilLogin\)/);
+    assert.match(source, /async function _rcPull\(silent,deferViewsUntilLogin,skipPendingPush\)/);
     assert.match(source, /const rows = await _rcFetchAllActiveRows\(requestedScope\)/);
     assert.match(source, /_writeLocalCache\(data\);\s*_rcRenderViewsAfterPull\(deferViewsUntilLogin\);/);
 

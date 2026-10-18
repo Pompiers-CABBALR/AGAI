@@ -2267,6 +2267,14 @@ async function _restoreSessionAfterLoad(){
     }
     return false;
   }
+  if(PERSONNEL_ONLINE_GATE){
+    const backgroundLimit=_getBgLogoutMs(),backgroundAt=Number(stored.backgroundAt)||0;
+    if(backgroundLimit>0&&backgroundAt&&now-backgroundAt>=backgroundLimit){
+      try{localStorage.removeItem(SESSION_STORAGE_KEY);}catch(error){}
+      _agaiStoreAuthSession(null);
+      return false;
+    }
+  }
   const restoredAccess=PERSONNEL_ONLINE_GATE
     ?await _agaiOnlineCheckSavedSession(stored.login,stored.caserneId):'allowed';
   if(restoredAccess!=='allowed'){
@@ -2279,6 +2287,15 @@ async function _restoreSessionAfterLoad(){
       ?'Accès suspendu ou refusé par le serveur. Contactez votre administrateur.'
       :'AGAI ne peut pas encore vérifier votre accès. Votre session locale est conservée ; réessayez lorsque le réseau revient.';}
     return false;
+  }
+  if(PERSONNEL_ONLINE_GATE){
+    let loaded=false;
+    try{loaded=await _agaiLoadSavedSessionData(stored);}catch(error){console.warn('[AGAI] Reprise des données impossible:',error);}
+    if(!loaded){
+      const error=document.getElementById('lerr');
+      if(error){error.style.display='block';error.textContent='Votre accès est vérifié, mais les données ne chargent pas. Votre session locale est conservée ; réessayez quand la synchronisation revient.';}
+      return false;
+    }
   }
 
   let restoredUser=null;
@@ -2361,6 +2378,10 @@ async function _restoreSessionAfterLoad(){
   _armSessionTimers();
   _agaiOnlineArmChecks();
   doLoginSuccess();
+  if(PERSONNEL_ONLINE_GATE){
+    _rcStartRealtime();_rcStartPolling();
+    if(_rcPendingDirty.size)_rcScheduleRetry(0);
+  }
   return true;
 }
 

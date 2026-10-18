@@ -62,6 +62,12 @@ async function doLogin(){
   // Une version ancienne confirmée par le serveur ne peut jamais ouvrir une
   // session et envoyer des données incompatibles vers Supabase.
   if(typeof _ensureLoginVersionReady==='function'&&!await _ensureLoginVersionReady())return;
+  // Une actualisation peut déjà être en train de rétablir la session. Ne pas
+  // lancer une seconde connexion qui changerait l'identité pendant ce pull.
+  if(PERSONNEL_ONLINE_GATE&&_agaiSessionRestorePromise){
+    await _agaiSessionRestorePromise;
+    if(CU&&isSessionValid())return;
+  }
 
   // ── P5 : Protection brute-force avec délai exponentiel ──
   if(_loginLocked){

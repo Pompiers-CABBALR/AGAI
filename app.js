@@ -2228,6 +2228,12 @@ async function doLogin(){
   // Une version ancienne confirmée par le serveur ne peut jamais ouvrir une
   // session et envoyer des données incompatibles vers Supabase.
   if(typeof _ensureLoginVersionReady==='function'&&!await _ensureLoginVersionReady())return;
+  // Une actualisation peut déjà être en train de rétablir la session. Ne pas
+  // lancer une seconde connexion qui changerait l'identité pendant ce pull.
+  if(PERSONNEL_ONLINE_GATE&&_agaiSessionRestorePromise){
+    await _agaiSessionRestorePromise;
+    if(CU&&isSessionValid())return;
+  }
 
   // ── P5 : Protection brute-force avec délai exponentiel ──
   if(_loginLocked){
@@ -4653,6 +4659,14 @@ async function _restoreSessionAfterLoad(){
     }
     return false;
   }
+  if(PERSONNEL_ONLINE_GATE){
+    const backgroundLimit=_getBgLogoutMs(),backgroundAt=Number(stored.backgroundAt)||0;
+    if(backgroundLimit>0&&backgroundAt&&now-backgroundAt>=backgroundLimit){
+      try{localStorage.removeItem(SESSION_STORAGE_KEY);}catch(error){}
+      _agaiStoreAuthSession(null);
+      return false;
+    }
+  }
   const restoredAccess=PERSONNEL_ONLINE_GATE
     ?await _agaiOnlineCheckSavedSession(stored.login,stored.caserneId):'allowed';
   if(restoredAccess!=='allowed'){
@@ -4665,6 +4679,15 @@ async function _restoreSessionAfterLoad(){
       ?'Accès suspendu ou refusé par le serveur. Contactez votre administrateur.'
       :'AGAI ne peut pas encore vérifier votre accès. Votre session locale est conservée ; réessayez lorsque le réseau revient.';}
     return false;
+  }
+  if(PERSONNEL_ONLINE_GATE){
+    let loaded=false;
+    try{loaded=await _agaiLoadSavedSessionData(stored);}catch(error){console.warn('[AGAI] Reprise des données impossible:',error);}
+    if(!loaded){
+      const error=document.getElementById('lerr');
+      if(error){error.style.display='block';error.textContent='Votre accès est vérifié, mais les données ne chargent pas. Votre session locale est conservée ; réessayez quand la synchronisation revient.';}
+      return false;
+    }
   }
 
   let restoredUser=null;
@@ -4747,6 +4770,10 @@ async function _restoreSessionAfterLoad(){
   _armSessionTimers();
   _agaiOnlineArmChecks();
   doLoginSuccess();
+  if(PERSONNEL_ONLINE_GATE){
+    _rcStartRealtime();_rcStartPolling();
+    if(_rcPendingDirty.size)_rcScheduleRetry(0);
+  }
   return true;
 }
 
@@ -17612,7 +17639,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0042';
+const APP_VERSION='V202610_0043';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -20574,7 +20601,13 @@ async function _rcBootstrapSync(){
 function loadData(){
   // Avec le nouveau controle d'acces, aucune fiche ni cache ne doit etre lu
   // avant que le serveur ait authentifie le personnel.
-  if(PERSONNEL_ONLINE_GATE)return;
+  if(PERSONNEL_ONLINE_GATE){
+    // Au rechargement, attendre la fin des scripts différés, puis reprendre
+    // une session encore valide sans demander à nouveau le mot de passe.
+    if(document.readyState==='complete')_agaiQueueSessionRestore();
+    else document.addEventListener('DOMContentLoaded',_agaiQueueSessionRestore,{once:true});
+    return;
+  }
   const cache=localStorage.getItem(JB_CACHE_KEY);
   if(cache){
     try{
@@ -20607,17 +20640,44 @@ function _loadClear(){
   }
 }
 
+async function _agaiLoadSavedSessionData(stored){
+  const previous={user:CU,role:GLOBAL_ROLE,station:CURRENT_CASERNE_ID};
+  CU={l:stored.login,caserneId:stored.caserneId,
+    appRole:stored.globalRole==='chef_corps'?'chef_corps':stored.globalRole==='superadmin'?'superadmin':'agent'};
+  GLOBAL_ROLE=stored.globalRole||null;
+  CURRENT_CASERNE_ID=stored.globalRole==='chef_corps'?null:stored.caserneId;
+  try{
+    const durableRows=await _rcOutboxGetRows();
+    // Une ancienne trace de connexion d'un autre titulaire ne doit jamais
+    // être envoyée sous la session que l'on reprend.
+    _rcForeignLoginPendingIds=new Set(durableRows.filter(function(row){
+      return row&&row.type==='login'&&(!row.data||row.data.login!==stored.login);
+    }).map(function(row){return row.id;}));
+    // La réception précède tout envoi de la file locale. La reprise complète
+    // validera ensuite le rôle avant que la synchronisation redémarre.
+    return await _rcPull(false,true,true);
+  }finally{
+    CU=previous.user;GLOBAL_ROLE=previous.role;CURRENT_CASERNE_ID=previous.station;
+    syncCaserneContext();
+  }
+}
+
 let _agaiSessionRestorePromise=null;
+function _agaiQueueSessionRestore(){
+  if(CU||_agaiSessionRestorePromise)return;
+  _agaiSessionRestorePromise=Promise.resolve().then(_restoreSessionAfterLoad)
+    .catch(function(error){console.warn('[AGAI] Restauration de session impossible:',error);})
+    .finally(function(){_agaiSessionRestorePromise=null;});
+}
+window.addEventListener('online',function(){
+  if(PERSONNEL_ONLINE_GATE&&!CU&&_readStoredSession())_agaiQueueSessionRestore();
+});
 function _postLoadInit(){
   if(CASERNE_DATA._global&&CASERNE_DATA._global.logoB64){
     window._LOGO_OVERRIDE='data:'+(CASERNE_DATA._global.logoMime||'image/jpeg')+';base64,'+CASERNE_DATA._global.logoB64;
   }
   try{agaiMigrateOperationalStatusMetadata();}catch(error){console.warn('[AGAI] Mise à niveau des statuts historiques impossible:',error);}
-  if(!CU&&!_agaiSessionRestorePromise){
-    _agaiSessionRestorePromise=Promise.resolve(_restoreSessionAfterLoad())
-      .catch(function(error){console.warn('[AGAI] Restauration de session impossible:',error);})
-      .finally(function(){_agaiSessionRestorePromise=null;});
-  }
+  if(!CU)_agaiQueueSessionRestore();
 }
 
 function jbSyncNow(){
@@ -22651,13 +22711,13 @@ function _rcRenderViewsAfterPull(deferViewsUntilLogin){
 }
 
 // ── PULL : lit tous les enregistrements et reconstruit l'état ──
-async function _rcPull(silent,deferViewsUntilLogin){
+async function _rcPull(silent,deferViewsUntilLogin,skipPendingPush){
   if(PERSONNEL_ONLINE_GATE&&!_agaiAuthAccessToken())return false;
   if(_rcSaving||_rcPulling) return !PERSONNEL_ONLINE_GATE;
   // Traiter d'abord la file locale, puis poursuivre la réception. L'overlay
   // protège les modifications locales : une action bloquée ne doit plus cacher
   // les nouvelles interventions reçues par la caserne.
-  if(_rcHasActivePending()){
+  if(_rcHasActivePending()&&!skipPendingPush){
     if(!_rcInitialReconciliationDone)await _rcRecoverPendingQueue();
     await _rcPush(false);
   }
@@ -22806,7 +22866,7 @@ async function _rcPull(silent,deferViewsUntilLogin){
     if(activeCid) syncCaserneContext();
     _writeLocalCache(data);
     _rcRenderViewsAfterPull(deferViewsUntilLogin);
-    if(_rcPendingDirty.size)_rcScheduleRetry(0);
+    if(_rcPendingDirty.size&&!skipPendingPush)_rcScheduleRetry(0);
     _rcLastSyncError='';
     window._agaiSyncHealth.lastPullOkAt=Date.now();
     window._agaiSyncHealth.lastPullError='';
