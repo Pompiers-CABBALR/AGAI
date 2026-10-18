@@ -1586,6 +1586,83 @@ async function _agaiClearCoveredCis05ConfigPending(signed,durableRows){
     return remaining;
   }catch(error){_rcPendingDirty.add(id);_rcPersistPendingDirty();return durableRows;}
 }
+async function _agaiClearOrphanCis05ConfigPending(signed,durableRows){
+  const id='CIS05'+RC_SEP+'config'+RC_SEP+'main';
+  if(!signed||!signed.profile||signed.profile.login!=='dumoulin.sebastien'
+    ||signed.profile.caserneId!=='CIS05'||!signed.session||!signed.session.access_token
+    ||!_rcPendingDirty.has(id)||(durableRows||[]).some(function(row){return row&&row.id===id;})
+    ||_rcSaving||_rcPulling||!window.indexedDB||typeof indexedDB.databases!=='function')return durableRows;
+  try{
+    const databases=await indexedDB.databases();
+    if(!databases.some(function(entry){return entry.name===RC_OUTBOX_DB_NAME;}))return durableRows;
+    const outbox=await _rcOpenOutboxDb();
+    if(!outbox||!outbox.objectStoreNames.contains(RC_OUTBOX_STORE))return durableRows;
+    const readOutbox=()=>new Promise(function(resolve,reject){
+      const tx=outbox.transaction(RC_OUTBOX_STORE,'readonly');
+      const request=tx.objectStore(RC_OUTBOX_STORE).get(id);
+      request.onsuccess=function(){resolve(request.result||null);};
+      request.onerror=function(){reject(request.error||new Error('file locale illisible'));};
+      tx.onabort=function(){reject(tx.error||new Error('lecture locale interrompue'));};
+    });
+    if(await readOutbox())return durableRows;
+    const originalCache=localStorage.getItem(JB_CACHE_KEY);
+    const pendingRaw=localStorage.getItem(RC_PENDING_DIRTY_KEY);
+    const pending=JSON.parse(pendingRaw||'[]');
+    if(!Array.isArray(pending)||!pending.includes(id))return durableRows;
+    const response=await _agaiAuthFetchWithTimeout(SB_REST+'/records?id=eq.'+encodeURIComponent(id)
+      +'&select=id,caserne,type,data,deleted,updated_at&limit=1',{
+        headers:{apikey:SB_KEY,Authorization:'Bearer '+signed.session.access_token},cache:'no-store'
+      },12000);
+    if(!response.ok)return durableRows;
+    const rows=await response.json();
+    const remote=Array.isArray(rows)&&rows.length===1?rows[0]:null;
+    if(!remote||remote.id!==id||remote.caserne!=='CIS05'||remote.type!=='config'
+      ||remote.deleted!==false||!remote.data||typeof remote.data!=='object'
+      ||!remote.updated_at)return durableRows;
+    const backupName='agai-sync-recovery-backups';
+    const backupDb=await new Promise(function(resolve,reject){
+      const opened=indexedDB.open(backupName,1);
+      opened.onupgradeneeded=function(){
+        if(!opened.result.objectStoreNames.contains('records'))opened.result.createObjectStore('records',{keyPath:'id'});
+      };
+      opened.onsuccess=function(){resolve(opened.result);};
+      opened.onerror=function(){reject(opened.error||new Error('sauvegarde locale indisponible'));};
+      opened.onblocked=function(){reject(new Error('sauvegarde locale occupée'));};
+    });
+    try{
+      if(!backupDb.objectStoreNames.contains('records'))return durableRows;
+      const backup={id:id+'__'+crypto.randomUUID(),createdAt:new Date().toISOString(),
+        entry:null,cache:originalCache,pending:pending.slice(),
+        pendingSince:localStorage.getItem(RC_PENDING_SINCE_KEY),
+        deferred:localStorage.getItem(RC_DEFERRED_DIRTY_KEY),serverUpdatedAt:remote.updated_at};
+      await new Promise(function(resolve,reject){
+        const tx=backupDb.transaction('records','readwrite');
+        tx.objectStore('records').put(backup);
+        tx.oncomplete=resolve;
+        tx.onerror=function(){reject(tx.error||new Error('sauvegarde locale échouée'));};
+        tx.onabort=function(){reject(tx.error||new Error('sauvegarde locale interrompue'));};
+      });
+      const saved=await new Promise(function(resolve,reject){
+        const tx=backupDb.transaction('records','readonly');
+        const request=tx.objectStore('records').get(backup.id);
+        request.onsuccess=function(){resolve(request.result||null);};
+        request.onerror=function(){reject(request.error||new Error('contrôle de sauvegarde échoué'));};
+        tx.onabort=function(){reject(tx.error||new Error('contrôle de sauvegarde interrompu'));};
+      });
+      if(JSON.stringify(_rcCanonicalSyncValue(saved))!==JSON.stringify(_rcCanonicalSyncValue(backup)))return durableRows;
+    }finally{backupDb.close();}
+    if(await readOutbox()||originalCache!==localStorage.getItem(JB_CACHE_KEY)
+      ||pendingRaw!==localStorage.getItem(RC_PENDING_DIRTY_KEY)||_rcSaving||_rcPulling)return durableRows;
+    _rcPendingDirty.delete(id);
+    _rcClearDeferred([id]);
+    _rcPersistPendingDirty();
+    const savedPending=JSON.parse(localStorage.getItem(RC_PENDING_DIRTY_KEY)||'[]');
+    if(await readOutbox()||!Array.isArray(savedPending)||savedPending.includes(id)){
+      _rcPendingDirty.add(id);_rcPersistPendingDirty();
+    }
+  }catch(error){console.warn('[AGAI][ACCÈS] Reprise locale ciblée indisponible :',error);}
+  return durableRows;
+}
 async function _agaiOnlinePrepareLogin(login,password){
   const signed=await _agaiOnlineBootstrapLogin(login,password);
   if(!signed||!USE_RECORDS||typeof _rcOutboxGetRows!=='function'||typeof _rcPull!=='function')return null;
@@ -1600,9 +1677,10 @@ async function _agaiOnlinePrepareLogin(login,password){
     const requiresPreviousSession=function(id){
       return ownOrGlobal(id)&&!String(id||'').includes(RC_SEP+'login'+RC_SEP);
     };
-    const durableRows=await _agaiClearCoveredCis05ConfigPending(signed,
+    const durableRows=await _agaiClearOrphanCis05ConfigPending(signed,
+      await _agaiClearCoveredCis05ConfigPending(signed,
       await _agaiClearCoveredGlobalPending(signed,
-        await _rcDiscardPilotLoginTombstones(await _rcOutboxGetRows())));
+        await _rcDiscardPilotLoginTombstones(await _rcOutboxGetRows()))));
     // Les anciennes traces de connexion d'autres comptes restent dans la file,
     // mais ne sont ni un obstacle pour CIS05 ni transmises sous ce titulaire.
     _rcForeignLoginPendingIds=new Set(durableRows.filter(function(row){
@@ -17639,7 +17717,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0044';
+const APP_VERSION='V202610_0045';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
