@@ -298,6 +298,120 @@ async function _agaiClearOrphanCis05ConfigPending(signed,durableRows){
   }catch(error){console.warn('[AGAI][ACCÈS] Reprise locale ciblée indisponible :',error);}
   return durableRows;
 }
+// Le compte agent de Cédric ne peut pas publier une configuration CIS05 (RLS).
+// Son navigateur a néanmoins conservé cette ligne. La reprise est limitée à
+// cette identité, sauvegarde la ligne et le cache local, puis retire seulement
+// la configuration après une nouvelle lecture authentifiée du serveur.
+async function _agaiRecoverCedricConfigDuringLogin(signed,durableRows){
+  const id='CIS05'+RC_SEP+'config'+RC_SEP+'main';
+  if(!signed||!signed.profile||signed.profile.login!=='carre.cedric'
+    ||signed.profile.caserneId!=='CIS05'||signed.profile.appRole!=='agent'
+    ||!signed.session||!signed.session.access_token||!_rcPendingDirty.has(id)
+    ||_rcSaving||_rcPulling||!window.indexedDB||typeof indexedDB.databases!=='function')return durableRows;
+  const local=(durableRows||[]).find(function(row){return row&&row.id===id;});
+  if(!local||local.caserne!=='CIS05'||local.type!=='config'||local.deleted!==false
+    ||!local.data||typeof local.data!=='object'||Array.isArray(local.data)
+    ||(durableRows||[]).some(function(row){return row&&row.id!==id
+      &&(row.type!=='login'||row.caserne!=='CIS05'||!row.data
+        ||row.data.login!==signed.profile.login);}))return durableRows;
+  let removedMarker=false;
+  try{
+    const pendingRaw=localStorage.getItem(RC_PENDING_DIRTY_KEY);
+    const pending=JSON.parse(pendingRaw||'[]');
+    if(!Array.isArray(pending)||!pending.includes(id)
+      ||pending.some(function(key){return key!==id&&!String(key).startsWith('CIS05'+RC_SEP+'login'+RC_SEP);}))return durableRows;
+    const originalCache=localStorage.getItem(JB_CACHE_KEY);
+    const databases=await indexedDB.databases();
+    if(!databases.some(function(entry){return entry.name===RC_OUTBOX_DB_NAME;}))return durableRows;
+    const outbox=await _rcOpenOutboxDb();
+    if(!outbox||!outbox.objectStoreNames.contains(RC_OUTBOX_STORE))return durableRows;
+    const readEntry=()=>new Promise(function(resolve,reject){
+      const tx=outbox.transaction(RC_OUTBOX_STORE,'readonly');
+      const request=tx.objectStore(RC_OUTBOX_STORE).get(id);
+      request.onsuccess=function(){resolve(request.result||null);};
+      request.onerror=function(){reject(request.error||new Error('file locale illisible'));};
+      tx.onabort=function(){reject(tx.error||new Error('lecture locale interrompue'));};
+    });
+    const entry=await readEntry();
+    const same=function(a,b){return JSON.stringify(_rcCanonicalSyncValue(a))===JSON.stringify(_rcCanonicalSyncValue(b));};
+    if(!entry||entry.id!==id||!same(entry.row,local))return durableRows;
+    const response=await _agaiAuthFetchWithTimeout(SB_REST+'/records?id=eq.'+encodeURIComponent(id)
+      +'&select=id,caserne,type,data,deleted,updated_at&limit=1',{
+        headers:{apikey:SB_KEY,Authorization:'Bearer '+signed.session.access_token},cache:'no-store'
+      },12000);
+    if(!response.ok)return durableRows;
+    const rows=await response.json();
+    const remote=Array.isArray(rows)&&rows.length===1?rows[0]:null;
+    if(!remote||remote.id!==id||remote.caserne!=='CIS05'||remote.type!=='config'
+      ||remote.deleted!==false||!remote.data||typeof remote.data!=='object'
+      ||Array.isArray(remote.data)||!remote.updated_at)return durableRows;
+    const backupDb=await new Promise(function(resolve,reject){
+      const opened=indexedDB.open('agai-sync-recovery-backups',1);
+      opened.onupgradeneeded=function(){
+        if(!opened.result.objectStoreNames.contains('records'))opened.result.createObjectStore('records',{keyPath:'id'});
+      };
+      opened.onsuccess=function(){resolve(opened.result);};
+      opened.onerror=function(){reject(opened.error||new Error('sauvegarde locale indisponible'));};
+      opened.onblocked=function(){reject(new Error('sauvegarde locale occupée'));};
+    });
+    try{
+      if(!backupDb.objectStoreNames.contains('records'))return durableRows;
+      const backup={id:id+'__'+crypto.randomUUID(),createdAt:new Date().toISOString(),
+        accountLogin:signed.profile.login,entry:entry,cache:originalCache,pending:pending.slice(),
+        pendingSince:localStorage.getItem(RC_PENDING_SINCE_KEY),
+        deferred:localStorage.getItem(RC_DEFERRED_DIRTY_KEY),serverUpdatedAt:remote.updated_at};
+      await new Promise(function(resolve,reject){
+        const tx=backupDb.transaction('records','readwrite');
+        tx.objectStore('records').put(backup);
+        tx.oncomplete=resolve;
+        tx.onerror=function(){reject(tx.error||new Error('sauvegarde locale échouée'));};
+        tx.onabort=function(){reject(tx.error||new Error('sauvegarde locale interrompue'));};
+      });
+      const saved=await new Promise(function(resolve,reject){
+        const tx=backupDb.transaction('records','readonly');
+        const request=tx.objectStore('records').get(backup.id);
+        request.onsuccess=function(){resolve(request.result||null);};
+        request.onerror=function(){reject(request.error||new Error('contrôle de sauvegarde échoué'));};
+        tx.onabort=function(){reject(tx.error||new Error('contrôle de sauvegarde interrompu'));};
+      });
+      if(!same(saved,backup))return durableRows;
+    }finally{backupDb.close();}
+    if(!same(await readEntry(),entry)||pendingRaw!==localStorage.getItem(RC_PENDING_DIRTY_KEY)
+      ||originalCache!==localStorage.getItem(JB_CACHE_KEY)||_rcSaving||_rcPulling)return durableRows;
+    _rcPendingDirty.delete(id);
+    removedMarker=true;
+    localStorage.setItem(RC_PENDING_DIRTY_KEY,JSON.stringify(pending.filter(function(key){return key!==id;})));
+    const removed=await new Promise(function(resolve){
+      let tx;
+      try{
+        tx=outbox.transaction(RC_OUTBOX_STORE,'readwrite');
+        const store=tx.objectStore(RC_OUTBOX_STORE);
+        const request=store.get(id);
+        request.onsuccess=function(){
+          if(!same(request.result,entry)){tx.abort();return;}
+          store.delete(id);
+        };
+        request.onerror=function(){tx.abort();};
+        tx.oncomplete=function(){resolve(true);};
+        tx.onabort=function(){resolve(false);};
+        tx.onerror=function(){resolve(false);};
+      }catch(error){try{if(tx)tx.abort();}catch(_error){}resolve(false);}
+    });
+    if(!removed)throw new Error('la file locale a changé');
+    const savedPending=JSON.parse(localStorage.getItem(RC_PENDING_DIRTY_KEY)||'[]');
+    if(await readEntry()||!Array.isArray(savedPending)||savedPending.includes(id)
+      ||originalCache!==localStorage.getItem(JB_CACHE_KEY)||_rcSaving||_rcPulling)
+      throw new Error('libération locale non confirmée');
+    _rcClearDeferred([id]);
+    _rcPersistPendingDirty();
+    removedMarker=false;
+    return (durableRows||[]).filter(function(row){return row&&row.id!==id;});
+  }catch(error){
+    if(removedMarker){_rcPendingDirty.add(id);_rcPersistPendingDirty();}
+    console.warn('[AGAI][ACCÈS] Reprise CIS05 ciblée indisponible :',error);
+    return durableRows;
+  }
+}
 async function _agaiOnlinePrepareLogin(login,password){
   _agaiLoginFailureReason='';
   const signed=await _agaiOnlineBootstrapLogin(login,password);
@@ -316,10 +430,11 @@ async function _agaiOnlinePrepareLogin(login,password){
     const requiresPreviousSession=function(id){
       return ownOrGlobal(id)&&!String(id||'').includes(RC_SEP+'login'+RC_SEP);
     };
-    const durableRows=await _agaiClearOrphanCis05ConfigPending(signed,
-      await _agaiClearCoveredCis05ConfigPending(signed,
-      await _agaiClearCoveredGlobalPending(signed,
-        await _rcDiscardPilotLoginTombstones(await _rcOutboxGetRows()))));
+    const durableRows=await _agaiRecoverCedricConfigDuringLogin(signed,
+      await _agaiClearOrphanCis05ConfigPending(signed,
+        await _agaiClearCoveredCis05ConfigPending(signed,
+          await _agaiClearCoveredGlobalPending(signed,
+            await _rcDiscardPilotLoginTombstones(await _rcOutboxGetRows())))));
     // Les anciennes traces de connexion d'autres comptes restent dans la file,
     // mais ne sont ni un obstacle pour CIS05 ni transmises sous ce titulaire.
     _rcForeignLoginPendingIds=new Set(durableRows.filter(function(row){

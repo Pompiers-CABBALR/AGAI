@@ -53,6 +53,7 @@ for (const file of ['modules/03-security-js.js', 'app.js']) {
       _agaiClearCoveredGlobalPending: async (signed, rows) => rows,
       _agaiClearCoveredCis05ConfigPending: async (signed, rows) => rows,
       _agaiClearOrphanCis05ConfigPending: async (signed, rows) => rows,
+      _agaiRecoverCedricConfigDuringLogin: async (signed, rows) => rows,
       _rcPull: async () => { pulls++; return true; },
       CU: null, GLOBAL_ROLE: null, CURRENT_CASERNE_ID: null,
       CASERNE_DATA: {}, GLOBAL_ACCOUNTS: [],

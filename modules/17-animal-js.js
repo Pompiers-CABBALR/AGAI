@@ -2068,8 +2068,15 @@ function _rcPersistPendingDirty(){
   }catch(e){}
   if(_rcPendingDirty.size)_rcScheduleOutboxSnapshot();
 }
+function _rcCanWriteStationConfig(){
+  if(!PERSONNEL_ONLINE_GATE)return true;
+  return !!(CU&&(CU.appRole==='superadmin'||CU.appRole==='administrateur_caserne'));
+}
 function _rcRowWritableHere(row){
   if(!row)return false;
+  // La politique serveur refuse la configuration aux agents. Ne jamais
+  // recréer sur leur appareil une ligne impossible à transmettre.
+  if(row.type==='config'&&!_rcCanWriteStationConfig())return false;
   // Le pilote n'autorise pas la réécriture des comptes historiques : leur
   // projection Auth ne contient plus les mots de passe de l'ancien système.
   if(PERSONNEL_SECURE_CIS05_PILOT&&(row.type==='global'||row.type==='user'))return false;
@@ -3487,7 +3494,8 @@ async function _rcPull(silent,deferViewsUntilLogin,skipPendingPush){
       data.CASERNE_DATA[cid] = _rcAssembleCaserne(stationRows,cid);
       // Réparer durablement uniquement la caserne active : les véhicules
       // retrouvés dans son historique sont renvoyés dans sa configuration.
-      if(cid===CURRENT_CASERNE_ID&&(!Array.isArray(remoteEngins)||!remoteEngins.filter(Boolean).length)&&data.CASERNE_DATA[cid].astrConfig.engins.length){
+      if(cid===CURRENT_CASERNE_ID&&_rcCanWriteStationConfig()
+        &&(!Array.isArray(remoteEngins)||!remoteEngins.filter(Boolean).length)&&data.CASERNE_DATA[cid].astrConfig.engins.length){
         _rcPendingDirty.add(_rcId(cid,'config','main'));_rcDirtyGeneration++;
       }
     });
@@ -3530,7 +3538,8 @@ async function _rcPull(silent,deferViewsUntilLogin,skipPendingPush){
     if(activeCid && CASERNE_DATA[activeCid]){
       const localTel=JSON.parse(JSON.stringify(CASERNE_DATA[activeCid].astrTelData||{}));
       const remoteTel=(data.CASERNE_DATA[activeCid]&&data.CASERNE_DATA[activeCid].astrTelData)||{};
-      if((Date.now()-_jbEditLock < 15000)||(!Object.keys(remoteTel).length&&Object.keys(localTel).length)){
+      if(_rcCanWriteStationConfig()
+        &&((Date.now()-_jbEditLock < 15000)||(!Object.keys(remoteTel).length&&Object.keys(localTel).length))){
         if(!data.CASERNE_DATA[activeCid])data.CASERNE_DATA[activeCid]={};
         data.CASERNE_DATA[activeCid].astrTelData=localTel;
         data.CASERNE_DATA[activeCid].astrTelParams=Object.assign({},CASERNE_DATA[activeCid].astrTelParams||{});
