@@ -1,7 +1,11 @@
 (() => {
   'use strict';
   const recordId = 'CIS05__config__main';
-  const expectedLogin = 'dumoulin.sebastien';
+  // Chaque reprise est liée à un compte explicitement autorisé. Le paramètre
+  // choisit la procédure, jamais les droits : l'identité est revérifiée côté
+  // serveur avant toute modification du stockage de ce navigateur.
+  const account = new URLSearchParams(location.search).get('compte') || 'dumoulin';
+  const expectedLogin = ({dumoulin:'dumoulin.sebastien', cedric:'carre.cedric'})[account] || '';
   const pendingKey = 'agai_rc_pending_dirty';
   const cacheKey = 'agai_jb_cache';
   const config = window.AGAI_CONFIG || {};
@@ -15,6 +19,7 @@
   const loginField = document.getElementById('login');
   const passwordField = document.getElementById('password');
   const result = document.getElementById('result');
+  if (expectedLogin) loginField.value = expectedLogin;
   let prepared = null;
 
   const canonical = value => {

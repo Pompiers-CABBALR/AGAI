@@ -10,11 +10,14 @@ assert.match(html, /securite-cis05-config-reprise\.js/);
 assert.doesNotMatch(source, /deleteDatabase\s*\(|localStorage\.clear\s*\(|\.clear\s*\(/);
 assert.doesNotMatch(source, /\/rest\/v1\/records[^\n]*method\s*:\s*['"](?:POST|PATCH|DELETE)/);
 
-function scenario({changeRemoteOnSecondRead = false, failBackup = false} = {}) {
+function scenario({changeRemoteOnSecondRead = false, failBackup = false, account = 'dumoulin'} = {}) {
+  const expectedLogin = account === 'cedric' ? 'carre.cedric' : 'dumoulin.sebastien';
   const id = 'CIS05__config__main';
   const loginId = 'CIS05__login__old';
   const entry = {id, row:{id, caserne:'CIS05', type:'config', deleted:false, data:{piquets:{local:1}}}, queuedAt:100};
-  const stores = {'agai-sync-outbox':new Map([[id, entry]])};
+  const loginEntry = {id:loginId, row:{id:loginId, caserne:'CIS05', type:'login', deleted:false,
+    data:{login:expectedLogin}}, queuedAt:100};
+  const stores = {'agai-sync-outbox':new Map([[id, entry], [loginId, loginEntry]])};
   const values = new Map([
     ['agai_rc_pending_dirty', JSON.stringify([id, loginId])],
     ['agai_jb_cache', JSON.stringify({CASERNE_DATA:{CIS05:{piquets:{local:1}}}})],
@@ -78,18 +81,17 @@ function scenario({changeRemoteOnSecondRead = false, failBackup = false} = {}) {
     elements[key] = {disabled:false, hidden:key === 'confirm-area', checked:false, value:'', textContent:'',
       addEventListener(_event, fn) { this.listener = fn; }};
   }
-  elements.login.value = 'dumoulin.sebastien';
   elements.password.value = 'test-secret';
   let remoteReads = 0;
   const fetch = async (url, options) => {
     if (url.endsWith('/functions/v1/agai-account-link')) {
       const mode = JSON.parse(options.body).mode;
       if (mode === 'login') return {ok:true, json:async () => ({
-        personnelEnforcementEnabled:true, login:'dumoulin.sebastien', caserneId:'CIS05',
-        profile:{login:'dumoulin.sebastien', caserneId:'CIS05'}, session:{access_token:'test-token'}
+        personnelEnforcementEnabled:true, login:expectedLogin, caserneId:'CIS05',
+        profile:{login:expectedLogin, caserneId:'CIS05'}, session:{access_token:'test-token'}
       })};
       assert.equal(mode, 'account_status');
-      return {ok:true, json:async () => ({canLogin:true, login:'dumoulin.sebastien', caserneId:'CIS05'})};
+      return {ok:true, json:async () => ({canLogin:true, login:expectedLogin, caserneId:'CIS05'})};
     }
     assert.equal(options.method, 'GET');
     assert.match(url, /\/rest\/v1\/records\?id=eq\.CIS05__config__main/);
@@ -102,7 +104,8 @@ function scenario({changeRemoteOnSecondRead = false, failBackup = false} = {}) {
     window:{AGAI_CONFIG:{supabaseUrl:'https://example.supabase.co', supabasePublishableKey:'public-key'}, indexedDB},
     document:{getElementById:key => elements[key]}, indexedDB, localStorage, fetch,
     crypto:{randomUUID:() => '00000000-0000-4000-8000-000000000001'},
-    AbortController, setTimeout, clearTimeout, Date, queueMicrotask
+    AbortController, setTimeout, clearTimeout, Date, queueMicrotask, URLSearchParams,
+    location:{search:account === 'cedric' ? '?compte=cedric' : ''}
   });
   return {
     elements, stores, values,
@@ -127,6 +130,22 @@ function scenario({changeRemoteOnSecondRead = false, failBackup = false} = {}) {
   assert.deepEqual(JSON.parse(success.values.get('agai_rc_pending_dirty')), ['CIS05__login__old']);
   assert.match(success.values.get('agai_jb_cache'), /local/);
   assert.equal(success.elements.password.value, '');
+
+  const cedric = scenario({account:'cedric'});
+  assert.equal(cedric.elements.login.value, 'carre.cedric');
+  await cedric.check();
+  assert.equal(cedric.elements['confirm-area'].hidden, false);
+  await cedric.recover();
+  assert.match(cedric.elements.result.textContent, /sauvegardée et libérée/);
+  assert.equal(cedric.stores['agai-sync-outbox'].has('CIS05__config__main'), false);
+  assert.equal(cedric.stores['agai-sync-outbox'].has('CIS05__login__old'), true);
+  assert.deepEqual(JSON.parse(cedric.values.get('agai_rc_pending_dirty')), ['CIS05__login__old']);
+
+  const wrongLogin = scenario({account:'cedric'});
+  wrongLogin.elements.login.value = 'dumoulin.sebastien';
+  await wrongLogin.check();
+  assert.match(wrongLogin.elements.result.textContent, /réservé au compte concerné/);
+  assert.equal(wrongLogin.stores['agai-sync-outbox'].has('CIS05__config__main'), true);
 
   const changedServer = scenario({changeRemoteOnSecondRead:true});
   await changedServer.check();
