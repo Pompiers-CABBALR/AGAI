@@ -11,7 +11,7 @@
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0049';
+const APP_VERSION='V202610_0050';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -209,9 +209,9 @@ const STORAGE_KEY='agai_data' // clé partagée entre toutes les versions;
 
 function savePdfDocuments(ivId) {
   // Sauvegarde les documents HTML dans l'IV pour consultation ultérieure
-  saveAutorisationData(ivId);
+  if(!saveAutorisationData(ivId))return;
   const iv = interventionById(ivId);if(!iv)return;
-  const dataList=Array.isArray(iv._autorisationNids)?iv._autorisationNids.filter(Boolean):(iv._autorisationData?[iv._autorisationData]:[]);
+  const dataList=Array.isArray(iv._autorisationNids)?iv._autorisationNids:(iv._autorisationData?[iv._autorisationData]:[]);
   if(!dataList.length)return;
   iv._pdfAutorisations=[];iv._pdfAttestations=[];
   dataList.forEach(function(data,index){
@@ -228,7 +228,7 @@ function _buildAutorisationHTML(ivId, docType, nidIndex) {
   const iv = interventionById(ivId);if(!iv)return '';
   const activeIndex=Number.isInteger(nidIndex)?nidIndex:(Number.isInteger(_autorisationActiveNid[ivId])?_autorisationActiveNid[ivId]:0);
   const saved = autorisationDataForNid(iv,activeIndex);
-  if(!saved||(!saved.nom&&!saved.prenom&&!saved.adresse))return '';
+  if(!saved||(!saved.nom&&!saved.prenom&&!saved.adresse)||autorisationMissingDescriptions(saved).length)return '';
   const cas = getAvisPassageCaserne(iv);
   let utNom = cas ? cas.nom : ''; utNom = utNom.replace(/^UT\s+/i,'').trim();
   const caserneNom = cas ? cas.nom : '';

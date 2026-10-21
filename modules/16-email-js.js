@@ -119,7 +119,7 @@ function _genPdfHaute(html, callback) {
 }
 
 function envoyerAttestationMail(ivId) {
-  saveAutorisationData(ivId);
+  if(!saveAutorisationData(ivId))return;
   const iv = interventionById(ivId);if(!iv)return;
   const cas = CC();
   const emailCaserne = cas && cas.email ? cas.email : '';
@@ -183,7 +183,7 @@ function confirmerEnvoiMail(ivId) {
   const nomComplet = ((saved.prenom||'')+' '+(saved.nom||'')).trim();
   const dateFr = saved.date ? saved.date.split('-').reverse().join('/') : '';
   const adresse = saved.adresse||''; const commune = saved.commune||'';
-  const objet = saved.objet||iv.n||'';
+  const objet = saved.objet||'';
 
   const to   = (document.getElementById('mail-to')||{}).value||'';
   const subj = (document.getElementById('mail-subj')||{}).value||'';
@@ -922,6 +922,11 @@ function saveCompteRendu(ivId, andClot) {
 
 function genRapportInterventionHTML(ivId) {
   const iv = interventionById(ivId);if(!iv)return null;
+  const savedAuthorizations=Array.isArray(iv._autorisationNids)?iv._autorisationNids:(iv._autorisationData?[iv._autorisationData]:[]);
+  if(!iv._isRenfort&&savedAuthorizations.some(function(data){return data&&autorisationMissingDescriptions(data).length;})){
+    showToast('Le chef d’agrès doit compléter les champs « Pour » et « Réalisation » de chaque autorisation avant de générer le rapport.','warn');
+    return null;
+  }
   const JOURS_FR=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
   const MOIS_FR=['janvier','f\u00e9vrier','mars','avril','mai','juin','juillet','ao\u00fbt','septembre','octobre','novembre','d\u00e9cembre'];
   let dateLongue='';
@@ -1091,7 +1096,7 @@ function genRapportInterventionHTML(ivId) {
     if(bS>0&&bE>0){
       let ab=autoFull.slice(bS+6,bE).trim();
       ab=ab.replace(/^<div[^>]*class="page"[^>]*>/,'').replace(/<\/div>\s*$/,'');
-      autBody+='<div class="aut-nid-doc"'+(index?' style="page-break-before:always;break-before:page;padding-top:5mm;"':'')+'><div style="font-size:10pt;font-weight:700;color:#6B3AA0;margin-bottom:3mm;">'+autorisationDocumentNumberLabel(iv,index)+' sur '+autorisationList.length+'</div>'+ab+'</div>';
+      autBody+='<div class="aut-nid-doc"'+(index?' style="page-break-before:always;break-before:page;padding-top:5mm;"':'')+'>'+ab+'</div>';
     }
   });
   const avisBody=iv._isRenfort?'':_buildAvisPassageBody(iv);
@@ -1230,3 +1235,4 @@ function toggleAdminRole(){
   syncCaserneContext();
   _reloadActiveView();
 }
+
