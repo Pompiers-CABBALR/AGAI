@@ -240,17 +240,34 @@ function isFollowingInterventionInSeries(iv){
   });
 }
 
+function interventionChainBoundaryDay(iv,isEnd){
+  const explicit=String(iv&&(isEnd?iv._dateFin:iv._dateDebut)||'').replace(/\D/g,'');
+  if(explicit.length===8)return explicit;
+  const stamp=interventionTimelineStamp(iv,isEnd?'terminee':'en-cours',isEnd);
+  const digits=String(stamp||'').replace(/\D/g,'');
+  // Sans date opérationnelle vérifiable, ne pas déduire un enchaînement
+  // de la seule égalité des heures ou du numéro de l'intervention.
+  return digits.length>=12?digits.slice(0,8):'';
+}
+
 function interventionChainedTimeNeighbors(iv){
   if(!iv||!iv._hDebut||!iv._hFin)return null;
-  const all=[].concat(IVS||[],PILP_IVS||[]).filter(function(item){return item&&item.id!==iv.id&&item.s==='terminee';});
+  const startDay=interventionChainBoundaryDay(iv,false);
+  const endDay=interventionChainBoundaryDay(iv,true);
+  const signature=interventionCrewSignature(iv);
+  if(!startDay||!endDay||!signature)return null;
+  const all=[].concat(IVS||[],PILP_IVS||[]).filter(function(item){
+    return item&&item.id!==iv.id&&item.s==='terminee'
+      &&interventionCrewSignature(item)===signature;
+  });
   const number=parseInt(iv._numCaserne,10)||0;
   const previous=all.find(function(item){
     if(number&&parseInt(item._numCaserne,10)!==number-1)return false;
-    return item._hFin===iv._hDebut;
+    return item._hFin===iv._hDebut&&interventionChainBoundaryDay(item,true)===startDay;
   });
   const next=all.find(function(item){
     if(number&&parseInt(item._numCaserne,10)!==number+1)return false;
-    return item._hDebut===iv._hFin;
+    return item._hDebut===iv._hFin&&interventionChainBoundaryDay(item,false)===endDay;
   });
   return previous&&next?{previous:previous,next:next}:null;
 }
