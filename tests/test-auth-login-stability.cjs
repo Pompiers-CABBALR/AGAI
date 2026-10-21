@@ -18,6 +18,14 @@ test('une connexion normale ne réécrit plus le mot de passe Auth', () => {
   assert.match(login, /signed = await publicClient\.auth\.signInWithPassword\(\{ email, password \}\)/);
 });
 
+test('les lectures indépendantes de vérification sont parallèles et les erreurs restent bloquantes', () => {
+  const edge = read('supabase/functions/agai-account-link/index.ts');
+  const login = edge.slice(edge.indexOf("if (mode === 'login' || mode === 'pilot_link' || mode === 'pilot_login')"),
+    edge.indexOf('const authorization = req.headers.get'));
+  assert.match(login, /await Promise\.all\(\[\s*admin\.from\('agai_auth_attempts'\)[\s\S]*?admin\.from\('agai_identity_credentials'\)/);
+  assert.match(login, /if \(attemptError \|\| credentialError\) return json\(\{ error: 'authentication_unavailable' \}, 503\)/);
+});
+
 test('l’actualisation affiche une reprise de session et non le formulaire de connexion', () => {
   const html = read('index.html');
   const css = read('style.css');

@@ -86,7 +86,9 @@ async function doLogin(){
   lerr.style.display='none';
 
   try{
-    const onlineBootstrap=PERSONNEL_ONLINE_GATE?await _agaiOnlinePrepareLogin(l,p):null;
+    const onlineBootstrap=PERSONNEL_ONLINE_GATE?await _agaiOnlinePrepareLogin(l,p,function(){
+      if(btn)btn.textContent='Chargement…';
+    }):null;
     if(PERSONNEL_ONLINE_GATE&&!onlineBootstrap){
       lerr.style.display='block';
       const reason=typeof _agaiLoginFailureReason==='string'?_agaiLoginFailureReason:'';

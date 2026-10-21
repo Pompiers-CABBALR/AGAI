@@ -90,6 +90,7 @@ function restoreHarness(access = 'allowed', loaded = true) {
     isSessionValid: () => false, CC: () => ({ nom: 'CIS05', couleur: '#fff' }),
     setCaserneTheme: () => {}, agaiDeviceId: () => 'device',
     _persistSessionState: () => events.push('persist'), _armSessionTimers: () => {},
+    _agaiScheduleAuthRefresh: () => events.push('refresh-scheduled'),
     _agaiOnlineArmChecks: () => {},
     doLoginSuccess: () => events.push('ui'),
     _rcStartRealtime: () => events.push('realtime'), _rcStartPolling: () => events.push('polling'),
@@ -112,6 +113,7 @@ test('une actualisation vérifie, charge, puis rouvre la même session', async (
   const h = restoreHarness();
   assert.equal(await h.context.restore(), true);
   assert.deepEqual(h.events.slice(0, 3), ['access', 'pull', 'persist']);
+  assert.ok(h.events.includes('refresh-scheduled'));
   assert.ok(h.events.indexOf('pull') < h.events.indexOf('ui'));
   assert.ok(h.events.indexOf('ui') < h.events.indexOf('polling'));
   assert.equal(h.context.SESSION_TOKEN, h.token);

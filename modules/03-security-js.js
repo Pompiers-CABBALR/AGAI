@@ -73,6 +73,32 @@ async function _agaiAuthFetchWithTimeout(url,options,timeoutMs){
   try{return await fetch(url,Object.assign({},options||{},{signal:controller.signal}));}
   finally{clearTimeout(timer);}
 }
+let _agaiAuthRefreshInFlight=null;
+async function _agaiRefreshSessionOnce(login,session){
+  if(_agaiAuthRefreshInFlight&&_agaiAuthRefreshInFlight.token===session.refresh_token)
+    return _agaiAuthRefreshInFlight.promise;
+  const request=(async function(){
+    const response=await _agaiAuthFetchWithTimeout(SB_URL+'/auth/v1/token?grant_type=refresh_token',{
+      method:'POST',headers:{'apikey':SB_KEY,'Content-Type':'application/json'},
+      body:JSON.stringify({refresh_token:session.refresh_token})
+    },8000);
+    const refreshed=await response.json().catch(function(){return{};});
+    if(!response.ok||!refreshed.access_token||!refreshed.refresh_token)throw new Error('Renouvellement Auth indisponible');
+    // Une déconnexion ou une autre session ouverte pendant la requête ne doit
+    // jamais réinstaller l'ancien compte ni un jeton devenu obsolète.
+    let current=_agaiAuthSession;
+    if(!current)try{current=JSON.parse(localStorage.getItem(AUTH_LINK_SESSION_KEY)||'null');}catch(error){}
+    if(!current||current._agai_link_login!==login)return null;
+    if(current.refresh_token!==session.refresh_token)return current.access_token?current:null;
+    const updated=Object.assign({},refreshed,{_agai_link_login:login});
+    _agaiStoreAuthSession(updated);
+    return updated;
+  })();
+  const flight={token:session.refresh_token,promise:request};
+  _agaiAuthRefreshInFlight=flight;
+  try{return await request;}
+  finally{if(_agaiAuthRefreshInFlight===flight)_agaiAuthRefreshInFlight=null;}
+}
 // La session locale ne suffit plus lorsque le suivi du personnel est activé :
 // chaque ouverture et chaque reprise d'AGAI doit recevoir un accord serveur.
 let _agaiOnlineAccessTimer=null;
@@ -412,10 +438,11 @@ async function _agaiRecoverCedricConfigDuringLogin(signed,durableRows){
     return durableRows;
   }
 }
-async function _agaiOnlinePrepareLogin(login,password){
+async function _agaiOnlinePrepareLogin(login,password,onVerified){
   _agaiLoginFailureReason='';
   const signed=await _agaiOnlineBootstrapLogin(login,password);
   if(!signed)return null;
+  if(typeof onVerified==='function')onVerified();
   if(!USE_RECORDS||typeof _rcOutboxGetRows!=='function'||typeof _rcPull!=='function'){
     _agaiLoginFailureReason='configuration';return null;
   }
@@ -467,16 +494,8 @@ async function _agaiOnlineCheckSavedSession(login,caserneId){
   if(Number(session.expires_at)*1000<Date.now()+30000){
     if(!session.refresh_token)return 'unavailable';
     try{
-      const refreshed=await _agaiAuthFetchWithTimeout(SB_URL+'/auth/v1/token?grant_type=refresh_token',{
-        method:'POST',headers:{'apikey':SB_KEY,'Content-Type':'application/json'},
-        body:JSON.stringify({refresh_token:session.refresh_token})
-      },8000);
-      const payload=await refreshed.json().catch(function(){return{};});
-      // Une réponse de renouvellement manquante ou une course entre deux
-      // renouvellements ne prouve pas que le compte a été suspendu.
-      if(!refreshed.ok||!payload.access_token)return 'unavailable';
-      session=Object.assign({},payload,{_agai_link_login:login});
-      _agaiStoreAuthSession(session);
+      session=await _agaiRefreshSessionOnce(login,session);
+      if(!session)return 'unavailable';
     }catch(error){return 'unavailable';}
   }
   try{
@@ -485,13 +504,22 @@ async function _agaiOnlineCheckSavedSession(login,caserneId){
       body:JSON.stringify({mode:PERSONNEL_SECURE_CIS05_PILOT?'pilot_account_status':'account_status'})
     },8000);
     const result=await response.json().catch(function(){return{};});
-    if(response.status===403)return 'denied';
+    // Un 403 générique peut venir d'une passerelle. Seuls les refus explicites
+    // de compte ou d'identité ferment la session ; les écritures restent
+    // protégées par le serveur si la vérification est indisponible.
+    if(response.status===403)return ['account_unavailable','identity_unavailable','identity_link_invalid','pilot_not_allowed'].includes(result.error)?'denied':'unavailable';
     if(!response.ok)return 'unavailable';
     if(result.personnelEnforcementEnabled!==true||typeof result.canLogin!=='boolean'
       ||typeof result.login!=='string'||typeof result.caserneId!=='string')return 'unavailable';
     if(result.canLogin===false||result.login!==login||result.caserneId!==caserneId)return 'denied';
     // Ne jamais réinstaller un ancien jeton : un renouvellement ou une
     // déconnexion a pu intervenir pendant la requête account_status.
+    if(!_agaiAuthSession){
+      let persisted=null;
+      try{persisted=JSON.parse(localStorage.getItem(AUTH_LINK_SESSION_KEY)||'null');}catch(error){}
+      if(persisted&&persisted._agai_link_login===login&&persisted.refresh_token===session.refresh_token)
+        _agaiStoreAuthSession(session);
+    }
     return 'allowed';
   }catch(error){console.warn('[AGAI][ACCÈS] Vérification en ligne indisponible :',error);return 'unavailable';}
 }
@@ -540,10 +568,9 @@ window.addEventListener('online',function(){
 async function _agaiRefreshAuthSession(){
   const session=_agaiReadAuthSession();if(!CU||!_agaiAuthLinkEligible(CU)||!session||session._agai_link_login!==CU.l||!session.refresh_token)return false;
   try{
-    const response=await _agaiAuthFetchWithTimeout(SB_URL+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{'apikey':SB_KEY,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:session.refresh_token})},6000);
-    const refreshed=await response.json();if(!response.ok||!refreshed.access_token)throw new Error('HTTP '+response.status);
-    if(_agaiAuthSession!==session)return false;
-    _agaiAuthRefreshFailureCount=0;_agaiStoreAuthSession(Object.assign(refreshed,{_agai_link_login:session._agai_link_login}));return true;
+    const refreshed=await _agaiRefreshSessionOnce(session._agai_link_login,session);
+    if(!refreshed)return false;
+    _agaiAuthRefreshFailureCount=0;return true;
   }catch(error){
     if(_agaiAuthSession!==session)return false;
     _agaiAuthRefreshFailureCount=Math.min(6,_agaiAuthRefreshFailureCount+1);

@@ -2413,6 +2413,7 @@ async function _restoreSessionAfterLoad(){
   });
   _persistSessionState({backgroundAt:0});
   _armSessionTimers();
+  if(PERSONNEL_ONLINE_GATE)_agaiScheduleAuthRefresh();
   _agaiOnlineArmChecks();
   doLoginSuccess();
   if(PERSONNEL_ONLINE_GATE){
