@@ -738,6 +738,7 @@ function fmpaVoirDetail(id){
     <div class="brow" style="margin-top:12px;">
 
       ${isAdmin?`<button class="btn sm" onclick="cM();fmpaEditer('${id}')">✏️ Modifier</button>`:''}
+      ${canOpenInterventionPdfOnThisDevice()?`<button class="btn sm" onclick="cM();fmpaImprimerRapport('${id}')">🖨 Imprimer rapport</button>`:''}
       ${isSuperAdmin()?`<button class="btn sm danger" onclick="cM();deleteFmpa('${id}')">🗑 Supprimer</button>`:''}
     </div>
   </div>`;
@@ -851,6 +852,7 @@ function genRapportFmpaHTML(a){
   rows.push(['','\u00a0']);
   rows.push(['',presHtml]);
   if(formHtml)rows.push(['',formHtml]);
+  const idxH=a.hDebut?2:-1;
   let rowsBefore=idxH>=0?idxH:rows.length;
   if(rowsBefore===0)rowsBefore=1;
 

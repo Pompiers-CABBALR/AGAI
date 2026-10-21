@@ -45,6 +45,7 @@ function fullNameAff(u){return u?(u.nom+' '+u.prenom).trim():'';}
 function shortName(u){return u?u.nom+' '+u.prenom.charAt(0)+'.':'';}
 const PERSONNEL_STATUS_LABELS={actif:'Actif',arret:'Arrêt de travail',disponibilite:'Mise en disponibilité',suspension:'Suspension administrative',demission:'Démission',licenciement:'Licenciement',retraite:'Retraite',mutation:'Mutation'};
 function rAdm(){
+  if(typeof renderReportAdminMonitor==='function')renderReportAdminMonitor('admin');
   // Reconstruire les selects grade/fonction seulement si le formulaire est fermé
   const addFormOpen = document.getElementById('admin-add')&&document.getElementById('admin-add').style.display!=='none';
   const ng=document.getElementById('nu-grade');

@@ -348,6 +348,7 @@ function refreshOperationalHealthPanel(){const panel=document.getElementById('sa
 const SUPERADMIN_SECTIONS=[
   {id:'casernes',icon:'🏠',label:'Casernes'},
   {id:'acces',icon:'🔑',label:'Accès et rôles'},
+  {id:'rapports',icon:'📋',label:'Suivi des rapports'},
   {id:'numerotation',icon:'🔢',label:'Numérotation'},
   {id:'parametres',icon:'⚙️',label:'Paramètres'},
   {id:'referentiels',icon:'📋',label:'Référentiels'},
@@ -385,6 +386,7 @@ function applySuperAdminSection(){
 function setSuperAdminSection(section){
   rememberSuperAdminSection(section);
   applySuperAdminSection();
+  if(section==='rapports'&&typeof refreshReportAdminMonitor==='function')refreshReportAdminMonitor('superadmin');
   const body=document.getElementById('gv-body');
   if(body)body.scrollIntoView({block:'start',behavior:'smooth'});
 }
@@ -659,11 +661,21 @@ function renderSuperAdmin(){
     <section class="sa-section" data-sa-section="parametres">
     <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;border:1px solid #eee;">
       <div style="font-size:14px;font-weight:700;margin-bottom:4px;">📋 Dates de début des rappels de rapports</div>
-      <div style="font-size:12px;color:#666;margin-bottom:12px;">Le suivi des comptes rendus commence par défaut le 01/10/2026. Vous pouvez changer cette date. La date des originaux sera réglable dans la deuxième publication, après sécurisation de leur édition unique sur le serveur.</div>
+      <div style="font-size:12px;color:#666;margin-bottom:12px;">Le suivi des comptes rendus commence par défaut le 01/10/2026. L'édition officielle reste désactivée jusqu'à votre activation distincte.</div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
         <label style="font-size:12px;">Comptes rendus à finaliser <input class="fi" type="date" id="sa-report-finalize-start" value="${escHtml(CASERNE_DATA._global&&CASERNE_DATA._global.reportFinalizeReminderStartDate||'2026-10-01')}" style="max-width:190px;"/></label>
-        <label style="font-size:12px;">Originaux à éditer <input class="fi" type="date" id="sa-report-print-start" value="${escHtml(CASERNE_DATA._global&&CASERNE_DATA._global.reportPrintReminderStartDate||'')}" style="max-width:190px;" ${RAPPORT_EDITION_SUIVI_SECURISÉ?'':'disabled'}/></label>
         <button class="btn sm" onclick="saSaveReportReminderDates()">💾 Enregistrer</button>
+      </div>
+    </div>
+    <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;border:1px solid #eee;">
+      <div style="font-size:14px;font-weight:700;margin-bottom:4px;">🖨️ Édition officielle des rapports</div>
+      <div style="font-size:12px;color:#666;margin-bottom:10px;">Fonction préparée mais désactivée. Choisissez la date de début avant de l'activer. L'original n'est émis qu'une fois ; seuls les administrateurs aux pouvoirs activés peuvent demander un duplicata. Une impression physique ou un PDF déjà sauvegardé ne peut pas être techniquement retiré.</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <label style="font-size:12px;">Date de début <input class="fi" type="date" id="sa-report-edition-start" style="max-width:190px;"/></label>
+        <button class="btn sm" onclick="checkReportEditionSettings()">↻ Vérifier l'état</button>
+        <button class="btn sm" onclick="saveReportEditionSettings(false)">Laisser désactivée</button>
+        <button class="btn sm pr" onclick="saveReportEditionSettings(true)">Activer après confirmation</button>
+        <span id="sa-report-edition-state" style="font-size:12px;color:#666;">État serveur à vérifier</span>
       </div>
     </div>
     <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;border:1px solid #eee;">
@@ -765,6 +777,9 @@ function renderSuperAdmin(){
       <div id="login-history-content">${renderLoginHistorySummary()}${renderLoginHistoryByCaserne()}</div>
     </div>
     </section>
+    <section class="sa-section" data-sa-section="rapports">
+      <div id="sa-report-monitor"></div>
+    </section>
     <section class="sa-section" data-sa-section="maintenance">
     <div id="sa-health-panel">${renderOperationalHealthPanel()}</div>
     ${renderRecoveryCheckpointsPanel()}
@@ -787,6 +802,8 @@ function renderSuperAdmin(){
     </div>
     </section>`;
   applySuperAdminSection();
+  if(typeof renderReportEditionSettings==='function')renderReportEditionSettings();
+  if(superAdminActiveSection==='rapports'&&typeof refreshReportAdminMonitor==='function')refreshReportAdminMonitor('superadmin');
   // Initialise la prévisualisation du logo
   const _lprev=document.getElementById('sa-logo-preview');
   if(_lprev){_lprev.src=_getLogoSrc();_lprev.style.display='block';}
@@ -803,22 +820,19 @@ function renderSuperAdmin(){
 function saSaveReportReminderDates(){
   if(!isSuperAdmin()){showToast('Réglage réservé au superadministrateur.','warn');return;}
   const finalize=String(document.getElementById('sa-report-finalize-start')?.value||'');
-  const print=String(document.getElementById('sa-report-print-start')?.value||'');
-  if(print&&!RAPPORT_EDITION_SUIVI_SECURISÉ){showToast('Le suivi des originaux sera activé après sécurisation du serveur.','warn');return;}
   const validDate=function(value){
     if(!/^\d{4}-\d{2}-\d{2}$/.test(value))return false;
     const chosen=new Date(value+'T12:00:00');
     return !Number.isNaN(chosen.getTime())&&chosen.getFullYear()+'-'+String(chosen.getMonth()+1).padStart(2,'0')+'-'+String(chosen.getDate()).padStart(2,'0')===value;
   };
-  if(!validDate(finalize)||(print&&!validDate(print))){
+  if(!validDate(finalize)){
     showToast('Date de début invalide.','warn');return;
   }
   if(!CASERNE_DATA._global||typeof CASERNE_DATA._global!=='object')CASERNE_DATA._global={};
   CASERNE_DATA._global.reportFinalizeReminderStartDate=finalize;
-  CASERNE_DATA._global.reportPrintReminderStartDate=print;
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);
-  showToast('Dates des rappels enregistrées.','success');
+  showToast('Date de finalisation enregistrée.','success');
 }
 function saSetOperationalStartGeolocation(caserneId,enabled){
   if(!isSuperAdmin()){showToast('Réglage réservé au superadmin.','warn');return;}
