@@ -15515,7 +15515,8 @@ function showAutorisationNidPicker(ivId){
   document.getElementById('mi').textContent='Choisir le nid concerné';
   document.getElementById('mb').innerHTML='<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Une autorisation et une attestation distinctes sont conservées pour chaque nid.</div>'
     +'<div style="display:flex;flex-direction:column;gap:8px;">'+nids.map(function(nid,index){
-      const filled=!!autorisationDataForNid(iv,index).nom;
+      const data=autorisationDataForNid(iv,index);
+      const filled=!!data.nom&&!autorisationMissingDescriptions(data).length;
       return '<div style="display:flex;gap:6px;align-items:stretch;"><button class="btn" style="text-align:left;display:flex;flex:1;min-width:0;justify-content:space-between;gap:8px;align-items:center;padding:10px 12px;" onclick="showAutorisationModal(\''+ivId+'\','+index+')"><span><strong>'+escHtml('Nid '+(index+1))+'</strong><br><span style="font-size:11px;color:var(--t2);">'+escHtml([nid.nature,nid.localisation,nid.hauteur,nid.taille].filter(Boolean).join(' · ')||iv.n)+'</span></span><span class="bdg '+(filled?'bg2':'bgr')+'">'+(filled?'Complété':'À compléter')+'</span></button>'+(index>0?'<button type="button" class="btn" style="color:#B42318;padding:8px 10px;flex:0 0 auto;" title="Supprimer ce nid supplémentaire" aria-label="Supprimer le nid '+(index+1)+'" onclick="deleteAdditionalInterventionNid(\''+ivId+'\','+index+')">🗑️ Supprimer</button>':'')+'</div>';
     }).join('')+'</div><button class="btn" style="width:100%;margin-top:10px;border-style:dashed;color:#9A3412;background:#FFF7ED;" onclick="showAddRecognizedNidModal(\''+ivId+'\')">➕ Nid découvert après reconnaissance</button>';
   document.getElementById('mo').style.display='flex';
@@ -15533,7 +15534,11 @@ function showAutorisationModal(ivId, nidIndex) {
   const today = new Date();
   const dateDefault = today.getFullYear() + '-' + pad(today.getMonth()+1) + '-' + pad(today.getDate());
   const reference=(Array.isArray(iv._autorisationNids)&&iv._autorisationNids.find(Boolean))||iv._autorisationData||{};
-  const saved = Object.assign({},reference,autorisationDataForNid(iv,activeIndex));
+  const own=autorisationDataForNid(iv,activeIndex);
+  const saved = Object.assign({},reference,own);
+  // Les descriptions appartiennent à ce document, jamais à un autre nid ni à l'appel.
+  saved.objet=own.objet||'';
+  saved.nature=own.nature||'';
   saved.signature=iv._autorisationSignatureCommune||saved.signature||reference.signature||null;
   _autorisationData[ivId]=saved;
   const typeOpts = ['Propri\u00e9taire','Locataire','Autre'].map(function(t) {
@@ -15549,7 +15554,7 @@ function showAutorisationModal(ivId, nidIndex) {
   document.getElementById('mt').textContent = 'Autorisation & Attestation';
   document.getElementById('mi').textContent = iv.n + ' \u2014 ' + iv.com;
   document.getElementById('mb').innerHTML =
-    '<div style="max-height:70vh;overflow-y:auto;padding:4px 0;">'
+    '<div class="aut-form-scroll">'
     + (activeNid?'<div style="background:#EFF6FF;border:1px solid #93C5FD;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#1D4ED8;"><strong>Nid '+(activeIndex+1)+' sur '+nids.length+'</strong> — '+escHtml([activeNid.nature,activeNid.localisation,activeNid.hauteur,activeNid.taille].filter(Boolean).join(' · '))+'</div>':'')
     + '<div style="background:#FEF0E7;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#854F0B;">Remplissez le formulaire puis g\u00e9n\u00e9rez l\'aper\u00e7u PDF ou envoyez l\'attestation par mail.</div>'
     + '<div class="fg"><div class="fgl">Qualit\u00e9 du demandeur</div>'
@@ -15563,9 +15568,11 @@ function showAutorisationModal(ivId, nidIndex) {
     + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">'
     + '<div class="fg"><div class="fgl">Commune</div><input class="fi" id="aut-commune" type="text" value="' + (saved.commune || iv.com || '') + '"/></div>'
     + '<div class="fg"><div class="fgl">Date intervention</div><input class="fi" id="aut-date" type="date" value="' + (saved.date || dateDefault) + '"/></div></div>'
-    + '<div class="fg"><div class="fgl">Objet</div><input class="fi" id="aut-objet" type="text" value="' + (saved.objet || (activeNid?[activeNid.nature,activeNid.localisation,activeNid.hauteur,activeNid.taille].filter(Boolean).join(' — '):iv.n) || '') + '"/></div>'
-    + '<div class="fg"><div class="fgl">Nature r\u00e9alis\u00e9e</div>'
-    + '<textarea class="fi" id="aut-nature" rows="2" style="resize:vertical;">' + (saved.nature || (activeNid?[activeNid.nature,activeNid.localisation,activeNid.hauteur,activeNid.taille].filter(Boolean).join(' — '):iv.n) || '') + '</textarea></div>'
+    + '<div id="aut-descriptions-help" style="font-size:12px;margin-bottom:8px;">Le chef d’agrès doit compléter les deux champs obligatoires ci-dessous : l’objet demandé et les travaux réellement effectués. Les exemples grisés ne sont pas enregistrés.</div>'
+    + '<div id="aut-form-error" role="alert" style="display:none;color:#B42318;margin-bottom:8px;"></div>'
+    + '<div class="fg"><label class="fgl" for="aut-objet">Pour — objet de l’intervention *</label><input class="fi" id="aut-objet" type="text" required aria-describedby="aut-descriptions-help aut-form-error" placeholder="Ex. : Destruction d’un nid de guêpes sous la toiture." value="' + escHtml(saved.objet) + '"/></div>'
+    + '<div class="fg"><label class="fgl" for="aut-nature">Réalisation — travaux effectués *</label>'
+    + '<textarea class="fi" id="aut-nature" rows="2" required aria-describedby="aut-descriptions-help aut-form-error" placeholder="Ex. : Traitement du nid à la poudre à l’aide d’une perche." style="resize:vertical;">' + escHtml(saved.nature) + '</textarea></div>'
     + '<div class="fg"><div class="fgl" style="margin-bottom:6px;">Travaux (cocher = effectu\u00e9)</div>'
     + '<div style="display:flex;flex-direction:column;gap:4px;">' + travauxHtml
     + '<label style="display:flex;align-items:center;gap:8px;font-size:12px;">'
@@ -15576,18 +15583,22 @@ function showAutorisationModal(ivId, nidIndex) {
     + '<div class="fg"><div class="fgl">Date de signature</div><input class="fi" id="aut-sig-date" type="date" value="' + (saved.sigDate || dateDefault) + '"/></div>'
     + '<div class="fg"><div class="fgl">Lieu de signature</div><input class="fi" id="aut-sig-lieu" type="text" value="' + (saved.sigLieu || iv.com || '') + '"/></div></div>'
     + '<div class="fg"><div class="fgl" style="margin-bottom:6px;">Signature du demandeur</div>'
-    + '<div style="border:2px solid var(--brd);border-radius:10px;background:#fff;overflow:hidden;position:relative;">'
-    + '<canvas id="aut-signature" width="600" height="150" style="width:100%;height:150px;touch-action:none;cursor:crosshair;display:block;"></canvas>'
-    + '<button type="button" onclick="clearSignature()" style="position:absolute;top:6px;right:6px;background:rgba(255,255,255,.9);border:1px solid var(--brd);border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer;">Effacer</button>'
+    + '<div class="aut-signature-preview">'
+    + '<canvas id="aut-signature" width="600" height="150" style="width:100%;height:150px;display:block;pointer-events:none;"></canvas>'
+    + '<button type="button" class="aut-signature-open" onclick="openLargeSignature()" aria-label="Ouvrir la signature en grand">Signer ou modifier en grand ↗</button>'
     + '<div id="aut-sig-hint" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:12px;color:#ccc;pointer-events:none;">Signer ici</div>'
     + '</div></div>'
     + '<div class="brow" style="margin-top:12px;flex-wrap:wrap;gap:6px;">'
     + (canOpenInterventionPdfOnThisDevice()?'<button class="btn sm" style="background:#185FA5;color:#fff;" onclick="previewAutorisationPDF(\'' + ivId + '\',\'autorisation\')">&#x1F4CB; Autorisation</button>':desktopOnlyInterventionPdfMessageHTML())
     + '<button class="btn sm" style="background:#E67E22;color:#fff;" onclick="envoyerAttestationMail(\'' + ivId + '\')">&#x2709;&#xFE0F; Envoyer attestation</button>'
-    + '<button class="btn sm" onclick="saveAutorisationData(\'' + ivId + '\')">&#x1F4BE; Sauvegarder</button>'
-    + (nids.length>1?'<button class="btn sm" onclick="saveAutorisationData(\''+ivId+'\');showAutorisationNidPicker(\''+ivId+'\')">← Tous les nids</button>':'')
+    + '<button class="btn sm" onclick="saveAutorisationData(\'' + ivId + '\')">&#x1F4BE; Sauvegarder formulaire et signature</button>'
+    + (nids.length>1?'<button class="btn sm" onclick="if(saveAutorisationData(\''+ivId+'\'))showAutorisationNidPicker(\''+ivId+'\')">← Tous les nids</button>':'')
     + '</div></div>';
-  document.getElementById('mo').style.display = 'flex';
+  _sigCurrentIvId=ivId;
+  const overlay=document.getElementById('mo');
+  overlay.classList.add('autorisation-modal-overlay');
+  registerMobileModalFields(document.getElementById('mb'));
+  openModalAtTop();
   setTimeout(function() {
     autToggleAutre();
     initSignatureCanvas();
@@ -15606,9 +15617,32 @@ function autToggleAutre() {
   if (b) b.style.display = t === 'Autre' ? 'block' : 'none';
 }
 
+function autorisationMissingDescriptions(data){
+  return ['objet','nature'].filter(function(key){return !String((data||{})[key]||'').trim();});
+}
+
+function validateAutorisationDescriptions(data){
+  const missing=autorisationMissingDescriptions(data);
+  ['objet','nature'].forEach(function(key){
+    const field=document.getElementById('aut-'+key);
+    if(field)field.setAttribute('aria-invalid',missing.includes(key)?'true':'false');
+  });
+  const message=missing.length?'Le chef d’agrès doit compléter correctement '+missing.map(function(key){return key==='objet'?'« Pour — objet de l’intervention »':'« Réalisation — travaux effectués »';}).join(' et ')+'. Les exemples ne remplacent pas votre saisie.':'';
+  const error=document.getElementById('aut-form-error');
+  if(error){error.textContent=message;error.style.display=message?'block':'none';}
+  if(missing.length){
+    showToast(message,'warn');
+    const first=document.getElementById('aut-'+missing[0]);if(first)first.focus();
+    return false;
+  }
+  return true;
+}
+
 function saveAutorisationData(ivId) {
   const iv = interventionById(ivId);
-  if(!iv||!requireCurrentUserOperationalManager(iv,'L’autorisation et l’attestation'))return;
+  if(!iv||!requireCurrentUserOperationalManager(iv,'L’autorisation et l’attestation'))return false;
+  const descriptions={objet:String((document.getElementById('aut-objet')||{}).value||'').trim(),nature:String((document.getElementById('aut-nature')||{}).value||'').trim()};
+  if(!validateAutorisationDescriptions(descriptions))return false;
   const travaux = Array.from(document.querySelectorAll('input[name="aut-trav"]:checked')).map(function(cb) { return cb.value; });
   const sig = (_sigCanvas && _sigHasSig) ? _sigCanvas.toDataURL('image/png') : null;
   const d = {
@@ -15619,8 +15653,8 @@ function saveAutorisationData(ivId) {
     adresse: (document.getElementById('aut-adresse') || {}).value || '',
     commune: (document.getElementById('aut-commune') || {}).value || '',
     date: (document.getElementById('aut-date') || {}).value || '',
-    objet: (document.getElementById('aut-objet') || {}).value || '',
-    nature: (document.getElementById('aut-nature') || {}).value || '',
+    objet: descriptions.objet,
+    nature: descriptions.nature,
     sigDate: (document.getElementById('aut-sig-date') || {}).value || '',
     sigLieu: (document.getElementById('aut-sig-lieu') || {}).value || '',
     travaux: travaux,
@@ -15637,29 +15671,108 @@ function saveAutorisationData(ivId) {
     iv._autorisationNids[nidIndex]=d;
     if(nidIndex===0)iv._autorisationData=d;
     if(iv._autorisationSignatureCommune)iv._autorisationNids.forEach(function(item){if(item)item.signature=iv._autorisationSignatureCommune;});
+    // Les documents seront régénérés avec le formulaire et la signature à jour.
+    delete iv._pdfAutorisations;delete iv._pdfAttestations;
+    delete iv._pdfAutorisation;delete iv._pdfAttestation;
   }
   saveData();
   showToast('Formulaire du nid '+(nidIndex+1)+' sauvegard\u00e9', 'success');
+  return true;
 }
 
 let _sigCanvas = null, _sigCtx = null, _sigDrawing = false, _sigHasSig = false;
+let _sigCurrentIvId='';
+let _largeSigState=null;
 function initSignatureCanvas() {
   _sigCanvas = document.getElementById('aut-signature');
   if (!_sigCanvas) return;
   _sigCtx = _sigCanvas.getContext('2d');
+  _sigHasSig=false;
   _sigCtx.strokeStyle = '#1a1a2e'; _sigCtx.lineWidth = 2.5; _sigCtx.lineCap = 'round'; _sigCtx.lineJoin = 'round';
-  function getPos(e) {
-    const r = _sigCanvas.getBoundingClientRect(), sx = _sigCanvas.width/r.width, sy = _sigCanvas.height/r.height;
-    if (e.touches) return {x:(e.touches[0].clientX-r.left)*sx,y:(e.touches[0].clientY-r.top)*sy};
-    return {x:(e.clientX-r.left)*sx,y:(e.clientY-r.top)*sy};
+}
+function openLargeSignature(){
+  if(!_sigCanvas||_largeSigState)return;
+  if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();
+  const overlay=document.createElement('div');
+  overlay.className='aut-large-signature';
+  overlay.innerHTML='<div class="aut-large-signature-head"><strong>Signature du requérant</strong><span>Tournez le téléphone à l’horizontale pour signer plus facilement.</span></div>'
+    +'<div class="aut-large-signature-pad"><canvas aria-label="Zone de signature"></canvas></div>'
+    +'<div class="aut-large-signature-actions"><button type="button" class="btn" data-action="clear">Effacer le tracé</button><button type="button" class="btn" data-action="cancel">Annuler</button><button type="button" class="btn" data-action="confirm">Valider la signature</button></div>';
+  document.body.appendChild(overlay);
+  const canvas=overlay.querySelector('canvas'),ctx=canvas.getContext('2d');
+  const state={overlay,canvas,ctx,hasSig:_sigHasSig,drawing:false,enteredFullscreen:false,initialized:false};
+  _largeSigState=state;
+  function fit(){
+    if(_largeSigState!==state)return;
+    const old=state.initialized&&state.hasSig?document.createElement('canvas'):null;
+    if(old){old.width=canvas.width;old.height=canvas.height;old.getContext('2d').drawImage(canvas,0,0);}
+    const bounds=canvas.getBoundingClientRect(),ratio=Math.min(window.devicePixelRatio||1,2);
+    canvas.width=Math.max(1,Math.round(bounds.width*ratio));
+    canvas.height=Math.max(1,Math.round(bounds.height*ratio));
+    ctx.strokeStyle='#172033';ctx.lineWidth=Math.max(3,3*ratio);ctx.lineCap='round';ctx.lineJoin='round';
+    if(old){
+      ctx.drawImage(old,0,0,canvas.width,canvas.height);
+    }else if(!state.initialized&&_sigHasSig){
+      ctx.drawImage(_sigCanvas,0,0,canvas.width,canvas.height);
+    }
+    state.initialized=true;
   }
-  function start(e){_sigDrawing=true;_sigHasSig=true;const h=document.getElementById('aut-sig-hint');if(h)h.style.display='none';const p=getPos(e);_sigCtx.beginPath();_sigCtx.moveTo(p.x,p.y);e.preventDefault();}
-  function draw(e){if(!_sigDrawing)return;const p=getPos(e);_sigCtx.lineTo(p.x,p.y);_sigCtx.stroke();e.preventDefault();}
-  function stop(){_sigDrawing=false;}
-  _sigCanvas.addEventListener('mousedown',start);_sigCanvas.addEventListener('mousemove',draw);
-  _sigCanvas.addEventListener('mouseup',stop);_sigCanvas.addEventListener('mouseleave',stop);
-  _sigCanvas.addEventListener('touchstart',start,{passive:false});_sigCanvas.addEventListener('touchmove',draw,{passive:false});
-  _sigCanvas.addEventListener('touchend',stop);
+  state.fit=fit;
+  requestAnimationFrame(fit);
+  window.addEventListener('resize',fit);
+  if(window.visualViewport)window.visualViewport.addEventListener('resize',fit);
+  const point=function(event){const rect=canvas.getBoundingClientRect();return {x:(event.clientX-rect.left)*canvas.width/rect.width,y:(event.clientY-rect.top)*canvas.height/rect.height};};
+  canvas.addEventListener('pointerdown',function(event){
+    event.preventDefault();try{canvas.setPointerCapture(event.pointerId);}catch(error){}
+    const p=point(event);ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p.x+.01,p.y+.01);ctx.stroke();
+    state.drawing=true;state.hasSig=true;
+  });
+  canvas.addEventListener('pointermove',function(event){
+    if(!state.drawing)return;
+    event.preventDefault();const p=point(event);ctx.lineTo(p.x,p.y);ctx.stroke();
+  });
+  ['pointerup','pointercancel','lostpointercapture'].forEach(function(type){canvas.addEventListener(type,function(){state.drawing=false;});});
+  overlay.addEventListener('click',function(event){
+    const action=event.target&&event.target.dataset&&event.target.dataset.action;
+    if(action==='clear'){ctx.clearRect(0,0,canvas.width,canvas.height);state.hasSig=false;}
+    if(action==='cancel')closeLargeSignature();
+    if(action==='confirm'){
+      if(!state.hasSig){showToast('Veuillez signer avant de valider.','warn');return;}
+      _sigCtx.clearRect(0,0,_sigCanvas.width,_sigCanvas.height);
+      _sigCtx.drawImage(canvas,0,0,_sigCanvas.width,_sigCanvas.height);
+      _sigHasSig=true;
+      const hint=document.getElementById('aut-sig-hint');if(hint)hint.style.display='none';
+      closeLargeSignature();
+      saveAutorisationData(_sigCurrentIvId);
+    }
+  });
+  const keydown=function(event){if(event.key==='Escape')closeLargeSignature();};
+  state.keydown=keydown;document.addEventListener('keydown',keydown);
+  if(overlay.requestFullscreen){
+    try{
+      const fullscreen=overlay.requestFullscreen();
+      if(fullscreen&&typeof fullscreen.then==='function')fullscreen.then(function(){
+        if(_largeSigState!==state)return;
+        state.enteredFullscreen=true;
+        if(screen.orientation&&screen.orientation.lock){
+          try{const lock=screen.orientation.lock('landscape');if(lock&&lock.catch)lock.catch(function(){});}catch(error){}
+        }
+        requestAnimationFrame(fit);
+      }).catch(function(){});
+    }catch(error){}
+  }
+}
+function closeLargeSignature(){
+  const state=_largeSigState;if(!state)return;
+  _largeSigState=null;
+  window.removeEventListener('resize',state.fit);
+  if(window.visualViewport)window.visualViewport.removeEventListener('resize',state.fit);
+  document.removeEventListener('keydown',state.keydown);
+  if(screen.orientation&&screen.orientation.unlock)try{screen.orientation.unlock();}catch(error){}
+  if(state.enteredFullscreen&&document.fullscreenElement===state.overlay&&document.exitFullscreen){
+    try{const exit=document.exitFullscreen();if(exit&&exit.catch)exit.catch(function(){});}catch(error){}
+  }
+  state.overlay.remove();
 }
 function clearSignature(){
   if(!_sigCtx||!_sigCanvas)return;
@@ -15669,7 +15782,7 @@ function clearSignature(){
 
 function previewAutorisationPDF(ivId, docType) {
   if(!requireInterventionPdfDesktop())return;
-  saveAutorisationData(ivId);
+  if(!saveAutorisationData(ivId))return;
   const iv = interventionById(ivId);if(!iv)return;
   // Toujours reprendre la caserne de l'intervention : un superadmin peut
   // consulter ou rééditer un document depuis une autre caserne active.
@@ -15810,7 +15923,7 @@ function previewAutorisationPDF(ivId, docType) {
 }
 
 function genAutorisationDocx(ivId) {
-  saveAutorisationData(ivId);
+  if(!saveAutorisationData(ivId))return;
   const iv = interventionById(ivId);if(!iv)return;
   const cas = CC();
   let utNom = cas ? cas.nom : ''; utNom = utNom.replace(/^UT\s+/i,'').trim();
@@ -16178,6 +16291,7 @@ function saveAdresse(ivId){
   saveData(true); // push immédiat : sinon la correction est écrasée au prochain pull
   cM();refreshOperationalInterventionViews();oM(ivId);
 }
+
 // === MODULE: stats.js ===
 // ══════════════════════════════════════════════════════
 // STATISTIQUES CASERNE
@@ -17835,7 +17949,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0049';
+const APP_VERSION='V202610_0050';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -18033,9 +18147,9 @@ const STORAGE_KEY='agai_data' // clé partagée entre toutes les versions;
 
 function savePdfDocuments(ivId) {
   // Sauvegarde les documents HTML dans l'IV pour consultation ultérieure
-  saveAutorisationData(ivId);
+  if(!saveAutorisationData(ivId))return;
   const iv = interventionById(ivId);if(!iv)return;
-  const dataList=Array.isArray(iv._autorisationNids)?iv._autorisationNids.filter(Boolean):(iv._autorisationData?[iv._autorisationData]:[]);
+  const dataList=Array.isArray(iv._autorisationNids)?iv._autorisationNids:(iv._autorisationData?[iv._autorisationData]:[]);
   if(!dataList.length)return;
   iv._pdfAutorisations=[];iv._pdfAttestations=[];
   dataList.forEach(function(data,index){
@@ -18052,7 +18166,7 @@ function _buildAutorisationHTML(ivId, docType, nidIndex) {
   const iv = interventionById(ivId);if(!iv)return '';
   const activeIndex=Number.isInteger(nidIndex)?nidIndex:(Number.isInteger(_autorisationActiveNid[ivId])?_autorisationActiveNid[ivId]:0);
   const saved = autorisationDataForNid(iv,activeIndex);
-  if(!saved||(!saved.nom&&!saved.prenom&&!saved.adresse))return '';
+  if(!saved||(!saved.nom&&!saved.prenom&&!saved.adresse)||autorisationMissingDescriptions(saved).length)return '';
   const cas = getAvisPassageCaserne(iv);
   let utNom = cas ? cas.nom : ''; utNom = utNom.replace(/^UT\s+/i,'').trim();
   const caserneNom = cas ? cas.nom : '';
@@ -18409,7 +18523,7 @@ function _genPdfHaute(html, callback) {
 }
 
 function envoyerAttestationMail(ivId) {
-  saveAutorisationData(ivId);
+  if(!saveAutorisationData(ivId))return;
   const iv = interventionById(ivId);if(!iv)return;
   const cas = CC();
   const emailCaserne = cas && cas.email ? cas.email : '';
@@ -18473,7 +18587,7 @@ function confirmerEnvoiMail(ivId) {
   const nomComplet = ((saved.prenom||'')+' '+(saved.nom||'')).trim();
   const dateFr = saved.date ? saved.date.split('-').reverse().join('/') : '';
   const adresse = saved.adresse||''; const commune = saved.commune||'';
-  const objet = saved.objet||iv.n||'';
+  const objet = saved.objet||'';
 
   const to   = (document.getElementById('mail-to')||{}).value||'';
   const subj = (document.getElementById('mail-subj')||{}).value||'';
@@ -19212,6 +19326,11 @@ function saveCompteRendu(ivId, andClot) {
 
 function genRapportInterventionHTML(ivId) {
   const iv = interventionById(ivId);if(!iv)return null;
+  const savedAuthorizations=Array.isArray(iv._autorisationNids)?iv._autorisationNids:(iv._autorisationData?[iv._autorisationData]:[]);
+  if(!iv._isRenfort&&savedAuthorizations.some(function(data){return data&&autorisationMissingDescriptions(data).length;})){
+    showToast('Le chef d’agrès doit compléter les champs « Pour » et « Réalisation » de chaque autorisation avant de générer le rapport.','warn');
+    return null;
+  }
   const JOURS_FR=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
   const MOIS_FR=['janvier','f\u00e9vrier','mars','avril','mai','juin','juillet','ao\u00fbt','septembre','octobre','novembre','d\u00e9cembre'];
   let dateLongue='';
@@ -19381,7 +19500,7 @@ function genRapportInterventionHTML(ivId) {
     if(bS>0&&bE>0){
       let ab=autoFull.slice(bS+6,bE).trim();
       ab=ab.replace(/^<div[^>]*class="page"[^>]*>/,'').replace(/<\/div>\s*$/,'');
-      autBody+='<div class="aut-nid-doc"'+(index?' style="page-break-before:always;break-before:page;padding-top:5mm;"':'')+'><div style="font-size:10pt;font-weight:700;color:#6B3AA0;margin-bottom:3mm;">'+autorisationDocumentNumberLabel(iv,index)+' sur '+autorisationList.length+'</div>'+ab+'</div>';
+      autBody+='<div class="aut-nid-doc"'+(index?' style="page-break-before:always;break-before:page;padding-top:5mm;"':'')+'>'+ab+'</div>';
     }
   });
   const avisBody=iv._isRenfort?'':_buildAvisPassageBody(iv);
@@ -19520,6 +19639,7 @@ function toggleAdminRole(){
   syncCaserneContext();
   _reloadActiveView();
 }
+
 // === MODULE: animal.js ===
 // ═══════════════════════════════════════════════════════════
 // PRISE EN CHARGE ANIMAL — Formulaire + PDF + Mail

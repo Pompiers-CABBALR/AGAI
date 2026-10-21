@@ -136,7 +136,8 @@ function showAutorisationNidPicker(ivId){
   document.getElementById('mi').textContent='Choisir le nid concerné';
   document.getElementById('mb').innerHTML='<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">Une autorisation et une attestation distinctes sont conservées pour chaque nid.</div>'
     +'<div style="display:flex;flex-direction:column;gap:8px;">'+nids.map(function(nid,index){
-      const filled=!!autorisationDataForNid(iv,index).nom;
+      const data=autorisationDataForNid(iv,index);
+      const filled=!!data.nom&&!autorisationMissingDescriptions(data).length;
       return '<div style="display:flex;gap:6px;align-items:stretch;"><button class="btn" style="text-align:left;display:flex;flex:1;min-width:0;justify-content:space-between;gap:8px;align-items:center;padding:10px 12px;" onclick="showAutorisationModal(\''+ivId+'\','+index+')"><span><strong>'+escHtml('Nid '+(index+1))+'</strong><br><span style="font-size:11px;color:var(--t2);">'+escHtml([nid.nature,nid.localisation,nid.hauteur,nid.taille].filter(Boolean).join(' · ')||iv.n)+'</span></span><span class="bdg '+(filled?'bg2':'bgr')+'">'+(filled?'Complété':'À compléter')+'</span></button>'+(index>0?'<button type="button" class="btn" style="color:#B42318;padding:8px 10px;flex:0 0 auto;" title="Supprimer ce nid supplémentaire" aria-label="Supprimer le nid '+(index+1)+'" onclick="deleteAdditionalInterventionNid(\''+ivId+'\','+index+')">🗑️ Supprimer</button>':'')+'</div>';
     }).join('')+'</div><button class="btn" style="width:100%;margin-top:10px;border-style:dashed;color:#9A3412;background:#FFF7ED;" onclick="showAddRecognizedNidModal(\''+ivId+'\')">➕ Nid découvert après reconnaissance</button>';
   document.getElementById('mo').style.display='flex';
@@ -154,7 +155,11 @@ function showAutorisationModal(ivId, nidIndex) {
   const today = new Date();
   const dateDefault = today.getFullYear() + '-' + pad(today.getMonth()+1) + '-' + pad(today.getDate());
   const reference=(Array.isArray(iv._autorisationNids)&&iv._autorisationNids.find(Boolean))||iv._autorisationData||{};
-  const saved = Object.assign({},reference,autorisationDataForNid(iv,activeIndex));
+  const own=autorisationDataForNid(iv,activeIndex);
+  const saved = Object.assign({},reference,own);
+  // Les descriptions appartiennent à ce document, jamais à un autre nid ni à l'appel.
+  saved.objet=own.objet||'';
+  saved.nature=own.nature||'';
   saved.signature=iv._autorisationSignatureCommune||saved.signature||reference.signature||null;
   _autorisationData[ivId]=saved;
   const typeOpts = ['Propri\u00e9taire','Locataire','Autre'].map(function(t) {
@@ -184,9 +189,11 @@ function showAutorisationModal(ivId, nidIndex) {
     + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">'
     + '<div class="fg"><div class="fgl">Commune</div><input class="fi" id="aut-commune" type="text" value="' + (saved.commune || iv.com || '') + '"/></div>'
     + '<div class="fg"><div class="fgl">Date intervention</div><input class="fi" id="aut-date" type="date" value="' + (saved.date || dateDefault) + '"/></div></div>'
-    + '<div class="fg"><div class="fgl">Objet</div><input class="fi" id="aut-objet" type="text" value="' + (saved.objet || (activeNid?[activeNid.nature,activeNid.localisation,activeNid.hauteur,activeNid.taille].filter(Boolean).join(' — '):iv.n) || '') + '"/></div>'
-    + '<div class="fg"><div class="fgl">Nature r\u00e9alis\u00e9e</div>'
-    + '<textarea class="fi" id="aut-nature" rows="2" style="resize:vertical;">' + (saved.nature || (activeNid?[activeNid.nature,activeNid.localisation,activeNid.hauteur,activeNid.taille].filter(Boolean).join(' — '):iv.n) || '') + '</textarea></div>'
+    + '<div id="aut-descriptions-help" style="font-size:12px;margin-bottom:8px;">Le chef d’agrès doit compléter les deux champs obligatoires ci-dessous : l’objet demandé et les travaux réellement effectués. Les exemples grisés ne sont pas enregistrés.</div>'
+    + '<div id="aut-form-error" role="alert" style="display:none;color:#B42318;margin-bottom:8px;"></div>'
+    + '<div class="fg"><label class="fgl" for="aut-objet">Pour — objet de l’intervention *</label><input class="fi" id="aut-objet" type="text" required aria-describedby="aut-descriptions-help aut-form-error" placeholder="Ex. : Destruction d’un nid de guêpes sous la toiture." value="' + escHtml(saved.objet) + '"/></div>'
+    + '<div class="fg"><label class="fgl" for="aut-nature">Réalisation — travaux effectués *</label>'
+    + '<textarea class="fi" id="aut-nature" rows="2" required aria-describedby="aut-descriptions-help aut-form-error" placeholder="Ex. : Traitement du nid à la poudre à l’aide d’une perche." style="resize:vertical;">' + escHtml(saved.nature) + '</textarea></div>'
     + '<div class="fg"><div class="fgl" style="margin-bottom:6px;">Travaux (cocher = effectu\u00e9)</div>'
     + '<div style="display:flex;flex-direction:column;gap:4px;">' + travauxHtml
     + '<label style="display:flex;align-items:center;gap:8px;font-size:12px;">'
@@ -206,7 +213,7 @@ function showAutorisationModal(ivId, nidIndex) {
     + (canOpenInterventionPdfOnThisDevice()?'<button class="btn sm" style="background:#185FA5;color:#fff;" onclick="previewAutorisationPDF(\'' + ivId + '\',\'autorisation\')">&#x1F4CB; Autorisation</button>':desktopOnlyInterventionPdfMessageHTML())
     + '<button class="btn sm" style="background:#E67E22;color:#fff;" onclick="envoyerAttestationMail(\'' + ivId + '\')">&#x2709;&#xFE0F; Envoyer attestation</button>'
     + '<button class="btn sm" onclick="saveAutorisationData(\'' + ivId + '\')">&#x1F4BE; Sauvegarder formulaire et signature</button>'
-    + (nids.length>1?'<button class="btn sm" onclick="saveAutorisationData(\''+ivId+'\');showAutorisationNidPicker(\''+ivId+'\')">← Tous les nids</button>':'')
+    + (nids.length>1?'<button class="btn sm" onclick="if(saveAutorisationData(\''+ivId+'\'))showAutorisationNidPicker(\''+ivId+'\')">← Tous les nids</button>':'')
     + '</div></div>';
   _sigCurrentIvId=ivId;
   const overlay=document.getElementById('mo');
@@ -231,9 +238,32 @@ function autToggleAutre() {
   if (b) b.style.display = t === 'Autre' ? 'block' : 'none';
 }
 
+function autorisationMissingDescriptions(data){
+  return ['objet','nature'].filter(function(key){return !String((data||{})[key]||'').trim();});
+}
+
+function validateAutorisationDescriptions(data){
+  const missing=autorisationMissingDescriptions(data);
+  ['objet','nature'].forEach(function(key){
+    const field=document.getElementById('aut-'+key);
+    if(field)field.setAttribute('aria-invalid',missing.includes(key)?'true':'false');
+  });
+  const message=missing.length?'Le chef d’agrès doit compléter correctement '+missing.map(function(key){return key==='objet'?'« Pour — objet de l’intervention »':'« Réalisation — travaux effectués »';}).join(' et ')+'. Les exemples ne remplacent pas votre saisie.':'';
+  const error=document.getElementById('aut-form-error');
+  if(error){error.textContent=message;error.style.display=message?'block':'none';}
+  if(missing.length){
+    showToast(message,'warn');
+    const first=document.getElementById('aut-'+missing[0]);if(first)first.focus();
+    return false;
+  }
+  return true;
+}
+
 function saveAutorisationData(ivId) {
   const iv = interventionById(ivId);
-  if(!iv||!requireCurrentUserOperationalManager(iv,'L’autorisation et l’attestation'))return;
+  if(!iv||!requireCurrentUserOperationalManager(iv,'L’autorisation et l’attestation'))return false;
+  const descriptions={objet:String((document.getElementById('aut-objet')||{}).value||'').trim(),nature:String((document.getElementById('aut-nature')||{}).value||'').trim()};
+  if(!validateAutorisationDescriptions(descriptions))return false;
   const travaux = Array.from(document.querySelectorAll('input[name="aut-trav"]:checked')).map(function(cb) { return cb.value; });
   const sig = (_sigCanvas && _sigHasSig) ? _sigCanvas.toDataURL('image/png') : null;
   const d = {
@@ -244,8 +274,8 @@ function saveAutorisationData(ivId) {
     adresse: (document.getElementById('aut-adresse') || {}).value || '',
     commune: (document.getElementById('aut-commune') || {}).value || '',
     date: (document.getElementById('aut-date') || {}).value || '',
-    objet: (document.getElementById('aut-objet') || {}).value || '',
-    nature: (document.getElementById('aut-nature') || {}).value || '',
+    objet: descriptions.objet,
+    nature: descriptions.nature,
     sigDate: (document.getElementById('aut-sig-date') || {}).value || '',
     sigLieu: (document.getElementById('aut-sig-lieu') || {}).value || '',
     travaux: travaux,
@@ -262,9 +292,13 @@ function saveAutorisationData(ivId) {
     iv._autorisationNids[nidIndex]=d;
     if(nidIndex===0)iv._autorisationData=d;
     if(iv._autorisationSignatureCommune)iv._autorisationNids.forEach(function(item){if(item)item.signature=iv._autorisationSignatureCommune;});
+    // Les documents seront régénérés avec le formulaire et la signature à jour.
+    delete iv._pdfAutorisations;delete iv._pdfAttestations;
+    delete iv._pdfAutorisation;delete iv._pdfAttestation;
   }
   saveData();
   showToast('Formulaire du nid '+(nidIndex+1)+' sauvegard\u00e9', 'success');
+  return true;
 }
 
 let _sigCanvas = null, _sigCtx = null, _sigDrawing = false, _sigHasSig = false;
@@ -369,7 +403,7 @@ function clearSignature(){
 
 function previewAutorisationPDF(ivId, docType) {
   if(!requireInterventionPdfDesktop())return;
-  saveAutorisationData(ivId);
+  if(!saveAutorisationData(ivId))return;
   const iv = interventionById(ivId);if(!iv)return;
   // Toujours reprendre la caserne de l'intervention : un superadmin peut
   // consulter ou rééditer un document depuis une autre caserne active.
@@ -510,7 +544,7 @@ function previewAutorisationPDF(ivId, docType) {
 }
 
 function genAutorisationDocx(ivId) {
-  saveAutorisationData(ivId);
+  if(!saveAutorisationData(ivId))return;
   const iv = interventionById(ivId);if(!iv)return;
   const cas = CC();
   let utNom = cas ? cas.nom : ''; utNom = utNom.replace(/^UT\s+/i,'').trim();
@@ -878,3 +912,4 @@ function saveAdresse(ivId){
   saveData(true); // push immédiat : sinon la correction est écrasée au prochain pull
   cM();refreshOperationalInterventionViews();oM(ivId);
 }
+
