@@ -3246,6 +3246,15 @@ function renderSuperAdmin(){
     </section>
     <section class="sa-section" data-sa-section="parametres">
     <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;border:1px solid #eee;">
+      <div style="font-size:14px;font-weight:700;margin-bottom:4px;">📋 Dates de début des rappels de rapports</div>
+      <div style="font-size:12px;color:#666;margin-bottom:12px;">Le suivi des comptes rendus commence par défaut le 01/10/2026. Vous pouvez changer cette date. La date des originaux sera réglable dans la deuxième publication, après sécurisation de leur édition unique sur le serveur.</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <label style="font-size:12px;">Comptes rendus à finaliser <input class="fi" type="date" id="sa-report-finalize-start" value="${escHtml(CASERNE_DATA._global&&CASERNE_DATA._global.reportFinalizeReminderStartDate||'2026-10-01')}" style="max-width:190px;"/></label>
+        <label style="font-size:12px;">Originaux à éditer <input class="fi" type="date" id="sa-report-print-start" value="${escHtml(CASERNE_DATA._global&&CASERNE_DATA._global.reportPrintReminderStartDate||'')}" style="max-width:190px;" ${RAPPORT_EDITION_SUIVI_SECURISÉ?'':'disabled'}/></label>
+        <button class="btn sm" onclick="saSaveReportReminderDates()">💾 Enregistrer</button>
+      </div>
+    </div>
+    <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;border:1px solid #eee;">
       <div style="font-size:14px;font-weight:700;margin-bottom:4px;">📞 Astreinte téléphonique</div>
       <div style="font-size:12px;color:#666;margin-bottom:12px;">Gérez les règles et paramètres de l'astreinte téléphonique.</div>
       <button class="btn" style="font-size:12px;" onclick="rememberSuperAdminSection('parametres');showAstrTelParams()">Ouvrir les paramètres</button>
@@ -3378,6 +3387,26 @@ function renderSuperAdmin(){
     const _bg=document.getElementById('sa-bglogout');
     if(_bg)_bg.value=(ASTR_CONFIG&&typeof ASTR_CONFIG.bgLogoutMin==='number')?ASTR_CONFIG.bgLogoutMin:15;
   }catch(e){}
+}
+function saSaveReportReminderDates(){
+  if(!isSuperAdmin()){showToast('Réglage réservé au superadministrateur.','warn');return;}
+  const finalize=String(document.getElementById('sa-report-finalize-start')?.value||'');
+  const print=String(document.getElementById('sa-report-print-start')?.value||'');
+  if(print&&!RAPPORT_EDITION_SUIVI_SECURISÉ){showToast('Le suivi des originaux sera activé après sécurisation du serveur.','warn');return;}
+  const validDate=function(value){
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(value))return false;
+    const chosen=new Date(value+'T12:00:00');
+    return !Number.isNaN(chosen.getTime())&&chosen.getFullYear()+'-'+String(chosen.getMonth()+1).padStart(2,'0')+'-'+String(chosen.getDate()).padStart(2,'0')===value;
+  };
+  if(!validDate(finalize)||(print&&!validDate(print))){
+    showToast('Date de début invalide.','warn');return;
+  }
+  if(!CASERNE_DATA._global||typeof CASERNE_DATA._global!=='object')CASERNE_DATA._global={};
+  CASERNE_DATA._global.reportFinalizeReminderStartDate=finalize;
+  CASERNE_DATA._global.reportPrintReminderStartDate=print;
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);
+  showToast('Dates des rappels enregistrées.','success');
 }
 function saSetOperationalStartGeolocation(caserneId,enabled){
   if(!isSuperAdmin()){showToast('Réglage réservé au superadmin.','warn');return;}
@@ -5071,7 +5100,97 @@ function rAccueil(){
   document.getElementById('acc-stats').innerHTML=statsHtml;
   // ── Messages astreinte ──
   try{rAccueilAstreinte();}catch(e){}
+  try{rAccueilRapports();}catch(e){console.warn('[AGAI] Rappels de rapports indisponibles',e);}
   try{rStatsHeader();}catch(e){}
+}
+
+// Le suivi des comptes rendus existe depuis le début d'octobre. Le suivi de
+// l'édition est indépendant et reste inactif tant que le superadmin n'a pas
+// choisi sa date de départ.
+const RAPPORTS_SUIVI_DEBUT='20261001';
+function rapportsFinalisationDebut(){
+  const value=String(CASERNE_DATA&&CASERNE_DATA._global&&CASERNE_DATA._global.reportFinalizeReminderStartDate||'');
+  return /^\d{4}-\d{2}-\d{2}$/.test(value)?value.replace(/-/g,''):RAPPORTS_SUIVI_DEBUT;
+}
+// Ne pas afficher un état « original à éditer » tant que l'émission unique
+// n'est pas verrouillée et vérifiée par le serveur entre les appareils.
+const RAPPORT_EDITION_SUIVI_SECURISÉ=false;
+function rapportsEditionDebut(){
+  if(!RAPPORT_EDITION_SUIVI_SECURISÉ)return '';
+  const value=String(CASERNE_DATA&&CASERNE_DATA._global&&CASERNE_DATA._global.reportPrintReminderStartDate||'');
+  return /^\d{4}-\d{2}-\d{2}$/.test(value)?value.replace(/-/g,''):'';
+}
+function accueilRapportDate(iv){
+  if(typeof statsInterventionDateKey==='function')return statsInterventionDateKey(iv);
+  return String(iv&&iv.h||'').replace(/\D/g,'').slice(0,8);
+}
+function accueilRapportOwner(iv,login){
+  if(!iv||!login)return false;
+  // Sur un renfort, agr désigne le premier agent choisi au départ, même
+  // lorsqu'il n'a pas le droit « Chef d'agrès ».
+  if(iv._isRenfort)return iv.agr===login||iv._agr2===login;
+  return isInterventionReportChef(iv,login);
+}
+function collectAccueilReportReminders(login,printStart){
+  const finaliser=[],editer=[];
+  const seen=new Set();
+  [].concat(IVS||[],PILP_IVS||[]).forEach(function(iv){
+    if(!iv||!iv.id||seen.has(iv.id)||iv._lienPilpSourceId||iv._isPilip)return;
+    seen.add(iv.id);
+    const key=accueilRapportDate(iv);
+    if(iv.s!=='terminee'||!accueilRapportOwner(iv,login))return;
+    const label=(iv._isRenfort?'Renfort':'Intervention')+' · '+(iv.n||iv.id)+(iv.com?' — '+iv.com:'');
+    const item={kind:'iv',id:iv.id,label,date:key};
+    if(key>=rapportsFinalisationDebut()&&!iv._crValide)finaliser.push(Object.assign({stage:'finaliser'},item));
+    if(printStart&&key>=printStart&&iv._crValide&&!(iv._impressions||[]).length)editer.push(Object.assign({stage:'editer'},item));
+  });
+  if(printStart){
+    (actGetData()||[]).forEach(function(a){
+      if(!a||a.auteur!==login||String(a.date||'').replace(/-/g,'')<printStart||!a.cr)return;
+      if(!(a.impressions||[]).length)editer.push({kind:'act',stage:'editer',id:a.id,label:'Activité · '+(a.type||a.id),date:String(a.date||'').replace(/-/g,'')});
+    });
+    (fmpaGetData()||[]).forEach(function(f){
+      if(!f||f.auteur!==login||String(f.date||'').replace(/-/g,'')<printStart)return;
+      if(!(f.impressions||[]).length)editer.push({kind:'fmpa',stage:'editer',id:f.id,label:'Formation · '+(f.theme||f.id),date:String(f.date||'').replace(/-/g,'')});
+    });
+  }
+  const byDate=function(a,b){return a.date.localeCompare(b.date)||a.label.localeCompare(b.label,'fr');};
+  return {finaliser:finaliser.sort(byDate),editer:editer.sort(byDate)};
+}
+function ouvrirAccueilRappelRapport(button){
+  if(!button)return;
+  const kind=button.dataset.kind,id=button.dataset.id,stage=button.dataset.stage;
+  if(kind==='iv'){
+    showT('interv',document.getElementById('nav-interv'));
+    if(stage==='editer'){
+      if(canOpenInterventionPdfOnThisDevice())voirRapportIntervention(id);
+      else oM(id);
+    }else showCompteRenduModal(id);
+  }else if(kind==='act'){
+    showT('activite',document.getElementById('nav-activite'));
+    actVoirDetail(id);
+  }else if(kind==='fmpa'){
+    if(hasFormationRight())showT('formation',document.getElementById('nav-formation'));
+    fmpaVoirDetail(id);
+  }
+}
+function rAccueilRapports(){
+  const el=document.getElementById('acc-rapports');
+  if(!el||!CU)return;
+  const start=rapportsEditionDebut();
+  const items=collectAccueilReportReminders(CU.l,start);
+  const line=function(item){
+    return '<button type="button" class="btn" data-kind="'+escHtml(item.kind)+'" data-stage="'+escHtml(item.stage)+'" data-id="'+escHtml(item.id)+'" onclick="ouvrirAccueilRappelRapport(this)" '
+      +'style="display:block;width:100%;text-align:left;margin-top:6px;white-space:normal;overflow-wrap:anywhere;">'
+      +escHtml(item.label)+'</button>';
+  };
+  el.innerHTML='<section style="background:#fff;border:1px solid var(--brd);border-radius:12px;padding:14px;">'
+    +'<div style="font-size:15px;font-weight:700;margin-bottom:4px;">📋 Mes rapports</div>'
+    +'<details'+(items.finaliser.length?' open':'')+'><summary style="cursor:pointer;font-weight:600;padding:7px 0;">À finaliser · '+items.finaliser.length+'</summary>'
+    +(items.finaliser.length?items.finaliser.map(line).join(''):'<div style="font-size:12px;color:var(--t2);">Aucun rapport à finaliser.</div>')+'</details>'
+    +(RAPPORT_EDITION_SUIVI_SECURISÉ&&start?'<details><summary style="cursor:pointer;font-weight:600;padding:7px 0;">À éditer · '+items.editer.length+'</summary>'
+      +(items.editer.length?items.editer.map(line).join(''):'<div style="font-size:12px;color:var(--t2);">Aucun rapport à éditer.</div>')+'</details>':'')
+    +'</section>';
 }
 
 // ────────────────── MESSAGES ASTREINTE ACCUEIL ──────────────────
@@ -14151,7 +14270,7 @@ function showPersonnelModal(id){
   // ── Équipage engin 1 ──
   function buildEquipage1(enginVal){
     const caHtml='<div style="margin-bottom:8px;background:#EEF2FF;border-radius:8px;padding:8px 10px;">'
-      +'<div style="font-size:11px;font-weight:600;color:#3730A3;margin-bottom:2px;">Chef d\u2019agr\u00e8s</div>'
+      +'<div style="font-size:11px;font-weight:600;color:#3730A3;margin-bottom:2px;">Chef d\u2019agr\u00e8s du premier v\u00e9hicule</div>'
       +'<div style="font-size:12px;font-weight:700;">'+fullName(USERS.find(function(u){return u.l===CU.l;})||{prenom:CU.l,nom:''})+' <span style="font-size:10px;color:var(--t2);">(vous)</span></div>'
       +'</div>';
     return caHtml+buildDepartureCrewFields(enginVal,'eq1',{
@@ -14165,9 +14284,9 @@ function showPersonnelModal(id){
   function buildEquipage2(enginVal){
     if(!enginVal)return '<div style="font-size:11px;color:var(--t2);">Laissez vide si un seul véhicule part.</div>';
     const ca2Html=agr2?'<div style="margin-bottom:8px;background:#EEF2FF;border-radius:8px;padding:8px 10px;">'
-      +'<div style="font-size:11px;font-weight:600;color:#3730A3;margin-bottom:2px;">Chef d\u2019agr\u00e8s</div>'
+      +'<div style="font-size:11px;font-weight:600;color:#3730A3;margin-bottom:2px;">Chef d\u2019agr\u00e8s du deuxi\u00e8me v\u00e9hicule</div>'
       +'<div style="font-size:12px;font-weight:700;">'+(u2?fullName(u2):agr2)+'</div>'
-      +'</div>':agentSelectHtml('Chef d\u2019agr\u00e8s','eq2-ca','',false,true,[CU.l]);
+      +'</div>':agentSelectHtml('Chef d\u2019agr\u00e8s du deuxi\u00e8me v\u00e9hicule','eq2-ca','',false,true,[CU.l]);
     return ca2Html+buildDepartureCrewFields(enginVal,'eq2',{
       conducteur:cond2Sugg,chefdequipe:chefEq2Sugg,equipier:eq2Sugg
     },[CU.l,agr2]);
@@ -14210,7 +14329,7 @@ function showPersonnelModal(id){
 function buildEquipage1Dyn(enginVal){
   const d=window._piqData||{};
   const caHtml='<div style="margin-bottom:8px;background:#EEF2FF;border-radius:8px;padding:8px 10px;">'
-    +'<div style="font-size:11px;font-weight:600;color:#3730A3;margin-bottom:2px;">Chef d\u2019agr\u00e8s</div>'
+    +'<div style="font-size:11px;font-weight:600;color:#3730A3;margin-bottom:2px;">Chef d\u2019agr\u00e8s du premier v\u00e9hicule</div>'
     +'<div style="font-size:12px;font-weight:700;">'+fullName(USERS.find(function(u){return u.l===d.CUl;})||{prenom:d.CUl,nom:''})+' <span style="font-size:10px;color:var(--t2);">(vous)</span></div>'
     +'</div>';
   return caHtml+buildDepartureCrewFields(enginVal,'eq1',{
@@ -14222,8 +14341,8 @@ function buildEquipage2Dyn(enginVal){
   const d=window._piqData||{};
   if(!enginVal)return '<div style="font-size:11px;color:var(--t2);">Laissez vide si un seul véhicule part.</div>';
   const ca2Html=d.agr2?'<div style="margin-bottom:8px;background:#EEF2FF;border-radius:8px;padding:8px 10px;">'
-    +'<div style="font-size:11px;font-weight:600;color:#3730A3;margin-bottom:2px;">Chef d\u2019agr\u00e8s</div>'
-    +'<div style="font-size:12px;font-weight:700;">'+(d.u2?fullName(d.u2):d.agr2)+'</div></div>':agentSelectHtml('Chef d\u2019agr\u00e8s','eq2-ca','',false,true,[d.CUl]);
+    +'<div style="font-size:11px;font-weight:600;color:#3730A3;margin-bottom:2px;">Chef d\u2019agr\u00e8s du deuxi\u00e8me v\u00e9hicule</div>'
+    +'<div style="font-size:12px;font-weight:700;">'+(d.u2?fullName(d.u2):d.agr2)+'</div></div>':agentSelectHtml('Chef d\u2019agr\u00e8s du deuxi\u00e8me v\u00e9hicule','eq2-ca','',false,true,[d.CUl]);
   return ca2Html+buildDepartureCrewFields(enginVal,'eq2',{
     conducteur:d.cond2Sugg,chefdequipe:d.chefEq2Sugg,equipier:d.eq2Sugg
   },[d.CUl,d.agr2]);
@@ -14428,7 +14547,12 @@ function confirmerDepart(id){
   const agr2=iv._agr2||(document.getElementById('eq2-ca')?.value||'')
     ||(window._piqData&&window._piqData.ivId===id?window._piqData.agr2||'':'');
   const personnelReinforcementException=hasActiveOutgoingPersonnelReinforcementRequest(iv);
-  if(engin2&&!agr2){showToast('Renseignez le chef d’agrès du deuxième véhicule.','warn');return;}
+  if(engin2&&!agr2){
+    showToast('Le chef affiché est celui du premier véhicule. Choisissez le chef du deuxième véhicule, ou retirez ce véhicule.','warn');
+    const secondChiefField=document.getElementById('eq2-ca');
+    if(secondChiefField){secondChiefField.scrollIntoView({block:'center'});secondChiefField.focus();}
+    return;
+  }
   if(agr2){
     const chef2=USERS.find(function(user){return user&&user.l===agr2;});
     if(chef2&&typeof isChefAgresByGrade==='function'&&!isChefAgresByGrade(chef2)){showToast('Le chef du deuxième véhicule doit avoir la qualification chef d’agrès.','warn');return;}
@@ -14440,7 +14564,7 @@ function confirmerDepart(id){
   const driver2=eq2.find(function(member){return member&&interventionRoleKey(member.role)==='conducteur'&&member.login;});
   if(!personnelReinforcementException){
     if(!engin1){showToast('Sélectionnez obligatoirement le véhicule avant de passer l’intervention en cours.','warn');return;}
-    if(!CU||!CU.l){showToast('Sélectionnez obligatoirement le chef d’agrès avant de passer l’intervention en cours.','warn');return;}
+    if(!CU||!CU.l){showToast('Votre session ne permet plus d’identifier le chef d’agrès. Reconnectez-vous avant de confirmer le départ.','warn');return;}
     if(!driver1){showToast('Sélectionnez obligatoirement le conducteur avant de passer l’intervention en cours.','warn');return;}
   }else if(engin1&&!driver1){
     showToast('Un véhicule local a été sélectionné : renseignez aussi son conducteur.','warn');return;
@@ -17952,7 +18076,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0051';
+const APP_VERSION='V202610_0052';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -24801,7 +24925,8 @@ function activityVisibleInHistory(a){
   if(hasAdministrativeAccount())return true;
   if(!CU)return false;
   if(activityIsFraisAdministratifs(a)&&!canAccessFraisAdministratifs())return false;
-  return Array.isArray(a&&a.participants)&&a.participants.includes(CU.l);
+  return !!(a&&a.auteur===CU.l)
+    ||Array.isArray(a&&a.participants)&&a.participants.includes(CU.l);
 }
 function actTypesForCurrentUser(){
   return ACT_TYPES.filter(t=>!isAdminExpenseCategory(t.cat||defaultActivityCategory(t.l))||canAccessFraisAdministratifs());
@@ -25273,6 +25398,7 @@ function formFormGetData(){
 function formationVisibleInHistory(f,includeFormateurs){
   if(hasAdministrativeAccount())return true;
   if(!CU||!f)return false;
+  if(f.auteur===CU.l)return true;
   if(Array.isArray(f.participants)&&f.participants.includes(CU.l))return true;
   return includeFormateurs===true&&Array.isArray(f.formateurs)&&f.formateurs.includes(CU.l);
 }

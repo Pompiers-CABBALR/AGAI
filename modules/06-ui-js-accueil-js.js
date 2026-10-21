@@ -35,7 +35,97 @@ function rAccueil(){
   document.getElementById('acc-stats').innerHTML=statsHtml;
   // ── Messages astreinte ──
   try{rAccueilAstreinte();}catch(e){}
+  try{rAccueilRapports();}catch(e){console.warn('[AGAI] Rappels de rapports indisponibles',e);}
   try{rStatsHeader();}catch(e){}
+}
+
+// Le suivi des comptes rendus existe depuis le début d'octobre. Le suivi de
+// l'édition est indépendant et reste inactif tant que le superadmin n'a pas
+// choisi sa date de départ.
+const RAPPORTS_SUIVI_DEBUT='20261001';
+function rapportsFinalisationDebut(){
+  const value=String(CASERNE_DATA&&CASERNE_DATA._global&&CASERNE_DATA._global.reportFinalizeReminderStartDate||'');
+  return /^\d{4}-\d{2}-\d{2}$/.test(value)?value.replace(/-/g,''):RAPPORTS_SUIVI_DEBUT;
+}
+// Ne pas afficher un état « original à éditer » tant que l'émission unique
+// n'est pas verrouillée et vérifiée par le serveur entre les appareils.
+const RAPPORT_EDITION_SUIVI_SECURISÉ=false;
+function rapportsEditionDebut(){
+  if(!RAPPORT_EDITION_SUIVI_SECURISÉ)return '';
+  const value=String(CASERNE_DATA&&CASERNE_DATA._global&&CASERNE_DATA._global.reportPrintReminderStartDate||'');
+  return /^\d{4}-\d{2}-\d{2}$/.test(value)?value.replace(/-/g,''):'';
+}
+function accueilRapportDate(iv){
+  if(typeof statsInterventionDateKey==='function')return statsInterventionDateKey(iv);
+  return String(iv&&iv.h||'').replace(/\D/g,'').slice(0,8);
+}
+function accueilRapportOwner(iv,login){
+  if(!iv||!login)return false;
+  // Sur un renfort, agr désigne le premier agent choisi au départ, même
+  // lorsqu'il n'a pas le droit « Chef d'agrès ».
+  if(iv._isRenfort)return iv.agr===login||iv._agr2===login;
+  return isInterventionReportChef(iv,login);
+}
+function collectAccueilReportReminders(login,printStart){
+  const finaliser=[],editer=[];
+  const seen=new Set();
+  [].concat(IVS||[],PILP_IVS||[]).forEach(function(iv){
+    if(!iv||!iv.id||seen.has(iv.id)||iv._lienPilpSourceId||iv._isPilip)return;
+    seen.add(iv.id);
+    const key=accueilRapportDate(iv);
+    if(iv.s!=='terminee'||!accueilRapportOwner(iv,login))return;
+    const label=(iv._isRenfort?'Renfort':'Intervention')+' · '+(iv.n||iv.id)+(iv.com?' — '+iv.com:'');
+    const item={kind:'iv',id:iv.id,label,date:key};
+    if(key>=rapportsFinalisationDebut()&&!iv._crValide)finaliser.push(Object.assign({stage:'finaliser'},item));
+    if(printStart&&key>=printStart&&iv._crValide&&!(iv._impressions||[]).length)editer.push(Object.assign({stage:'editer'},item));
+  });
+  if(printStart){
+    (actGetData()||[]).forEach(function(a){
+      if(!a||a.auteur!==login||String(a.date||'').replace(/-/g,'')<printStart||!a.cr)return;
+      if(!(a.impressions||[]).length)editer.push({kind:'act',stage:'editer',id:a.id,label:'Activité · '+(a.type||a.id),date:String(a.date||'').replace(/-/g,'')});
+    });
+    (fmpaGetData()||[]).forEach(function(f){
+      if(!f||f.auteur!==login||String(f.date||'').replace(/-/g,'')<printStart)return;
+      if(!(f.impressions||[]).length)editer.push({kind:'fmpa',stage:'editer',id:f.id,label:'Formation · '+(f.theme||f.id),date:String(f.date||'').replace(/-/g,'')});
+    });
+  }
+  const byDate=function(a,b){return a.date.localeCompare(b.date)||a.label.localeCompare(b.label,'fr');};
+  return {finaliser:finaliser.sort(byDate),editer:editer.sort(byDate)};
+}
+function ouvrirAccueilRappelRapport(button){
+  if(!button)return;
+  const kind=button.dataset.kind,id=button.dataset.id,stage=button.dataset.stage;
+  if(kind==='iv'){
+    showT('interv',document.getElementById('nav-interv'));
+    if(stage==='editer'){
+      if(canOpenInterventionPdfOnThisDevice())voirRapportIntervention(id);
+      else oM(id);
+    }else showCompteRenduModal(id);
+  }else if(kind==='act'){
+    showT('activite',document.getElementById('nav-activite'));
+    actVoirDetail(id);
+  }else if(kind==='fmpa'){
+    if(hasFormationRight())showT('formation',document.getElementById('nav-formation'));
+    fmpaVoirDetail(id);
+  }
+}
+function rAccueilRapports(){
+  const el=document.getElementById('acc-rapports');
+  if(!el||!CU)return;
+  const start=rapportsEditionDebut();
+  const items=collectAccueilReportReminders(CU.l,start);
+  const line=function(item){
+    return '<button type="button" class="btn" data-kind="'+escHtml(item.kind)+'" data-stage="'+escHtml(item.stage)+'" data-id="'+escHtml(item.id)+'" onclick="ouvrirAccueilRappelRapport(this)" '
+      +'style="display:block;width:100%;text-align:left;margin-top:6px;white-space:normal;overflow-wrap:anywhere;">'
+      +escHtml(item.label)+'</button>';
+  };
+  el.innerHTML='<section style="background:#fff;border:1px solid var(--brd);border-radius:12px;padding:14px;">'
+    +'<div style="font-size:15px;font-weight:700;margin-bottom:4px;">📋 Mes rapports</div>'
+    +'<details'+(items.finaliser.length?' open':'')+'><summary style="cursor:pointer;font-weight:600;padding:7px 0;">À finaliser · '+items.finaliser.length+'</summary>'
+    +(items.finaliser.length?items.finaliser.map(line).join(''):'<div style="font-size:12px;color:var(--t2);">Aucun rapport à finaliser.</div>')+'</details>'
+    +(RAPPORT_EDITION_SUIVI_SECURISÉ&&start?'<details><summary style="cursor:pointer;font-weight:600;padding:7px 0;">À éditer · '+items.editer.length+'</summary>'
+      +(items.editer.length?items.editer.map(line).join(''):'<div style="font-size:12px;color:var(--t2);">Aucun rapport à éditer.</div>')+'</details>':'')
+    +'</section>';
 }
 
 // ────────────────── MESSAGES ASTREINTE ACCUEIL ──────────────────

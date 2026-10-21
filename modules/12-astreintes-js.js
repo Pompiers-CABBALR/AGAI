@@ -3094,7 +3094,7 @@ function showPersonnelModal(id){
   // ── Équipage engin 1 ──
   function buildEquipage1(enginVal){
     const caHtml='<div style="margin-bottom:8px;background:#EEF2FF;border-radius:8px;padding:8px 10px;">'
-      +'<div style="font-size:11px;font-weight:600;color:#3730A3;margin-bottom:2px;">Chef d\u2019agr\u00e8s</div>'
+      +'<div style="font-size:11px;font-weight:600;color:#3730A3;margin-bottom:2px;">Chef d\u2019agr\u00e8s du premier v\u00e9hicule</div>'
       +'<div style="font-size:12px;font-weight:700;">'+fullName(USERS.find(function(u){return u.l===CU.l;})||{prenom:CU.l,nom:''})+' <span style="font-size:10px;color:var(--t2);">(vous)</span></div>'
       +'</div>';
     return caHtml+buildDepartureCrewFields(enginVal,'eq1',{
@@ -3108,9 +3108,9 @@ function showPersonnelModal(id){
   function buildEquipage2(enginVal){
     if(!enginVal)return '<div style="font-size:11px;color:var(--t2);">Laissez vide si un seul véhicule part.</div>';
     const ca2Html=agr2?'<div style="margin-bottom:8px;background:#EEF2FF;border-radius:8px;padding:8px 10px;">'
-      +'<div style="font-size:11px;font-weight:600;color:#3730A3;margin-bottom:2px;">Chef d\u2019agr\u00e8s</div>'
+      +'<div style="font-size:11px;font-weight:600;color:#3730A3;margin-bottom:2px;">Chef d\u2019agr\u00e8s du deuxi\u00e8me v\u00e9hicule</div>'
       +'<div style="font-size:12px;font-weight:700;">'+(u2?fullName(u2):agr2)+'</div>'
-      +'</div>':agentSelectHtml('Chef d\u2019agr\u00e8s','eq2-ca','',false,true,[CU.l]);
+      +'</div>':agentSelectHtml('Chef d\u2019agr\u00e8s du deuxi\u00e8me v\u00e9hicule','eq2-ca','',false,true,[CU.l]);
     return ca2Html+buildDepartureCrewFields(enginVal,'eq2',{
       conducteur:cond2Sugg,chefdequipe:chefEq2Sugg,equipier:eq2Sugg
     },[CU.l,agr2]);
@@ -3153,7 +3153,7 @@ function showPersonnelModal(id){
 function buildEquipage1Dyn(enginVal){
   const d=window._piqData||{};
   const caHtml='<div style="margin-bottom:8px;background:#EEF2FF;border-radius:8px;padding:8px 10px;">'
-    +'<div style="font-size:11px;font-weight:600;color:#3730A3;margin-bottom:2px;">Chef d\u2019agr\u00e8s</div>'
+    +'<div style="font-size:11px;font-weight:600;color:#3730A3;margin-bottom:2px;">Chef d\u2019agr\u00e8s du premier v\u00e9hicule</div>'
     +'<div style="font-size:12px;font-weight:700;">'+fullName(USERS.find(function(u){return u.l===d.CUl;})||{prenom:d.CUl,nom:''})+' <span style="font-size:10px;color:var(--t2);">(vous)</span></div>'
     +'</div>';
   return caHtml+buildDepartureCrewFields(enginVal,'eq1',{
@@ -3165,8 +3165,8 @@ function buildEquipage2Dyn(enginVal){
   const d=window._piqData||{};
   if(!enginVal)return '<div style="font-size:11px;color:var(--t2);">Laissez vide si un seul véhicule part.</div>';
   const ca2Html=d.agr2?'<div style="margin-bottom:8px;background:#EEF2FF;border-radius:8px;padding:8px 10px;">'
-    +'<div style="font-size:11px;font-weight:600;color:#3730A3;margin-bottom:2px;">Chef d\u2019agr\u00e8s</div>'
-    +'<div style="font-size:12px;font-weight:700;">'+(d.u2?fullName(d.u2):d.agr2)+'</div></div>':agentSelectHtml('Chef d\u2019agr\u00e8s','eq2-ca','',false,true,[d.CUl]);
+    +'<div style="font-size:11px;font-weight:600;color:#3730A3;margin-bottom:2px;">Chef d\u2019agr\u00e8s du deuxi\u00e8me v\u00e9hicule</div>'
+    +'<div style="font-size:12px;font-weight:700;">'+(d.u2?fullName(d.u2):d.agr2)+'</div></div>':agentSelectHtml('Chef d\u2019agr\u00e8s du deuxi\u00e8me v\u00e9hicule','eq2-ca','',false,true,[d.CUl]);
   return ca2Html+buildDepartureCrewFields(enginVal,'eq2',{
     conducteur:d.cond2Sugg,chefdequipe:d.chefEq2Sugg,equipier:d.eq2Sugg
   },[d.CUl,d.agr2]);
@@ -3371,7 +3371,12 @@ function confirmerDepart(id){
   const agr2=iv._agr2||(document.getElementById('eq2-ca')?.value||'')
     ||(window._piqData&&window._piqData.ivId===id?window._piqData.agr2||'':'');
   const personnelReinforcementException=hasActiveOutgoingPersonnelReinforcementRequest(iv);
-  if(engin2&&!agr2){showToast('Renseignez le chef d’agrès du deuxième véhicule.','warn');return;}
+  if(engin2&&!agr2){
+    showToast('Le chef affiché est celui du premier véhicule. Choisissez le chef du deuxième véhicule, ou retirez ce véhicule.','warn');
+    const secondChiefField=document.getElementById('eq2-ca');
+    if(secondChiefField){secondChiefField.scrollIntoView({block:'center'});secondChiefField.focus();}
+    return;
+  }
   if(agr2){
     const chef2=USERS.find(function(user){return user&&user.l===agr2;});
     if(chef2&&typeof isChefAgresByGrade==='function'&&!isChefAgresByGrade(chef2)){showToast('Le chef du deuxième véhicule doit avoir la qualification chef d’agrès.','warn');return;}
@@ -3383,7 +3388,7 @@ function confirmerDepart(id){
   const driver2=eq2.find(function(member){return member&&interventionRoleKey(member.role)==='conducteur'&&member.login;});
   if(!personnelReinforcementException){
     if(!engin1){showToast('Sélectionnez obligatoirement le véhicule avant de passer l’intervention en cours.','warn');return;}
-    if(!CU||!CU.l){showToast('Sélectionnez obligatoirement le chef d’agrès avant de passer l’intervention en cours.','warn');return;}
+    if(!CU||!CU.l){showToast('Votre session ne permet plus d’identifier le chef d’agrès. Reconnectez-vous avant de confirmer le départ.','warn');return;}
     if(!driver1){showToast('Sélectionnez obligatoirement le conducteur avant de passer l’intervention en cours.','warn');return;}
   }else if(engin1&&!driver1){
     showToast('Un véhicule local a été sélectionné : renseignez aussi son conducteur.','warn');return;
