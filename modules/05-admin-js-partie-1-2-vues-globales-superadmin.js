@@ -658,6 +658,15 @@ function renderSuperAdmin(){
     </section>
     <section class="sa-section" data-sa-section="parametres">
     <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;border:1px solid #eee;">
+      <div style="font-size:14px;font-weight:700;margin-bottom:4px;">📋 Dates de début des rappels de rapports</div>
+      <div style="font-size:12px;color:#666;margin-bottom:12px;">Le suivi des comptes rendus commence par défaut le 01/10/2026. Vous pouvez changer cette date. La date des originaux sera réglable dans la deuxième publication, après sécurisation de leur édition unique sur le serveur.</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <label style="font-size:12px;">Comptes rendus à finaliser <input class="fi" type="date" id="sa-report-finalize-start" value="${escHtml(CASERNE_DATA._global&&CASERNE_DATA._global.reportFinalizeReminderStartDate||'2026-10-01')}" style="max-width:190px;"/></label>
+        <label style="font-size:12px;">Originaux à éditer <input class="fi" type="date" id="sa-report-print-start" value="${escHtml(CASERNE_DATA._global&&CASERNE_DATA._global.reportPrintReminderStartDate||'')}" style="max-width:190px;" ${RAPPORT_EDITION_SUIVI_SECURISÉ?'':'disabled'}/></label>
+        <button class="btn sm" onclick="saSaveReportReminderDates()">💾 Enregistrer</button>
+      </div>
+    </div>
+    <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;border:1px solid #eee;">
       <div style="font-size:14px;font-weight:700;margin-bottom:4px;">📞 Astreinte téléphonique</div>
       <div style="font-size:12px;color:#666;margin-bottom:12px;">Gérez les règles et paramètres de l'astreinte téléphonique.</div>
       <button class="btn" style="font-size:12px;" onclick="rememberSuperAdminSection('parametres');showAstrTelParams()">Ouvrir les paramètres</button>
@@ -790,6 +799,26 @@ function renderSuperAdmin(){
     const _bg=document.getElementById('sa-bglogout');
     if(_bg)_bg.value=(ASTR_CONFIG&&typeof ASTR_CONFIG.bgLogoutMin==='number')?ASTR_CONFIG.bgLogoutMin:15;
   }catch(e){}
+}
+function saSaveReportReminderDates(){
+  if(!isSuperAdmin()){showToast('Réglage réservé au superadministrateur.','warn');return;}
+  const finalize=String(document.getElementById('sa-report-finalize-start')?.value||'');
+  const print=String(document.getElementById('sa-report-print-start')?.value||'');
+  if(print&&!RAPPORT_EDITION_SUIVI_SECURISÉ){showToast('Le suivi des originaux sera activé après sécurisation du serveur.','warn');return;}
+  const validDate=function(value){
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(value))return false;
+    const chosen=new Date(value+'T12:00:00');
+    return !Number.isNaN(chosen.getTime())&&chosen.getFullYear()+'-'+String(chosen.getMonth()+1).padStart(2,'0')+'-'+String(chosen.getDate()).padStart(2,'0')===value;
+  };
+  if(!validDate(finalize)||(print&&!validDate(print))){
+    showToast('Date de début invalide.','warn');return;
+  }
+  if(!CASERNE_DATA._global||typeof CASERNE_DATA._global!=='object')CASERNE_DATA._global={};
+  CASERNE_DATA._global.reportFinalizeReminderStartDate=finalize;
+  CASERNE_DATA._global.reportPrintReminderStartDate=print;
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);
+  showToast('Dates des rappels enregistrées.','success');
 }
 function saSetOperationalStartGeolocation(caserneId,enabled){
   if(!isSuperAdmin()){showToast('Réglage réservé au superadmin.','warn');return;}

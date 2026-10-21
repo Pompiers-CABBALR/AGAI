@@ -1106,7 +1106,8 @@ function activityVisibleInHistory(a){
   if(hasAdministrativeAccount())return true;
   if(!CU)return false;
   if(activityIsFraisAdministratifs(a)&&!canAccessFraisAdministratifs())return false;
-  return Array.isArray(a&&a.participants)&&a.participants.includes(CU.l);
+  return !!(a&&a.auteur===CU.l)
+    ||Array.isArray(a&&a.participants)&&a.participants.includes(CU.l);
 }
 function actTypesForCurrentUser(){
   return ACT_TYPES.filter(t=>!isAdminExpenseCategory(t.cat||defaultActivityCategory(t.l))||canAccessFraisAdministratifs());

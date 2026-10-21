@@ -48,6 +48,7 @@ function formFormGetData(){
 function formationVisibleInHistory(f,includeFormateurs){
   if(hasAdministrativeAccount())return true;
   if(!CU||!f)return false;
+  if(f.auteur===CU.l)return true;
   if(Array.isArray(f.participants)&&f.participants.includes(CU.l))return true;
   return includeFormateurs===true&&Array.isArray(f.formateurs)&&f.formateurs.includes(CU.l);
 }
