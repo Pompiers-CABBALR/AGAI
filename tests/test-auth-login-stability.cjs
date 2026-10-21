@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const vm = require('node:vm');
 
 const root = path.join(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
@@ -24,6 +25,25 @@ test('les lectures indépendantes de vérification sont parallèles et les erreu
     edge.indexOf('const authorization = req.headers.get'));
   assert.match(login, /await Promise\.all\(\[\s*admin\.from\('agai_auth_attempts'\)[\s\S]*?admin\.from\('agai_identity_credentials'\)/);
   assert.match(login, /if \(attemptError \|\| credentialError\) return json\(\{ error: 'authentication_unavailable' \}, 503\)/);
+});
+
+test('la vérification cesse aussi si le corps de la réponse reste bloqué', async () => {
+  for (const file of ['modules/03-security-js.js', 'app.js']) {
+    const source = read(file);
+    const start = source.indexOf('async function _agaiAuthFetchJsonWithTimeout(');
+    const end = source.indexOf('let _agaiAuthRefreshInFlight=', start);
+    assert.ok(start >= 0 && end > start, file);
+    const context = {
+      AbortController,
+      fetch: async () => ({ json: () => new Promise(() => {}) }),
+      setTimeout: callback => { setImmediate(callback); return 1; },
+      clearTimeout: () => {},
+    };
+    vm.runInNewContext(source.slice(start, end), context);
+    await assert.rejects(context._agaiAuthFetchJsonWithTimeout('/login', {}, 8000),
+      /Délai de vérification dépassé/, file);
+    assert.match(source, /const verified=await _agaiAuthFetchJsonWithTimeout\(AUTH_LINK_ENDPOINT,[\s\S]*?\},8000\);/);
+  }
 });
 
 test('l’actualisation affiche une reprise de session et non le formulaire de connexion', () => {

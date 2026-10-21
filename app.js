@@ -1446,6 +1446,29 @@ async function _agaiAuthFetchWithTimeout(url,options,timeoutMs){
   try{return await fetch(url,Object.assign({},options||{},{signal:controller.signal}));}
   finally{clearTimeout(timer);}
 }
+async function _agaiAuthFetchJsonWithTimeout(url,options,timeoutMs){
+  // Le délai couvre aussi la lecture du corps : fetch peut résoudre dès les
+  // en-têtes, alors que response.json() reste encore bloqué sur le réseau.
+  const controller=new AbortController();
+  let timer;
+  const deadline=new Promise(function(resolve,reject){
+    timer=setTimeout(function(){controller.abort();reject(new Error('Délai de vérification dépassé'));},
+      Math.max(1000,Number(timeoutMs)||6000));
+  });
+  try{
+    return await Promise.race([
+      (async function(){
+        const response=await fetch(url,Object.assign({},options||{},{signal:controller.signal}));
+        const result=await response.json().catch(function(error){
+          if(controller.signal.aborted)throw error;
+          return {};
+        });
+        return {response:response,result:result};
+      })(),
+      deadline
+    ]);
+  }finally{clearTimeout(timer);}
+}
 let _agaiAuthRefreshInFlight=null;
 async function _agaiRefreshSessionOnce(login,session){
   if(_agaiAuthRefreshInFlight&&_agaiAuthRefreshInFlight.token===session.refresh_token)
@@ -1486,11 +1509,11 @@ async function _agaiOnlineBootstrapLogin(login,password){
   const normalized=String(login||'').trim().toLowerCase();
   if(!normalized||!password){_agaiLoginFailureReason='input';return null;}
   try{
-    const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{
+    const verified=await _agaiAuthFetchJsonWithTimeout(AUTH_LINK_ENDPOINT,{
       method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','x-device-id':agaiDeviceId()},
       body:JSON.stringify({mode:PERSONNEL_SECURE_CIS05_PILOT?'pilot_login':'login',login:normalized,password:password})
     },8000);
-    const result=await response.json().catch(function(){return{};});
+    const response=verified.response,result=verified.result;
     if(!response.ok){_agaiLoginFailureReason=response.status===400||response.status===401||response.status===403?'refused':'service';return null;}
     if(result.personnelEnforcementEnabled!==true||!result.session||!result.session.access_token
       ||result.login!==normalized||!result.profile||result.profile.login!==normalized
@@ -18106,7 +18129,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0055';
+const APP_VERSION='V202610_0056';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;

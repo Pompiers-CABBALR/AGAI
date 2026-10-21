@@ -1,5 +1,19 @@
 # AGAI — déploiement sécurisé
 
+## Correctif V202610_0056 — attente de vérification bornée
+
+Le délai de huit secondes couvre désormais toute la réponse de connexion,
+y compris sa lecture complète après réception des en-têtes. Une réponse
+incomplète ne peut plus laisser « Vérification… » affiché indéfiniment :
+un message d'indisponibilité apparaît et l'utilisateur peut réessayer sans
+perte de sa file locale. Ce correctif n'accélère pas une connexion réseau
+réellement lente et ne change ni les droits ni les données serveur.
+
+Aucune migration ni fonction Edge à déployer. Avant publication, confirmer
+l'absence de saisie en cours et « Sync OK » ; après publication, contrôler
+la version et laisser les connexions normales suivre leur cours. Ne pas
+effacer les données du navigateur pour vérifier ce correctif.
+
 ## Correctif V202610_0055 — stabilité de connexion et synchronisation
 
 Le contrôle périodique ne déconnecte plus un utilisateur sur un HTTP 403
