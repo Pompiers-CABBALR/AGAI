@@ -204,6 +204,7 @@ function rFormStagList(){
           <span style="font-family:monospace;font-size:10px;color:var(--t3);">${f.ddebut.slice(8,10)}/${m}/${y}${f.dfin!==f.ddebut?' → '+f.dfin.slice(8,10)+'/'+f.dfin.slice(5,7):''}</span>
           <span style="flex:1;font-size:12px;color:var(--t);">👨‍🎓 ${f.titre}${f.ref?' <small style="color:var(--t2);">['+f.ref+']</small>':''}</span>
           <span style="font-size:11px;color:var(--t2);">${formMinsToStr(mins)} · ${nbP}p${f.lieu?' · '+f.lieu:''}</span>
+          ${isAdmin?`<button class="btn sm" style="font-size:10px;padding:1px 5px;" onclick="event.stopPropagation();formEditEntry('stag','${f.id}')">✏️ Modifier</button>`:''}
           ${isSuperAdmin()?`<button class="btn sm danger" style="font-size:10px;padding:1px 5px;margin-left:4px;" onclick="event.stopPropagation();deleteFormEntry('stag','${f.id}')">🗑</button>`:''}
         </div>`;
       }).join('')}</div>`;
@@ -241,6 +242,7 @@ function rFormFormList(){
           <span style="font-family:monospace;font-size:10px;color:var(--t3);">${f.ddebut.slice(8,10)}/${m}/${y}${f.dfin!==f.ddebut?' → '+f.dfin.slice(8,10)+'/'+f.dfin.slice(5,7):''}</span>
           <span style="flex:1;font-size:12px;color:var(--t);">👨‍🏫 ${f.titre}${f.ref?' <small style="color:var(--t2);">['+f.ref+']</small>':''}</span>
           <span style="font-size:11px;color:var(--t2);">${formMinsToStr(mins)} · ${nbP}f${f.lieu?' · '+f.lieu:''}</span>
+          ${isAdmin?`<button class="btn sm" style="font-size:10px;padding:1px 5px;" onclick="event.stopPropagation();formEditEntry('form','${f.id}')">✏️ Modifier</button>`:''}
           ${isSuperAdmin()?`<button class="btn sm danger" style="font-size:10px;padding:1px 5px;margin-left:4px;" onclick="event.stopPropagation();deleteFormEntry('form','${f.id}')">🗑</button>`:''}
         </div>`;
       }).join('')}</div>`;
@@ -357,6 +359,97 @@ function _saveFormEntry(pfx,idPrefix,getDataFn,toggleFn,listFn,recapFn){
 function saveFormStag(){_saveFormEntry('fstag','FSTAG',formStagGetData,formStagToggleForm,rFormStagList,rFormStagRecap);}
 function saveFormForm(){_saveFormEntry('fform','FFORM',formFormGetData,formFormToggleForm,rFormFormList,rFormFormRecap);}
 
+// ── Correction d'une formation existante par un administrateur actif ──
+let _formationEditContext=null;
+const FORMATION_EDIT_FIELDS=['titre','ref','lieu','ddebut','dfin','hmatind','hmatinf','hapremd','hapremf','participants'];
+function formationEditSnapshot(entry){
+  const snapshot={};
+  FORMATION_EDIT_FIELDS.forEach(function(key){snapshot[key]=key==='participants'?[...(entry[key]||[])].sort():entry[key]||'';});
+  return JSON.stringify(snapshot);
+}
+function formationHistoryHTML(entry){
+  if(!Array.isArray(entry.historique)||!entry.historique.length)return '';
+  return '<details style="margin-top:10px;"><summary>Historique des modifications ('+entry.historique.length+')</summary>'
+    +entry.historique.map(function(change){return '<div style="font-size:12px;margin-top:6px;">'
+      +escHtml(change.date||'')+' · '+escHtml(change.auteurNom||change.auteur||'')+' — '+escHtml(change.champs||'')+'</div>';}).join('')+'</details>';
+}
+function formationEditParticipantsHTML(type,existing){
+  const pool=type==='form'?declaredFormateurUsers():[...(USERS||[])];
+  const selected=new Set(existing||[]);
+  selected.forEach(function(login){
+    if(!pool.some(function(user){return user.l===login;})){
+      const user=(USERS||[]).find(function(item){return item.l===login;});
+      pool.push(user?Object.assign({},user,{_historical:true}):{l:login,nom:login,prenom:'',_historical:true});
+    }
+  });
+  pool.sort(function(a,b){return (a.nom||a.l).localeCompare(b.nom||b.l,'fr');});
+  return pool.map(function(user){return '<label style="display:flex;gap:8px;padding:5px;">'
+    +'<input type="checkbox" value="'+escHtml(user.l)+'"'+(selected.has(user.l)?' checked':'')+'>'
+    +'<span>'+escHtml([user.nom,user.prenom].filter(Boolean).join(' '))+(user._historical?' (participant historique)':'')+'</span></label>';}).join('');
+}
+function formEditEntry(type,id){
+  if(!CU||!isAdminModeActive()||!CURRENT_CASERNE_ID){showToast('Activez vos pouvoirs administrateur pour modifier une formation.','warn');return;}
+  if(!['stag','form'].includes(type))return;
+  const entry=(type==='stag'?formStagGetData():formFormGetData()).find(function(item){return item.id===id;});
+  if(!entry)return;
+  _formationEditContext={type:type,id:id,station:CURRENT_CASERNE_ID,snapshot:formationEditSnapshot(entry)};
+  document.getElementById('mt').textContent=type==='stag'?'Modifier la formation':'Modifier la formation des formateurs';
+  document.getElementById('mi').textContent=entry.titre||'';
+  const field=function(label,id,value,inputType){return '<div class="fg"><label class="fgl" for="'+id+'">'+label+'</label><input class="fi" id="'+id+'" type="'+(inputType||'text')+'" value="'+escHtml(value||'')+'"'+(inputType==='date'||inputType==='time'?' oninput="formCalcDuree(\'edit\')"':'')+'></div>';};
+  document.getElementById('mb').innerHTML=field('Intitulé','fedit-titre',entry.titre)+field('Référence','fedit-ref',entry.ref)+field('Lieu','fedit-lieu',entry.lieu)
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">'
+    +field('Date de début','fedit-ddebut',entry.ddebut,'date')+field('Date de fin','fedit-dfin',entry.dfin,'date')
+    +field('Matin : début','fedit-hmatin-d',entry.hmatind,'time')+field('Matin : fin','fedit-hmatin-f',entry.hmatinf,'time')
+    +field('Après-midi : début','fedit-haprem-d',entry.hapremd,'time')+field('Après-midi : fin','fedit-haprem-f',entry.hapremf,'time')+'</div>'
+    +'<div class="fg"><label class="fgl">Heures par jour</label><input class="fi" id="fedit-hjour" readonly></div>'
+    +'<div class="fg"><label class="fgl">Total</label><input class="fi" id="fedit-htotal" readonly></div>'
+    +'<div class="fgl">'+(type==='form'?'Formateurs':'Participants')+'</div><div id="fedit-participants" style="max-height:220px;overflow:auto;">'+formationEditParticipantsHTML(type,entry.participants)+'</div>'
+    +field('Motif de modification obligatoire','fedit-motif','')
+    +'<div id="fedit-err" style="display:none;color:#B91C1C;margin:8px 0;"></div>'
+    +'<div class="brow"><button class="btn pr" id="fedit-save">Enregistrer les modifications</button><button class="btn" onclick="cM()">Annuler</button></div>';
+  document.getElementById('fedit-save').onclick=function(){formSaveEdit(type,id);};
+  formCalcDuree('edit');
+  document.getElementById('mo').style.display='flex';
+}
+function formSaveEdit(type,id){
+  if(!CU||!isAdminModeActive()){showToast('Activez vos pouvoirs administrateur pour modifier une formation.','warn');return;}
+  if(!['stag','form'].includes(type))return;
+  const context=_formationEditContext;
+  if(!context||context.id!==id||context.type!==type||context.station!==CURRENT_CASERNE_ID){showToast('Rouvrez la formation avant de la modifier.','warn');return;}
+  const entry=(type==='stag'?formStagGetData():formFormGetData()).find(function(item){return item.id===id;});
+  if(!entry)return;
+  if(context.snapshot!==formationEditSnapshot(entry)){showToast('Cette formation a changé. Rouvrez-la pour reprendre la correction.','warn');return;}
+  const value=function(id){return (document.getElementById(id)?.value||'').trim();};
+  const err=document.getElementById('fedit-err');err.style.display='none';
+  const fail=function(message){err.style.display='block';err.textContent=message;};
+  const motif=value('fedit-motif');if(!motif){fail('Le motif de modification est obligatoire.');return;}
+  const next={titre:value('fedit-titre'),ref:value('fedit-ref'),lieu:value('fedit-lieu'),ddebut:value('fedit-ddebut'),dfin:value('fedit-dfin'),
+    hmatind:value('fedit-hmatin-d'),hmatinf:value('fedit-hmatin-f'),hapremd:value('fedit-haprem-d'),hapremf:value('fedit-haprem-f')};
+  const validDate=function(value){const date=new Date(value+'T00:00:00Z');return /^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(date.getTime())&&date.toISOString().slice(0,10)===value;};
+  if(!next.titre||!validDate(next.ddebut)||!validDate(next.dfin)||next.dfin<next.ddebut){fail('Renseignez un intitulé et une période de dates valide.');return;}
+  next.participants=[...new Set(Array.from(document.querySelectorAll('#fedit-participants input:checked')).map(function(cb){return cb.value;}))];
+  const allowed=new Set((type==='form'?declaredFormateurUsers():USERS||[]).map(function(user){return user.l;}).concat(entry.participants||[]));
+  if(next.participants.some(function(login){return !allowed.has(login);})){fail('La liste des participants contient une personne non autorisée pour cette formation.');return;}
+  const hoursError=personnelFormationHoursError(next);if(hoursError){fail(hoursError);return;}
+  const unavailable=personnelUnavailableForPeriod(next.participants,next.ddebut,next.dfin);
+  if(unavailable){fail(personnelScheduleName(unavailable.login)+' ne peut pas participer pendant son indisponibilité.');return;}
+  const conflict=findInterventionConflictForSchedule(type==='form'?'Formation formateur':'Formation',next);
+  if(conflict){fail(personnelScheduleConflictMessage(conflict,'Cette formation'));return;}
+  const before=JSON.parse(formationEditSnapshot(entry)),after=JSON.parse(formationEditSnapshot(next));
+  const labels={titre:'intitulé',ref:'référence',lieu:'lieu',ddebut:'date début',dfin:'date fin',hmatind:'début matin',hmatinf:'fin matin',hapremd:'début après-midi',hapremf:'fin après-midi',participants:type==='form'?'formateurs':'participants'};
+  const changed=FORMATION_EDIT_FIELDS.filter(function(key){return JSON.stringify(before[key])!==JSON.stringify(after[key]);});
+  if(!changed.length){showToast('Aucun changement à enregistrer.','info');return;}
+  const dayMins=formSlotMins(next.hmatind,next.hmatinf)+formSlotMins(next.hapremd,next.hapremf);
+  next.hjour=formMinsToStr(dayMins);next.htotal=formMinsToStr(formMinsTotal(next));
+  if(!Array.isArray(entry.historique))entry.historique=[];
+  const now=new Date();entry.historique.push({date:now.toLocaleString('fr-FR'),auteur:CU.l,auteurNom:[CU.prenom,CU.nom].filter(Boolean).join(' '),champs:changed.map(function(key){return labels[key];}).join(', ')+' — '+motif,motif:motif,avant:before,apres:after});
+  Object.assign(entry,next);_formationEditContext=null;
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);cM();
+  if(type==='stag'){rFormStagList();rFormStagRecap();}else{rFormFormList();rFormFormRecap();}
+  showToast('Formation modifiée et ajoutée à l’historique.','success');
+}
+
 // ── Détail modal ──
 function formVoirDetail(type,id){
   const data=type==='stag'?formStagGetData():formFormGetData();
@@ -378,7 +471,9 @@ function formVoirDetail(type,id){
     ${f.lieu?`<div class="mr"><div class="ml">Lieu</div><div class="mv2">${f.lieu}</div></div>`:''}
     <div class="msep"></div>
     <div class="mr"><div class="ml">${type==='stag'?'Stagiaires':'Formateurs'} (${sortedP.length})</div><div class="mv2" style="font-size:12px;line-height:1.8;">${presListe||'—'}</div></div>
+    ${formationHistoryHTML(f)}
     <div class="brow" style="margin-top:12px;">
+      ${isAdminModeActive()?`<button class="btn sm" onclick="formEditEntry('${type}','${id}')">✏️ Modifier</button>`:''}
       ${isSuperAdmin()?`<button class="btn sm danger" onclick="cM();deleteFormEntry('${type}','${id}')">🗑 Supprimer</button>`:''}
       <button class="btn sm" onclick="cM()">Fermer</button>
     </div>
@@ -653,18 +748,8 @@ function fmpaEditer(id){
   if(!isAdminModeActive()){showToast('Accès réservé aux administrateurs','warn');return;}
   const a=fmpaGetData().find(x=>x.id===id);
   if(!a)return;
-  const sortedAgents=[...(USERS||[])].sort((u1,u2)=>u1.nom.localeCompare(u2.nom,'fr')||u1.prenom.localeCompare(u2.prenom,'fr'));
-  const mkParticipantsOpts=(existing)=>sortedAgents.map(u=>`<label style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--brd);font-size:12px;">
-    <input type="checkbox" value="${u.l}" ${existing.includes(u.l)?'checked':''} style="width:14px;height:14px;accent-color:var(--red);">
-    <span>${u.nom} ${u.prenom}</span><span style="font-size:10px;color:var(--t3);margin-left:auto;">${u.grade||''}</span></label>`).join('');
-  const formateursPool=sortedAgents.filter(u=>u.fonctionsFormateur&&u.fonctionsFormateur.length>0);
-  const mkFormateursOpts=(existing)=>formateursPool.length?formateursPool.map(u=>{
-    const fns=(u.fonctionsFormateur||[]).join(', ');
-    return `<label style="display:flex;align-items:flex-start;gap:8px;padding:4px 0;border-bottom:1px solid var(--brd);font-size:12px;">
-      <input type="checkbox" value="${u.l}" ${existing.includes(u.l)?'checked':''} style="width:14px;height:14px;accent-color:var(--grn);margin-top:2px;flex-shrink:0;">
-      <div><div>${u.nom} ${u.prenom} <span style="font-size:10px;color:var(--t3);">${u.grade||''}</span></div>
-      <div style="font-size:10px;color:var(--t2);">${fns}</div></div></label>`;
-  }).join(''):'<div style="color:var(--t2);font-size:11px;">Aucun formateur défini dans l\'admin.</div>';
+  const mkParticipantsOpts=function(existing){return formationEditParticipantsHTML('stag',existing);};
+  const mkFormateursOpts=function(existing){return formationEditParticipantsHTML('form',existing);};
   document.getElementById('mt').textContent='Modifier FMPA — '+fmpaNumStr(a);
   document.getElementById('mi').textContent='';
   document.getElementById('mb').innerHTML=`<div>
@@ -690,15 +775,17 @@ function fmeditCalcDuree(){
   if(hd&&hf)el.value=dureeHHMM(hd,hf)||'';else el.value='';
 }
 function fmpaSaveEdit(id){
+  if(!CU||!isAdminModeActive()){showToast('Activez vos pouvoirs administrateur pour modifier une FMPA.','warn');return;}
   const a=fmpaGetData().find(x=>x.id===id);
   if(!a)return;
   const motif=(document.getElementById('fmedit-motif')?.value||'').trim();
   const err=document.getElementById('fmedit-err');
   if(!motif){err.style.display='block';err.textContent='Le motif de modification est obligatoire.';return;}
   const newTheme=(document.getElementById('fmedit-theme')?.value||'').trim();
+  if(!newTheme){err.style.display='block';err.textContent='Le thème est obligatoire.';return;}
   const newHd=document.getElementById('fmedit-hd')?.value;
   const newHf=document.getElementById('fmedit-hf')?.value;
-  const newDuree=document.getElementById('fmedit-duree')?.value;
+  const newDuree=dureeHHMM(newHd,newHf)||'';
   const newPart=Array.from(document.querySelectorAll('#fmedit-participants input[type=checkbox]:checked')).map(cb=>cb.value);
   const newForm=Array.from(document.querySelectorAll('#fmedit-formateurs input[type=checkbox]:checked')).map(cb=>cb.value);
   if(hhmmToMinutes(newHd)===null||hhmmToMinutes(newHf)===null||newHd===newHf){err.style.display='block';err.textContent='Renseignez des heures de début et de fin distinctes et valides.';return;}
@@ -804,3 +891,4 @@ function genRapportFmpaHTML(a){
 
 // ══════════════════════════════════════════════════════
 // ══════════════════════════════════════════════════════
+
