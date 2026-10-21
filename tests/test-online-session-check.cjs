@@ -71,9 +71,20 @@ test('un échec réseau, HTTP 503 ou HTTP 401 conserve la session', async () => 
   }
 });
 
+test('un HTTP 403 sans refus métier confirmé ne déconnecte pas le collègue', async () => {
+  for (const failed of [response(403, {}), response(403, { error: 'identity_link_unavailable' })]) {
+    const h = harness();
+    h.state.response = failed;
+    await h.context.checkCurrent();
+    assert.equal(h.state.logoutCount, 0);
+    assert.equal(h.context.CU.l, 'pompier.test');
+  }
+});
+
 test('un refus explicite du serveur ferme la session', async () => {
   for (const denied of [
     response(403, { error: 'account_unavailable' }),
+    response(403, { error: 'identity_link_invalid' }),
     response(200, { personnelEnforcementEnabled: true, canLogin: false, login: 'pompier.test', caserneId: 'CIS05' }),
   ]) {
     const h = harness();
@@ -104,6 +115,21 @@ test('une réponse valide maintient la session sans remplacer un jeton renouvel�
   await h.context.checkCurrent();
   assert.equal(h.state.logoutCount, 0);
   assert.equal(h.context._agaiAuthSession.access_token, 'new-access');
+  assert.equal(h.state.stores.length, 0);
+});
+
+test('un contrôle arrivé après la déconnexion ne réinstalle pas le jeton', async () => {
+  const h = harness();
+  let release;
+  h.context._agaiAuthSession = null;
+  h.context._agaiAuthFetchWithTimeout = () => new Promise(resolve => { release = resolve; });
+  const pending = h.context.checkSession('pompier.test', 'CIS05');
+  h.context.localStorage.getItem = () => null;
+  release(response(200, {
+    personnelEnforcementEnabled: true, canLogin: true, login: 'pompier.test', caserneId: 'CIS05',
+  }));
+  await pending;
+  assert.equal(h.context._agaiAuthSession, null);
   assert.equal(h.state.stores.length, 0);
 });
 

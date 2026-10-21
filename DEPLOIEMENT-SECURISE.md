@@ -1,5 +1,34 @@
 # AGAI — déploiement sécurisé
 
+## Correctif V202610_0055 — stabilité de connexion et synchronisation
+
+Le contrôle périodique ne déconnecte plus un utilisateur sur un HTTP 403
+technique sans refus explicite de compte ou d'identité. Un refus confirmé
+continue de fermer la session et les écritures restent soumises aux droits
+serveur. Les contrôles simultanés partagent un seul renouvellement de jeton ;
+une réponse arrivée après la déconnexion ne peut pas réinstaller la session.
+Après actualisation, le renouvellement automatique est réarmé. Le bouton de
+connexion passe de « Vérification… » à « Chargement… » une fois l'identité
+acceptée, pour distinguer le délai d'authentification de la réception des
+données. La fonction Edge lit en parallèle deux tables indépendantes lors de
+la connexion, sans modifier les règles de refus ni la limitation des essais.
+
+Diagnostic en lecture seule du 21 octobre : sur les dernières 24 heures,
+la fonction `agai-account-link` a répondu en moins de 3,2 secondes pour les
+requêtes observées (médiane d'environ 0,4 seconde). CIS05 compte 1 728
+enregistrements actifs représentant environ 4,4 Mio de données avant
+transport. La lenteur de 30 secondes rapportée sur téléphone doit donc être
+mesurée après la vérification d'identité, en particulier pendant la réception
+et la reconstruction des données ; ces chiffres agrégés ne prouvent pas la
+durée totale vécue par chaque appareil.
+
+Avant publication : exécuter tous les tests, vérifier l'absence de saisie ou
+d'intervention en cours et « Sync OK » sur les appareils utilisés. Déployer
+la fonction Edge avant le client, puis publier une nouvelle version.
+Contrôler ensuite une connexion et une actualisation sur iPhone et Android,
+sans créer d'intervention réelle et sans effacer de données locales. Arrêter
+le déploiement si une file reste en attente ou si un refus serveur apparaît.
+
 ## Correctif V202610_0044 — connexion stable et reprise visible
 
 Sans migration de base ni modification des fiches. L'authentification

@@ -78,9 +78,14 @@ Deno.serve(async (req) => {
     if (createOnly && !pilotCreateOnlyLogins.has(login)) return json({ error: 'pilot_not_allowed' }, 403)
     if (!login || !password || password.length > 256) return json({ error: 'invalid_credentials' }, 400)
 
-    const { data: attempt } = await admin.from('agai_auth_attempts').select('*').eq('login', login).maybeSingle()
+    // Les deux lectures sont indépendantes : les lancer ensemble raccourcit
+    // la vérification sans modifier le contrôle des tentatives ni des droits.
+    const [{ data: attempt, error: attemptError }, { data: credential, error: credentialError }] = await Promise.all([
+      admin.from('agai_auth_attempts').select('*').eq('login', login).maybeSingle(),
+      admin.from('agai_identity_credentials').select('*').eq('login', login).eq('active', true).maybeSingle(),
+    ])
+    if (attemptError || credentialError) return json({ error: 'authentication_unavailable' }, 503)
     if (attempt?.locked_until && new Date(attempt.locked_until).getTime() > Date.now()) return json({ error: 'temporarily_locked' }, 429)
-    const { data: credential } = await admin.from('agai_identity_credentials').select('*').eq('login', login).eq('active', true).maybeSingle()
     const valid = credential ? await verifyLegacyPassword(password, credential.password_hash) : false
     if (!valid) {
       const failed = Number(attempt?.failed_count ?? 0) + 1
