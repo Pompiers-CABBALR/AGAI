@@ -49,11 +49,19 @@ function rapportsFinalisationDebut(){
 }
 // Ne pas afficher un état « original à éditer » tant que l'émission unique
 // n'est pas verrouillée et vérifiée par le serveur entre les appareils.
-const RAPPORT_EDITION_SUIVI_SECURISÉ=false;
+const RAPPORT_EDITION_SUIVI_SECURISÉ=true;
 function rapportsEditionDebut(){
   if(!RAPPORT_EDITION_SUIVI_SECURISÉ)return '';
-  const value=String(CASERNE_DATA&&CASERNE_DATA._global&&CASERNE_DATA._global.reportPrintReminderStartDate||'');
+  const state=globalThis._agaiReportEditionState;
+  if(!state||state.enabled!==true)return '';
+  const value=String(state.startDate||'');
   return /^\d{4}-\d{2}-\d{2}$/.test(value)?value.replace(/-/g,''):'';
+}
+function rapportEditionNonEmis(caserne,type,id){
+  const state=globalThis._agaiReportEditionState;
+  if(!state||!state.items)return false;
+  const item=state.items[_rcId(caserne,type,id)];
+  return !!item&&Number(item.count)===0;
 }
 function accueilRapportDate(iv){
   if(typeof statsInterventionDateKey==='function')return statsInterventionDateKey(iv);
@@ -77,16 +85,20 @@ function collectAccueilReportReminders(login,printStart){
     const label=(iv._isRenfort?'Renfort':'Intervention')+' · '+(iv.n||iv.id)+(iv.com?' — '+iv.com:'');
     const item={kind:'iv',id:iv.id,label,date:key};
     if(key>=rapportsFinalisationDebut()&&!iv._crValide)finaliser.push(Object.assign({stage:'finaliser'},item));
-    if(printStart&&key>=printStart&&iv._crValide&&!(iv._impressions||[]).length)editer.push(Object.assign({stage:'editer'},item));
+    if(printStart&&key>=printStart&&iv._crValide
+       &&rapportEditionNonEmis(CURRENT_CASERNE_ID,isPilpIntervention(iv)?'pilp':'iv',iv.id))
+      editer.push(Object.assign({stage:'editer'},item));
   });
   if(printStart){
     (actGetData()||[]).forEach(function(a){
       if(!a||a.auteur!==login||String(a.date||'').replace(/-/g,'')<printStart||!a.cr)return;
-      if(!(a.impressions||[]).length)editer.push({kind:'act',stage:'editer',id:a.id,label:'Activité · '+(a.type||a.id),date:String(a.date||'').replace(/-/g,'')});
+      if(rapportEditionNonEmis(CURRENT_CASERNE_ID,'activite',a.id))
+        editer.push({kind:'act',stage:'editer',id:a.id,label:'Activité · '+(a.type||a.id),date:String(a.date||'').replace(/-/g,'')});
     });
     (fmpaGetData()||[]).forEach(function(f){
       if(!f||f.auteur!==login||String(f.date||'').replace(/-/g,'')<printStart)return;
-      if(!(f.impressions||[]).length)editer.push({kind:'fmpa',stage:'editer',id:f.id,label:'Formation · '+(f.theme||f.id),date:String(f.date||'').replace(/-/g,'')});
+      if(rapportEditionNonEmis(CURRENT_CASERNE_ID,'fmpa',f.id))
+        editer.push({kind:'fmpa',stage:'editer',id:f.id,label:'Formation · '+(f.theme||f.id),date:String(f.date||'').replace(/-/g,'')});
     });
   }
   const byDate=function(a,b){return a.date.localeCompare(b.date)||a.label.localeCompare(b.label,'fr');};
@@ -126,6 +138,7 @@ function rAccueilRapports(){
     +(RAPPORT_EDITION_SUIVI_SECURISÉ&&start?'<details><summary style="cursor:pointer;font-weight:600;padding:7px 0;">À éditer · '+items.editer.length+'</summary>'
       +(items.editer.length?items.editer.map(line).join(''):'<div style="font-size:12px;color:var(--t2);">Aucun rapport à éditer.</div>')+'</details>':'')
     +'</section>';
+  if(typeof reportEditionScheduleHomeStatus==='function')reportEditionScheduleHomeStatus();
 }
 
 // ────────────────── MESSAGES ASTREINTE ACCUEIL ──────────────────

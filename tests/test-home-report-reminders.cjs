@@ -14,6 +14,9 @@ function setup(overrides={}){
     CASERNE_DATA:{_global:{}},
     IVS:[],PILP_IVS:[],
     actGetData:()=>[],fmpaGetData:()=>[],
+    CURRENT_CASERNE_ID:'CIS05',
+    _rcId:(station,type,id)=>[station,type,id].join('|'),
+    isPilpIntervention:()=>false,
     isInterventionReportChef:(iv,login)=>iv.agr===login,
     statsInterventionDateKey:iv=>String(iv.h||'').slice(0,8),
     console,
@@ -50,7 +53,10 @@ test('la date de début de finalisation est paramétrable par le superadmin',()=
 
 test('le suivi d’édition ne commence qu’à la date du superadmin et suit le créateur',()=>{
   const ctx=setup({
-    CASERNE_DATA:{_global:{reportPrintReminderStartDate:'2026-10-15'}},
+    _agaiReportEditionState:{enabled:true,startDate:'2026-10-15',items:{
+      'CIS05|iv|validated':{count:0},'CIS05|activite|a2':{count:0},
+      'CIS05|fmpa|f1':{count:0},'CIS05|fmpa|f2':{count:1}
+    }},
     IVS:[{id:'validated',h:'20261016',s:'terminee',agr:'alice',_crValide:true}],
     actGetData:()=>[
       {id:'a1',date:'2026-10-14',auteur:'alice',cr:'texte'},
@@ -62,14 +68,14 @@ test('le suivi d’édition ne commence qu’à la date du superadmin et suit le
       {id:'f2',date:'2026-10-19',auteur:'alice',impressions:[{date:'2026-10-19'}]}
     ]
   });
-  assert.equal(ctx.rapportsEditionDebut(),'');
+  assert.equal(ctx.rapportsEditionDebut(),'20261015');
   assert.deepEqual(Array.from(ctx.collectAccueilReportReminders('alice','20261015').editer,x=>x.id),['validated','a2','f1']);
 });
 
-test('la première publication n’affiche pas encore les originaux à éditer',()=>{
-  const ctx=setup({CASERNE_DATA:{_global:{reportPrintReminderStartDate:'2026-10-15'}}});
+test('les originaux restent masqués avant activation serveur',()=>{
+  const ctx=setup({_agaiReportEditionState:{enabled:false,startDate:'2026-10-15',items:{}}});
   assert.equal(ctx.rapportsEditionDebut(),'');
-  assert.equal(vm.runInContext('RAPPORT_EDITION_SUIVI_SECURISÉ',ctx),false);
+  assert.equal(vm.runInContext('RAPPORT_EDITION_SUIVI_SECURISÉ',ctx),true);
   assert.match(source,/RAPPORT_EDITION_SUIVI_SECURISÉ&&start\?/);
 });
 
@@ -80,11 +86,11 @@ test('l’auteur peut ouvrir une activité et une FMPA sans être participant',(
   assert.match(training,/f\.auteur===CU\.l/);
 });
 
-test('la copie app.js garde les rappels et le réglage du superadmin',()=>{
-  const app=fs.readFileSync(path.join(root,'app.js'),'utf8');
+test('le module sécurisé est chargé et le réglage reste réservé au superadmin',()=>{
+  const edition=fs.readFileSync(path.join(root,'modules/25-report-editions-js.js'),'utf8');
   const admin=fs.readFileSync(path.join(root,'modules/05-admin-js-partie-1-2-vues-globales-superadmin.js'),'utf8');
-  assert.ok(app.includes(section));
   assert.match(admin,/function saSaveReportReminderDates\(/);
-  assert.match(app,/function saSaveReportReminderDates\(/);
-  assert.match(fs.readFileSync(path.join(root,'index.html'),'utf8'),/id="acc-rapports"/);
+  assert.match(admin,/onclick="saveReportEditionSettings\(true\)"/);
+  assert.match(edition,/AGAI_REPORT_EDITION_CONFLICT/);
+  assert.match(fs.readFileSync(path.join(root,'index.html'),'utf8'),/modules\/25-report-editions-js\.js/);
 });
