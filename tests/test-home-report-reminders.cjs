@@ -94,3 +94,11 @@ test('le module sécurisé est chargé et le réglage reste réservé au superad
   assert.match(edition,/AGAI_REPORT_EDITION_CONFLICT/);
   assert.match(fs.readFileSync(path.join(root,'index.html'),'utf8'),/modules\/25-report-editions-js\.js/);
 });
+
+test('sur l’accueil, Mes rapports et le suivi admin précèdent les compteurs pour tous',()=>{
+  const html=fs.readFileSync(path.join(root,'index.html'),'utf8');
+  const home=html.slice(html.indexOf('id="tab-home"'),html.indexOf('<!-- APPEL -->'));
+  assert.ok(home.indexOf('id="acc-rapports"')<home.indexOf('id="acc-stats"'));
+  assert.ok(home.indexOf('id="acc-admin-report-summary"')<home.indexOf('id="acc-stats"'));
+  assert.doesNotMatch(html,/id="admin-report-monitor"|id="sa-report-monitor"/);
+});

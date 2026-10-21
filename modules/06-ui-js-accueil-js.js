@@ -36,6 +36,8 @@ function rAccueil(){
   // ── Messages astreinte ──
   try{rAccueilAstreinte();}catch(e){}
   try{rAccueilRapports();}catch(e){console.warn('[AGAI] Rappels de rapports indisponibles',e);}
+  try{if(typeof renderHomeAdminReportBanner==='function')renderHomeAdminReportBanner();}
+  catch(e){console.warn('[AGAI] Suivi des rapports indisponible',e);}
   try{rStatsHeader();}catch(e){}
 }
 
