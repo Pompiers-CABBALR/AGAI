@@ -34,7 +34,7 @@ for (const file of ['modules/03-security-js.js', 'app.js']) {
   const prepareSource = source.slice(start, end) + '\nglobalThis.prepare=_agaiOnlinePrepareLogin;';
   for (const [pendingId, shouldOpen] of [
     ['CIS03__iv__foreign', true],
-    ['CIS05__iv__own', false],
+    ['CIS05__iv__own', true],
     ['CIS05__login__foreign', true],
     ['CIS05__login__own', true],
   ]) {
@@ -46,6 +46,7 @@ for (const file of ['modules/03-security-js.js', 'app.js']) {
       }),
       USE_RECORDS: true, RC_SEP: '__', _rcPendingDirty: new Set([pendingId]),
       _rcSaving: false, _rcPulling: false,
+      _rcSelectAuthenticatedQueue: async () => {},
       _rcOutboxGetRows: async () => [{ id: pendingId, caserne: pendingId.slice(0, 5),
         type: pendingId.includes('__login__') ? 'login' : 'iv',
         data: { login: pendingId.endsWith('__own') ? 'pilote' : 'autre' } }],
@@ -62,7 +63,7 @@ for (const file of ['modules/03-security-js.js', 'app.js']) {
       PERSONNEL_SECURE_CIS05_PILOT: true, console: { warn: () => {} },
     };
     vm.runInNewContext(prepareSource, context);
-    // Une action étrangère reste conservée, une action CIS05 bloque la bascule.
+    // Les actions restent conservées et ne bloquent plus la connexion.
     const result = context.prepare('pilote', 'test-password');
     assert.equal(typeof result.then, 'function');
     context.result = result;
@@ -146,3 +147,4 @@ Promise.all(testCases.map(async ({ result, expected, pulls }) => {
 })).then(() => {
   console.log('Pilote CIS05 : mode normal inchangé, files étrangères préservées.');
 }).catch(error => { console.error(error); process.exitCode = 1; });
+

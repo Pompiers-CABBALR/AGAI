@@ -90,9 +90,7 @@ async function doLogin(){
     if(PERSONNEL_ONLINE_GATE&&!onlineBootstrap){
       lerr.style.display='block';
       const reason=typeof _agaiLoginFailureReason==='string'?_agaiLoginFailureReason:'';
-      lerr.textContent=reason==='pending'
-        ?'Des actions locales de votre caserne restent à transmettre. Touchez « Diagnostiquer ma connexion ».'
-        :reason==='data'
+      lerr.textContent=reason==='data'
           ?'Votre identité est vérifiée, mais les données ne chargent pas. Touchez « Diagnostiquer ma connexion ».'
           :reason==='busy'
             ?'Une synchronisation est déjà en cours. Patientez puis réessayez.'
@@ -239,3 +237,4 @@ async function doLogin(){
     if(btn&&!_loginLocked&&(typeof _loginVersionGateState==='undefined'||_loginVersionGateState!=='blocked')){btn.disabled=false;btn.textContent='Se connecter';}
   }
 }
+

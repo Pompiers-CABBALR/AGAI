@@ -38,6 +38,7 @@ test('le chargement de reprise lit le serveur sous la bonne identité sans envoy
   const events = [];
   const context = {
     CU: null, GLOBAL_ROLE: null, CURRENT_CASERNE_ID: null,
+    _rcSelectAuthenticatedQueue: async () => {},
     _rcOutboxGetRows: async () => [
       { id: 'ours', type: 'login', data: { login: 'pompier.test' } },
       { id: 'foreign', type: 'login', data: { login: 'autre.compte' } },
@@ -148,3 +149,4 @@ test('les modules chargés et le point d’entrée de référence ont exactement
   assert.match(auth, raceGuard);
   assert.match(bundle, raceGuard);
 });
+

@@ -97,8 +97,9 @@ for (const file of ['modules/03-security-js.js','app.js']) {
       assert.deepEqual(JSON.parse(state.values.get('agai_rc_pending_dirty')),[id,loginId]);
     }
   });
-  test(file + ': la connexion appelle la reprise avant la barrière de file', () => {
+  test(file + ': la connexion choisit la file du titulaire authentifié', () => {
     const prepare = source.slice(source.indexOf('async function _agaiOnlinePrepareLogin('));
-    assert.match(prepare, /_agaiClearOrphanCis05ConfigPending\(signed,/);
+    assert.match(prepare, /_rcSelectAuthenticatedQueue\(signed.profile\)/);
   });
 }
+

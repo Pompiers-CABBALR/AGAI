@@ -18,7 +18,7 @@ function _agaiLoginRepairReasonLabel(){
   return labels[typeof _agaiLoginFailureReason==='string'?_agaiLoginFailureReason:'']||'Aucun échec de connexion récent sur cette page';
 }
 
-function _agaiLoginRepairOutboxCount(){
+function _agaiLoginRepairOutboxCount(databaseName){
   return new Promise(function(resolve,reject){
     if(!window.indexedDB){reject(new Error('Stockage durable indisponible'));return;}
     let request,db=null,absent=false,done=false;
@@ -30,7 +30,7 @@ function _agaiLoginRepairOutboxCount(){
       if(error)reject(error);else resolve(count);
     }
     try{
-      request=indexedDB.open(RC_OUTBOX_DB_NAME,1);
+      request=indexedDB.open(databaseName||RC_OUTBOX_DB_NAME,1);
       request.onupgradeneeded=function(event){
         // Ne pas créer une base lors d'un contrôle en lecture seule.
         absent=event.oldVersion===0;
@@ -148,8 +148,57 @@ async function agaiResetLoginAfterCheck(){
   }finally{_agaiLoginRepairBusy=false;}
 }
 
+function agaiShowLegacyPending(){
+  if(!CU)return;
+  document.getElementById('mt').textContent='Saisies précédentes conservées';
+  document.getElementById('mi').textContent='Vous pouvez continuer à utiliser AGAI.';
+  const body=document.getElementById('mb');body.replaceChildren();
+  const info=document.createElement('p');
+  info.textContent='Des saisies de l’ancienne connexion sont conservées sur cet appareil. Leur titulaire doit être vérifié avant de les transmettre. Elles ne bloquent ni votre connexion ni vos nouvelles interventions.';
+  body.appendChild(info);
+  const link=document.createElement('a');
+  link.href='securite-file-locale-lecture-seule.html?version=ce4be86';
+  link.target='_blank';link.rel='noopener';link.textContent='Consulter les anciennes saisies en lecture seule';
+  body.appendChild(link);
+  if(typeof isSuperAdmin==='function'&&isSuperAdmin()){
+    const button=document.createElement('button');button.className='btn';
+    button.textContent='Sauvegarder les anciennes saisies pour récupération';
+    button.onclick=agaiExportLegacyPending;body.appendChild(button);
+  }
+  document.getElementById('mo').style.display='flex';
+}
+async function agaiExportLegacyPending(){
+  if(!CU||typeof isSuperAdmin!=='function'||!isSuperAdmin())return;
+  try{
+    const entries=await new Promise(function(resolve,reject){
+      const request=indexedDB.open('agai-sync-outbox',1);let absent=false,db=null;
+      const timer=setTimeout(function(){reject(new Error('Lecture trop longue'));},8000);
+      request.onupgradeneeded=function(event){absent=event.oldVersion===0;request.transaction.abort();};
+      request.onerror=function(){clearTimeout(timer);if(absent)resolve([]);else reject(new Error('Lecture impossible'));};
+      request.onblocked=function(){clearTimeout(timer);reject(new Error('Stockage occupé'));};
+      request.onsuccess=function(){
+        db=request.result;
+        try{
+          const tx=db.transaction('records','readonly'),read=tx.objectStore('records').getAll();
+          tx.oncomplete=function(){clearTimeout(timer);db.close();resolve(read.result||[]);};
+          tx.onerror=tx.onabort=function(){clearTimeout(timer);db.close();reject(new Error('Lecture interrompue'));};
+        }catch(error){clearTimeout(timer);db.close();reject(error);}
+      };
+    });
+    // Le fichier contient uniquement les anciennes données métier et leurs
+    // marqueurs, jamais les mots de passe saisis ni les jetons de session.
+    const backup={format:'agai-legacy-pending-v1',createdAt:new Date().toISOString(),
+      entries:entries,pending:localStorage.getItem('agai_rc_pending_dirty'),
+      cache:localStorage.getItem('agai_jb_cache')};
+    const url=URL.createObjectURL(new Blob([JSON.stringify(backup)],{type:'application/json'}));
+    const link=document.createElement('a');link.href=url;link.download='AGAI-saisies-precedentes.json';
+    link.click();setTimeout(function(){URL.revokeObjectURL(url);},1000);
+    showToast('Sauvegarde téléchargée. Les saisies restent conservées sur cet appareil.','success');
+  }catch(error){showToast('Sauvegarde indisponible. Les anciennes saisies restent conservées.','warn');}
+}
 const _agaiLoginRepairStart=document.getElementById('login-repair-start');
 if(_agaiLoginRepairStart){
   if(typeof PERSONNEL_ONLINE_GATE!=='undefined'&&!PERSONNEL_ONLINE_GATE)_agaiLoginRepairStart.hidden=true;
   else _agaiLoginRepairStart.disabled=false;
 }
+
