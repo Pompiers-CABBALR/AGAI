@@ -18,6 +18,24 @@ function _agaiLoginRepairReasonLabel(){
   return labels[typeof _agaiLoginFailureReason==='string'?_agaiLoginFailureReason:'']||'Aucun échec de connexion récent sur cette page';
 }
 
+function _agaiLoginRepairTimingLabel(){
+  try{
+    const raw=JSON.parse(localStorage.getItem(AGAI_LOGIN_TIMING_KEY)||'null');
+    if(!raw||!Number.isFinite(raw.at)||Date.now()-raw.at>7*24*60*60*1000)return '';
+    const seconds=function(ms){
+      return Number.isFinite(ms)&&ms>=0&&ms<=600000?(ms/1000).toFixed(1)+' s':null;
+    };
+    const verification=seconds(raw.verificationMs);
+    if(!verification)return '';
+    let label=' Durées du dernier essai : vérification '+verification;
+    const chargement=seconds(raw.chargementMs);
+    if(chargement)label+=' ; chargement '+chargement;
+    const reception=seconds(raw.receptionMs);
+    if(reception)label+=' (dont réception des données '+reception+')';
+    return label+'.';
+  }catch(error){return '';}
+}
+
 function _agaiLoginRepairOutboxCount(databaseName){
   return new Promise(function(resolve,reject){
     if(!window.indexedDB){reject(new Error('Stockage durable indisponible'));return;}
@@ -106,7 +124,7 @@ async function agaiOpenLoginRepair(){
   try{
     const state=await _agaiInspectLoginRepair();
     const counts='Actions signalées : '+state.pending+' ; file durable : '+state.durable+'.';
-    const cause='Dernier essai : '+_agaiLoginRepairReasonLabel()+'.';
+    const cause='Dernier essai : '+_agaiLoginRepairReasonLabel()+'.'+_agaiLoginRepairTimingLabel();
     if(state.pending||state.durable){
       _agaiLoginRepairPanel(cause+' '+counts+' Aucune donnée ne sera effacée. Contactez votre administrateur avec ces nombres.',false);
     }else if(state.busy){

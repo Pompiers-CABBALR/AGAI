@@ -1501,6 +1501,39 @@ let _agaiOnlineAccessTimer=null;
 let _agaiOnlineAccessInFlight=false;
 // Catégorie locale uniquement : jamais de mot de passe, jeton ni réponse serveur.
 let _agaiLoginFailureReason='';
+const AGAI_LOGIN_TIMING_KEY='agai_login_timing_v1';
+let _agaiLoginTiming=null;
+function _agaiLoginClock(){
+  return typeof performance!=='undefined'&&typeof performance.now==='function'?performance.now():Date.now();
+}
+function _agaiLoginTimingBegin(){
+  _agaiLoginTiming={started:_agaiLoginClock(),at:Date.now()};
+}
+function _agaiLoginTimingVerified(){
+  if(_agaiLoginTiming&&!_agaiLoginTiming.verified)_agaiLoginTiming.verified=_agaiLoginClock();
+}
+function _agaiLoginTimingFetchBegin(){
+  if(_agaiLoginTiming&&!_agaiLoginTiming.fetchStarted)_agaiLoginTiming.fetchStarted=_agaiLoginClock();
+}
+function _agaiLoginTimingFetchEnd(){
+  if(_agaiLoginTiming&&_agaiLoginTiming.fetchStarted)_agaiLoginTiming.fetchEnded=_agaiLoginClock();
+}
+function _agaiLoginTimingFinish(){
+  const timing=_agaiLoginTiming;
+  _agaiLoginTiming=null;
+  if(!timing)return;
+  const ended=_agaiLoginClock();
+  const duration=function(start,end){
+    const value=Math.round(end-start);
+    return Number.isFinite(value)&&value>=0&&value<=600000?value:null;
+  };
+  const record={at:timing.at,
+    verificationMs:duration(timing.started,timing.verified||ended),
+    chargementMs:timing.verified?duration(timing.verified,ended):null,
+    receptionMs:timing.fetchStarted&&timing.fetchEnded?duration(timing.fetchStarted,timing.fetchEnded):null};
+  // Uniquement des durées locales : aucun compte, jeton ou contenu de fiche.
+  try{localStorage.setItem(AGAI_LOGIN_TIMING_KEY,JSON.stringify(record));}catch(error){}
+}
 function _agaiOnlineAccessReady(){
   return PERSONNEL_ONLINE_GATE&&AUTH_LINK_MODE==='on'&&typeof navigator!=='undefined'&&navigator.onLine!==false;
 }
@@ -2480,11 +2513,13 @@ async function doLogin(){
   if(!l||!p){lerr.style.display='block';lerr.textContent='Identifiant et mot de passe requis.';return;}
 
   // Désactiver le bouton pendant la vérification async
+  if(PERSONNEL_ONLINE_GATE)_agaiLoginTimingBegin();
   if(btn){btn.disabled=true;btn.textContent='Vérification…';}
   lerr.style.display='none';
 
   try{
     const onlineBootstrap=PERSONNEL_ONLINE_GATE?await _agaiOnlinePrepareLogin(l,p,function(){
+      _agaiLoginTimingVerified();
       if(btn)btn.textContent='Chargement…';
     }):null;
     if(PERSONNEL_ONLINE_GATE&&!onlineBootstrap){
@@ -2633,6 +2668,7 @@ async function doLogin(){
     console.warn('[AGAI] Connexion impossible :',error);
     lerr.style.display='block';lerr.textContent='Connexion impossible. Réessayez lorsque le service est disponible.';
   } finally {
+    if(PERSONNEL_ONLINE_GATE)_agaiLoginTimingFinish();
     // Restaurer le bouton dans tous les cas (sauf si bloqué)
     if(btn&&!_loginLocked&&(typeof _loginVersionGateState==='undefined'||_loginVersionGateState!=='blocked')){btn.disabled=false;btn.textContent='Se connecter';}
   }
@@ -18129,7 +18165,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0056';
+const APP_VERSION='V202610_0057';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -23315,7 +23351,9 @@ async function _rcPull(silent,deferViewsUntilLogin,skipPendingPush){
     _rcPersistPendingDirty();
     if(!silent) _jbSetStatus('loading');
     const requestedScope=_rcPullScopeFilter();
+    if(deferViewsUntilLogin)_agaiLoginTimingFetchBegin();
     const rows = await _rcFetchAllActiveRows(requestedScope);
+    if(deferViewsUntilLogin)_agaiLoginTimingFetchEnd();
     if(requestedScope!==_rcPullScopeFilter()){
       _rcRequestRealtimePull(250);
       return true;

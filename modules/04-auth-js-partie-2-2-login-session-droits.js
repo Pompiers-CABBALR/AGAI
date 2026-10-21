@@ -82,11 +82,13 @@ async function doLogin(){
   if(!l||!p){lerr.style.display='block';lerr.textContent='Identifiant et mot de passe requis.';return;}
 
   // Désactiver le bouton pendant la vérification async
+  if(PERSONNEL_ONLINE_GATE)_agaiLoginTimingBegin();
   if(btn){btn.disabled=true;btn.textContent='Vérification…';}
   lerr.style.display='none';
 
   try{
     const onlineBootstrap=PERSONNEL_ONLINE_GATE?await _agaiOnlinePrepareLogin(l,p,function(){
+      _agaiLoginTimingVerified();
       if(btn)btn.textContent='Chargement…';
     }):null;
     if(PERSONNEL_ONLINE_GATE&&!onlineBootstrap){
@@ -235,6 +237,7 @@ async function doLogin(){
     console.warn('[AGAI] Connexion impossible :',error);
     lerr.style.display='block';lerr.textContent='Connexion impossible. Réessayez lorsque le service est disponible.';
   } finally {
+    if(PERSONNEL_ONLINE_GATE)_agaiLoginTimingFinish();
     // Restaurer le bouton dans tous les cas (sauf si bloqué)
     if(btn&&!_loginLocked&&(typeof _loginVersionGateState==='undefined'||_loginVersionGateState!=='blocked')){btn.disabled=false;btn.textContent='Se connecter';}
   }

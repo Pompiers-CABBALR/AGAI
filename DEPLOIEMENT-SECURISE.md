@@ -1,5 +1,18 @@
 # AGAI — déploiement sécurisé
 
+## V202610_0057 — durées de connexion locales
+
+Lors d'une connexion normale, AGAI conserve sur l'appareil les durées de
+« Vérification… », de « Chargement… » et de la réception des données.
+« Diagnostiquer ma connexion » peut les afficher après une tentative.
+La mesure ne contient aucun identifiant, mot de passe, jeton ni contenu de
+fiche et n'est jamais envoyée au serveur. Elle expire à l'affichage après
+sept jours. Les règles d'accès et la synchronisation ne changent pas.
+
+Aucune migration ni fonction Edge à déployer. Avant publication, confirmer
+l'absence de saisie en cours et « Sync OK ». Ne pas demander de connexion
+supplémentaire aux collègues : une utilisation normale fournira la mesure.
+
 ## Correctif V202610_0056 — attente de vérification bornée
 
 Le délai de huit secondes couvre désormais toute la réponse de connexion,
