@@ -5,6 +5,10 @@ window._agaiReportEditionState=null;
 let _reportEditionHomeRequest=null;
 let _reportEditionHomeCheckedAt=0;
 const _reportEditionBusy=new Set();
+let _reportAdminSummaryState=null;
+let _reportAdminSummaryRequest=null;
+let _reportAdminSummaryCheckedAt=0;
+let _reportAdminStationFilter='';
 
 async function reportEditionRpc(name,payload){
   const token=_agaiAuthAccessToken();
@@ -79,10 +83,10 @@ function reportEditionScheduleHomeStatus(){
   }).then(function(){
     _reportEditionHomeCheckedAt=Date.now();
     if(CU&&CU.l===login&&CURRENT_CASERNE_ID===station){
-      const start=rapportsEditionDebut();
       const el=document.getElementById('acc-rapports');
       if(el&&document.getElementById('tab-home')?.classList.contains('active'))
         rAccueilRapports();
+      renderHomeAdminReportBanner();
     }
   }).catch(function(error){
     console.warn('[AGAI] Éditions officielles :',error.message);
@@ -166,46 +170,147 @@ function reportMonitorRows(scope){
   });
   return {finaliser:finaliser,editer:editer};
 }
+function reportAdminScope(){
+  if(isSuperAdmin())return 'superadmin';
+  return isAdminModeActive()?'admin':'';
+}
+function reportAdminSummaryFor(scope){
+  return _reportAdminSummaryState&&CU
+    &&_reportAdminSummaryState.login===CU.l
+    &&_reportAdminSummaryState.station===CURRENT_CASERNE_ID
+    &&_reportAdminSummaryState.scope===scope?_reportAdminSummaryState.state:null;
+}
+function reportAdminEligibleRows(scope,start){
+  return reportMonitorRows(scope).editer.filter(function(row){return row.day>=start;});
+}
+function renderHomeAdminReportBanner(){
+  const el=document.getElementById('acc-admin-report-summary');
+  if(!el)return;
+  const scope=reportAdminScope();
+  if(!CU||!scope){el.style.display='none';el.innerHTML='';return;}
+  const count=reportMonitorRows(scope).finaliser.length;
+  const settings=window._agaiReportEditionState;
+  const state=reportAdminSummaryFor(scope);
+  let originalText='';
+  if(settings&&settings.enabled&&settings.startDate){
+    if(state&&state.enabled&&state.startDate===settings.startDate){
+      const start=settings.startDate.replace(/-/g,'');
+      const eligible=reportAdminEligibleRows(scope,start);
+      const missing=eligible.some(function(row){return !state.items[row.recordId];});
+      const originals=eligible.filter(function(row){
+        return state.items[row.recordId]&&Number(state.items[row.recordId].count)===0;
+      }).length;
+      originalText=missing?' · Originaux à vérifier':' · '+originals+' originaux à éditer';
+    }else originalText=' · Originaux à vérifier';
+    reportEditionScheduleAdminSummary();
+  }
+  el.style.display='';
+  el.innerHTML='<button type="button" onclick="openHomeReportMonitor()" '
+    +'style="display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;padding:11px 13px;border-radius:11px;border:1px solid #CBD5E1;background:#EFF6FF;color:#1E3A5F;text-align:left;font:inherit;cursor:pointer;">'
+    +'<span>📋 <strong>Rapports à suivre</strong> · '+count+' non validé'+(count===1?'':'s')+originalText+'</span>'
+    +'<span aria-hidden="true" style="font-size:18px;">›</span></button>';
+}
+function reportEditionScheduleAdminSummary(){
+  const scope=reportAdminScope(),settings=window._agaiReportEditionState;
+  if(!CU||!scope||!settings||!settings.enabled||!settings.startDate
+     ||_reportAdminSummaryRequest||Date.now()-_reportAdminSummaryCheckedAt<60000)return;
+  const login=CU.l,station=CURRENT_CASERNE_ID;
+  _reportAdminSummaryRequest=Promise.resolve().then(function(){
+    return reportEditionLoadState(reportAdminEligibleRows(scope,settings.startDate.replace(/-/g,''))
+      .map(function(row){return row.recordId;}));
+  }).then(function(state){
+    if(CU&&CU.l===login&&CURRENT_CASERNE_ID===station&&reportAdminScope()===scope){
+      _reportAdminSummaryState={login:login,station:station,scope:scope,state:state};
+      _reportAdminSummaryCheckedAt=Date.now();
+      renderHomeAdminReportBanner();
+      if(document.getElementById('home-report-monitor'))renderReportAdminMonitor(scope);
+    }
+  }).catch(function(error){
+    console.warn('[AGAI] Suivi des originaux :',error.message);
+    _reportAdminSummaryCheckedAt=Date.now();
+  }).finally(function(){_reportAdminSummaryRequest=null;});
+}
+function openHomeReportMonitor(){
+  const scope=reportAdminScope();
+  if(!CU||!scope)return;
+  document.getElementById('mt').textContent='Suivi des rapports';
+  document.getElementById('mi').textContent=scope==='superadmin'?'Toutes les casernes':'Votre caserne';
+  document.getElementById('mb').innerHTML='<div id="home-report-monitor"></div>';
+  document.getElementById('mo').style.display='flex';
+  renderReportAdminMonitor(scope);
+  refreshReportAdminMonitor(scope);
+}
+function setReportAdminStationFilter(station){
+  if(reportAdminScope()!=='superadmin')return;
+  _reportAdminStationFilter=station&&CASERNES.some(function(c){return c.id===station;})?station:'';
+  renderReportAdminMonitor('superadmin');
+}
 function renderReportAdminMonitor(scope){
-  if(scope==='superadmin'&&!isSuperAdmin())return;
-  if(scope==='admin'&&!isAdminModeActive())return;
-  const el=document.getElementById(scope==='superadmin'?'sa-report-monitor':'admin-report-monitor');
+  if(scope!==reportAdminScope())return;
+  const el=document.getElementById('home-report-monitor');
   if(!el)return;
   const rows=reportMonitorRows(scope);
-  const state=window._agaiReportEditionState;
-  const start=state&&state.enabled&&state.startDate?state.startDate.replace(/-/g,''):'';
-  const eligible=start?rows.editer.filter(function(row){return row.day>=start;}):[];
-  const unverified=eligible.filter(function(row){return !state.items||!state.items[row.recordId];}).length;
-  const toPrint=start?rows.editer.filter(function(row){
-    return row.day>=start&&state.items&&state.items[row.recordId]
-      &&Number(state.items[row.recordId].count)===0;
-  }):[];
+  const station=scope==='superadmin'?_reportAdminStationFilter:'';
+  const finaliser=station?rows.finaliser.filter(function(row){return row.station===station;}):rows.finaliser;
+  const settings=window._agaiReportEditionState;
+  const state=reportAdminSummaryFor(scope);
+  const start=settings&&settings.enabled&&settings.startDate?settings.startDate.replace(/-/g,''):'';
+  const eligible=start?rows.editer.filter(function(row){return row.day>=start&&(!station||row.station===station);}):[];
+  const unverified=eligible.filter(function(row){return !state||!state.items[row.recordId];}).length;
+  const toPrint=eligible.filter(function(row){
+    return state&&state.items[row.recordId]&&Number(state.items[row.recordId].count)===0;
+  });
   const fmt=function(row){
     const date=/^\d{8}$/.test(row.day)?row.day.slice(6,8)+'/'+row.day.slice(4,6)+'/'+row.day.slice(0,4):row.day;
     return '<div style="padding:7px 0;border-top:1px solid var(--brd);font-size:12px;">'
-      +'<strong>'+escHtml(row.label)+'</strong> · '+escHtml(row.stationName)
-      +' · Responsable : '+escHtml(row.owner)+' · '+escHtml(date)+'</div>';
+      +'<strong>'+escHtml(row.label)+'</strong> · '+escHtml(date)+'</div>';
   };
-  const byOwner={};
-  rows.finaliser.forEach(function(row){const key=row.station+'|'+row.owner;byOwner[key]=(byOwner[key]||0)+1;});
-  const ownerSummary=Object.entries(byOwner).map(function(entry){
-    return escHtml(entry[0].split('|')[1])+' ('+entry[1]+')';
-  }).join(' · ');
+  const grouped=function(list,empty){
+    if(!list.length)return '<p style="font-size:12px;color:var(--t2);">'+empty+'</p>';
+    const groups=new Map();
+    list.forEach(function(row){
+      const key=row.station+'|'+row.owner;
+      if(!groups.has(key))groups.set(key,{owner:row.owner,stationName:row.stationName,rows:[]});
+      groups.get(key).rows.push(row);
+    });
+    return [...groups.values()].sort(function(a,b){return a.owner.localeCompare(b.owner,'fr');})
+      .map(function(group){return '<details style="margin-top:7px;padding:7px;border:1px solid var(--brd);border-radius:8px;">'
+        +'<summary style="cursor:pointer;font-weight:600;">'+escHtml(group.owner)+' · '+group.rows.length
+        +(scope==='superadmin'?' · '+escHtml(group.stationName):'')+'</summary>'
+        +group.rows.map(fmt).join('')+'</details>';}).join('');
+  };
+  const stations=scope==='superadmin'?'<label style="display:block;margin:9px 0;font-size:12px;">Caserne '
+    +'<select class="fi" onchange="setReportAdminStationFilter(this.value)">'
+    +'<option value="">Toutes les casernes</option>'
+    +CASERNES.filter(function(c){return c&&c.id&&c.id!=='EMAJ';}).map(function(c){return '<option value="'+escHtml(c.id)+'"'
+      +(station===c.id?' selected':'')+'>'+escHtml(c.nom||c.id)+'</option>';}).join('')
+    +'</select></label>':'';
   el.innerHTML='<div style="font-size:12px;margin-bottom:8px;">'
     +'<button class="btn sm" onclick="refreshReportAdminMonitor(\''+scope+'\')">↻ Actualiser le suivi</button>'
-    +'<span style="margin-left:8px;color:var(--t2);">'+(state?state.enabled?'Originaux suivis depuis le '+escHtml(state.startDate):'Suivi des originaux non activé':'État des originaux non vérifié')+'</span></div>'
-    +'<details open><summary style="font-weight:700;cursor:pointer;">Comptes rendus non validés · '+rows.finaliser.length+'</summary>'
-    +(ownerSummary?'<div style="font-size:11px;color:var(--t2);padding:5px 0;">Par responsable : '+ownerSummary+'</div>':'')
-    +(rows.finaliser.length?rows.finaliser.map(fmt).join(''):'<p style="font-size:12px;">Aucun rapport en attente de validation sur la période.</p>')+'</details>'
-    +(start?'<details style="margin-top:10px;"><summary style="font-weight:700;cursor:pointer;">Originaux non édités · '+toPrint.length+(unverified?' · '+unverified+' statut(s) à vérifier':'')+'</summary>'
-      +(toPrint.length?toPrint.map(fmt).join(''):'<p style="font-size:12px;">Aucun original en attente confirmé par le serveur.</p>')+'</details>':'');
+    +'<span style="margin-left:8px;color:var(--t2);">'+(settings?settings.enabled?'Originaux suivis depuis le '+escHtml(settings.startDate):'Suivi des originaux non activé':'État des originaux non vérifié')+'</span></div>'
+    +stations
+    +'<details open><summary style="font-weight:700;cursor:pointer;">Comptes rendus non validés · '+finaliser.length+'</summary>'
+    +grouped(finaliser,'Aucun rapport en attente de validation sur la période.')+'</details>'
+    +(start?'<details style="margin-top:10px;"><summary style="font-weight:700;cursor:pointer;">Originaux non édités · '+toPrint.length
+      +(unverified?' · '+unverified+' statut(s) à vérifier':'')+'</summary>'
+      +grouped(toPrint,'Aucun original en attente confirmé par le serveur.')+'</details>':'');
 }
 async function refreshReportAdminMonitor(scope){
-  if(scope==='superadmin'&&!isSuperAdmin()||scope==='admin'&&!isAdminModeActive())return;
-  const rows=reportMonitorRows(scope),el=document.getElementById(scope==='superadmin'?'sa-report-monitor':'admin-report-monitor');
+  if(scope!==reportAdminScope())return;
+  const el=document.getElementById('home-report-monitor');
   if(el)el.textContent='Vérification du registre serveur…';
-  try{await reportEditionLoadState(rows.editer.map(function(row){return row.recordId;}));renderReportAdminMonitor(scope);}
-  catch(error){renderReportAdminMonitor(scope);if(el)el.insertAdjacentHTML('afterbegin','<p style="color:var(--rd);font-size:12px;">'+escHtml(error.message)+' — état des originaux non confirmé.</p>');}
+  try{
+    const rows=reportMonitorRows(scope),login=CU.l,station=CURRENT_CASERNE_ID;
+    const state=await reportEditionLoadState(rows.editer.map(function(row){return row.recordId;}));
+    if(!CU||CU.l!==login||CURRENT_CASERNE_ID!==station||scope!==reportAdminScope())return;
+    _reportAdminSummaryState={login:login,station:station,scope:scope,state:state};
+    _reportAdminSummaryCheckedAt=Date.now();
+    renderHomeAdminReportBanner();
+    renderReportAdminMonitor(scope);
+  }catch(error){
+    renderReportAdminMonitor(scope);
+    if(el)el.insertAdjacentHTML('afterbegin','<p style="color:var(--rd);font-size:12px;">'+escHtml(error.message)+' — état des originaux non confirmé.</p>');
+  }
 }
 
 const _reportEditionLegacyIntervention=voirRapportIntervention;

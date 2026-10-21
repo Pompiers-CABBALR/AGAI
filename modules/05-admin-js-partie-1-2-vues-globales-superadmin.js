@@ -348,7 +348,6 @@ function refreshOperationalHealthPanel(){const panel=document.getElementById('sa
 const SUPERADMIN_SECTIONS=[
   {id:'casernes',icon:'🏠',label:'Casernes'},
   {id:'acces',icon:'🔑',label:'Accès et rôles'},
-  {id:'rapports',icon:'📋',label:'Suivi des rapports'},
   {id:'numerotation',icon:'🔢',label:'Numérotation'},
   {id:'parametres',icon:'⚙️',label:'Paramètres'},
   {id:'referentiels',icon:'📋',label:'Référentiels'},
@@ -386,7 +385,6 @@ function applySuperAdminSection(){
 function setSuperAdminSection(section){
   rememberSuperAdminSection(section);
   applySuperAdminSection();
-  if(section==='rapports'&&typeof refreshReportAdminMonitor==='function')refreshReportAdminMonitor('superadmin');
   const body=document.getElementById('gv-body');
   if(body)body.scrollIntoView({block:'start',behavior:'smooth'});
 }
@@ -777,9 +775,6 @@ function renderSuperAdmin(){
       <div id="login-history-content">${renderLoginHistorySummary()}${renderLoginHistoryByCaserne()}</div>
     </div>
     </section>
-    <section class="sa-section" data-sa-section="rapports">
-      <div id="sa-report-monitor"></div>
-    </section>
     <section class="sa-section" data-sa-section="maintenance">
     <div id="sa-health-panel">${renderOperationalHealthPanel()}</div>
     ${renderRecoveryCheckpointsPanel()}
@@ -803,7 +798,6 @@ function renderSuperAdmin(){
     </section>`;
   applySuperAdminSection();
   if(typeof renderReportEditionSettings==='function')renderReportEditionSettings();
-  if(superAdminActiveSection==='rapports'&&typeof refreshReportAdminMonitor==='function')refreshReportAdminMonitor('superadmin');
   // Initialise la prévisualisation du logo
   const _lprev=document.getElementById('sa-logo-preview');
   if(_lprev){_lprev.src=_getLogoSrc();_lprev.style.display='block';}
