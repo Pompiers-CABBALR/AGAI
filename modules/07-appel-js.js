@@ -842,6 +842,7 @@ function rainCompatibilityText(value){
   return state==='protege'?'Nid protégé':state==='partiel'?'Nid partiellement protégé':state==='expose'?'Nid exposé':'À confirmer sur place';
 }
 function interventionRainSummary(iv){
+  if(isPilpIntervention(iv))return null;
   const nids=interventionNids(iv);
   if(!nids.length)return null;
   const states=nids.map(function(nid){return rainCompatibilityState(nid&&nid.pluie);});
@@ -862,6 +863,7 @@ function interventionRainBadgeHTML(iv){
   return '<span style="padding:2px 6px;border-radius:6px;background:'+palette[0]+';color:'+palette[1]+';font-weight:600;">'+summary.icon+' '+escHtml(summary.label+weatherAdvice)+'</span>';
 }
 function canEditRainCompatibility(iv){
+  if(isPilpIntervention(iv))return false;
   if(!iv||iv.s==='terminee')return isAdminModeActive();
   return isAdminModeActive()||(typeof canCurrentUserManageOperationalOptions==='function'&&canCurrentUserManageOperationalOptions(iv));
 }
@@ -1195,3 +1197,4 @@ function rF(){
 }
 function updateH(){document.getElementById('hv').textContent=hoA?getH(hoA):getH(N());}
 function cpH(){const v=document.getElementById('hv').textContent;if(navigator.clipboard)navigator.clipboard.writeText(v).catch(()=>{});const b=document.querySelector('.cpbtn');if(b){b.textContent='✅';setTimeout(()=>b.textContent='&#x1F4CB; Copier',1500);}}
+

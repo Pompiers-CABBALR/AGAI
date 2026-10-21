@@ -6335,6 +6335,7 @@ function rainCompatibilityText(value){
   return state==='protege'?'Nid protégé':state==='partiel'?'Nid partiellement protégé':state==='expose'?'Nid exposé':'À confirmer sur place';
 }
 function interventionRainSummary(iv){
+  if(isPilpIntervention(iv))return null;
   const nids=interventionNids(iv);
   if(!nids.length)return null;
   const states=nids.map(function(nid){return rainCompatibilityState(nid&&nid.pluie);});
@@ -6355,6 +6356,7 @@ function interventionRainBadgeHTML(iv){
   return '<span style="padding:2px 6px;border-radius:6px;background:'+palette[0]+';color:'+palette[1]+';font-weight:600;">'+summary.icon+' '+escHtml(summary.label+weatherAdvice)+'</span>';
 }
 function canEditRainCompatibility(iv){
+  if(isPilpIntervention(iv))return false;
   if(!iv||iv.s==='terminee')return isAdminModeActive();
   return isAdminModeActive()||(typeof canCurrentUserManageOperationalOptions==='function'&&canCurrentUserManageOperationalOptions(iv));
 }
@@ -8105,6 +8107,7 @@ function interventionAppelDetailValue(iv,key,value){
 function oM(id){
   const iv=interventionById(id);if(!iv)return;
   const pilpScope=isPilpIntervention(iv);
+  const showMissingVehicle=pilpScope&&iv.s!=='en-attente';
   const pilpReadOnly=isPilpReadOnlyForCurrentUser(iv);
   const isInternalReinforcement=iv._isRenfortInterneMission===true;
   // Pour un départ SDIS, la synthèse opérationnelle commence à l'acquis
@@ -8328,7 +8331,7 @@ function oM(id){
     ${iv._transfertVers?`<div class="mr"><div class="ml">Transféré vers</div><div class="mv2" style="color:#888;">&#x1F500; ${CASERNES.find(c=>c.id===iv._transfertVers)?.nom||iv._transfertVers}</div></div>`:''}
     ${iv._refugeAnimalier?`<div class="mr"><div class="ml">Refuge animalier</div><div class="mv2" style="color:var(--grn);">&#x1F43E; Transmis au refuge — ${iv._refugeAnimalier}</div></div>`:''}
 
-    ${(iv.eng||detailStart||detailEnd||pilpScope)?'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:8px;margin:6px 0;">'+(iv.eng?'<div style="background:var(--bg);border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Engin</div><span class="bdg bb">'+iv.eng+'</span></div>':pilpScope?'<div style="background:var(--bg);border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Engin</div><span style="font-size:11px;color:var(--t2);">Non renseigné</span></div>':'')+(detailStart?'<div style="background:#FEF9EC;border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--amb);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">&#x23F1; Début</div><div style="font-weight:700;color:var(--amb);font-size:15px;">'+detailStart+'</div></div>':'')+(detailEnd?'<div style="background:#F0FAF0;border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--grn);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">&#x2705; Fin</div><div style="font-weight:700;color:var(--grn);font-size:15px;">'+detailEnd+'</div></div>':'')+(detailStart&&detailEnd?'<div style="background:#F0F4FF;border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--pur);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">&#x23F3; Durée</div><div style="font-weight:700;color:var(--pur);font-size:15px;">'+dureeHHMM(detailStart,detailEnd)+'</div></div>':'')+'</div>':''}
+    ${(iv.eng||detailStart||detailEnd||showMissingVehicle)?'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:8px;margin:6px 0;">'+(iv.eng?'<div style="background:var(--bg);border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Engin</div><span class="bdg bb">'+iv.eng+'</span></div>':showMissingVehicle?'<div style="background:var(--bg);border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Engin</div><span style="font-size:11px;color:var(--t2);">Non renseigné</span></div>':'')+(detailStart?'<div style="background:#FEF9EC;border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--amb);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">&#x23F1; Début</div><div style="font-weight:700;color:var(--amb);font-size:15px;">'+detailStart+'</div></div>':'')+(detailEnd?'<div style="background:#F0FAF0;border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--grn);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">&#x2705; Fin</div><div style="font-weight:700;color:var(--grn);font-size:15px;">'+detailEnd+'</div></div>':'')+(detailStart&&detailEnd?'<div style="background:#F0F4FF;border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--pur);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">&#x23F3; Durée</div><div style="font-weight:700;color:var(--pur);font-size:15px;">'+dureeHHMM(detailStart,detailEnd)+'</div></div>':'')+'</div>':''}
     ${iv._equipage1?`<div class="mr"><div class="ml">&#x1F692; ${iv._engin1||'Engin 1'}</div><div class="mv2"><div style="display:flex;flex-wrap:wrap;gap:4px;">${iv._equipage1.map(e=>{const u=USERS.find(x=>x.l===e.login);const nom=u?fullName(u):((e.prenom||e.nom)?((e.prenom||'')+' '+(e.nom||'')).trim():e.login);return'<span style="background:'+(e.renfort?'#F5F3FF':'#EEF2FF')+';color:'+(e.renfort?'#6D28D9':'#3730A3')+';border-radius:6px;padding:2px 8px;font-size:11px;">'+(e.renfort?'&#x1F692; ':'')+'<span style="font-size:9px;opacity:.7;">'+e.role+'</span> '+nom+(e.renfort&&e.caserneNom?' <span style="font-size:9px;opacity:.7;">('+e.caserneNom+')</span>':'')+'</span>';}).join('')}</div></div></div>`:''}
     ${iv._equipage2?`<div class="mr"><div class="ml">&#x1F692; ${iv._engin2||'Engin 2'}</div><div class="mv2"><div style="display:flex;flex-wrap:wrap;gap:4px;">${iv._equipage2.map(e=>{const u=USERS.find(x=>x.l===e.login);const nom=u?fullName(u):((e.prenom||e.nom)?((e.prenom||'')+' '+(e.nom||'')).trim():e.login);return'<span style="background:'+(e.renfort?'#F5F3FF':'#F0FDF4')+';color:'+(e.renfort?'#6D28D9':'#166534')+';border-radius:6px;padding:2px 8px;font-size:11px;">'+(e.renfort?'&#x1F692; ':'')+'<span style="font-size:9px;opacity:.7;">'+e.role+'</span> '+nom+(e.renfort&&e.caserneNom?' <span style="font-size:9px;opacity:.7;">('+e.caserneNom+')</span>':'')+'</span>';}).join('')}</div></div></div>`:''}
     ${pilpScope&&iv.s==='terminee'&&!iv._equipage1?'<div style="background:#FFF7ED;border:1px solid #FDBA74;border-radius:8px;padding:8px 10px;margin:6px 0;font-size:11px;color:#9A3412;">Ancienne fiche PILP : l’équipage n’avait pas été enregistré par la version utilisée lors du départ.</div>':''}
@@ -17949,7 +17952,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0050';
+const APP_VERSION='V202610_0051';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
