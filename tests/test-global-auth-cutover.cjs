@@ -62,7 +62,7 @@ for (const file of ['modules/17-animal-js.js', 'app.js']) {
     assert.equal(pending.has('intervention'), true);
   }).catch(error => { console.error(error); process.exitCode = 1; });
 }
-assert.match(read('modules/03-security-js.js'), /_rcDiscardPilotLoginTombstones\(await _rcOutboxGetRows\(\)\)/);
+assert.match(read('modules/03-security-js.js'), /_rcSelectAuthenticatedQueue\(signed.profile\)/);
 assert.match(read('supabase/functions/agai-account-link/index.ts'), /const personnelEnforcement = true/);
 
 const checkPage = read('securite-acces-intercaserne.html');
@@ -71,3 +71,4 @@ assert.ok(inline, 'script du contrôle inter-casernes introuvable');
 new Function(inline[1]);
 assert.doesNotMatch(checkPage, /\/rest\/v1\/records\?select=id,updated_by/);
 console.log('Bascule Auth : configuration, version, accès et contrôle en lecture seule cohérents.');
+

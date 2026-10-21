@@ -146,9 +146,9 @@ for(const file of ['modules/03-security-js.js','app.js']) {
       assert.equal(state.stores['agai-sync-outbox'].has(configId),true);
     }
   });
-  test(file+': reprise exécutée avant la barrière de connexion',() => {
+  test(file+': la connexion isole les anciennes saisies sans reprise automatique',() => {
     const prepare=source.slice(source.indexOf('async function _agaiOnlinePrepareLogin('));
-    assert.match(prepare,/_agaiRecoverCedricConfigDuringLogin\(signed,/);
+    assert.match(prepare,/_rcSelectAuthenticatedQueue\(signed.profile\)/);
   });
 }
 
@@ -168,3 +168,4 @@ for(const file of ['modules/17-animal-js.js','app.js']) {
     assert.match(source,/if\(_rcCanWriteStationConfig\(\)\s*&&\(\(Date\.now\(\)-_jbEditLock/);
   });
 }
+

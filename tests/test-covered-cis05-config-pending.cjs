@@ -13,7 +13,7 @@ function scenario(file, {local = {piquets: {lundi: 1}}, remote = {piquets: {lund
   const start = source.indexOf('async function _agaiDeleteIdenticalCis05ConfigOutbox(');
   const end = source.indexOf('async function _agaiOnlinePrepareLogin(', start);
   assert.ok(start >= 0 && end > start, `${file}: correctif absent`);
-  assert.match(source.slice(end, end + 1500), /_agaiClearCoveredCis05ConfigPending\(signed,/);
+  assert.match(source.slice(end, end + 1500), /_rcSelectAuthenticatedQueue\(signed.profile\)/);
   let stored = configRow(local);
   const other = {id: 'CIS03__config__main', caserne: 'CIS03', type: 'config', deleted: false, data: {piquets: {}}};
   const pending = new Set([id, other.id]);
@@ -125,3 +125,4 @@ for (const file of ['modules/03-security-js.js', 'app.js']) {
     assert.equal(s.pending.has(id), true);
   });
 }
+

@@ -1450,24 +1450,28 @@ async function _agaiAuthFetchWithTimeout(url,options,timeoutMs){
 // chaque ouverture et chaque reprise d'AGAI doit recevoir un accord serveur.
 let _agaiOnlineAccessTimer=null;
 let _agaiOnlineAccessInFlight=false;
+// Catégorie locale uniquement : jamais de mot de passe, jeton ni réponse serveur.
+let _agaiLoginFailureReason='';
 function _agaiOnlineAccessReady(){
   return PERSONNEL_ONLINE_GATE&&AUTH_LINK_MODE==='on'&&typeof navigator!=='undefined'&&navigator.onLine!==false;
 }
 async function _agaiOnlineBootstrapLogin(login,password){
-  if(!_agaiOnlineAccessReady())return null;
+  if(!_agaiOnlineAccessReady()){_agaiLoginFailureReason='offline';return null;}
   const normalized=String(login||'').trim().toLowerCase();
-  if(!normalized||!password)return null;
+  if(!normalized||!password){_agaiLoginFailureReason='input';return null;}
   try{
     const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{
       method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','x-device-id':agaiDeviceId()},
       body:JSON.stringify({mode:PERSONNEL_SECURE_CIS05_PILOT?'pilot_login':'login',login:normalized,password:password})
     },8000);
     const result=await response.json().catch(function(){return{};});
-    if(!response.ok||result.personnelEnforcementEnabled!==true||!result.session||!result.session.access_token
+    if(!response.ok){_agaiLoginFailureReason=response.status===400||response.status===401||response.status===403?'refused':'service';return null;}
+    if(result.personnelEnforcementEnabled!==true||!result.session||!result.session.access_token
       ||result.login!==normalized||!result.profile||result.profile.login!==normalized
-      ||result.profile.caserneId!==result.caserneId||result.profile.appRole!==result.appRole)return null;
+      ||result.profile.caserneId!==result.caserneId||result.profile.appRole!==result.appRole){_agaiLoginFailureReason='service';return null;}
+    _agaiLoginFailureReason='';
     return {session:Object.assign({},result.session,{_agai_link_login:normalized}),profile:result.profile};
-  }catch(error){console.warn('[AGAI][ACCÈS] Connexion en ligne indisponible :',error);return null;}
+  }catch(error){_agaiLoginFailureReason='network';console.warn('[AGAI][ACCÈS] Connexion en ligne indisponible :',error);return null;}
 }
 function _agaiGlobalPendingCoveredByRemote(local,remote){
   if(!local||!remote||!Array.isArray(remote.GLOBAL_ACCOUNTS))return false;
@@ -1586,6 +1590,10 @@ async function _agaiClearCoveredCis05ConfigPending(signed,durableRows){
     return remaining;
   }catch(error){_rcPendingDirty.add(id);_rcPersistPendingDirty();return durableRows;}
 }
+// Reprise d'une indication orpheline constatée sur le Chrome CIS05 concerné :
+// la configuration n'est plus dans la file durable, mais son marqueur peut
+// encore empêcher la connexion. Une copie locale vérifiée est conservée avant
+// de libérer ce seul marqueur ; aucune configuration n'est envoyée au serveur.
 async function _agaiClearOrphanCis05ConfigPending(signed,durableRows){
   const id='CIS05'+RC_SEP+'config'+RC_SEP+'main';
   if(!signed||!signed.profile||signed.profile.login!=='dumoulin.sebastien'
@@ -1663,6 +1671,10 @@ async function _agaiClearOrphanCis05ConfigPending(signed,durableRows){
   }catch(error){console.warn('[AGAI][ACCÈS] Reprise locale ciblée indisponible :',error);}
   return durableRows;
 }
+// Le compte agent de Cédric ne peut pas publier une configuration CIS05 (RLS).
+// Son navigateur a néanmoins conservé cette ligne. La reprise est limitée à
+// cette identité, sauvegarde la ligne et le cache local, puis retire seulement
+// la configuration après une nouvelle lecture authentifiée du serveur.
 async function _agaiRecoverCedricConfigDuringLogin(signed,durableRows){
   const id='CIS05'+RC_SEP+'config'+RC_SEP+'main';
   if(!signed||!signed.profile||signed.profile.login!=='carre.cedric'
@@ -1774,40 +1786,18 @@ async function _agaiRecoverCedricConfigDuringLogin(signed,durableRows){
   }
 }
 async function _agaiOnlinePrepareLogin(login,password){
+  _agaiLoginFailureReason='';
   const signed=await _agaiOnlineBootstrapLogin(login,password);
-  if(!signed||!USE_RECORDS||typeof _rcOutboxGetRows!=='function'||typeof _rcPull!=='function')return null;
-  // Ne jamais envoyer les actions d'un autre compte avec la session qui vient
-  // d'etre ouverte. Une file locale doit etre resynchronisee avant la bascule.
+  if(!signed)return null;
+  if(!USE_RECORDS||typeof _rcOutboxGetRows!=='function'||typeof _rcPull!=='function'){
+    _agaiLoginFailureReason='configuration';return null;
+  }
+  // L'accord Supabase décide de l'accès. La file est propre au titulaire :
+  // ses saisies reprennent après l'ouverture, celles des autres restent isolées.
   try{
-    const ownStation=signed.profile.caserneId;
-    const ownOrGlobal=function(id){
-      return String(id||'').startsWith(ownStation+RC_SEP)
-        ||String(id||'').startsWith('_GLOBAL'+RC_SEP);
-    };
-    const requiresPreviousSession=function(id){
-      return ownOrGlobal(id)&&!String(id||'').includes(RC_SEP+'login'+RC_SEP);
-    };
-    const durableRows=await _agaiRecoverCedricConfigDuringLogin(signed,
-      await _agaiClearOrphanCis05ConfigPending(signed,
-        await _agaiClearCoveredCis05ConfigPending(signed,
-          await _agaiClearCoveredGlobalPending(signed,
-            await _rcDiscardPilotLoginTombstones(await _rcOutboxGetRows())))));
-    // Les anciennes traces de connexion d'autres comptes restent dans la file,
-    // mais ne sont ni un obstacle pour CIS05 ni transmises sous ce titulaire.
-    _rcForeignLoginPendingIds=new Set(durableRows.filter(function(row){
-      return row&&row.type==='login'&&(!row.data||row.data.login!==signed.profile.login);
-    }).map(function(row){return row.id;}));
-    const pendingHere=Array.from(_rcPendingDirty).filter(requiresPreviousSession).length;
-    const durableHereRows=durableRows.filter(function(row){return row&&requiresPreviousSession(row.id);});
-    const durableHere=durableHereRows.length;
-    // Une file d'une autre caserne reste intacte et ne doit pas empêcher
-    // l'ouverture de CIS05 ; elle ne sera jamais envoyée avec ce compte.
-    if(pendingHere||durableHere||_rcSaving||_rcPulling){
-      if(PERSONNEL_SECURE_CIS05_PILOT)console.warn('[AGAI][PILOTE] Connexion différée : '+JSON.stringify({pendingHere,durableHere,saving:_rcSaving,pulling:_rcPulling,
-        kinds:durableHereRows.map(function(row){return row.caserne+'/'+row.type+'/'+(row.type==='login'?(row.data&&row.data.login===signed.profile.login?'titulaire':'autre'):'');})}));
-      return null;
-    }
-  }catch(error){return null;}
+    await _rcSelectAuthenticatedQueue(signed.profile);
+    if(_rcSaving||_rcPulling){_agaiLoginFailureReason='busy';return null;}
+  }catch(error){_agaiLoginFailureReason='storage';return null;}
   const previous={user:CU,role:GLOBAL_ROLE,station:CURRENT_CASERNE_ID};
   // Une autre personne peut s'identifier sans fermer l'onglet. Les fiches du
   // precedent compte ne doivent pas servir de repli si le serveur ne les rend pas.
@@ -1821,9 +1811,11 @@ async function _agaiOnlinePrepareLogin(login,password){
   CURRENT_CASERNE_ID=profile.appRole==='chef_corps'?null:profile.caserneId;
   _agaiStoreAuthSession(signed.session);
   try{
-    // Les onglets masqués seront construits à leur ouverture, après l'accès.
-    if(await _rcPull(false,true))return signed;
+    // La page de connexion n'a pas besoin de construire les onglets masqués.
+    // Ils seront rendus à leur ouverture, après le chargement vérifié.
+    if(await _rcPull(false,true,true)){_agaiLoginFailureReason='';return signed;}
   }catch(error){console.warn('[AGAI][ACCÈS] Chargement authentifié impossible :',error);}
+  _agaiLoginFailureReason='data';
   _agaiStoreAuthSession(null);
   CU=previous.user;GLOBAL_ROLE=previous.role;CURRENT_CASERNE_ID=previous.station;
   return null;
@@ -2353,6 +2345,7 @@ async function _migratePasswords(){
   }
   if(changed){saveData();}
 }
+
 // === MODULE: auth.js (partie 2/2 — login, session, droits) ===
 // ────────────────── LOGIN ──────────────────
 // Compteur tentatives de connexion
@@ -2444,7 +2437,16 @@ async function doLogin(){
     const onlineBootstrap=PERSONNEL_ONLINE_GATE?await _agaiOnlinePrepareLogin(l,p):null;
     if(PERSONNEL_ONLINE_GATE&&!onlineBootstrap){
       lerr.style.display='block';
-      lerr.textContent='Connexion en ligne impossible, ou actions locales encore en attente. Vérifiez la synchronisation et réessayez.';
+      const reason=typeof _agaiLoginFailureReason==='string'?_agaiLoginFailureReason:'';
+      lerr.textContent=reason==='data'
+          ?'Votre identité est vérifiée, mais les données ne chargent pas. Touchez « Diagnostiquer ma connexion ».'
+          :reason==='busy'
+            ?'Une synchronisation est déjà en cours. Patientez puis réessayez.'
+            :reason==='storage'
+              ?'Le stockage local ne peut pas être vérifié. Touchez « Diagnostiquer ma connexion ».'
+              :reason==='refused'
+                ?'Connexion refusée. Vérifiez vos identifiants ou contactez un administrateur.'
+                :'Connexion en ligne indisponible. Vérifiez Internet puis touchez « Diagnostiquer ma connexion ».';
       return;
     }
     // ── 1. Vérifier comptes globaux (P1 : verifyPassword async) ──
@@ -2479,6 +2481,8 @@ async function doLogin(){
         syncCaserneContext();
         CU={l:ga.l,prenom:ga.prenom,nom:ga.nom,grade:ga.grade,rights:[],rl:'Chef de Corps',caserneId:'EMAJ',appRole:'chef_corps'};
       }
+      dismissAppKeyboard();
+      document.getElementById('lp').value='';
       document.getElementById('lw').style.display='none';
       const ap=document.getElementById('app');ap.style.display='flex';ap.style.flexDirection='column';
       const cas=CC();
@@ -2557,6 +2561,8 @@ async function doLogin(){
     CU.appRole=deriveAccountRole(CU);
     const cas=CC();
     if(cas)setCaserneTheme(cas.couleur);
+    dismissAppKeyboard();
+    document.getElementById('lp').value='';
     document.getElementById('lw').style.display='none';
     const ap=document.getElementById('app');ap.style.display='flex';ap.style.flexDirection='column';
     document.getElementById('t2u').textContent=CU.l+(cas?' — '+cas.nom:'');
@@ -2579,6 +2585,7 @@ async function doLogin(){
     if(btn&&!_loginLocked&&(typeof _loginVersionGateState==='undefined'||_loginVersionGateState!=='blocked')){btn.disabled=false;btn.textContent='Se connecter';}
   }
 }
+
 // === MODULE: admin.js (partie 1/2 — vues globales superadmin) ===
 // ══════════════════════════════════════════════════════
 // VUES GLOBALES — Superadmin & Chef de corps
@@ -17828,7 +17835,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0046';
+const APP_VERSION='V202610_0047';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -18280,6 +18287,7 @@ function viewAvisPassageDocument(ivId){
   if(!html){showToast('Avis de passage non disponible.','warn');return;}
   openIframeModal(html,ivId);
 }
+
 // === MODULE: email.js ===
 // ═══════════════════════════════════════════════════
 // EMAILJS — configuration
@@ -20461,7 +20469,7 @@ function _applyDataObject(data){
 const JSONBIN_ID  = AGAI_RUNTIME_CONFIG.jsonbinId||'';
 const JSONBIN_KEY = '';
 const JSONBIN_URL = JSONBIN_ID ? 'https://api.jsonbin.io/v3/b/' + JSONBIN_ID : '';
-const JB_CACHE_KEY = 'agai_jb_cache';
+let JB_CACHE_KEY = 'agai_jb_cache';
 let _jbSaveTimer  = null;
 let _jbSaving     = false;
 let _jbPollTimer  = null;
@@ -20485,10 +20493,13 @@ function _jbSetStatus(state){
   if(state==='error'){window._agaiSyncHealth.lastErrorAt=Date.now();window._agaiSyncHealth.lastError=syncError||'Erreur de synchronisation';}
   const lastOkLabel=state==='ok'&&window._agaiSyncHealth.lastOkAt?' · '+new Date(window._agaiSyncHealth.lastOkAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):'';
   el.textContent=c.txt+lastOkLabel+((state==='pending'||state==='error')&&queued?' ('+queued+' en attente)':'')+(queuedElsewhere?' · '+queuedElsewhere+' autre caserne en attente':'');
+  const legacyPending=typeof _rcHasLegacyPending==='function'&&_rcHasLegacyPending();
+  if(legacyPending)el.textContent+=' · saisies précédentes conservées';
   // Rester visible sur l'application, mais sous les fenêtres de saisie (z-index 200).
   el.style.cssText='position:fixed;bottom:8px;right:8px;z-index:150;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;background:'+c.bg+';color:'+c.color+';box-shadow:0 1px 4px rgba(0,0,0,.15);cursor:pointer;';
   el.title=(state==='error'&&syncError?syncError:(state==='pending'?'Des actions de cette caserne restent à transmettre — cliquer pour les relancer maintenant':state==='ok'&&window._agaiLocalCacheLimited?'Supabase synchronisé — cache hors ligne limité sur cet appareil':'Dernière synchronisation réussie : '+(window._agaiSyncHealth.lastOkAt?new Date(window._agaiSyncHealth.lastOkAt).toLocaleString('fr-FR'):'—')+' — cliquer pour synchroniser maintenant'))+(queuedElsewhere?' Une action d’une autre caserne reste conservée sur cet appareil ; revenir à cette caserne pour la transmettre.':'');
   el.onclick=function(){
+    if(legacyPending&&typeof agaiShowLegacyPending==='function'){agaiShowLegacyPending();return;}
     if(state==='error'&&syncError)alert('Diagnostic de synchronisation\n\n'+syncError+'\n\nVersion : '+APP_VERSION);
     jbSyncNow();
   };
@@ -20830,6 +20841,8 @@ function _loadClear(){
 }
 
 async function _agaiLoadSavedSessionData(stored){
+  // L'identité a déjà été vérifiée par _agaiOnlineCheckSavedSession.
+  await _rcSelectAuthenticatedQueue({login:stored.login,caserneId:stored.caserneId});
   const previous={user:CU,role:GLOBAL_ROLE,station:CURRENT_CASERNE_ID};
   CU={l:stored.login,caserneId:stored.caserneId,
     appRole:stored.globalRole==='chef_corps'?'chef_corps':stored.globalRole==='superadmin'?'superadmin':'agent'};
@@ -21351,10 +21364,10 @@ let _rcLastSafetyPullAt=Date.now();
 // Rester sous la limite usuelle de 1000 lignes de l'API, tout en réduisant
 // le nombre d'allers-retours nécessaires au chargement d'une grosse caserne.
 const RC_PULL_PAGE_SIZE = 500;
-const RC_PENDING_DIRTY_KEY = 'agai_rc_pending_dirty';
-const RC_PENDING_SINCE_KEY = 'agai_rc_pending_since';
-const RC_DEFERRED_DIRTY_KEY = 'agai_rc_deferred_dirty';
-const RC_OUTBOX_DB_NAME = 'agai-sync-outbox';
+let RC_PENDING_DIRTY_KEY = 'agai_rc_pending_dirty';
+let RC_PENDING_SINCE_KEY = 'agai_rc_pending_since';
+let RC_DEFERRED_DIRTY_KEY = 'agai_rc_deferred_dirty';
+let RC_OUTBOX_DB_NAME = 'agai-sync-outbox';
 const RC_OUTBOX_STORE = 'records';
 let _rcOutboxDbPromise = null;
 let _rcOutboxSnapshotTimer = null;
@@ -21508,6 +21521,9 @@ async function _rcRecoverPendingQueue(knownRows){
   return _rcRecoveryPromise;
 }
 function _rcScheduleOutboxSnapshot(){
+  // Pendant une réception authentifiée, la mémoire n'est pas encore hydratée.
+  // Ne pas remplacer une saisie durable par les valeurs initiales de l'interface.
+  if(_rcPulling)return;
   if(_rcOutboxSnapshotTimer)clearTimeout(_rcOutboxSnapshotTimer);
   _rcOutboxSnapshotTimer=window.setTimeout(function(){
     _rcOutboxSnapshotTimer=null;
@@ -21545,6 +21561,71 @@ function _rcLoadDeferredDirty(){
   }catch(e){return {};}
 }
 const _rcDeferredDirty=_rcLoadDeferredDirty();
+let _rcQueueOwner='';
+let _rcQueueReady=false;
+let _rcQueueSelecting=false;
+function _rcHasLegacyPending(){
+  if(!_rcQueueOwner)return false;
+  try{
+    const saved=JSON.parse(localStorage.getItem('agai_rc_pending_dirty')||'[]');
+    return Array.isArray(saved)&&saved.length>0;
+  }catch(error){return true;}
+}
+async function _rcSelectAuthenticatedQueue(profile){
+  if(!PERSONNEL_ONLINE_GATE)return;
+  const login=String(profile&&profile.login||'').trim().toLowerCase();
+  const station=String(profile&&profile.caserneId||'').trim();
+  if(!login||!station)throw new Error('Identité de synchronisation absente');
+  const owner=encodeURIComponent(station+'__'+login);
+  if(_rcQueueOwner===owner&&_rcQueueReady)return;
+  if(_rcQueueSelecting||_rcSaving||_rcPulling||_rcRecoveryPromise)
+    throw new Error('Synchronisation en cours');
+  _rcQueueSelecting=true;
+  try{
+    _rcStopPolling();_rcStopRealtime();
+    if(_rcRetryTimer){clearTimeout(_rcRetryTimer);_rcRetryTimer=null;}
+    if(_rcOutboxSnapshotTimer){clearTimeout(_rcOutboxSnapshotTimer);_rcOutboxSnapshotTimer=null;}
+    if(_jbSaveTimer){clearTimeout(_jbSaveTimer);_jbSaveTimer=null;}
+    // Terminer les écritures de l'ancien compte dans SON ancienne base.
+    // Au premier passage, ne jamais écrire dans la file historique partagée.
+    if(_rcQueueReady&&_rcQueueOwner&&CU){
+      const rows=_rcSplitAll(_buildDataObject()).filter(function(row){return _rcPendingDirty.has(row.id);});
+      if(rows.length&&!await _rcOutboxPutRows(rows))throw new Error('Conservation de la file précédente impossible');
+    }
+    if(_rcOutboxDbPromise){
+      const previousDb=await _rcOutboxDbPromise;
+      if(previousDb)previousDb.close();
+      _rcOutboxDbPromise=null;
+    }
+    // Les anciennes clés, la base agai-sync-outbox et son cache restent
+    // intacts et consultables par le diagnostic historique. Leur auteur n'est
+    // pas établi : ne jamais les rejouer sous l'identité qui vient de s'ouvrir.
+    RC_PENDING_DIRTY_KEY='agai_rc_pending_dirty_v2:'+owner;
+    RC_PENDING_SINCE_KEY='agai_rc_pending_since_v2:'+owner;
+    RC_DEFERRED_DIRTY_KEY='agai_rc_deferred_dirty_v2:'+owner;
+    RC_OUTBOX_DB_NAME='agai-sync-outbox-v2-'+owner;
+    JB_CACHE_KEY='agai_jb_cache_v2:'+owner;
+    _rcPendingDirty.clear();
+    _rcLoadPendingDirty().forEach(function(id){_rcPendingDirty.add(id);});
+    Object.keys(_rcPendingSince).forEach(function(id){delete _rcPendingSince[id];});
+    Object.assign(_rcPendingSince,_rcLoadPendingSince());
+    Object.keys(_rcDeferredDirty).forEach(function(id){delete _rcDeferredDirty[id];});
+    Object.assign(_rcDeferredDirty,_rcLoadDeferredDirty());
+    _rcForeignLoginPendingIds=new Set();
+    _rcInitialReconciliationDone=false;_rcNeedsRecoveryPull=false;
+    _rcLastSyncError='';_rcDirtyGeneration++;
+    _agaiLastDataSnapshot=null;
+    _rcQueueOwner=owner;_rcQueueReady=false;
+    // Une interruption a pu laisser un marqueur et un cache plus récents que
+    // l'instantané IndexedDB. Les conserver avant le premier chargement serveur.
+    const raw=localStorage.getItem(JB_CACHE_KEY);
+    if(raw&&_rcPendingDirty.size){
+      const rows=_rcSplitAll(JSON.parse(raw)).filter(function(row){return _rcPendingDirty.has(row.id);});
+      if(rows.length&&!await _rcOutboxPutRows(rows))throw new Error('Conservation des saisies du compte impossible');
+    }
+    _rcQueueReady=true;
+  }finally{_rcQueueSelecting=false;}
+}
 function _rcPersistDeferredDirty(){
   try{localStorage.setItem(RC_DEFERRED_DIRTY_KEY,JSON.stringify(_rcDeferredDirty));}catch(e){}
 }
@@ -22677,6 +22758,7 @@ async function _rcSendRowsWithIsolation(rows,currentUser){
   }
   const atomicRows=(rows||[]).filter(function(row){return row&&row._atomicEligible&&(row.type==='iv'||row.type==='pilp');});
   const standardRows=(rows||[]).filter(function(row){return !atomicRows.includes(row);});
+  // Ne jamais contourner le RPC opérationnel après la bascule Auth.
   if(PERSONNEL_ONLINE_GATE){
     for(let index=standardRows.length-1;index>=0;index--){
       const row=standardRows[index];
@@ -23252,6 +23334,7 @@ async function _rcMigrate(){
 
 function saveAndRefresh(){saveData();}
 function _odSyncAfterSave(){if(typeof odScheduleSync==='function')odScheduleSync();}
+
 // === MODULE: planning_annuel.js ===
 // ══════════════════════════════════════════════════════
 // PLANNING ANNUEL DES ÉQUIPES DE GARDE
@@ -26390,4 +26473,5 @@ function showAstrTelParams(){
   </div>`;
   document.getElementById('mo').style.display='flex';
 }
+
 

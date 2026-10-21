@@ -419,38 +419,11 @@ async function _agaiOnlinePrepareLogin(login,password){
   if(!USE_RECORDS||typeof _rcOutboxGetRows!=='function'||typeof _rcPull!=='function'){
     _agaiLoginFailureReason='configuration';return null;
   }
-  // Ne jamais envoyer les actions d'un autre compte avec la session qui vient
-  // d'etre ouverte. Une file locale doit etre resynchronisee avant la bascule.
+  // L'accord Supabase décide de l'accès. La file est propre au titulaire :
+  // ses saisies reprennent après l'ouverture, celles des autres restent isolées.
   try{
-    const ownStation=signed.profile.caserneId;
-    const ownOrGlobal=function(id){
-      return String(id||'').startsWith(ownStation+RC_SEP)
-        ||String(id||'').startsWith('_GLOBAL'+RC_SEP);
-    };
-    const requiresPreviousSession=function(id){
-      return ownOrGlobal(id)&&!String(id||'').includes(RC_SEP+'login'+RC_SEP);
-    };
-    const durableRows=await _agaiRecoverCedricConfigDuringLogin(signed,
-      await _agaiClearOrphanCis05ConfigPending(signed,
-        await _agaiClearCoveredCis05ConfigPending(signed,
-          await _agaiClearCoveredGlobalPending(signed,
-            await _rcDiscardPilotLoginTombstones(await _rcOutboxGetRows())))));
-    // Les anciennes traces de connexion d'autres comptes restent dans la file,
-    // mais ne sont ni un obstacle pour CIS05 ni transmises sous ce titulaire.
-    _rcForeignLoginPendingIds=new Set(durableRows.filter(function(row){
-      return row&&row.type==='login'&&(!row.data||row.data.login!==signed.profile.login);
-    }).map(function(row){return row.id;}));
-    const pendingHere=Array.from(_rcPendingDirty).filter(requiresPreviousSession).length;
-    const durableHereRows=durableRows.filter(function(row){return row&&requiresPreviousSession(row.id);});
-    const durableHere=durableHereRows.length;
-    // Une file d'une autre caserne reste intacte et ne doit pas empêcher
-    // l'ouverture de CIS05 ; elle ne sera jamais envoyée avec ce compte.
-    if(pendingHere||durableHere||_rcSaving||_rcPulling){
-      _agaiLoginFailureReason=pendingHere||durableHere?'pending':'busy';
-      if(PERSONNEL_SECURE_CIS05_PILOT)console.warn('[AGAI][PILOTE] Connexion différée : '+JSON.stringify({pendingHere,durableHere,saving:_rcSaving,pulling:_rcPulling,
-        kinds:durableHereRows.map(function(row){return row.caserne+'/'+row.type+'/'+(row.type==='login'?(row.data&&row.data.login===signed.profile.login?'titulaire':'autre'):'');})}));
-      return null;
-    }
+    await _rcSelectAuthenticatedQueue(signed.profile);
+    if(_rcSaving||_rcPulling){_agaiLoginFailureReason='busy';return null;}
   }catch(error){_agaiLoginFailureReason='storage';return null;}
   const previous={user:CU,role:GLOBAL_ROLE,station:CURRENT_CASERNE_ID};
   // Une autre personne peut s'identifier sans fermer l'onglet. Les fiches du
@@ -467,7 +440,7 @@ async function _agaiOnlinePrepareLogin(login,password){
   try{
     // La page de connexion n'a pas besoin de construire les onglets masqués.
     // Ils seront rendus à leur ouverture, après le chargement vérifié.
-    if(await _rcPull(false,true)){_agaiLoginFailureReason='';return signed;}
+    if(await _rcPull(false,true,true)){_agaiLoginFailureReason='';return signed;}
   }catch(error){console.warn('[AGAI][ACCÈS] Chargement authentifié impossible :',error);}
   _agaiLoginFailureReason='data';
   _agaiStoreAuthSession(null);
@@ -999,3 +972,4 @@ async function _migratePasswords(){
   }
   if(changed){saveData();}
 }
+

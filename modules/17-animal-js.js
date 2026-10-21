@@ -947,7 +947,7 @@ function _applyDataObject(data){
 const JSONBIN_ID  = AGAI_RUNTIME_CONFIG.jsonbinId||'';
 const JSONBIN_KEY = '';
 const JSONBIN_URL = JSONBIN_ID ? 'https://api.jsonbin.io/v3/b/' + JSONBIN_ID : '';
-const JB_CACHE_KEY = 'agai_jb_cache';
+let JB_CACHE_KEY = 'agai_jb_cache';
 let _jbSaveTimer  = null;
 let _jbSaving     = false;
 let _jbPollTimer  = null;
@@ -971,10 +971,13 @@ function _jbSetStatus(state){
   if(state==='error'){window._agaiSyncHealth.lastErrorAt=Date.now();window._agaiSyncHealth.lastError=syncError||'Erreur de synchronisation';}
   const lastOkLabel=state==='ok'&&window._agaiSyncHealth.lastOkAt?' · '+new Date(window._agaiSyncHealth.lastOkAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):'';
   el.textContent=c.txt+lastOkLabel+((state==='pending'||state==='error')&&queued?' ('+queued+' en attente)':'')+(queuedElsewhere?' · '+queuedElsewhere+' autre caserne en attente':'');
+  const legacyPending=typeof _rcHasLegacyPending==='function'&&_rcHasLegacyPending();
+  if(legacyPending)el.textContent+=' · saisies précédentes conservées';
   // Rester visible sur l'application, mais sous les fenêtres de saisie (z-index 200).
   el.style.cssText='position:fixed;bottom:8px;right:8px;z-index:150;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;background:'+c.bg+';color:'+c.color+';box-shadow:0 1px 4px rgba(0,0,0,.15);cursor:pointer;';
   el.title=(state==='error'&&syncError?syncError:(state==='pending'?'Des actions de cette caserne restent à transmettre — cliquer pour les relancer maintenant':state==='ok'&&window._agaiLocalCacheLimited?'Supabase synchronisé — cache hors ligne limité sur cet appareil':'Dernière synchronisation réussie : '+(window._agaiSyncHealth.lastOkAt?new Date(window._agaiSyncHealth.lastOkAt).toLocaleString('fr-FR'):'—')+' — cliquer pour synchroniser maintenant'))+(queuedElsewhere?' Une action d’une autre caserne reste conservée sur cet appareil ; revenir à cette caserne pour la transmettre.':'');
   el.onclick=function(){
+    if(legacyPending&&typeof agaiShowLegacyPending==='function'){agaiShowLegacyPending();return;}
     if(state==='error'&&syncError)alert('Diagnostic de synchronisation\n\n'+syncError+'\n\nVersion : '+APP_VERSION);
     jbSyncNow();
   };
@@ -1316,6 +1319,8 @@ function _loadClear(){
 }
 
 async function _agaiLoadSavedSessionData(stored){
+  // L'identité a déjà été vérifiée par _agaiOnlineCheckSavedSession.
+  await _rcSelectAuthenticatedQueue({login:stored.login,caserneId:stored.caserneId});
   const previous={user:CU,role:GLOBAL_ROLE,station:CURRENT_CASERNE_ID};
   CU={l:stored.login,caserneId:stored.caserneId,
     appRole:stored.globalRole==='chef_corps'?'chef_corps':stored.globalRole==='superadmin'?'superadmin':'agent'};
@@ -1837,10 +1842,10 @@ let _rcLastSafetyPullAt=Date.now();
 // Rester sous la limite usuelle de 1000 lignes de l'API, tout en réduisant
 // le nombre d'allers-retours nécessaires au chargement d'une grosse caserne.
 const RC_PULL_PAGE_SIZE = 500;
-const RC_PENDING_DIRTY_KEY = 'agai_rc_pending_dirty';
-const RC_PENDING_SINCE_KEY = 'agai_rc_pending_since';
-const RC_DEFERRED_DIRTY_KEY = 'agai_rc_deferred_dirty';
-const RC_OUTBOX_DB_NAME = 'agai-sync-outbox';
+let RC_PENDING_DIRTY_KEY = 'agai_rc_pending_dirty';
+let RC_PENDING_SINCE_KEY = 'agai_rc_pending_since';
+let RC_DEFERRED_DIRTY_KEY = 'agai_rc_deferred_dirty';
+let RC_OUTBOX_DB_NAME = 'agai-sync-outbox';
 const RC_OUTBOX_STORE = 'records';
 let _rcOutboxDbPromise = null;
 let _rcOutboxSnapshotTimer = null;
@@ -1994,6 +1999,9 @@ async function _rcRecoverPendingQueue(knownRows){
   return _rcRecoveryPromise;
 }
 function _rcScheduleOutboxSnapshot(){
+  // Pendant une réception authentifiée, la mémoire n'est pas encore hydratée.
+  // Ne pas remplacer une saisie durable par les valeurs initiales de l'interface.
+  if(_rcPulling)return;
   if(_rcOutboxSnapshotTimer)clearTimeout(_rcOutboxSnapshotTimer);
   _rcOutboxSnapshotTimer=window.setTimeout(function(){
     _rcOutboxSnapshotTimer=null;
@@ -2031,6 +2039,71 @@ function _rcLoadDeferredDirty(){
   }catch(e){return {};}
 }
 const _rcDeferredDirty=_rcLoadDeferredDirty();
+let _rcQueueOwner='';
+let _rcQueueReady=false;
+let _rcQueueSelecting=false;
+function _rcHasLegacyPending(){
+  if(!_rcQueueOwner)return false;
+  try{
+    const saved=JSON.parse(localStorage.getItem('agai_rc_pending_dirty')||'[]');
+    return Array.isArray(saved)&&saved.length>0;
+  }catch(error){return true;}
+}
+async function _rcSelectAuthenticatedQueue(profile){
+  if(!PERSONNEL_ONLINE_GATE)return;
+  const login=String(profile&&profile.login||'').trim().toLowerCase();
+  const station=String(profile&&profile.caserneId||'').trim();
+  if(!login||!station)throw new Error('Identité de synchronisation absente');
+  const owner=encodeURIComponent(station+'__'+login);
+  if(_rcQueueOwner===owner&&_rcQueueReady)return;
+  if(_rcQueueSelecting||_rcSaving||_rcPulling||_rcRecoveryPromise)
+    throw new Error('Synchronisation en cours');
+  _rcQueueSelecting=true;
+  try{
+    _rcStopPolling();_rcStopRealtime();
+    if(_rcRetryTimer){clearTimeout(_rcRetryTimer);_rcRetryTimer=null;}
+    if(_rcOutboxSnapshotTimer){clearTimeout(_rcOutboxSnapshotTimer);_rcOutboxSnapshotTimer=null;}
+    if(_jbSaveTimer){clearTimeout(_jbSaveTimer);_jbSaveTimer=null;}
+    // Terminer les écritures de l'ancien compte dans SON ancienne base.
+    // Au premier passage, ne jamais écrire dans la file historique partagée.
+    if(_rcQueueReady&&_rcQueueOwner&&CU){
+      const rows=_rcSplitAll(_buildDataObject()).filter(function(row){return _rcPendingDirty.has(row.id);});
+      if(rows.length&&!await _rcOutboxPutRows(rows))throw new Error('Conservation de la file précédente impossible');
+    }
+    if(_rcOutboxDbPromise){
+      const previousDb=await _rcOutboxDbPromise;
+      if(previousDb)previousDb.close();
+      _rcOutboxDbPromise=null;
+    }
+    // Les anciennes clés, la base agai-sync-outbox et son cache restent
+    // intacts et consultables par le diagnostic historique. Leur auteur n'est
+    // pas établi : ne jamais les rejouer sous l'identité qui vient de s'ouvrir.
+    RC_PENDING_DIRTY_KEY='agai_rc_pending_dirty_v2:'+owner;
+    RC_PENDING_SINCE_KEY='agai_rc_pending_since_v2:'+owner;
+    RC_DEFERRED_DIRTY_KEY='agai_rc_deferred_dirty_v2:'+owner;
+    RC_OUTBOX_DB_NAME='agai-sync-outbox-v2-'+owner;
+    JB_CACHE_KEY='agai_jb_cache_v2:'+owner;
+    _rcPendingDirty.clear();
+    _rcLoadPendingDirty().forEach(function(id){_rcPendingDirty.add(id);});
+    Object.keys(_rcPendingSince).forEach(function(id){delete _rcPendingSince[id];});
+    Object.assign(_rcPendingSince,_rcLoadPendingSince());
+    Object.keys(_rcDeferredDirty).forEach(function(id){delete _rcDeferredDirty[id];});
+    Object.assign(_rcDeferredDirty,_rcLoadDeferredDirty());
+    _rcForeignLoginPendingIds=new Set();
+    _rcInitialReconciliationDone=false;_rcNeedsRecoveryPull=false;
+    _rcLastSyncError='';_rcDirtyGeneration++;
+    _agaiLastDataSnapshot=null;
+    _rcQueueOwner=owner;_rcQueueReady=false;
+    // Une interruption a pu laisser un marqueur et un cache plus récents que
+    // l'instantané IndexedDB. Les conserver avant le premier chargement serveur.
+    const raw=localStorage.getItem(JB_CACHE_KEY);
+    if(raw&&_rcPendingDirty.size){
+      const rows=_rcSplitAll(JSON.parse(raw)).filter(function(row){return _rcPendingDirty.has(row.id);});
+      if(rows.length&&!await _rcOutboxPutRows(rows))throw new Error('Conservation des saisies du compte impossible');
+    }
+    _rcQueueReady=true;
+  }finally{_rcQueueSelecting=false;}
+}
 function _rcPersistDeferredDirty(){
   try{localStorage.setItem(RC_DEFERRED_DIRTY_KEY,JSON.stringify(_rcDeferredDirty));}catch(e){}
 }
@@ -3739,3 +3812,4 @@ async function _rcMigrate(){
 
 function saveAndRefresh(){saveData();}
 function _odSyncAfterSave(){if(typeof odScheduleSync==='function')odScheduleSync();}
+
