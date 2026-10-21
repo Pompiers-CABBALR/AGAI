@@ -3493,7 +3493,9 @@ async function _rcPull(silent,deferViewsUntilLogin,skipPendingPush){
     _rcPersistPendingDirty();
     if(!silent) _jbSetStatus('loading');
     const requestedScope=_rcPullScopeFilter();
+    if(deferViewsUntilLogin)_agaiLoginTimingFetchBegin();
     const rows = await _rcFetchAllActiveRows(requestedScope);
+    if(deferViewsUntilLogin)_agaiLoginTimingFetchEnd();
     if(requestedScope!==_rcPullScopeFilter()){
       _rcRequestRealtimePull(250);
       return true;

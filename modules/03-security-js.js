@@ -128,6 +128,39 @@ let _agaiOnlineAccessTimer=null;
 let _agaiOnlineAccessInFlight=false;
 // Catégorie locale uniquement : jamais de mot de passe, jeton ni réponse serveur.
 let _agaiLoginFailureReason='';
+const AGAI_LOGIN_TIMING_KEY='agai_login_timing_v1';
+let _agaiLoginTiming=null;
+function _agaiLoginClock(){
+  return typeof performance!=='undefined'&&typeof performance.now==='function'?performance.now():Date.now();
+}
+function _agaiLoginTimingBegin(){
+  _agaiLoginTiming={started:_agaiLoginClock(),at:Date.now()};
+}
+function _agaiLoginTimingVerified(){
+  if(_agaiLoginTiming&&!_agaiLoginTiming.verified)_agaiLoginTiming.verified=_agaiLoginClock();
+}
+function _agaiLoginTimingFetchBegin(){
+  if(_agaiLoginTiming&&!_agaiLoginTiming.fetchStarted)_agaiLoginTiming.fetchStarted=_agaiLoginClock();
+}
+function _agaiLoginTimingFetchEnd(){
+  if(_agaiLoginTiming&&_agaiLoginTiming.fetchStarted)_agaiLoginTiming.fetchEnded=_agaiLoginClock();
+}
+function _agaiLoginTimingFinish(){
+  const timing=_agaiLoginTiming;
+  _agaiLoginTiming=null;
+  if(!timing)return;
+  const ended=_agaiLoginClock();
+  const duration=function(start,end){
+    const value=Math.round(end-start);
+    return Number.isFinite(value)&&value>=0&&value<=600000?value:null;
+  };
+  const record={at:timing.at,
+    verificationMs:duration(timing.started,timing.verified||ended),
+    chargementMs:timing.verified?duration(timing.verified,ended):null,
+    receptionMs:timing.fetchStarted&&timing.fetchEnded?duration(timing.fetchStarted,timing.fetchEnded):null};
+  // Uniquement des durées locales : aucun compte, jeton ou contenu de fiche.
+  try{localStorage.setItem(AGAI_LOGIN_TIMING_KEY,JSON.stringify(record));}catch(error){}
+}
 function _agaiOnlineAccessReady(){
   return PERSONNEL_ONLINE_GATE&&AUTH_LINK_MODE==='on'&&typeof navigator!=='undefined'&&navigator.onLine!==false;
 }
