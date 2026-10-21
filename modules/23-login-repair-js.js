@@ -148,14 +148,155 @@ async function agaiResetLoginAfterCheck(){
   }finally{_agaiLoginRepairBusy=false;}
 }
 
+let _agaiLegacyCheck=null;
+let _agaiLegacyCheckPromise=null;
+function _agaiLegacyCheckKey(){
+  return CU?CU.caserneId+'__'+CU.l+'__'+(localStorage.getItem('agai_rc_pending_dirty')||'[]'):'';
+}
+function _agaiReadLegacyOutbox(){
+  return new Promise(function(resolve,reject){
+    if(!window.indexedDB){reject(new Error('Stockage indisponible'));return;}
+    let request,db=null,absent=false,done=false;
+    const timer=setTimeout(function(){finish(new Error('Lecture trop longue'));},8000);
+    function finish(error,rows){
+      if(done)return;done=true;clearTimeout(timer);if(db)db.close();
+      if(error)reject(error);else resolve(rows);
+    }
+    try{
+      request=indexedDB.open('agai-sync-outbox',1);
+      request.onupgradeneeded=function(event){absent=event.oldVersion===0;request.transaction.abort();};
+      request.onerror=function(){if(absent)finish(null,[]);else finish(new Error('Lecture impossible'));};
+      request.onblocked=function(){finish(new Error('Stockage occupé'));};
+      request.onsuccess=function(){
+        db=request.result;if(done){db.close();return;}
+        try{
+          const tx=db.transaction('records','readonly'),read=tx.objectStore('records').getAll();
+          tx.oncomplete=function(){finish(null,read.result||[]);};
+          tx.onerror=tx.onabort=function(){finish(new Error('Lecture interrompue'));};
+        }catch(error){finish(error);}
+      };
+    }catch(error){finish(error);}
+  });
+}
+function _agaiLegacyComparable(row){
+  const transport=_rcTransportRow(row),data=Object.assign({},transport.data||{});
+  // Une révision attribuée par le serveur n'est pas une saisie opérateur.
+  delete data._serverRevision;
+  if(row.type==='global'){
+    delete data.LOGIN_HISTORY;delete data.LOGIN_HISTORY_DELETED;
+  }
+  return _rcSyncSignature(Object.assign({},transport,{data:data}));
+}
+async function _agaiInspectLegacyPending(token){
+  const originalPending=localStorage.getItem('agai_rc_pending_dirty');
+  const originalCache=localStorage.getItem('agai_jb_cache');
+  const pending=JSON.parse(originalPending||'[]');
+  if(!Array.isArray(pending)||pending.some(function(id){return typeof id!=='string';}))
+    throw new Error('Marqueurs illisibles');
+  const entries=await _agaiReadLegacyOutbox();
+  const versions=new Map(),ids=new Set(pending);
+  function add(row){
+    if(!row||typeof row.id!=='string')throw new Error('Fiche locale illisible');
+    ids.add(row.id);
+    if(!versions.has(row.id))versions.set(row.id,[]);
+    versions.get(row.id).push(row);
+  }
+  entries.forEach(function(entry){add(entry.row);});
+  // Un marqueur peut subsister sans ligne durable. Comparer également sa
+  // copie dans l'ancien cache, sans appliquer ce cache à la session courante.
+  if(pending.length){
+    const cache=originalCache;
+    if(cache)_rcSplitAll(JSON.parse(cache)).filter(function(row){return ids.has(row.id);}).forEach(add);
+  }
+  const result={items:[],traces:0,markers:0,matched:0,different:0,unknown:0};
+  const candidates=[];
+  ids.forEach(function(id){
+    const rows=versions.get(id)||[],parts=id.split('__');
+    const item={id:id,caserne:parts[0]||'',type:parts[1]||'',status:'unknown'};
+    if(item.type==='login'){result.traces++;return;}
+    if(!rows.length){result.markers++;return;}
+    // Limiter la charge d'un ancien appareil ; les éléments non contrôlés
+    // restent explicitement indéterminés et ne sont jamais déclarés transmis.
+    if(candidates.length<50&&(item.caserne===CU.caserneId||item.caserne==='_GLOBAL'))candidates.push(item);
+    result.items.push(item);
+  });
+  for(let index=0;index<candidates.length;index+=5){
+    const chunk=candidates.slice(index,index+5);
+    const filter='('+chunk.map(function(item){return '"'+item.id.replace(/"/g,'')+'"';}).join(',')+')';
+    const response=await _agaiAuthFetchWithTimeout(SB_REST+'/records?id=in.'+encodeURIComponent(filter)
+      +'&select=id,caserne,type,data,deleted',{
+        method:'GET',headers:{apikey:SB_KEY,Authorization:'Bearer '+token},cache:'no-store'
+      },8000);
+    if(!response.ok)throw new Error('Lecture serveur indisponible');
+    const remote=await response.json();if(!Array.isArray(remote))throw new Error('Réponse incomplète');
+    chunk.forEach(function(item){
+      const row=remote.find(function(value){return value.id===item.id&&value.caserne===item.caserne&&value.type===item.type;});
+      // Une ligne masquée par RLS n'est pas la preuve d'une donnée absente.
+      if(!row)return;
+      const signature=_agaiLegacyComparable(row);
+      item.status=versions.get(item.id).every(function(local){return _agaiLegacyComparable(local)===signature;})?'matched':'different';
+    });
+  }
+  result.items.forEach(function(item){result[item.status]++;});
+  if(originalPending!==localStorage.getItem('agai_rc_pending_dirty')
+    ||originalCache!==localStorage.getItem('agai_jb_cache'))throw new Error('Copie locale modifiée pendant le contrôle');
+  return result;
+}
+function agaiScheduleLegacyCheck(){
+  if(!CU||typeof _agaiAuthAccessToken!=='function'||!_agaiAuthAccessToken()||_agaiLegacyCheckPromise)return;
+  let key;try{key=_agaiLegacyCheckKey();}catch(error){return;}
+  if(_agaiLegacyCheck&&_agaiLegacyCheck.key===key)return;
+  const token=_agaiAuthAccessToken(),login=CU.l,station=CU.caserneId;
+  _agaiLegacyCheck={key:key,status:'checking'};
+  _agaiLegacyCheckPromise=Promise.resolve().then(function(){return _agaiInspectLegacyPending(token);})
+    .then(function(result){
+      if(!CU||CU.l!==login||CU.caserneId!==station||_agaiAuthAccessToken()!==token)return;
+      _agaiLegacyCheck={key:key,status:'ready',result:result};
+    }).catch(function(){
+      if(CU&&CU.l===login&&CU.caserneId===station)_agaiLegacyCheck={key:key,status:'unavailable'};
+    }).finally(function(){
+      _agaiLegacyCheckPromise=null;
+      if(CU&&CU.l===login&&CU.caserneId===station){
+        if(_agaiLegacyCheck&&_agaiLegacyCheck.status==='checking')_agaiLegacyCheck=null;
+        _jbSetStatus(window._agaiSyncHealth&&window._agaiSyncHealth.state||'ok');
+      }
+    });
+}
+function agaiLegacyPendingLabel(){
+  if(!_agaiLegacyCheck||_agaiLegacyCheck.status==='checking')return '';
+  if(_agaiLegacyCheck.status==='unavailable')return 'Anciennes traces : contrôle indisponible';
+  const result=_agaiLegacyCheck.result,n=result.different+result.unknown;
+  return n?n+' ancienne'+(n>1?'s fiches à vérifier':' fiche à vérifier'):'';
+}
+if(typeof window!=='undefined'&&window.addEventListener)window.addEventListener('storage',function(event){
+  if(event.key==='agai_rc_pending_dirty'||event.key==='agai_jb_cache'){
+    _agaiLegacyCheck=null;agaiScheduleLegacyCheck();
+  }
+});
 function agaiShowLegacyPending(){
   if(!CU)return;
-  document.getElementById('mt').textContent='Saisies précédentes conservées';
+  document.getElementById('mt').textContent='Vérification des anciennes traces';
   document.getElementById('mi').textContent='Vous pouvez continuer à utiliser AGAI.';
   const body=document.getElementById('mb');body.replaceChildren();
   const info=document.createElement('p');
-  info.textContent='Des saisies de l’ancienne connexion sont conservées sur cet appareil. Leur titulaire doit être vérifié avant de les transmettre. Elles ne bloquent ni votre connexion ni vos nouvelles interventions.';
+  const result=_agaiLegacyCheck&&_agaiLegacyCheck.result;
+  info.textContent=result
+    ?result.matched+' fiche(s) déjà présente(s) dans Supabase ; '+result.different+' copie(s) différente(s) ; '
+      +result.unknown+' fiche(s) non vérifiable(s). '+result.traces+' trace(s) technique(s) de connexion et '
+      +result.markers+' ancien(s) marqueur(s) sans fiche locale. Aucune donnée n’a été modifiée.'
+    :'La comparaison n’a pas pu aboutir. Cela ne prouve pas qu’une saisie manque dans Supabase. Les copies locales restent conservées.';
   body.appendChild(info);
+  if(result){
+    const names={iv:'intervention',pilp:'intervention PILP',dispo:'disponibilité',config:'configuration',global:'configuration générale',user:'fiche personnel'};
+    result.items.filter(function(item){return item.status!=='matched';}).forEach(function(item){
+      const line=document.createElement('p');
+      line.textContent=item.caserne+' · '+(names[item.type]||'fiche')+' : '
+        +(item.status==='different'?'la copie locale diffère du serveur, sans preuve d’une saisie manquante':'comparaison non concluante');
+      body.appendChild(line);
+    });
+  }
+  const retry=document.createElement('button');retry.className='btn';retry.textContent='Relancer la vérification';
+  retry.onclick=function(){_agaiLegacyCheck=null;agaiScheduleLegacyCheck();cM();};body.appendChild(retry);
   const link=document.createElement('a');
   link.href='securite-file-locale-lecture-seule.html?version=ce4be86';
   link.target='_blank';link.rel='noopener';link.textContent='Consulter les anciennes saisies en lecture seule';
