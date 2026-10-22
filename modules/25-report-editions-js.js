@@ -245,6 +245,52 @@ function setReportAdminStationFilter(station){
   _reportAdminStationFilter=station&&CASERNES.some(function(c){return c.id===station;})?station:'';
   renderReportAdminMonitor('superadmin');
 }
+function openReportAdminMonitorItem(button){
+  const scope=reportAdminScope();
+  if(!scope||!button||!document.getElementById('home-report-monitor'))return;
+  const station=button.dataset.station,type=button.dataset.type,id=button.dataset.id,stage=button.dataset.stage;
+  if(scope==='admin'&&station!==CURRENT_CASERNE_ID)return;
+  if(scope==='superadmin'&&_reportAdminStationFilter&&station!==_reportAdminStationFilter)return;
+  const rows=reportMonitorRows(scope);
+  const row=(stage==='finaliser'?rows.finaliser:stage==='editer'?rows.editer:[])
+    .find(function(item){return item.station===station&&item.type===type&&item.id===id;});
+  if(!row)return;
+  if(stage==='editer'){
+    const settings=window._agaiReportEditionState,state=reportAdminSummaryFor(scope);
+    if(!settings||!settings.enabled||!settings.startDate||row.day<settings.startDate.replace(/-/g,'')
+       ||!state||state.enabled!==true||state.startDate!==settings.startDate
+       ||!state.items[row.recordId]||Number(state.items[row.recordId].count)!==0)return;
+  }
+  const data=CASERNE_DATA[station]||{};
+  const collection=type==='iv'?data.ivs:type==='pilp'?data.pilpIvs
+    :type==='activite'?data.activites:type==='fmpa'?data.fmpas:null;
+  const record=Array.isArray(collection)?collection.find(function(item){return item&&item.id===id;}):null;
+  if(!record)return;
+  // Seul son propre compte rendu, dans la caserne active, rejoint le formulaire.
+  // Les autres lignes restent des aperçus sans action d'écriture ou d'édition.
+  if(stage==='finaliser'&&(type==='iv'||type==='pilp')&&station===CURRENT_CASERNE_ID
+     &&accueilRapportOwner(record,CU.l)){
+    showCompteRenduModal(id);
+    return;
+  }
+  const date=/^\d{8}$/.test(row.day)?row.day.slice(6,8)+'/'+row.day.slice(4,6)+'/'+row.day.slice(0,4):row.day;
+  const report=type==='iv'||type==='pilp'?record._crTexte||record._compteRendu||''
+    :type==='activite'?record.cr||'':'';
+  const details=type==='fmpa'?'<div class="mr"><div class="ml">Formation</div><div class="mv2">'
+    +escHtml(record.theme||row.label)+'</div></div>'
+    :'<div class="mr"><div class="ml">Compte rendu</div><div class="mv2" style="white-space:pre-wrap;overflow-wrap:anywhere;">'
+      +escHtml(report||'Aucun texte enregistré pour le moment.')+'</div></div>';
+  document.getElementById('mt').textContent=stage==='finaliser'?'Compte rendu à finaliser':'Rapport à éditer';
+  document.getElementById('mi').textContent=row.label;
+  document.getElementById('mb').innerHTML='<div style="font-size:12px;color:var(--t2);margin-bottom:12px;">'
+    +'Consultation uniquement : aucune validation ni édition n’est effectuée.</div>'
+    +'<div class="mr"><div class="ml">Caserne</div><div class="mv2">'+escHtml(row.stationName)+'</div></div>'
+    +'<div class="mr"><div class="ml">Responsable</div><div class="mv2">'+escHtml(row.owner)+'</div></div>'
+    +'<div class="mr"><div class="ml">Date</div><div class="mv2">'+escHtml(date)+'</div></div>'
+    +details
+    +'<button type="button" class="btn sm" style="margin-top:14px;" onclick="openHomeReportMonitor()">← Retour au suivi</button>';
+  openModalAtTop();
+}
 function renderReportAdminMonitor(scope){
   if(scope!==reportAdminScope())return;
   const el=document.getElementById('home-report-monitor');
@@ -253,7 +299,9 @@ function renderReportAdminMonitor(scope){
   const station=scope==='superadmin'?_reportAdminStationFilter:'';
   const finaliser=station?rows.finaliser.filter(function(row){return row.station===station;}):rows.finaliser;
   const settings=window._agaiReportEditionState;
-  const state=reportAdminSummaryFor(scope);
+  const checkedState=reportAdminSummaryFor(scope);
+  const state=checkedState&&settings&&checkedState.enabled===true
+    &&checkedState.startDate===settings.startDate?checkedState:null;
   const start=settings&&settings.enabled&&settings.startDate?settings.startDate.replace(/-/g,''):'';
   const eligible=start?rows.editer.filter(function(row){return row.day>=start&&(!station||row.station===station);}):[];
   const unverified=eligible.filter(function(row){return !state||!state.items[row.recordId];}).length;
@@ -262,10 +310,14 @@ function renderReportAdminMonitor(scope){
   });
   const fmt=function(row){
     const date=/^\d{8}$/.test(row.day)?row.day.slice(6,8)+'/'+row.day.slice(4,6)+'/'+row.day.slice(0,4):row.day;
-    return '<div style="padding:7px 0;border-top:1px solid var(--brd);font-size:12px;">'
-      +'<strong>'+escHtml(row.label)+'</strong> · '+escHtml(date)+'</div>';
+    return '<button type="button" data-station="'+escHtml(row.station)+'" data-type="'+escHtml(row.type)
+      +'" data-id="'+escHtml(row.id)+'" data-stage="'+escHtml(row.stage)+'"'
+      +' onclick="openReportAdminMonitorItem(this)" style="display:block;width:100%;padding:9px 3px;'
+      +'border:0;border-top:1px solid var(--brd);background:transparent;color:inherit;text-align:left;'
+      +'font:inherit;font-size:12px;cursor:pointer;white-space:normal;overflow-wrap:anywhere;">'
+      +'<strong>'+escHtml(row.label)+'</strong> · '+escHtml(date)+' <span aria-hidden="true">›</span></button>';
   };
-  const grouped=function(list,empty){
+  const grouped=function(list,empty,stage){
     if(!list.length)return '<p style="font-size:12px;color:var(--t2);">'+empty+'</p>';
     const groups=new Map();
     list.forEach(function(row){
@@ -277,7 +329,7 @@ function renderReportAdminMonitor(scope){
       .map(function(group){return '<details style="margin-top:7px;padding:7px;border:1px solid var(--brd);border-radius:8px;">'
         +'<summary style="cursor:pointer;font-weight:600;">'+escHtml(group.owner)+' · '+group.rows.length
         +(scope==='superadmin'?' · '+escHtml(group.stationName):'')+'</summary>'
-        +group.rows.map(fmt).join('')+'</details>';}).join('');
+      +group.rows.map(function(row){return fmt(Object.assign({stage:stage},row));}).join('')+'</details>';}).join('');
   };
   const stations=scope==='superadmin'?'<label style="display:block;margin:9px 0;font-size:12px;">Caserne '
     +'<select class="fi" onchange="setReportAdminStationFilter(this.value)">'
@@ -290,10 +342,10 @@ function renderReportAdminMonitor(scope){
     +'<span style="margin-left:8px;color:var(--t2);">'+(settings?settings.enabled?'Originaux suivis depuis le '+escHtml(settings.startDate):'Suivi des originaux non activé':'État des originaux non vérifié')+'</span></div>'
     +stations
     +'<details open><summary style="font-weight:700;cursor:pointer;">Comptes rendus non validés · '+finaliser.length+'</summary>'
-    +grouped(finaliser,'Aucun rapport en attente de validation sur la période.')+'</details>'
+    +grouped(finaliser,'Aucun rapport en attente de validation sur la période.','finaliser')+'</details>'
     +(start?'<details style="margin-top:10px;"><summary style="font-weight:700;cursor:pointer;">Originaux non édités · '+toPrint.length
       +(unverified?' · '+unverified+' statut(s) à vérifier':'')+'</summary>'
-      +grouped(toPrint,'Aucun original en attente confirmé par le serveur.')+'</details>':'');
+      +grouped(toPrint,'Aucun original en attente confirmé par le serveur.','editer')+'</details>':'');
 }
 async function refreshReportAdminMonitor(scope){
   if(scope!==reportAdminScope())return;

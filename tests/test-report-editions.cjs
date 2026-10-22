@@ -15,6 +15,7 @@ function setup(options={}){
   const iframe={contentWindow:{print:()=>calls.push('print')}};
   const banner={style:{},innerHTML:''};
   const monitor={innerHTML:'',textContent:'',insertAdjacentHTML(_position,html){this.innerHTML=html+this.innerHTML;}};
+  const modalTitle={textContent:''},modalInfo={textContent:''},modalBody={innerHTML:''};
   const record={id:'r1',h:'20261021_1200',s:'terminee',agr:'alice',_crValide:true};
   const context={
     window:{},navigator:{onLine:true},crypto:{randomUUID:()=> '00000000-0000-4000-8000-000000000001'},
@@ -56,14 +57,17 @@ function setup(options={}){
     genRapportInterventionHTML:()=>'<html><body><button onclick="window.print()">Imprimer</button><div>@page Rapport</div></body></html>',
     genRapportActiviteHTML:()=>'',genRapportFmpaHTML:()=>'',
     document:{getElementById:id=>id==='iframe-print-btn'?button:id==='iframe-content'?iframe
-      :id==='acc-admin-report-summary'?banner:id==='home-report-monitor'?monitor:null},
+      :id==='acc-admin-report-summary'?banner:id==='home-report-monitor'?monitor
+      :id==='mt'?modalTitle:id==='mi'?modalInfo:id==='mb'?modalBody:null},
     confirmModal:(_message,callback)=>{confirm=callback;},showToast:(message)=>toasts.push(message),
+    showCompteRenduModal:id=>calls.push('report:'+id),openModalAtTop:()=>calls.push('preview'),
     saveData:()=>calls.push('save'),reportEditionScheduleHomeStatus:()=>{},
-    escHtml:value=>String(value),console
+    escHtml:value=>String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;').replace(/'/g,'&#39;'),console
   };
   vm.createContext(context);
   vm.runInContext(source,context);
-  return {context,calls,toasts,button,banner,monitor,record,confirm:()=>confirm};
+  return {context,calls,toasts,button,banner,monitor,modalTitle,modalInfo,modalBody,record,confirm:()=>confirm};
 }
 
 test('désactivé : aucune émission et ancien parcours conservé',async()=>{
@@ -122,6 +126,59 @@ test('le bandeau admin montre les non-validés et le détail les regroupe par re
   assert.match(env.monitor.innerHTML,/Comptes rendus non validés · 1/);
   assert.match(env.monitor.innerHTML,/alice · 1/);
   assert.equal(env.banner.style.display,'');
+});
+test('le responsable ouvre directement son compte rendu depuis le suivi admin',()=>{
+  const env=setup({admin:true});
+  env.record._crValide=false;
+  env.context.renderReportAdminMonitor('admin');
+  assert.match(env.monitor.innerHTML,/data-stage="finaliser"[^>]*openReportAdminMonitorItem/);
+  env.context.openReportAdminMonitorItem({dataset:{station:'CIS05',type:'iv',id:'r1',stage:'finaliser'}});
+  assert.deepEqual(env.calls,['report:r1']);
+});
+test('un rapport d’autrui s’ouvre en lecture seule, sans action ni texte HTML actif',()=>{
+  const env=setup({admin:true});
+  env.record._crValide=false;
+  env.record.agr='bob';
+  env.record._crTexte='<img src=x onerror=alert(1)>Rapport';
+  env.context.openReportAdminMonitorItem({dataset:{station:'CIS05',type:'iv',id:'r1',stage:'finaliser'}});
+  assert.deepEqual(env.calls,['preview']);
+  assert.match(env.modalBody.innerHTML,/&lt;img src=x onerror=alert\(1\)&gt;Rapport/);
+  assert.doesNotMatch(env.modalBody.innerHTML,/<img|Sauvegarder|Valider définitivement|Imprimer/);
+  assert.equal(env.modalTitle.textContent,'Compte rendu à finaliser');
+});
+test('le superadmin peut consulter un rapport d’une autre caserne sans changer de caserne',()=>{
+  const env=setup({superadmin:true});
+  env.context.CASERNES.push({id:'CIS06',nom:'CIS 06'});
+  env.context.CASERNE_DATA.CIS06={ivs:[{id:'r2',h:'20261021_1300',s:'terminee',agr:'bob',_crTexte:'Rapport CIS06'}],
+    pilpIvs:[],activites:[],fmpas:[]};
+  env.context.openReportAdminMonitorItem({dataset:{station:'CIS06',type:'iv',id:'r2',stage:'finaliser'}});
+  assert.deepEqual(env.calls,['preview']);
+  assert.equal(env.context.CURRENT_CASERNE_ID,'CIS05');
+  assert.match(env.modalBody.innerHTML,/Rapport CIS06/);
+});
+test('les pouvoirs désactivés ou un rappel périmé ne permettent plus l’ouverture',()=>{
+  const options={admin:true},env=setup(options);
+  env.record._crValide=false;
+  const item={dataset:{station:'CIS05',type:'iv',id:'r1',stage:'finaliser'}};
+  options.admin=false;
+  env.context.openReportAdminMonitorItem(item);
+  assert.equal(env.calls.length,0);
+  options.admin=true;
+  env.record._crValide=true;
+  env.context.openReportAdminMonitorItem(item);
+  assert.equal(env.calls.length,0);
+});
+test('un original à éditer ouvre seulement un aperçu, sans déclencher son émission',()=>{
+  const env=setup({admin:true});
+  env.context.window._agaiReportEditionState={enabled:true,startDate:'2026-10-21',
+    items:{'CIS05|iv|r1':{count:0}}};
+  vm.runInContext("_reportAdminSummaryState={login:'alice',station:'CIS05',scope:'admin',state:window._agaiReportEditionState}",env.context);
+  env.context.renderReportAdminMonitor('admin');
+  assert.match(env.monitor.innerHTML,/data-stage="editer"[^>]*openReportAdminMonitorItem/);
+  env.context.openReportAdminMonitorItem({dataset:{station:'CIS05',type:'iv',id:'r1',stage:'editer'}});
+  assert.deepEqual(env.calls,['preview']);
+  assert.equal(env.modalTitle.textContent,'Rapport à éditer');
+  assert.equal(env.calls.filter(x=>x.url?.endsWith('agai_issue_report_edition')).length,0);
 });
 test('le bandeau collectif est masqué aux agents sans pouvoirs administrateur',()=>{
   const env=setup();
