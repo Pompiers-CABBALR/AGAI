@@ -50,6 +50,7 @@ function setup(options={}){
     interventionById:id=>id==='r1'?record:null,
     actGetData:()=>[],fmpaGetData:()=>[],
     isPilpIntervention:()=>false,accueilRapportOwner:(row,login)=>row.agr===login,
+    accueilRapportNumero:row=>row._numCaserne?'UT '+row._numCaserne+' · '+(row._numApl||''):(row._numApl||''),
     accueilRapportDate:row=>row.h.slice(0,8),
     rapportsEditionDebut:()=>'',rAccueilRapports:()=>{},
     canOpenInterventionPdfOnThisDevice:()=>true,
@@ -126,6 +127,16 @@ test('le bandeau admin montre les non-validés et le détail les regroupe par re
   assert.match(env.monitor.innerHTML,/Comptes rendus non validés · 1/);
   assert.match(env.monitor.innerHTML,/alice · 1/);
   assert.equal(env.banner.style.display,'');
+});
+test('le suivi admin affiche aussi le numéro de l’intervention et sa nature',()=>{
+  const env=setup({admin:true});
+  env.record._crValide=false;
+  env.record._numApl='APL_2026_000588';
+  env.record._numCaserne=494;
+  env.record.n='Sauvetage et capture d’animaux';
+  env.record.com='Marles-les-Mines';
+  env.context.renderReportAdminMonitor('admin');
+  assert.match(env.monitor.innerHTML,/Intervention · UT 494 · APL_2026_000588 · Sauvetage et capture d’animaux — Marles-les-Mines/);
 });
 test('le responsable ouvre directement son compte rendu depuis le suivi admin',()=>{
   const env=setup({admin:true});

@@ -17,6 +17,8 @@ function setup(overrides={}){
     CURRENT_CASERNE_ID:'CIS05',
     _rcId:(station,type,id)=>[station,type,id].join('|'),
     isPilpIntervention:()=>false,
+    interventionDisplayCallNumber:iv=>iv._numApl||String(iv.id||'').match(/^APL_\d{4}_\d+/)?.[0]||iv.id,
+    interventionDisplayUTNumber:iv=>String(iv._numCaserne||''),
     isInterventionReportChef:(iv,login)=>iv.agr===login,
     statsInterventionDateKey:iv=>String(iv.h||'').slice(0,8),
     console,
@@ -36,6 +38,20 @@ test('les interventions terminées depuis octobre sont rappelées à leur chef u
   ]});
   assert.deepEqual(Array.from(ctx.collectAccueilReportReminders('alice','').finaliser,x=>x.id),['todo']);
   assert.equal(ctx.collectAccueilReportReminders('alice','').editer.length,0);
+});
+test('les rappels affichent les numéros UT et APL avant la nature et la commune',()=>{
+  const ctx=setup({IVS:[{id:'APL_2026_000588-Rabc',_numApl:'APL_2026_000588',
+    _numCaserne:494,n:'Sauvetage et capture d’animaux',com:'Marles-les-Mines',
+    h:'20261021',s:'terminee',agr:'alice'}]});
+  const [row]=ctx.collectAccueilReportReminders('alice','').finaliser;
+  assert.equal(row.label,'Intervention · UT 494 · APL_2026_000588 · Sauvetage et capture d’animaux — Marles-les-Mines');
+});
+test('un numéro UT non confirmé n’est pas présenté comme définitif',()=>{
+  const ctx=setup({IVS:[{id:'APL_2026_000589-Rabc',_numApl:'APL_2026_000589',
+    _numCaserne:495,_numberingScheme:'dual-v1',_numberFinalized:false,
+    n:'Nid de frelons',h:'20261021',s:'terminee',agr:'alice'}]});
+  const [row]=ctx.collectAccueilReportReminders('alice','').finaliser;
+  assert.equal(row.label,'Intervention · APL_2026_000589 · Nid de frelons');
 });
 
 test('le premier agent désigné au départ porte le rappel du renfort',()=>{
