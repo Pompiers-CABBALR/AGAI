@@ -1,5 +1,14 @@
 # AGAI — déploiement sécurisé
 
+## V202610_0059 — numéro dans les rappels de rapports
+
+Les rappels « Mes rapports » et les lignes « Rapports à suivre » affichent
+désormais le numéro UT ou de renfort, ainsi que la référence APL disponible,
+avant la nature et la commune. Un numéro UT encore non confirmé n'est pas
+présenté comme définitif. Aucun changement des rapports, des droits, de la
+synchronisation ou du serveur. Avant publication, confirmer qu'aucune saisie
+n'est en cours et que les appareils concernés affichent « Sync OK ».
+
 ## V202610_0058 — ouvrir les lignes du suivi des rapports
 
 Dans « Rapports à suivre », les administrateurs ayant activé leurs pouvoirs

@@ -147,9 +147,11 @@ function reportMonitorRows(scope){
       if(!iv||!iv.id||iv._lienPilpSourceId||iv._isPilip||iv.s!=='terminee')return;
       const day=accueilRapportDate(iv);
       const type=(data.pilpIvs||[]).includes(iv)?'pilp':'iv';
+      const numero=accueilRapportNumero(iv);
       const row={station:station,stationName:stationName,type:type,id:iv.id,
         recordId:reportEditionRecordId(station,type,iv.id),day:day,
-        label:(iv._isRenfort?'Renfort':'Intervention')+' · '+(iv.n||iv.id),
+        label:(iv._isRenfort?'Renfort':'Intervention')+' · '+(numero?numero+' · ':'')
+          +(iv.n||iv.id)+(iv.com?' — '+iv.com:''),
         owner:[...new Set([iv.agr,iv._agr2].filter(Boolean))]
           .map(function(login){return ownerName(data,login);}).join(' / ')||'Non désigné'};
       if(day>=start&&!iv._crValide)finaliser.push(row);

@@ -69,6 +69,17 @@ function accueilRapportDate(iv){
   if(typeof statsInterventionDateKey==='function')return statsInterventionDateKey(iv);
   return String(iv&&iv.h||'').replace(/\D/g,'').slice(0,8);
 }
+function accueilRapportNumero(iv){
+  if(!iv)return '';
+  const apl=interventionDisplayCallNumber(iv);
+  const numeroApl=/^APL_\d{4}_\d{6,}$/.test(apl)?apl:'';
+  const utConfirme=iv._numCaserne
+    &&!(iv._numberingScheme==='dual-v1'&&iv.s==='terminee'&&iv._numberFinalized!==true);
+  const numeroLocal=iv._isRenfort
+    ?(iv._numRenfort?'n° '+iv._numRenfort:'')
+    :(utConfirme?'UT '+interventionDisplayUTNumber(iv):'');
+  return [numeroLocal,numeroApl].filter(Boolean).join(' · ');
+}
 function accueilRapportOwner(iv,login){
   if(!iv||!login)return false;
   // Sur un renfort, agr désigne le premier agent choisi au départ, même
@@ -84,7 +95,9 @@ function collectAccueilReportReminders(login,printStart){
     seen.add(iv.id);
     const key=accueilRapportDate(iv);
     if(iv.s!=='terminee'||!accueilRapportOwner(iv,login))return;
-    const label=(iv._isRenfort?'Renfort':'Intervention')+' · '+(iv.n||iv.id)+(iv.com?' — '+iv.com:'');
+    const numero=accueilRapportNumero(iv);
+    const label=(iv._isRenfort?'Renfort':'Intervention')+' · '+(numero?numero+' · ':'')
+      +(iv.n||iv.id)+(iv.com?' — '+iv.com:'');
     const item={kind:'iv',id:iv.id,label,date:key};
     if(key>=rapportsFinalisationDebut()&&!iv._crValide)finaliser.push(Object.assign({stage:'finaliser'},item));
     if(printStart&&key>=printStart&&iv._crValide
