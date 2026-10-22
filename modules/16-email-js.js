@@ -660,16 +660,37 @@ function onCompteRenduDraftInput(field){
   writeCompteRenduDraft(field.dataset.ivId||'',field.value);
 }
 
+function compteRenduDeadline(iv){
+  const day=String(iv&&iv.h||'').replace(/\D/g,'').slice(0,8);
+  if(!/^20\d{6}$/.test(day))return '';
+  const year=Number(day.slice(0,4)),month=Number(day.slice(4,6)),date=Number(day.slice(6,8));
+  const parsed=new Date(Date.UTC(year,month-1,date));
+  if(parsed.getUTCFullYear()!==year||parsed.getUTCMonth()!==month-1||parsed.getUTCDate()!==date)return '';
+  const limit=new Date(Date.UTC(year,month,5));
+  return limit.toISOString().slice(0,10);
+}
+function compteRenduParisToday(){
+  const parts=new Intl.DateTimeFormat('fr-FR',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+  const value=key=>parts.find(part=>part.type===key)?.value||'';
+  return value('year')+'-'+value('month')+'-'+value('day');
+}
+function compteRenduLate(iv){
+  const day=String(iv&&iv.h||'').replace(/\D/g,'').slice(0,8);
+  const deadline=compteRenduDeadline(iv);
+  return day>='20261001'&&!!deadline&&compteRenduParisToday()>deadline;
+}
+
 function showCompteRenduModal(ivId) {
   const iv = interventionById(ivId);if(!iv)return;
   const isOwn       = isInterventionReportChef(iv,CU.l);
-  const isSuperAdmin= isAdminModeActive();
+  const adminActive = isAdminModeActive();
   const isValidated = !!iv._crValide;
-  const canWrite    = (!isValidated && (isOwn||hasRight('Administration'))) || isSuperAdmin;
+  const canWrite    = (!isValidated && (isOwn||adminActive)) || adminActive;
+  const late        = !isValidated&&compteRenduLate(iv);
   const enCours     = iv.s==='en-cours';
 
   let infoBanner = '';
-  if(isValidated && !isSuperAdmin){
+  if(isValidated && !adminActive){
     infoBanner='<div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#854F0B;">'
       +'\uD83D\uDD12 Compte rendu verrouill\u00e9 \u2014 valid\u00e9 le '+iv._crDateValidation+'.</div>';
   } else if(isValidated){
@@ -679,12 +700,17 @@ function showCompteRenduModal(ivId) {
     infoBanner='<div style="background:#F0FDFA;border:1px solid #99F6E4;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#0F766E;">'
       +'\uD83D\uDCCB Saisissez votre compte rendu. Une fois valid\u00e9, il sera verrouill\u00e9 et ne pourra plus \u00eatre modifi\u00e9.</div>';
   }
+  if(late)infoBanner+='<div style="background:#FFF7ED;border:1px solid #FDBA74;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#9A3412;">'
+    +'L’échéance du '+escHtml(compteRenduDeadline(iv))+' est dépassée. Le brouillon reste sauvegardable ; seule une dérogation motivée du superadministrateur permet la validation, depuis « Rapports à suivre ».</div>';
+  if(isValidated&&iv._crValidePar)infoBanner+='<div style="font-size:12px;margin-bottom:10px;color:#475569;">'
+    +'Validé par '+escHtml(iv._crValidePar)+(iv._crValideAt?' · '+escHtml(iv._crValideAt):'')
+    +(iv._crDerogationMotif?' · Dérogation : '+escHtml(iv._crDerogationMotif):'')+'</div>';
 
   let btns = '';
   if(canWrite){
     if(!isValidated){
       btns += '<button class="btn sm" style="background:#0F766E;color:#fff;" onclick="saveCompteRendu(\'' + ivId + '\',false)">&#x1F4BE; Sauvegarder</button>';
-      btns += '<button class="btn sm" style="background:#2563EB;color:#fff;" onclick="validerCompteRendu(\'' + ivId + '\')">&#x1F512; Valider d\u00e9finitivement</button>';
+      if(!late)btns += '<button class="btn sm" style="background:#2563EB;color:#fff;" onclick="validerCompteRendu(\'' + ivId + '\')">&#x1F512; Valider d\u00e9finitivement</button>';
       if(enCours && isOwn){
         btns += '<button class="btn sm" style="background:var(--grn);color:#fff;" onclick="saveCompteRendu(\'' + ivId + '\',true)">\u2705 Sauvegarder et cl\u00f4turer</button>';
       }
@@ -866,8 +892,11 @@ function _sdisSaveFields(iv){
 }
 function validerCompteRendu(ivId) {
   const iv = interventionById(ivId);if(!iv)return;
-  if(!isInterventionReportChef(iv,CU.l)&&!hasAdministrativeAccount()){
+  if(!isInterventionReportChef(iv,CU.l)&&!isAdminModeActive()){
     showToast('Validation réservée au chef d’agrès de l’intervention ou à un administrateur.','warn');return;
+  }
+  if(compteRenduLate(iv)){
+    showToast('Échéance dépassée : dérogation motivée du superadministrateur dans « Rapports à suivre ».','warn');return;
   }
   const texte = (document.getElementById('cr-texte')||{}).value||'';
   if(!texte.trim()){showToast('Saisissez un compte rendu avant de valider','warn');return;}
@@ -878,7 +907,7 @@ function validerCompteRendu(ivId) {
     iv._crTexte          = texte;
     iv._compteRendu      = texte;
     iv._crLocalSavedAt   = savedAt;
-    iv._crAuteur         = CU.l;
+    if(!iv._crAuteur)iv._crAuteur=CU.l;
     iv._crDate           = getHHMM(N());
     iv._crValide         = true;
     iv._crDateValidation = getHHMM(N());
@@ -894,9 +923,9 @@ function validerCompteRendu(ivId) {
 function saveCompteRendu(ivId, andClot) {
   const iv = interventionById(ivId);if(!iv)return;
   const isOwn       = isInterventionReportChef(iv,CU.l);
-  const isSuperAdmin= isAdminModeActive();
-  if(iv._crValide && !isSuperAdmin){showToast('Compte rendu verrouill\u00e9','warn');return;}
-  if(!isOwn&&!isSuperAdmin){showToast('Non autoris\u00e9','warn');return;}
+  const adminActive= isAdminModeActive();
+  if(iv._crValide && !adminActive){showToast('Compte rendu verrouill\u00e9','warn');return;}
+  if(!isOwn&&!adminActive){showToast('Non autoris\u00e9','warn');return;}
   if(iv._sdis&&!_sdisValidateHeures(iv))return;
   const reportText=(document.getElementById('cr-texte')||{}).value||'';
   const savedAt=Date.now();
@@ -904,7 +933,12 @@ function saveCompteRendu(ivId, andClot) {
   iv._crTexte     = reportText;
   iv._compteRendu = iv._crTexte;
   iv._crLocalSavedAt=savedAt;
-  iv._crAuteur    = CU.l;
+  if(!iv._crAuteur)iv._crAuteur=CU.l;
+  if(adminActive&&iv._crAuteur!==CU.l){
+    iv._crDernierEditeur=CU.l;
+    iv._crDerniereModification=getH(N());
+    pushTL(iv,'rapport-modifie',CU.l,'Brouillon de compte rendu complété par un administrateur');
+  }
   iv._crDate      = getHHMM(N());
   if(iv._sdis) _sdisSaveFields(iv);
   if(_isFrelonIv(iv)) _frelonSaveFields(iv);

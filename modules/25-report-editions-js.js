@@ -21,6 +21,8 @@ async function reportEditionRpc(name,payload){
     },12000);
   }catch(_error){throw new Error(name==='agai_issue_report_edition'
     ?'Réponse du serveur indisponible : une édition a peut-être été enregistrée. Ne réessayez pas avant de vérifier le suivi des originaux.'
+    :name==='agai_admin_finalize_report'
+      ?'Réponse du serveur indisponible : le rapport a peut-être été validé. Actualisez le suivi avant toute nouvelle tentative.'
     :'Contrôle serveur indisponible. Aucune donnée locale n’a été modifiée.');}
   if(!response.ok){
     let code='';
@@ -34,9 +36,19 @@ async function reportEditionRpc(name,payload){
       AGAI_REPORT_OWNER_REQUIRED:'Seul le responsable de ce rapport peut émettre l’original.',
       AGAI_REPORT_ADMIN_REQUIRED:'Seul un administrateur peut émettre un duplicata.',
       AGAI_REPORT_SUPERADMIN_REQUIRED:'Activation réservée au superadministrateur.',
-      AGAI_REPORT_ACCESS_DENIED:'Ce compte ne peut pas émettre de rapport.'
+      AGAI_REPORT_ACCESS_DENIED:'Ce compte ne peut pas émettre de rapport.',
+      AGAI_REPORT_DEADLINE_PASSED:'Échéance dépassée : seule une dérogation du superadministrateur est possible.',
+      AGAI_REPORT_OVERRIDE_REASON_REQUIRED:'Un motif de dérogation de 10 caractères minimum est obligatoire.',
+      AGAI_REPORT_NOT_PENDING:'Ce rapport a déjà été validé ou n’est plus terminé.',
+      AGAI_REPORT_TEXT_REQUIRED:'Saisissez un compte rendu avant de valider.',
+      AGAI_REPORT_DATE_INVALID:'La date de cette intervention doit être vérifiée avant validation.'
     };
-    throw new Error(messages[code]||('Contrôle serveur refusé (HTTP '+response.status+'). Aucune édition locale ne sera créée.'));
+    if(name==='agai_admin_finalize_report'&&code==='AGAI_REPORT_ADMIN_REQUIRED')
+      throw new Error('La finalisation exige un compte administrateur ou superadministrateur.');
+    if(name==='agai_admin_finalize_report'&&code==='AGAI_REPORT_ACCESS_DENIED')
+      throw new Error('Ce compte ne peut pas finaliser ce rapport.');
+    throw new Error(messages[code]||('Contrôle serveur refusé (HTTP '+response.status+'). '
+      +(name==='agai_admin_finalize_report'?'Vérifiez le suivi avant de recommencer.':'Aucune édition locale ne sera créée.')));
   }
   return response.json();
 }
@@ -150,6 +162,7 @@ function reportMonitorRows(scope){
       const numero=accueilRapportNumero(iv);
       const row={station:station,stationName:stationName,type:type,id:iv.id,
         recordId:reportEditionRecordId(station,type,iv.id),day:day,
+        deadline:compteRenduDeadline(iv),late:compteRenduLate(iv),
         label:(iv._isRenfort?'Renfort':'Intervention')+' · '+(numero?numero+' · ':'')
           +(iv.n||iv.id)+(iv.com?' — '+iv.com:''),
         owner:[...new Set([iv.agr,iv._agr2].filter(Boolean))]
@@ -191,6 +204,7 @@ function renderHomeAdminReportBanner(){
   const scope=reportAdminScope();
   if(!CU||!scope){el.style.display='none';el.innerHTML='';return;}
   const count=reportMonitorRows(scope).finaliser.length;
+  const overdue=reportMonitorRows(scope).finaliser.filter(function(row){return row.late;}).length;
   const settings=window._agaiReportEditionState;
   const state=reportAdminSummaryFor(scope);
   let originalText='';
@@ -209,7 +223,8 @@ function renderHomeAdminReportBanner(){
   el.style.display='';
   el.innerHTML='<button type="button" onclick="openHomeReportMonitor()" '
     +'style="display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;padding:11px 13px;border-radius:11px;border:1px solid #CBD5E1;background:#EFF6FF;color:#1E3A5F;text-align:left;font:inherit;cursor:pointer;">'
-    +'<span>📋 <strong>Rapports à suivre</strong> · '+count+' non validé'+(count===1?'':'s')+originalText+'</span>'
+    +'<span>📋 <strong>Rapports à suivre</strong> · '+count+' non validé'+(count===1?'':'s')
+    +(overdue?' · '+overdue+' hors délai':'')+originalText+'</span>'
     +'<span aria-hidden="true" style="font-size:18px;">›</span></button>';
 }
 function reportEditionScheduleAdminSummary(){
@@ -268,12 +283,10 @@ function openReportAdminMonitorItem(button){
     :type==='activite'?data.activites:type==='fmpa'?data.fmpas:null;
   const record=Array.isArray(collection)?collection.find(function(item){return item&&item.id===id;}):null;
   if(!record)return;
-  // Seul son propre compte rendu, dans la caserne active, rejoint le formulaire.
-  // Les autres lignes restent des aperçus sans action d'écriture ou d'édition.
-  if(stage==='finaliser'&&(type==='iv'||type==='pilp')&&station===CURRENT_CASERNE_ID
-     &&accueilRapportOwner(record,CU.l)){
-    showCompteRenduModal(id);
-    return;
+  // Le suivi admin peut finaliser, y compris un rapport d'un autre CA. La
+  // fiche affichée vient du serveur et la validation est atomique et tracée.
+  if(stage==='finaliser'&&(type==='iv'||type==='pilp')){
+    return openReportAdminFinalize(row);
   }
   const date=/^\d{8}$/.test(row.day)?row.day.slice(6,8)+'/'+row.day.slice(4,6)+'/'+row.day.slice(0,4):row.day;
   const report=type==='iv'||type==='pilp'?record._crTexte||record._compteRendu||''
@@ -289,9 +302,105 @@ function openReportAdminMonitorItem(button){
     +'<div class="mr"><div class="ml">Caserne</div><div class="mv2">'+escHtml(row.stationName)+'</div></div>'
     +'<div class="mr"><div class="ml">Responsable</div><div class="mv2">'+escHtml(row.owner)+'</div></div>'
     +'<div class="mr"><div class="ml">Date</div><div class="mv2">'+escHtml(date)+'</div></div>'
+    +(record._crValidePar?'<div class="mr"><div class="ml">Validé par</div><div class="mv2">'
+      +escHtml(record._crValidePar)+(record._crValideAt?' · '+escHtml(record._crValideAt):'')+'</div></div>':'')
+    +(record._crDerogationMotif?'<div class="mr"><div class="ml">Dérogation superadministrateur</div><div class="mv2">'
+      +escHtml(record._crDerogationMotif)+'</div></div>':'')
     +details
     +'<button type="button" class="btn sm" style="margin-top:14px;" onclick="openHomeReportMonitor()">← Retour au suivi</button>';
   openModalAtTop();
+}
+async function openReportAdminFinalize(row){
+  if(!row||!reportAdminScope())return;
+  const token=_agaiAuthAccessToken();
+  if(!token||!navigator.onLine){showToast('Connexion au serveur requise pour finaliser un rapport.','warn');return;}
+  if(typeof _rcPendingDirty!=='undefined'&&_rcPendingDirty.has(row.recordId)){
+    showToast('Une modification locale de cette fiche attend la synchronisation. Conservez-la avant de finaliser.','warn');return;
+  }
+  document.getElementById('mt').textContent='Finaliser un compte rendu';
+  document.getElementById('mi').textContent=row.label;
+  document.getElementById('mb').textContent='Lecture de la fiche serveur…';
+  openModalAtTop();
+  try{
+    const response=await _agaiAuthFetchWithTimeout(SB_URL+'/rest/v1/records?id=eq.'
+      +encodeURIComponent(row.recordId)+'&select=id,caserne,type,data,deleted&limit=1',{
+      headers:{apikey:SB_KEY,Authorization:'Bearer '+token}
+    },12000);
+    if(!response.ok)throw new Error('Fiche serveur indisponible (HTTP '+response.status+').');
+    const rows=await response.json(),server=Array.isArray(rows)?rows[0]:null;
+    if(!server||server.deleted||server.caserne!==row.station||server.type!==row.type
+       ||server.data?.s!=='terminee'||server.data?._crValide===true)
+      throw new Error('Ce rapport a changé ou n’est plus à finaliser. Actualisez le suivi.');
+    if(!CU||!reportAdminScope())return;
+    const late=compteRenduLate(server.data),superadmin=isSuperAdmin();
+    const deadline=compteRenduDeadline(server.data);
+    const originalAuthor=server.data._crAuteur||'Non encore rédigé';
+    const disabled=late&&!superadmin;
+    document.getElementById('mb').innerHTML='<div style="font-size:12px;line-height:1.5;margin-bottom:12px;">'
+      +'Responsable au départ : <strong>'+escHtml(row.owner)+'</strong><br>'
+      +'Auteur du brouillon : <strong>'+escHtml(originalAuthor)+'</strong><br>'
+      +'Date limite : <strong>'+escHtml(deadline||'À vérifier')+'</strong></div>'
+      +(late?'<div style="padding:10px;margin-bottom:12px;border:1px solid #FDBA74;border-radius:8px;background:#FFF7ED;color:#9A3412;font-size:12px;">'
+        +(superadmin?'Échéance dépassée : votre dérogation exige un motif et sera enregistrée dans l’historique serveur.'
+          :'Échéance dépassée : seul le superadministrateur peut autoriser une validation exceptionnelle.')+'</div>':'')
+      +'<label class="fg"><span class="fgl">Compte rendu</span><textarea class="fi" id="admin-cr-text" rows="8" '
+      +(disabled?'readonly ':'')+'style="resize:vertical;">'
+      +escHtml(server.data._crTexte||server.data._compteRendu||'')+'</textarea></label>'
+      +(late&&superadmin?'<label class="fg"><span class="fgl">Motif de dérogation (10 caractères minimum)</span>'
+        +'<textarea class="fi" id="admin-cr-override" rows="3" maxlength="500" placeholder="Expliquez pourquoi la validation est effectuée après le 5."></textarea></label>':'')
+      +(disabled?'':'<button type="button" class="btn sm" id="admin-cr-finalize" style="background:#2563EB;color:#fff;">'
+        +'Valider le rapport avec traçabilité</button>')
+      +'<button type="button" class="btn sm" style="margin-left:8px;" onclick="openHomeReportMonitor()">← Retour au suivi</button>';
+    const submit=document.getElementById('admin-cr-finalize');
+    if(submit)submit.onclick=function(){
+      const text=document.getElementById('admin-cr-text')?.value||'';
+      const reason=document.getElementById('admin-cr-override')?.value||'';
+      if(!text.trim()){showToast('Saisissez le compte rendu avant de valider.','warn');return;}
+      if(late&&reason.trim().length<10){showToast('Indiquez un motif de dérogation d’au moins 10 caractères.','warn');return;}
+      const revision=Number(server.data._serverRevision)||0;
+      confirmModal('Valider ce rapport à la place de son responsable ? Votre identité et l’heure seront enregistrées'
+        +(late?', avec le motif de dérogation.':'.'),function(){
+        submitReportAdminFinalization(row,text,revision,late?reason.trim():null);
+      });
+    };
+  }catch(error){
+    document.getElementById('mb').innerHTML='<p style="color:#991B1B;">'+escHtml(error.message||'Contrôle indisponible.')+'</p>'
+      +'<button class="btn sm" onclick="openHomeReportMonitor()">← Retour au suivi</button>';
+  }
+}
+async function submitReportAdminFinalization(row,text,revision,reason){
+  if(!row||!reportAdminScope())return;
+  document.getElementById('mt').textContent='Validation du rapport';
+  document.getElementById('mi').textContent=row.label;
+  document.getElementById('mb').textContent='Contrôle et enregistrement sur le serveur…';
+  openModalAtTop();
+  try{
+    if(reason&&!isSuperAdmin())throw new Error('Les pouvoirs superadministrateur ne sont plus actifs.');
+    const result=await reportEditionRpc('agai_admin_finalize_report',{
+      p_id:row.recordId,p_text:text,p_expected_record_revision:revision,p_override_reason:reason
+    });
+    if(!result||!result.data||result.data._crValide!==true||!result.data._crValidePar)
+      throw new Error('Confirmation serveur incomplète. Vérifiez le suivi avant de recommencer.');
+    _rcReplaceLocalOperationalRecord(row.station,row.type,result.data);
+    _writeLocalCache(_buildDataObject());
+    renderHomeAdminReportBanner();
+    refreshOperationalInterventionViews();
+    document.getElementById('mb').innerHTML='<div style="padding:12px;border:1px solid #86EFAC;border-radius:8px;background:#ECFDF5;">'
+      +'Rapport validé sur le serveur par '+escHtml(result.data._crValidePar)+'. '
+      +(reason?'Dérogation motivée enregistrée. ':'')+'Le chef d’agrès responsable reste identifié.</div>'
+      +'<button class="btn sm" style="margin-top:12px;" onclick="openHomeReportMonitor()">← Retour au suivi</button>';
+  }catch(error){
+    const raw=String(error&&error.message||'Contrôle serveur indisponible.');
+    const code=(raw.match(/AGAI_REPORT_[A-Z_]+/)||[])[0];
+    const messages={AGAI_REPORT_DEADLINE_PASSED:'Échéance dépassée : seule une dérogation du superadministrateur est autorisée.',
+      AGAI_REPORT_OVERRIDE_REASON_REQUIRED:'Motif de dérogation insuffisant.',
+      AGAI_REPORT_CHANGED:'Le rapport a changé sur le serveur. Actualisez le suivi.',
+      AGAI_REPORT_NOT_PENDING:'Ce rapport a déjà été validé ou n’est plus terminé.'};
+    document.getElementById('mb').innerHTML='<div style="color:#991B1B;">'
+      +escHtml(messages[code]||raw)+'</div><div style="font-size:12px;margin-top:9px;">'
+      +'La réponse ne confirme pas la validation. Ne réessayez pas sans actualiser le suivi.</div>'
+      +'<button class="btn sm" style="margin-top:12px;" onclick="openHomeReportMonitor()">← Retour au suivi</button>';
+  }
 }
 function renderReportAdminMonitor(scope){
   if(scope!==reportAdminScope())return;
@@ -312,12 +421,15 @@ function renderReportAdminMonitor(scope){
   });
   const fmt=function(row){
     const date=/^\d{8}$/.test(row.day)?row.day.slice(6,8)+'/'+row.day.slice(4,6)+'/'+row.day.slice(0,4):row.day;
+    const deadline=row.deadline?row.deadline.slice(8,10)+'/'+row.deadline.slice(5,7)+'/'+row.deadline.slice(0,4):'';
+    const due=row.stage==='finaliser'&&deadline?' · <span style="color:'+(row.late?'#B91C1C':'#64748B')+';font-weight:'+(row.late?'700':'400')+';">'
+      +(row.late?'Hors délai depuis le ':'À valider avant le ')+escHtml(deadline)+'</span>':'';
     return '<button type="button" data-station="'+escHtml(row.station)+'" data-type="'+escHtml(row.type)
       +'" data-id="'+escHtml(row.id)+'" data-stage="'+escHtml(row.stage)+'"'
       +' onclick="openReportAdminMonitorItem(this)" style="display:block;width:100%;padding:9px 3px;'
       +'border:0;border-top:1px solid var(--brd);background:transparent;color:inherit;text-align:left;'
       +'font:inherit;font-size:12px;cursor:pointer;white-space:normal;overflow-wrap:anywhere;">'
-      +'<strong>'+escHtml(row.label)+'</strong> · '+escHtml(date)+' <span aria-hidden="true">›</span></button>';
+      +'<strong>'+escHtml(row.label)+'</strong> · '+escHtml(date)+due+' <span aria-hidden="true">›</span></button>';
   };
   const grouped=function(list,empty,stage){
     if(!list.length)return '<p style="font-size:12px;color:var(--t2);">'+empty+'</p>';

@@ -15,7 +15,7 @@ function setup(options={}){
   const iframe={contentWindow:{print:()=>calls.push('print')}};
   const banner={style:{},innerHTML:''};
   const monitor={innerHTML:'',textContent:'',insertAdjacentHTML(_position,html){this.innerHTML=html+this.innerHTML;}};
-  const modalTitle={textContent:''},modalInfo={textContent:''},modalBody={innerHTML:''};
+  const modalTitle={textContent:''},modalInfo={textContent:''},modalBody={innerHTML:'',textContent:''};
   const record={id:'r1',h:'20261021_1200',s:'terminee',agr:'alice',_crValide:true};
   const context={
     window:{},navigator:{onLine:true},crypto:{randomUUID:()=> '00000000-0000-4000-8000-000000000001'},
@@ -25,10 +25,16 @@ function setup(options={}){
     IVS:[record],PILP_IVS:[],_rcId:(c,t,id)=>[c,t,id].join('|'),
     _agaiAuthAccessToken:()=> 'token',_agaiAuthFetchWithTimeout:async(url,req)=>{
       const body=req.body?JSON.parse(req.body):null;calls.push({url,body});
-      if(url.includes('/rest/v1/records?'))return {ok:true,json:async()=>([{
-        id:'CIS05|iv|r1',data:options.staleCopy?{id:'r1'}:record,
-        updated_at:'2026-10-21T12:00:00Z',deleted:false
-      }])};
+      if(url.includes('/rest/v1/records?')){
+        const requested=decodeURIComponent((url.match(/id=eq\.([^&]+)/)||[])[1]||'');
+        const [station,type,id]=requested.split('|');
+        const data=(context.CASERNE_DATA[station]||{})[type==='pilp'?'pilpIvs':'ivs']||[];
+        const found=data.find(item=>item.id===id);
+        return {ok:true,json:async()=>(found?[{
+          id:requested,caserne:station,type,data:options.staleCopy?{id}:found,
+          updated_at:'2026-10-21T12:00:00Z',deleted:false
+        }]:[])};
+      }
       if(url.endsWith('agai_report_edition_state'))return {ok:true,json:async()=>({
         enabled:options.enabled??false,startDate:'2026-10-21',
         items:Object.fromEntries(body.p_ids.map(id=>[id,{count:options.count??0,updatedAt:'2026-10-21T12:00:00Z'}]))
@@ -38,6 +44,9 @@ function setup(options={}){
       if(url.endsWith('agai_issue_report_edition'))return {ok:true,json:async()=>({
         number:(options.count??0)+1,kind:(options.count??0)?'duplicata':'original',
         issuedAt:'2026-10-21T12:01:00Z'
+      })};
+      if(url.endsWith('agai_admin_finalize_report'))return {ok:true,json:async()=>({
+        data:{id:'r1',_crValide:true,_crValidePar:'alice',_serverRevision:2}
       })};
       throw Error('unexpected RPC');
     },
@@ -55,6 +64,10 @@ function setup(options={}){
     rapportsEditionDebut:()=>'',rAccueilRapports:()=>{},
     canOpenInterventionPdfOnThisDevice:()=>true,
     isAdminModeActive:()=>options.admin===true,isSuperAdmin:()=>options.superadmin===true,
+    compteRenduLate:()=>options.late===true,compteRenduDeadline:()=> '2026-11-05',
+    _rcPendingDirty:new Set(),_rcReplaceLocalOperationalRecord:(...args)=>calls.push(['replace',...args]),
+    _writeLocalCache:()=>calls.push('cache'),_buildDataObject:()=>({}),
+    refreshOperationalInterventionViews:()=>{},
     genRapportInterventionHTML:()=>'<html><body><button onclick="window.print()">Imprimer</button><div>@page Rapport</div></body></html>',
     genRapportActiviteHTML:()=>'',genRapportFmpaHTML:()=>'',
     document:{getElementById:id=>id==='iframe-print-btn'?button:id==='iframe-content'?iframe
@@ -138,34 +151,52 @@ test('le suivi admin affiche aussi le numéro de l’intervention et sa nature',
   env.context.renderReportAdminMonitor('admin');
   assert.match(env.monitor.innerHTML,/Intervention · UT 494 · APL_2026_000588 · Sauvetage et capture d’animaux — Marles-les-Mines/);
 });
-test('le responsable ouvre directement son compte rendu depuis le suivi admin',()=>{
+test('le suivi admin lit la fiche serveur avant de permettre la validation',async()=>{
   const env=setup({admin:true});
   env.record._crValide=false;
   env.context.renderReportAdminMonitor('admin');
   assert.match(env.monitor.innerHTML,/data-stage="finaliser"[^>]*openReportAdminMonitorItem/);
-  env.context.openReportAdminMonitorItem({dataset:{station:'CIS05',type:'iv',id:'r1',stage:'finaliser'}});
-  assert.deepEqual(env.calls,['report:r1']);
+  await env.context.openReportAdminMonitorItem({dataset:{station:'CIS05',type:'iv',id:'r1',stage:'finaliser'}});
+  assert.ok(env.calls.some(call=>call.url?.includes('/rest/v1/records?')));
+  assert.match(env.modalBody.innerHTML,/admin-cr-text/);
+  assert.match(env.modalBody.innerHTML,/Valider le rapport avec traçabilité/);
 });
-test('un rapport d’autrui s’ouvre en lecture seule, sans action ni texte HTML actif',()=>{
+test('un rapport d’autrui est modifiable par l’admin, sans texte HTML actif',async()=>{
   const env=setup({admin:true});
   env.record._crValide=false;
   env.record.agr='bob';
   env.record._crTexte='<img src=x onerror=alert(1)>Rapport';
-  env.context.openReportAdminMonitorItem({dataset:{station:'CIS05',type:'iv',id:'r1',stage:'finaliser'}});
-  assert.deepEqual(env.calls,['preview']);
+  await env.context.openReportAdminMonitorItem({dataset:{station:'CIS05',type:'iv',id:'r1',stage:'finaliser'}});
   assert.match(env.modalBody.innerHTML,/&lt;img src=x onerror=alert\(1\)&gt;Rapport/);
-  assert.doesNotMatch(env.modalBody.innerHTML,/<img|Sauvegarder|Valider définitivement|Imprimer/);
-  assert.equal(env.modalTitle.textContent,'Compte rendu à finaliser');
+  assert.doesNotMatch(env.modalBody.innerHTML,/<img/);
+  assert.match(env.modalBody.innerHTML,/Valider le rapport avec traçabilité/);
+  assert.equal(env.modalTitle.textContent,'Finaliser un compte rendu');
 });
-test('le superadmin peut consulter un rapport d’une autre caserne sans changer de caserne',()=>{
+test('le superadmin peut finaliser un rapport d’une autre caserne sans changer de caserne',async()=>{
   const env=setup({superadmin:true});
   env.context.CASERNES.push({id:'CIS06',nom:'CIS 06'});
   env.context.CASERNE_DATA.CIS06={ivs:[{id:'r2',h:'20261021_1300',s:'terminee',agr:'bob',_crTexte:'Rapport CIS06'}],
     pilpIvs:[],activites:[],fmpas:[]};
-  env.context.openReportAdminMonitorItem({dataset:{station:'CIS06',type:'iv',id:'r2',stage:'finaliser'}});
-  assert.deepEqual(env.calls,['preview']);
+  await env.context.openReportAdminMonitorItem({dataset:{station:'CIS06',type:'iv',id:'r2',stage:'finaliser'}});
   assert.equal(env.context.CURRENT_CASERNE_ID,'CIS05');
   assert.match(env.modalBody.innerHTML,/Rapport CIS06/);
+});
+test('après le 5, l’admin voit le blocage et le superadmin voit le motif obligatoire',async()=>{
+  const admin=setup({admin:true,late:true});admin.record._crValide=false;
+  await admin.context.openReportAdminMonitorItem({dataset:{station:'CIS05',type:'iv',id:'r1',stage:'finaliser'}});
+  assert.doesNotMatch(admin.modalBody.innerHTML,/id="admin-cr-finalize"/);
+  const superadmin=setup({superadmin:true,late:true});superadmin.record._crValide=false;
+  await superadmin.context.openReportAdminMonitorItem({dataset:{station:'CIS05',type:'iv',id:'r1',stage:'finaliser'}});
+  assert.match(superadmin.modalBody.innerHTML,/id="admin-cr-override"/);
+  assert.match(superadmin.modalBody.innerHTML,/id="admin-cr-finalize"/);
+});
+test('la finalisation admin est confirmée par le serveur et la copie locale remplacée',async()=>{
+  const env=setup({admin:true});env.record._crValide=false;
+  await env.context.submitReportAdminFinalization({recordId:'CIS05|iv|r1',station:'CIS05',type:'iv',label:'Rapport'},'Texte final',1,null);
+  assert.ok(env.calls.some(call=>call.url?.endsWith('agai_admin_finalize_report')
+    &&call.body.p_text==='Texte final'&&call.body.p_expected_record_revision===1));
+  assert.ok(env.calls.some(call=>Array.isArray(call)&&call[0]==='replace'));
+  assert.match(env.modalBody.innerHTML,/Rapport validé sur le serveur/);
 });
 test('les pouvoirs désactivés ou un rappel périmé ne permettent plus l’ouverture',()=>{
   const options={admin:true},env=setup(options);
