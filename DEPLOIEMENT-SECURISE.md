@@ -1,5 +1,27 @@
 # AGAI — déploiement sécurisé
 
+## V202610_0060 — finalisation des comptes rendus avant le 5
+
+Migration serveur `20261022210000_report_finalization_deadline.sql` à appliquer
+avant la publication des fichiers web. Elle n'altère aucune intervention
+existante. Pour les interventions à partir du 01/10/2026, la validation reste
+possible jusqu'au 5 du mois suivant inclus (heure de Paris). Dès le 6, seul
+le superadministrateur peut valider avec un motif de 10 à 500 caractères.
+Chaque validation reçoit l'identité et l'heure du validateur, distinctes de
+l'auteur initial, et une entrée dans le journal serveur privé. L'ancien
+parcours de synchronisation passe par le même contrôle serveur : aucune
+ancienne version ne peut contourner l'échéance.
+
+« Rapports à suivre » permet à un admin actif de compléter et valider le
+rapport d'un autre chef d'agrès de sa caserne ; le superadmin peut agir sur
+les autres casernes. Le formulaire lit d'abord la fiche serveur et refuse une
+version périmée. En cas de réponse réseau perdue, vérifier le suivi avant
+toute nouvelle tentative. Les brouillons restent possibles après l'échéance.
+Avant la mise en ligne, confirmer l'absence de saisie en cours et « Sync OK »
+sur les appareils utilisés. Vérifier ensuite un brouillon sans le valider,
+un refus admin après le 5 sur un dossier de test, puis une dérogation
+superadmin motivée uniquement sur un dossier de test autorisé.
+
 ## V202610_0059 — numéro dans les rappels de rapports
 
 Les rappels « Mes rapports » et les lignes « Rapports à suivre » affichent
