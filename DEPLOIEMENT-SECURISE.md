@@ -1,5 +1,17 @@
 # AGAI — déploiement sécurisé
 
+## V202610_0058 — ouvrir les lignes du suivi des rapports
+
+Dans « Rapports à suivre », les administrateurs ayant activé leurs pouvoirs
+et le superadministrateur peuvent ouvrir chaque ligne. Le responsable d'un
+compte rendu non validé dans la caserne active rejoint directement son
+formulaire. Les rapports des autres responsables et casernes, ainsi que les
+lignes « Originaux non édités », s'ouvrent en consultation seule, sans
+validation, modification ni émission d'original.
+L'accès et le statut du rappel sont revérifiés au clic. Aucun changement
+Supabase ni migration. Avant publication, confirmer qu'aucune saisie n'est en
+cours et que les appareils concernés affichent « Sync OK ».
+
 ## V202610_0057 — durées de connexion locales
 
 Lors d'une connexion normale, AGAI conserve sur l'appareil les durées de
