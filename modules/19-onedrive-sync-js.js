@@ -777,7 +777,7 @@ function addPiquet(wk,engin,jourDefaut){
     +'<div id="pq-suggestions" style="margin-bottom:8px;"></div>'
     +'<div class="brow" style="flex-wrap:wrap;gap:6px;">'
     +'<button class="btn pr sm" onclick="confirmAddPiquet(\''+wk+'\',\''+engin+'\')">Valider</button>'
-    +'<button class="btn sm" style="background:#059669;color:#fff;border-color:#059669;" onclick="suggestCreneaux(\''+wk+'\')">💡 Suggérer des créneaux</button>'
+    +'<button class="btn sm" style="background:#059669;color:#fff;border-color:#059669;" onclick="suggestCreneaux(\''+wk+'\',\''+engin+'\')">💡 Préparer la semaine</button>'
     +'<button class="btn sm" onclick="cM()">Annuler</button>'
     +'</div>';
   document.getElementById('mo').style.display='flex';

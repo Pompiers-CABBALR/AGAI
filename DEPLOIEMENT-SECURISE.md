@@ -1,5 +1,25 @@
 # AGAI — déploiement sécurisé
 
+## V202610_0066 — aide hebdomadaire aux piquets VTU
+
+Le bouton « Préparer la semaine » présente les 28 tranches du lundi au
+dimanche (matin, après-midi, soir, nuit). La proposition combine les équipes
+en astreinte forte, faible, les autres équipes et les agents sans équipe avec
+les heures déjà attribuées, les disponibilités déclarées et les conflits.
+Pour le VTU, tout agent disponible peut être proposé conducteur. Un seul
+créneau peut être prérempli à la fois ; la disponibilité est recontrôlée
+avant l'application et rien n'est enregistré avant « Valider ».
+
+Si seul le chef ou le conducteur est disponible, le créneau est montré comme
+incomplet, « départ non garanti ». Les piquets incomplets gardent cet
+avertissement dans le planning et empêchent la validation définitive de la
+semaine. Aucun changement de schéma ni d'écriture serveur automatique.
+
+Avant publication, confirmer l'absence d'intervention ou de saisie en cours
+et « Sync OK » sur les appareils utilisés. Après publication, contrôler
+l'aperçu sur une semaine de test, y compris un créneau incomplet, sans
+enregistrer de piquet pour ce seul contrôle.
+
 ## V202610_0065 — équipes dans la saisie des créneaux
 
 La mini-grille « Disponibilités du jour » du formulaire de créneau affiche
