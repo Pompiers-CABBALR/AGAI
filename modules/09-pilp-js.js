@@ -688,9 +688,10 @@ function personnelScheduleWindows(kind,record,rangeStart,rangeEnd){
     parts.forEach(function(pair){
       const from=hhmmToMinutes(pair[0]),to=hhmmToMinutes(pair[1]);
       const imprecise=from===null||to===null||from===to;
-      const start=imprecise?day:day+from*60000;
-      let end=imprecise?new Date(cursor.getFullYear(),cursor.getMonth(),cursor.getDate()+1).getTime():day+to*60000;
-      if(!imprecise&&to<from)end=new Date(cursor.getFullYear(),cursor.getMonth(),cursor.getDate()+1).getTime()+to*60000;
+      const at=function(offset,minutes){return new Date(cursor.getFullYear(),cursor.getMonth(),cursor.getDate()+offset,0,minutes).getTime();};
+      const start=imprecise?day:at(0,from);
+      let end=imprecise?at(1,0):at(0,to);
+      if(!imprecise&&to<from)end=at(1,to);
       windows.push({start:start,end:end,imprecise:imprecise});
     });
     cursor.setDate(cursor.getDate()+1);days++;
