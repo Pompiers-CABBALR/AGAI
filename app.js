@@ -18367,7 +18367,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0068';
+const APP_VERSION='V202610_0069';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -26816,6 +26816,11 @@ function astrTelEditDuty(id){
   astrTelDutyModeChanged();
   document.getElementById('astrtel-duty-admin')?.scrollIntoView({behavior:'smooth',block:'start'});
 }
+function astrTelTemporaryReliefSource(overlaps,id,startMs,endMs){
+  if(id||overlaps.length!==1)return null;
+  const source=overlaps[0];
+  return astrTelDutyTime(source.start)<startMs&&endMs<astrTelDutyTime(source.end)?source:null;
+}
 function astrTelSaveDuty(){
   if(!hasAdministrativeAccount()){showToast('Gestion réservée aux administrateurs.','warn');return;}
   const list=astrTelGetDuties(),id=document.getElementById('astrtel-duty-id').value||'',mode=document.getElementById('astrtel-duty-mode').value;
@@ -26826,28 +26831,57 @@ function astrTelSaveDuty(){
   if(mode==='person'&&!login){showToast('Sélectionnez la personne qui possède le portable.','warn');return;}
   if(mode==='forward'&&!targetCaserneId){showToast('Sélectionnez l’UT qui reçoit le renvoi.','warn');return;}
   const existing=id?list.find(function(item){return item&&item.id===id;}):null;
-  const overlaps=list.filter(function(item){return item&&item.id!==id&&astrTelDutyTime(item.start)<endMs&&startMs<astrTelDutyTime(item.end);});
+  const overlaps=list.filter(function(item){return item&&!item._deleted&&item.id!==id&&astrTelDutyTime(item.start)<endMs&&startMs<astrTelDutyTime(item.end);});
+  const reliefSource=astrTelTemporaryReliefSource(overlaps,id,startMs,endMs);
   const replaceNow=!id&&Math.abs(startMs-Date.now())<=10*60*1000;
-  const shorten=replaceNow?overlaps.filter(function(item){return astrTelDutyTime(item.start)<startMs&&startMs<astrTelDutyTime(item.end);}):[];
-  const blocking=overlaps.filter(function(item){return !shorten.includes(item);});
+  const shorten=replaceNow&&!reliefSource?overlaps.filter(function(item){return astrTelDutyTime(item.start)<startMs&&startMs<astrTelDutyTime(item.end);}):[];
+  const blocking=overlaps.filter(function(item){return item!==reliefSource&&!shorten.includes(item);});
   if(blocking.length){showToast('Cette période chevauche une permanence déjà enregistrée. Modifiez d’abord la période existante.','warn');return;}
   const dataSnapshot=JSON.stringify(astrTelGetData()),listSnapshot=JSON.stringify(list);
-  try{
-    if(existing)astrTelRemoveDutyHours(existing);
-    shorten.forEach(function(item){astrTelRemoveDutyHours(item);item.end=start.toISOString();item.updatedAt=Date.now();item.updatedBy=CU.l;astrTelApplyDutyHours(item);});
-    const duty=existing||{id:'ASTTEL_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),createdAt:Date.now(),createdBy:CU.l};
-    duty.mode=mode;duty.login=login;duty.targetCaserneId=targetCaserneId;duty.start=start.toISOString();duty.end=end.toISOString();duty.updatedAt=Date.now();duty.updatedBy=CU.l;
-    astrTelApplyDutyHours(duty);
-    duty._hoursSourceOfTruth=true;
-    if(!existing)list.push(duty);
-  }catch(error){
-    CD().astrTelData=JSON.parse(dataSnapshot);CD().astrTelDuties=JSON.parse(listSnapshot);
-    showToast(error.message||'Enregistrement impossible.','warn');return;
+  const commit=function(){
+    if(!hasAdministrativeAccount()){showToast('Gestion réservée aux administrateurs.','warn');return;}
+    if(JSON.stringify(astrTelGetDuties())!==listSnapshot||JSON.stringify(astrTelGetData())!==dataSnapshot){
+      showToast('Les permanences ont changé. Vérifiez les horaires avant de recommencer.','warn');return;
+    }
+    if(reliefSource&&(document.getElementById('astrtel-duty-id').value!==id||document.getElementById('astrtel-duty-mode').value!==mode||document.getElementById('astrtel-duty-start').value!==startValue||document.getElementById('astrtel-duty-end').value!==endValue||document.getElementById('astrtel-duty-login').value!==login||document.getElementById('astrtel-duty-target').value!==targetCaserneId)){
+      showToast('Le formulaire a changé. Vérifiez les horaires avant de recommencer.','warn');return;
+    }
+    try{
+      if(existing)astrTelRemoveDutyHours(existing);
+      shorten.forEach(function(item){astrTelRemoveDutyHours(item);item.end=start.toISOString();item.updatedAt=Date.now();item.updatedBy=CU.l;astrTelApplyDutyHours(item);});
+      if(reliefSource){
+        const originalEnd=reliefSource.end,changedAt=Date.now();
+        astrTelRemoveDutyHours(reliefSource);
+        reliefSource.end=start.toISOString();reliefSource.updatedAt=changedAt;reliefSource.updatedBy=CU.l;
+        astrTelApplyDutyHours(reliefSource);reliefSource._hoursSourceOfTruth=true;
+        const resumed=Object.assign({},reliefSource,{
+          id:'ASTTEL_'+changedAt+'_'+Math.random().toString(36).slice(2,8),
+          start:end.toISOString(),end:originalEnd,createdAt:changedAt,createdBy:CU.l,
+          updatedAt:changedAt,updatedBy:CU.l,_splitFrom:reliefSource.id,_hoursApplied:[]
+        });
+        astrTelApplyDutyHours(resumed);resumed._hoursSourceOfTruth=true;list.push(resumed);
+      }
+      const duty=existing||{id:'ASTTEL_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),createdAt:Date.now(),createdBy:CU.l};
+      duty.mode=mode;duty.login=login;duty.targetCaserneId=targetCaserneId;duty.start=start.toISOString();duty.end=end.toISOString();duty.updatedAt=Date.now();duty.updatedBy=CU.l;
+      astrTelApplyDutyHours(duty);
+      duty._hoursSourceOfTruth=true;
+      if(!existing)list.push(duty);
+    }catch(error){
+      CD().astrTelData=JSON.parse(dataSnapshot);CD().astrTelDuties=JSON.parse(listSnapshot);
+      showToast(error.message||'Enregistrement impossible.','warn');return;
+    }
+    _jbEditLock=Date.now();
+    if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcPendingDirty!=='undefined'&&typeof _rcId==='function')_rcPendingDirty.add(_rcId(CURRENT_CASERNE_ID,'config','main'));
+    saveData(true);astrTelResetDutyForm();astrTelRenderDutyAdmin();astrTelRenderGrid();rAccueil();
+    showToast(reliefSource?'Remplacement temporaire enregistré ; la permanence initiale reprend ensuite ✓':shorten.length?'Ancienne permanence arrêtée et nouvelle astreinte enregistrée ✓':'Astreinte téléphonique enregistrée ✓','success');
+  };
+  if(reliefSource){
+    const newUser=mode==='person'?(USERS||[]).find(function(user){return user&&user.l===login;}):null;
+    const newDutyLabel=mode==='person'?(newUser?fullNameAff(newUser):login):'Renvoi vers une autre UT';
+    confirmModal('Confirmer ce remplacement temporaire ?<br>La permanence actuelle sera conservée jusqu’au '+escHtml(astrTelDutyDateLabel(start))+' ; '+escHtml(newDutyLabel)+' assurera la relève jusqu’au '+escHtml(astrTelDutyDateLabel(end))+' ; la permanence initiale reprendra ensuite jusqu’au '+escHtml(astrTelDutyDateLabel(reliefSource.end))+'.',commit);
+    return;
   }
-  _jbEditLock=Date.now();
-  if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcPendingDirty!=='undefined'&&typeof _rcId==='function')_rcPendingDirty.add(_rcId(CURRENT_CASERNE_ID,'config','main'));
-  saveData(true);astrTelResetDutyForm();astrTelRenderDutyAdmin();astrTelRenderGrid();rAccueil();
-  showToast(shorten.length?'Ancienne permanence arrêtée et nouvelle astreinte enregistrée ✓':'Astreinte téléphonique enregistrée ✓','success');
+  commit();
 }
 function astrTelDeleteDuty(id){
   if(!hasAdministrativeAccount())return;
