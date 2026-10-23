@@ -9,7 +9,7 @@ const root=path.join(__dirname,'..');
 const moduleSource=fs.readFileSync(path.join(root,'modules/21-astreinte-tel-js.js'),'utf8');
 const appSource=fs.readFileSync(path.join(root,'app.js'),'utf8');
 const startMarker='function astrTelGetData(){';
-const endMarker='function astrTelDeleteDuty(id){';
+const endMarker='function astrTelNbJours(y,m){';
 function section(source){
   const start=source.indexOf(startMarker),end=source.indexOf(endMarker,start);
   assert.ok(start>=0&&end>start);
@@ -20,7 +20,7 @@ function harness(source=moduleSource){
     start:new Date('2026-10-11T18:00').toISOString(),end:new Date('2026-10-25T18:00').toISOString(),
     _hoursSourceOfTruth:true,createdBy:'admin',_hoursApplied:[]};
   const elements={};
-  for(const id of ['astrtel-duty-id','astrtel-duty-mode','astrtel-duty-start','astrtel-duty-end','astrtel-duty-login','astrtel-duty-target','astrtel-duty-save','astrtel-duty-person-wrap','astrtel-duty-forward-wrap'])elements[id]={value:'',style:{},textContent:''};
+  for(const id of ['astrtel-duty-id','astrtel-duty-mode','astrtel-duty-start','astrtel-duty-end','astrtel-duty-login','astrtel-duty-target','astrtel-duty-save','astrtel-duty-person-wrap','astrtel-duty-forward-wrap','astrtel-duty-admin'])elements[id]={value:'',style:{},textContent:'',innerHTML:''};
   Object.assign(elements,{
     'astrtel-duty-id':{value:''},'astrtel-duty-mode':{value:'person'},
     'astrtel-duty-start':{value:'2026-10-23T13:45'},'astrtel-duty-end':{value:'2026-10-23T21:15'},
@@ -31,6 +31,7 @@ function harness(source=moduleSource){
     CURRENT_CASERNE_ID:'CIS05',CASERNE_DATA:{CIS05:{astrTelData:{},astrTelDuties:[sourceDuty]}},
     USERS:[{l:'nicolas',nom:'Lhernout',prenom:'Nicolas'},{l:'valery',nom:'Leriche',prenom:'Valéry'},{l:'other',nom:'Autre',prenom:'Agent'}],
     CU:{l:'admin'},USE_RECORDS:false,
+    OP_CASERNES(){return[];},
     initCaserneData(){},hasAdministrativeAccount(){return true;},
     CD(){return context.CASERNE_DATA.CIS05;},
     document:{getElementById(id){return elements[id]||null;}},
@@ -39,7 +40,7 @@ function harness(source=moduleSource){
     escHtml(text){return String(text).replace(/&/g,'&amp;').replace(/</g,'&lt;');},
     confirmModal(message,callback){calls.confirmation={message,callback};},
     showToast(message){calls.toasts.push(message);},
-    saveData(){calls.saved++;},astrTelRenderDutyAdmin(){},astrTelRenderGrid(){},rAccueil(){}
+    saveData(){calls.saved++;},astrTelRenderGrid(){},rAccueil(){}
   };
   vm.createContext(context);
   vm.runInContext(section(source),context);
@@ -75,6 +76,9 @@ for(const [label,source] of [['module',moduleSource],['application assemblée',a
     assert.equal(resumed.start,relief.end);
     assert.equal(resumed.end,new Date('2026-10-25T18:00').toISOString());
     assert.equal(resumed.createdBy,'admin');
+    assert.equal(relief._relief.original.end,new Date('2026-10-25T18:00').toISOString());
+    assert.match(h.elements['astrtel-duty-admin'].innerHTML,/Relève : Lhernout Nicolas → Leriche Valéry/);
+    assert.match(h.elements['astrtel-duty-admin'].innerHTML,/Planification initiale/);
     assert.equal(activeLogin(h,'2026-10-23T13:44'),'nicolas');
     assert.equal(activeLogin(h,'2026-10-23T13:45'),'valery');
     assert.equal(activeLogin(h,'2026-10-23T21:15'),'nicolas');
@@ -85,6 +89,20 @@ for(const [label,source] of [['module',moduleSource],['application assemblée',a
     assert.equal(data(h)['nicolas_2026_9'][25],18);
   });
 }
+
+test('la relève déjà enregistrée en V70 est reconnue dans l’historique sans réécriture',()=>{
+  const h=harness();
+  save(h);h.calls.confirmation.callback();
+  const relief=duties(h).find(d=>d.login==='valery');
+  delete relief._relief;
+  const before=JSON.stringify(duties(h)),saved=h.calls.saved;
+  vm.runInContext('astrTelRenderDutyAdmin()',h.context);
+  assert.match(h.elements['astrtel-duty-admin'].innerHTML,/1 relève/);
+  assert.match(h.elements['astrtel-duty-admin'].innerHTML,/Relève : Lhernout Nicolas → Leriche Valéry/);
+  assert.match(h.elements['astrtel-duty-admin'].innerHTML,/Planification initiale/);
+  assert.equal(JSON.stringify(duties(h)),before);
+  assert.equal(h.calls.saved,saved);
+});
 
 test('le changement d’heure conserve 24 h de grille par journée civile',()=>{
   const h=harness();
@@ -145,6 +163,20 @@ test('une nouvelle relève peut être ajoutée dans la période de reprise',()=>
   assert.equal(activeLogin(h,'2026-10-24T14:00'),'nicolas');
   assert.equal(data(h)['nicolas_2026_9'][24],22);
   assert.equal(data(h)['valery_2026_9'][24],2);
+});
+
+test('une relève interrompue puis reprise ne crée pas deux entrées pour la même relève',()=>{
+  const h=harness();
+  save(h);h.calls.confirmation.callback();
+  const firstRelief=duties(h).find(d=>d.login==='valery');
+  h.elements['astrtel-duty-start'].value='2026-10-23T16:00';
+  h.elements['astrtel-duty-end'].value='2026-10-23T17:00';
+  h.elements['astrtel-duty-login'].value='nicolas';
+  save(h);h.calls.confirmation.callback();
+  const valeryResumption=duties(h).find(d=>d._splitFrom===firstRelief.id);
+  assert.ok(valeryResumption);
+  assert.equal(valeryResumption._relief,undefined);
+  assert.match(h.elements['astrtel-duty-admin'].innerHTML,/2 relèves/);
 });
 
 test('plusieurs permanences chevauchées : remplacement refusé sans écriture',()=>{
