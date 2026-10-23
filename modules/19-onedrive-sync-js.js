@@ -525,26 +525,15 @@ function piquetAgentOpts(agents,exclude,includeNone){
 
   function addSection(list, sectionLabel){
     if(!list.length)return;
-    // Récupérer l'ordre des équipes selon l'astreinte de la semaine
-    const wkPlan=PLANNING_ROTATIONS[wk];
-    const planArr=!wkPlan?[]:(typeof wkPlan==='string'?[wkPlan]:(Array.isArray(wkPlan)?wkPlan:[]));
-    const eq1Id=planArr[0]||null;
-    const eq2Id=planArr[1]||null;
-
-    // Trier les équipes : astreinte forte → 2ème astreinte → autres → sans équipe
-    const orderedEquipes=[
-      ...EQUIPES.filter(function(e){return e.id===eq1Id;}),
-      ...EQUIPES.filter(function(e){return e.id===eq2Id&&e.id!==eq1Id;}),
-      ...sortEquipes(EQUIPES.filter(function(e){return e.id!==eq1Id&&e.id!==eq2Id;}))
-    ];
-
-    orderedEquipes.forEach(function(eq){
+    // Même priorité que le planning ; la disponibilité reste le premier critère.
+    planningEquipeGroups(wk).forEach(function(group){
+      const eq=group.eq;
       const m=sortByGradeThenName(list.filter(function(u){
         const ueq=getEquipeOfUser(u.l);return ueq&&ueq.id===eq.id;
       }));
       if(!m.length)return;
-      const eqLabel=eq.id===eq1Id?eq.nom+' &#x1F534;':eq.id===eq2Id?eq.nom+' &#x1F7E1;':eq.nom;
-      opts+='<optgroup label="'+sectionLabel+' \u2014 '+eqLabel+'">';
+      const type=group.tone==='forte'?'Astreinte forte':group.tone==='faible'?'Astreinte faible':'Autre équipe';
+      opts+='<optgroup label="'+escHtml(sectionLabel+' — '+type+' · '+eq.nom)+'">';
       m.forEach(function(u){opts+='<option value="'+u.l+'">'+label(u)+'</option>';});
       opts+='</optgroup>';
     });
@@ -592,6 +581,14 @@ function pqBuildMiniGrille(wk){
     return false;
   }));
   if(!agents.length)return '<div style="font-size:11px;color:var(--t2);padding:8px;background:#FEF3C7;border-radius:6px;">⚠️ Aucun agent disponible le '+escHtml(jour)+'.</div>';
+  const equipeGroups=planningEquipeGroups(wk).map(function(group){
+    return {eq:group.eq,tone:group.tone,membres:agents.filter(function(u){
+      const equipe=getEquipeOfUser(u.l);
+      return equipe&&equipe.id===group.eq.id;
+    })};
+  }).filter(function(group){return group.membres.length>0;});
+  const sansEquipe=agents.filter(function(u){return !getEquipeOfUser(u.l);});
+  if(sansEquipe.length)equipeGroups.push({eq:null,tone:'sans-equipe',membres:sansEquipe});
   const dMin=debut?timeToMin(debut):null;
   const fMin=fin?timeToMin(fin):null;
   const overnight=(dMin!==null&&fMin!==null&&fMin<=dMin);
@@ -620,18 +617,30 @@ function pqBuildMiniGrille(wk){
     h+='<div style="flex:1 0 '+_cw+'px;text-align:left;font-size:8px;color:'+(dans?'var(--t)':'#C7C7CC')+';font-weight:'+(dans?'600':'400')+';overflow:visible;white-space:nowrap;">'+(show?_hLabel(s):'')+'</div>';
   }
   h+='</div>';
-  agents.forEach(function(u){
-    const d=dispoWk[u.l]||{};
-    h+='<div style="display:flex;align-items:center;margin-bottom:3px;">';
-    h+='<div style="width:'+_lw+'px;flex-shrink:0;font-size:10px;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:4px;" title="'+escHtml(fullName(u))+'">'+escHtml(nomAbrege(u))+'</div>';
-    for(let s=0;s<slots;s++){
-      const ok=d[jourIdx+'_'+s]===true&&personnelDispoSlotAllowed(wk,u.l,jourIdx,s,gran);
-      const dans=inPlage(s);
-      // Dans la plage : couleurs franches. Hors plage : couleurs atténuées.
-      const bg=ok?(dans?'#22C55E':'#BBF0CD'):(dans?'#D1D5DB':'#F1F2F4');
-      h+='<div style="flex:1 0 '+_cw+'px;height:16px;background:'+bg+';box-sizing:border-box;border-left:1px solid #fff;"></div>';
-    }
-    h+='</div>';
+  equipeGroups.forEach(function(group){
+    const palette=group.tone==='forte'?{bg:'#FCE7F3',fg:'#9D174D',line:'#DB2777'}
+      :group.tone==='faible'?{bg:'#FEF3C7',fg:'#92400E',line:'#D97706'}
+      :{bg:'#F1F5F9',fg:'#475569',line:'#94A3B8'};
+    const equipeColor=group.eq&&/^#[0-9a-fA-F]{6}$/.test(group.eq.color||'')?group.eq.color:'#94A3B8';
+    const type=group.tone==='forte'?'Astreinte forte':group.tone==='faible'?'Astreinte faible'
+      :group.tone==='sans-equipe'?'Sans équipe':'Autre équipe';
+    const label=group.eq?type+' · '+group.eq.nom:type;
+    h+='<div style="display:flex;align-items:center;gap:5px;box-sizing:border-box;margin:6px 0 3px;padding:3px 6px;background:'+palette.bg+';color:'+palette.fg+';border-left:4px solid '+palette.line+';border-radius:4px;font-size:10px;font-weight:700;">'
+      +(group.eq?'<span style="width:9px;height:9px;flex-shrink:0;border-radius:2px;background:'+equipeColor+';"></span>':'')
+      +escHtml(label)+' ('+group.membres.length+')</div>';
+    group.membres.forEach(function(u){
+      const d=dispoWk[u.l]||{};
+      h+='<div style="display:flex;align-items:center;margin-bottom:3px;">';
+      h+='<div style="width:'+_lw+'px;box-sizing:border-box;flex-shrink:0;font-size:10px;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px;border-left:3px solid '+equipeColor+';" title="'+escHtml(fullName(u))+'">'+escHtml(nomAbrege(u))+'</div>';
+      for(let s=0;s<slots;s++){
+        const ok=d[jourIdx+'_'+s]===true&&personnelDispoSlotAllowed(wk,u.l,jourIdx,s,gran);
+        const dans=inPlage(s);
+        // Dans la plage : couleurs franches. Hors plage : couleurs atténuées.
+        const bg=ok?(dans?'#22C55E':'#BBF0CD'):(dans?'#D1D5DB':'#F1F2F4');
+        h+='<div style="flex:1 0 '+_cw+'px;height:16px;background:'+bg+';box-sizing:border-box;border-left:1px solid #fff;"></div>';
+      }
+      h+='</div>';
+    });
   });
   h+='</div></div></div>';
   return h;
