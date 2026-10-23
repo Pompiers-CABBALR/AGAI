@@ -18367,7 +18367,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0070';
+const APP_VERSION='V202610_0071';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -26825,6 +26825,44 @@ function astrTelTemporaryReliefSource(overlaps,id,startMs,endMs){
   const source=overlaps[0];
   return astrTelDutyTime(source.start)<startMs&&endMs<astrTelDutyTime(source.end)?source:null;
 }
+function astrTelDutyOwnerName(duty){
+  if(!duty)return'—';
+  if(duty.mode==='forward'){
+    const station=astrTelDutyStation(duty);
+    return'Renvoi vers '+(station?station.nom:'une autre UT');
+  }
+  const user=astrTelDutyUser(duty);
+  return user?fullNameAff(user):(duty.login||'Agent non trouvé');
+}
+function astrTelLastContinuationEnd(duty,list){
+  let current=duty;const seen=new Set();
+  while(current&&!seen.has(current.id)){
+    seen.add(current.id);
+    const next=list.find(function(item){return item&&!item._deleted&&item._splitFrom===current.id&&!seen.has(item.id);});
+    if(!next)break;
+    current=next;
+  }
+  return current&&current.end;
+}
+function astrTelReliefHistory(duty,list){
+  if(!duty)return null;
+  const saved=duty._relief;
+  if(saved&&saved.original){
+    return{original:saved.original,plannedEnd:saved.original.end,changedBy:saved.changedBy||duty.createdBy||''};
+  }
+  // Les relèves enregistrées avant le marquage explicite sont reconnaissables
+  // par les deux morceaux de la permanence initiale et leurs bornes jointives.
+  const matches=list.filter(function(resumed){
+    if(!resumed||resumed._deleted||!resumed._splitFrom||astrTelDutyTime(resumed.start)!==astrTelDutyTime(duty.end))return false;
+    const source=list.find(function(item){return item&&item.id===resumed._splitFrom;});
+    return source&&!source._deleted&&astrTelDutyTime(source.end)===astrTelDutyTime(duty.start)
+      &&source.mode===resumed.mode&&source.login===resumed.login&&source.targetCaserneId===resumed.targetCaserneId;
+  });
+  if(matches.length!==1)return null;
+  const resumed=matches[0],source=list.find(function(item){return item&&item.id===resumed._splitFrom;});
+  return{original:{mode:source.mode,login:source.login,targetCaserneId:source.targetCaserneId,start:source.start},
+    plannedEnd:astrTelLastContinuationEnd(resumed,list),changedBy:duty.createdBy||duty.updatedBy||''};
+}
 function astrTelSaveDuty(){
   if(!hasAdministrativeAccount()){showToast('Gestion réservée aux administrateurs.','warn');return;}
   const list=astrTelGetDuties(),id=document.getElementById('astrtel-duty-id').value||'',mode=document.getElementById('astrtel-duty-mode').value;
@@ -26851,9 +26889,11 @@ function astrTelSaveDuty(){
       showToast('Le formulaire a changé. Vérifiez les horaires avant de recommencer.','warn');return;
     }
     try{
+      let reliefAudit=null;
       if(existing)astrTelRemoveDutyHours(existing);
       shorten.forEach(function(item){astrTelRemoveDutyHours(item);item.end=start.toISOString();item.updatedAt=Date.now();item.updatedBy=CU.l;astrTelApplyDutyHours(item);});
       if(reliefSource){
+        const original={mode:reliefSource.mode,login:reliefSource.login,targetCaserneId:reliefSource.targetCaserneId,start:reliefSource.start,end:reliefSource.end};
         const originalEnd=reliefSource.end,changedAt=Date.now();
         astrTelRemoveDutyHours(reliefSource);
         reliefSource.end=start.toISOString();reliefSource.updatedAt=changedAt;reliefSource.updatedBy=CU.l;
@@ -26863,12 +26903,16 @@ function astrTelSaveDuty(){
           start:end.toISOString(),end:originalEnd,createdAt:changedAt,createdBy:CU.l,
           updatedAt:changedAt,updatedBy:CU.l,_splitFrom:reliefSource.id,_hoursApplied:[]
         });
+        // Une reprise prolonge la période, mais ne constitue pas une seconde relève.
+        delete resumed._relief;
         astrTelApplyDutyHours(resumed);resumed._hoursSourceOfTruth=true;list.push(resumed);
+        reliefAudit={sourceId:reliefSource.id,resumedId:resumed.id,original:original,changedAt:changedAt,changedBy:CU.l};
       }
       const duty=existing||{id:'ASTTEL_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),createdAt:Date.now(),createdBy:CU.l};
       duty.mode=mode;duty.login=login;duty.targetCaserneId=targetCaserneId;duty.start=start.toISOString();duty.end=end.toISOString();duty.updatedAt=Date.now();duty.updatedBy=CU.l;
       astrTelApplyDutyHours(duty);
       duty._hoursSourceOfTruth=true;
+      if(reliefAudit)duty._relief=reliefAudit;
       if(!existing)list.push(duty);
     }catch(error){
       CD().astrTelData=JSON.parse(dataSnapshot);CD().astrTelDuties=JSON.parse(listSnapshot);
@@ -26903,7 +26947,8 @@ function astrTelRenderDutyAdmin(){
   const activeText=astrTelDutyLabel(active),activeColor=active?(active.mode==='forward'?'#7C3AED':'#047857'):'#9A3412';
   const users=[...(USERS||[])].sort(function(a,b){return fullNameAff(a).localeCompare(fullNameAff(b),'fr');});
   const stations=OP_CASERNES().filter(function(station){return station.id!==CURRENT_CASERNE_ID;});
-  const recent=astrTelGetDuties().slice().sort(function(a,b){return astrTelDutyTime(b.start)-astrTelDutyTime(a.start);}).slice(0,12);
+  const periods=astrTelGetDuties().filter(function(duty){return duty&&!duty._deleted;}).slice().sort(function(a,b){return astrTelDutyTime(b.start)-astrTelDutyTime(a.start);});
+  const reliefCount=periods.filter(function(duty){return!!astrTelReliefHistory(duty,periods);}).length;
   let html='<div class="panel" style="border-left:4px solid '+activeColor+';"><div class="panel-title" style="margin-bottom:6px;">📞 Portable d’astreinte</div>'
     +'<div style="font-size:13px;font-weight:700;color:'+activeColor+';margin-bottom:'+(canManage?'12':'0')+';">'+escHtml(activeText)+'</div>';
   if(canManage){
@@ -26916,9 +26961,14 @@ function astrTelRenderDutyAdmin(){
       +'<div class="fg" style="margin:0;"><div class="fgl">DÉBUT *</div><input class="fi" type="datetime-local" id="astrtel-duty-start"></div>'
       +'<div class="fg" style="margin:0;"><div class="fgl">FIN *</div><input class="fi" type="datetime-local" id="astrtel-duty-end"></div></div>'
       +'<div class="brow" style="margin-top:8px;"><button class="btn pr" id="astrtel-duty-save" onclick="astrTelSaveDuty()">💾 Enregistrer</button><button class="btn" onclick="astrTelResetDutyForm()">Effacer</button></div></div>';
-    if(recent.length){
-      html+='<details><summary style="cursor:pointer;font-size:12px;font-weight:700;color:var(--t2);">Historique et périodes prévues ('+recent.length+')</summary><div style="margin-top:7px;display:flex;flex-direction:column;gap:5px;">'
-        +recent.map(function(duty){return'<div style="display:flex;align-items:center;gap:7px;padding:7px 8px;border:1px solid var(--brd);border-radius:8px;font-size:11px;flex-wrap:wrap;"><span style="font-weight:700;">'+escHtml(astrTelDutyLabel(duty).replace(/ jusqu’au .*/,''))+'</span><span style="color:var(--t2);">'+escHtml(astrTelDutyDateLabel(duty.start))+' → '+escHtml(astrTelDutyDateLabel(duty.end))+'</span><span style="margin-left:auto;color:var(--t3);">'+escHtml(duty.updatedBy||'')+'</span><button class="btn sm" onclick="astrTelEditDuty(\''+duty.id+'\')">✏️</button><button class="btn sm danger" onclick="astrTelDeleteDuty(\''+duty.id+'\')">✕</button></div>';}).join('')+'</div></details>';
+    if(periods.length){
+      html+='<details><summary style="cursor:pointer;font-size:12px;font-weight:700;color:var(--t2);">Historique et périodes prévues ('+periods.length+')'+(reliefCount?' · '+reliefCount+' relève'+(reliefCount>1?'s':''):'')+'</summary><div style="margin-top:7px;display:flex;flex-direction:column;gap:5px;">'
+        +periods.map(function(duty){
+          const relief=astrTelReliefHistory(duty,periods);
+          const title=relief?'🔁 Relève : '+astrTelDutyOwnerName(relief.original)+' → '+astrTelDutyOwnerName(duty):astrTelDutyLabel(duty).replace(/ jusqu’au .*/,''),
+            planned=relief?'<span style="flex-basis:100%;color:var(--t2);">Planification initiale : '+escHtml(astrTelDutyOwnerName(relief.original))+' · '+escHtml(astrTelDutyDateLabel(relief.original.start))+' → '+escHtml(astrTelDutyDateLabel(relief.plannedEnd))+' ; reprise après la relève.</span>':'';
+          return'<div style="display:flex;align-items:center;gap:7px;padding:7px 8px;border:1px solid var(--brd);border-radius:8px;font-size:11px;flex-wrap:wrap;"><span style="font-weight:700;">'+escHtml(title)+'</span><span style="color:var(--t2);">'+escHtml(astrTelDutyDateLabel(duty.start))+' → '+escHtml(astrTelDutyDateLabel(duty.end))+'</span><span style="margin-left:auto;color:var(--t3);">'+escHtml(relief?relief.changedBy:(duty.updatedBy||''))+'</span>'+planned+'<button class="btn sm" onclick="astrTelEditDuty(\''+duty.id+'\')">✏️</button><button class="btn sm danger" onclick="astrTelDeleteDuty(\''+duty.id+'\')">✕</button></div>';
+        }).join('')+'</div></details>';
     }
   }
   el.innerHTML=html+'</div>';

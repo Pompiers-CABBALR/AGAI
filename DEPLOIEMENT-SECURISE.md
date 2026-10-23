@@ -1,5 +1,20 @@
 # AGAI — déploiement sécurisé
 
+## V202610_0071 — relève explicite dans l'historique du portable
+
+« Historique et périodes prévues » affiche toutes les périodes enregistrées,
+sans limiter la liste aux douze dernières. Une relève temporaire est nommée
+explicitement (« titulaire initial → remplaçant »), avec ses heures, la
+planification initiale et la reprise. La relève du 23/10 enregistrée en V70
+est reconnue grâce aux deux périodes jointives, en lecture seule et sans
+réécriture des données existantes. Les prochaines relèves conservent en plus
+une copie des bornes de la planification initiale dans la fiche de relève.
+
+Le correctif ne crée ni ne modifie aucune permanence à sa publication.
+Avant publication, confirmer l'absence d'intervention ou de saisie en cours
+et « Sync OK » sur les appareils utilisés. Après publication, ouvrir la
+rubrique d'historique et vérifier la ligne de relève et la période de reprise.
+
 ## V202610_0070 — heures de grille au passage à l'heure d'hiver
 
 Le calcul des heures d'astreinte téléphonique suit désormais les heures de
