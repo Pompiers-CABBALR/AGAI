@@ -30,6 +30,8 @@ const context={
   getEquipeOfUser:()=>undefined,
   isSuperAdmin:()=>true,isDispoValidated:()=>false,
   personnelDispoSlotAllowed:()=>true,
+  personnelPlanningWeekContext:()=>({}),personnelPlanningSlotState:()=>null,
+  personnelPlanningSlotRange:()=>({start:0,end:1}),personnelPlanningLegendHTML:()=>'',escHtml:String,
   dispoDayLabel:(_,day)=>'jour '+day,
   slotToLabelDay:(_,slot)=>'heure '+slot,
   fullName:user=>user.prenom+' '+user.nom,
@@ -54,3 +56,4 @@ assert.match(authorization,/saveAutorisationData\(_sigCurrentIvId\)/);
 assert.match(css,/\.mov\.autorisation-modal-overlay/);
 assert.match(css,/\.aut-large-signature-pad canvas\{[^}]*touch-action:none/);
 console.log('Availability without a team and mobile signature controls: OK');
+

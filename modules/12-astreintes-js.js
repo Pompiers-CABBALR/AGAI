@@ -200,6 +200,7 @@ function rAstrPlanning(){
   if(astrPlanningNowTimer){clearTimeout(astrPlanningNowTimer);astrPlanningNowTimer=null;}
   const mon=getMondayOfWeek(astrPlanningWeek);
   const wk=weekKey(mon);
+  const availabilityContext=personnelPlanningWeekContext(wk);
   document.getElementById('astr-week-label').textContent=weekLabel(mon);
   const now=new Date();
   const todayStr=getDS(now);
@@ -266,6 +267,7 @@ function rAstrPlanning(){
     <span style="font-size:11px;color:var(--t2);margin-left:8px;">&#x1F7E1; 2\u00e8me astreinte :</span> ${badge2}
     ${validBadge}
   </div>`;
+  html+=personnelPlanningLegendHTML();
 
   if(dlPassed&&!validated&&!canValid&&!isRespEquipe()){
     html+='<div style="padding:24px;text-align:center;font-size:13px;color:#854F0B;background:#FAEEDA;border-radius:10px;">&#x23F3; Les disponibilit\u00e9s sont en attente de validation.</div>';
@@ -366,6 +368,7 @@ function rAstrPlanning(){
 
     // Comptes par rôle
     const roleCounts={};
+    const dayAvailability=new Map();
     ROLE_KEYS.forEach(function(r){roleCounts[r]=new Array(nbSlots).fill(0);});
 
     // Lignes agents
@@ -373,8 +376,13 @@ function rAstrPlanning(){
       const login=u.l;
       const uGran=dispoGranularityFor(login);
       const roleKey=getRoleKey(u);
+      const slotStates=Array.from({length:nbSlots},function(_,slot){
+        const range=personnelPlanningSlotRange(wk,di,startHour*60+slot*gran,gran);
+        return personnelPlanningSlotState(login,range.start,range.end,availabilityContext);
+      });
+      dayAvailability.set(login,slotStates);
 
-      html+=`<tr>`;
+      html+=`<tr${slotStates.every(function(state){return state&&state.kind==='absence';})?' class="astr-personnel-unavailable-row"':''}>`;
       html+=`<td style="padding:3px 8px;border-bottom:0.5px solid #f0f0f0;border-right:1px solid var(--brd);position:sticky;left:0;background:#fff;white-space:nowrap;border-left:3px solid ${eqColor};font-size:11px;font-weight:500;">${gradeAbbr(u.grade)} ${u.nom} ${u.prenom}</td>`;
       const displayFonction=(u.fonction==='Chef de centre'||u.fonction==='Adjoint au chef de centre')&&u.fonction2?ROLE_LABELS[fonctionToRole(u.fonction2)]||u.fonction2:ROLE_LABELS[roleKey]||roleKey;
       html+=`<td class="astr-fct-col" title="${escHtml(displayFonction)}" style="padding:3px 3px;border-bottom:0.5px solid #f0f0f0;border-right:1px solid var(--brd);font-size:9px;color:var(--t2);white-space:nowrap;text-align:center;">${displayFonction}</td>`;
@@ -396,7 +404,8 @@ function rAstrPlanning(){
         const dispoDay=Math.floor(absFromStore/1440)%7;
         const dispoIdx=Math.floor((absFromStore%1440)/uGran);
         const dispoKey=dispoDay+'_'+dispoIdx;
-        const lifecycleAllowed=personnelDispoSlotAllowed(wk,login,dispoDay,dispoIdx,uGran);
+        const unavailable=slotStates[s];
+        const lifecycleAllowed=!unavailable;
         const isDispo=lifecycleAllowed&&DISPOS[wk]?.[login]?.[dispoKey]===true;
 
         // Piquet sur ce créneau ? — minutes absolues depuis lundi 00h00
@@ -423,7 +432,10 @@ function rAstrPlanning(){
           });
         });
 
-        if(isDispo){
+        if(unavailable){
+          const unavailableClass=unavailable.kind==='formation'?'astr-formation':'astr-personnel-unavailable';
+          html+=`<td class="${unavailableClass}${s===currentSlotIndex?' astr-current-slot':''}" title="${escHtml(unavailable.label)}" style="padding:0;border-bottom:0.5px solid #f0f0f0;border-right:0.5px solid #e5e7eb;font-size:9px;">${unavailable.code}</td>`;
+        } else if(isDispo){
           roleCounts[roleKey][s]++;
           if(hasPiquet){
             // Disponible ET en piquet : fond vert clair + croix couleur équipe
@@ -454,6 +466,7 @@ function rAstrPlanning(){
       const login=u.l;
       const roleKey=getRoleKey(u);
       for(let s=0;s<nbSlots;s++){
+        if((dayAvailability.get(login)||[])[s])continue;
         const slotRawMinX=startHour*60+s*gran;
         const slotAbsMinX=slotRawMinX%1440;
         const slotDayOffX=Math.floor(slotRawMinX/1440);
@@ -833,21 +846,66 @@ function dispoDayLabel(wk,dayIdx,full){
   start.setDate(start.getDate()+Number(dayIdx||0));
   return jourLabel(dayIdx,!!full)+' '+pad(start.getDate())+'/'+pad(start.getMonth()+1);
 }
-function personnelDispoSlotAllowed(wk,login,dayIdx,slotIdx,granularity){
-  if(!PERSONNEL_ONLINE_GATE)return true;
-  const user=personnelCurrentRecord(login);
-  if(!user)return false;
+function personnelPlanningSlotRange(wk,dayIdx,minute,duration){
   const key=String(wk||'');
-  if(!/^\d{8}$/.test(key)||!Number.isInteger(dayIdx)||dayIdx<0||dayIdx>6
-    ||!Number.isInteger(slotIdx)||slotIdx<0||!Number.isFinite(granularity)||granularity<=0)return false;
+  if(!/^\d{8}$/.test(key)||!Number.isInteger(dayIdx)||!Number.isFinite(minute)||!Number.isFinite(duration)||duration<=0)return null;
   const start=new Date(Number(key.slice(0,4)),Number(key.slice(4,6))-1,Number(key.slice(6,8)));
-  if(Number.isNaN(start.getTime()))return false;
+  if(Number.isNaN(start.getTime()))return null;
   start.setDate(start.getDate()+dayIdx);
-  start.setMinutes((ASTR_CONFIG.weekStartHour??0)*60+slotIdx*granularity);
+  start.setMinutes(minute);
   const end=new Date(start);
-  end.setMinutes(end.getMinutes()+granularity);
-  end.setMilliseconds(end.getMilliseconds()-1);
-  return personnelCanOperateForPeriod(user,personnelLocalDate(start),personnelLocalDate(end));
+  end.setMinutes(end.getMinutes()+duration);
+  return {start:start.getTime(),end:end.getTime()};
+}
+function personnelPlanningWeekContext(wk){
+  const context={training:new Map(),dates:new Map(),lifecycle:new Map(),users:new Map()};
+  const range=personnelPlanningSlotRange(wk,0,0,8*1440);if(!range)return context;
+  personnelScheduleRecords().forEach(function(source){
+    if(!['FMPA','Formation','Formation formateur'].includes(source.kind))return;
+    const windows=personnelScheduleWindows(source.kind,source.record,range.start,range.end);
+    if(!windows.length)return;
+    const title=source.record.titre||source.record.theme||source.kind;
+    personnelScheduleLogins(source.kind,source.record).forEach(function(login){
+      if(!context.training.has(login))context.training.set(login,[]);
+      windows.forEach(function(window){context.training.get(login).push({start:window.start,end:window.end,label:'En formation — '+title});});
+    });
+  });
+  return context;
+}
+function personnelPlanningSlotState(login,start,end,context){
+  const day=function(stamp){
+    if(!context.dates.has(stamp))context.dates.set(stamp,personnelLocalDate(new Date(stamp)));
+    return context.dates.get(stamp);
+  };
+  const from=day(start),through=day(end-1),key=login+'|'+from+'|'+through;
+  if(!context.users.has(login))context.users.set(login,personnelCurrentRecord(login));
+  if(!context.lifecycle.has(key)){
+    const user=context.users.get(login);
+    context.lifecycle.set(key,!!user&&!personnelCanOperateForPeriod(user,from,through));
+  }
+  if(context.lifecycle.get(key))return {kind:'absence',code:'—',label:'Indisponible — situation du personnel'};
+  const training=(context.training.get(login)||[]).find(function(window){return start<window.end&&end>window.start;});
+  return training?{kind:'formation',code:'FOR',label:training.label}:null;
+}
+function personnelPlanningLegendHTML(){
+  return '<div class="astr-availability-legend"><span><span class="astr-personnel-unavailable">—</span> Indisponibilité du personnel</span><span><span class="astr-formation">FOR</span> Formation / FMPA</span></div>';
+}
+function personnelPlanningCheckContext(wk){
+  // Partager les calculs d'une même action, sans conserver un état entre deux mises à jour.
+  if(!personnelPlanningCheckContext.cache){
+    personnelPlanningCheckContext.cache=new Map();
+    Promise.resolve().then(function(){personnelPlanningCheckContext.cache=null;});
+  }
+  const contexts=personnelPlanningCheckContext.cache;
+  if(!contexts.has(wk))contexts.set(wk,personnelPlanningWeekContext(wk));
+  return contexts.get(wk);
+}
+function personnelDispoSlotAllowed(wk,login,dayIdx,slotIdx,granularity,context){
+  if(!Number.isInteger(dayIdx)||dayIdx<0||dayIdx>6||!Number.isInteger(slotIdx)||slotIdx<0)return false;
+  const range=personnelPlanningSlotRange(wk,dayIdx,(ASTR_CONFIG.weekStartHour??0)*60+slotIdx*granularity,granularity);
+  if(!range)return false;
+  if(PERSONNEL_ONLINE_GATE&&!personnelCurrentRecord(login))return false;
+  return !personnelPlanningSlotState(login,range.start,range.end,context||personnelPlanningCheckContext(wk));
 }
 function personnelDispoKeyAllowed(wk,login,key,granularity){
   const match=/^(\d+)_(\d+)$/.exec(String(key||''));
@@ -868,7 +926,8 @@ function personnelPiquetMemberAllowed(wk,login,jour,debut,fin){
   end.setMilliseconds(end.getMilliseconds()-1);
   return personnelCanOperateForPeriod(user,personnelLocalDate(start),personnelLocalDate(end));
 }
-function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWeek,myEq){
+function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWeek,myEq,availabilityContext){
+  const availability=availabilityContext||personnelPlanningWeekContext(wk);
   const u=USERS.find(x=>x.l===login)||{prenom:login,nom:''};
   const eq=getEquipeOfUser(login)||(myEq&&myEq.membres&&myEq.membres.includes(login)?myEq:null);
   const agGran=dispoGranularityFor(login);
@@ -896,6 +955,7 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
   if(!DISPOS[wk][login])DISPOS[wk][login]={};
   let h='';
   h+='<div style="margin-bottom:16px;padding:10px;background:#fff;border-radius:10px;border:1px solid var(--brd);box-sizing:border-box;max-width:100%;">';
+  h+=personnelPlanningLegendHTML();
   // En-tête bloc agent
   const pendingReq=isMe&&(DISPO_REQUESTS[wk]||[]).find(function(r){return r.login===login&&r.statut==='en-attente';});
   h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">'
@@ -959,17 +1019,19 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
     h+='<div style="display:flex;align-items:center;margin-bottom:3px;"><div style="width:'+_lw+'px;flex-shrink:0;font-size:11px;font-weight:600;color:var(--t);white-space:nowrap;">'+dispoDayLabel(wk,d,false)+'</div>';
     for(let s=0;s<slotsD;s++){
       const key=d+'_'+s;
-      const allowed=personnelDispoSlotAllowed(wk,login,d,s,agGran);
+      const range=personnelPlanningSlotRange(wk,d,(ASTR_CONFIG.weekStartHour??0)*60+s*agGran,agGran);
+      const unavailable=personnelPlanningSlotState(login,range.start,range.end,availability);
+      const allowed=!unavailable&&personnelDispoSlotAllowed(wk,login,d,s,agGran,availability);
       const val=allowed?DISPOS[wk][login][key]:false;
       const isDispo=val===true,isIndispo=val===false;
       const bg=isDispo?'#22C55E':isIndispo?'#EF4444':'#E5E7EB';
       const cursor=canEdit&&allowed?'pointer':'default';
       const oc=canEdit&&allowed?'toggleDispoCell(\''+wk+'\',\''+login+'\','+d+','+s+',this,\''+(eq?eq.color:'#22C55E')+'\')':'';
       const dragVal=isDispo?'true':isIndispo?'false':'null';
-      h+='<div class="dispo-cell" style="flex:0 0 '+_cw+'px;width:'+_cw+'px;box-sizing:border-box;height:28px;background:'+bg+';cursor:'+cursor+';transition:background .1s;border-radius:3px;border:1px solid #fff;user-select:none;"'
-        +' title="'+(allowed?dispoDayLabel(wk,d,true)+' '+slotToLabelDay(d,s,agGran):'Indisponible durant la situation du personnel')+'"'
+      h+='<div class="dispo-cell'+(unavailable?(unavailable.kind==='formation'?' astr-formation':' astr-personnel-unavailable'):'')+'" style="display:flex;align-items:center;justify-content:center;font-size:9px;flex:0 0 '+_cw+'px;width:'+_cw+'px;box-sizing:border-box;height:28px;background:'+bg+';cursor:'+cursor+';transition:background .1s;border-radius:3px;border:1px solid #fff;user-select:none;"'
+        +' title="'+escHtml(dispoDayLabel(wk,d,true)+' '+slotToLabelDay(d,s,agGran)+(unavailable?' — '+unavailable.label:allowed?'':' — Indisponible durant la situation du personnel'))+'"'
         +' data-wk="'+wk+'" data-login="'+login+'" data-d="'+d+'" data-s="'+s+'" data-val="'+dragVal+'" data-personnel-allowed="'+(allowed?'true':'false')+'" data-can-edit="'+(canEdit&&allowed?'true':'false')+'"'
-        +(oc?' onclick="'+oc+'"':'')+'></div>';
+        +(oc?' onclick="'+oc+'"':'')+'>'+(unavailable?unavailable.code:'')+'</div>';
     }
     h+='</div>';
   }
@@ -1047,7 +1109,7 @@ function rAstrDispo(){
   } else if(pastDeadline&&isNextWeek){
     infoEl.innerHTML='<span style="color:#E24B4A;">&#x26A0; Deadline ('+dlLabel+') d\u00e9pass\u00e9e.'+(isResp||isAdmin?' Vous pouvez toujours modifier.':' Contactez votre responsable.')+'</span>';
   } else {
-    infoEl.innerHTML='Non renseignés = gris. Après sélection : disponible = vert, indisponible = rouge. Le gris revient uniquement avec « Tout effacer ». <strong>Deadline\u00a0: '+dlLabel+'.</strong>';
+    infoEl.innerHTML='Non renseignés = gris clair. Disponible = vert, indisponible = rouge. Une indisponibilité du personnel est grisée avec « — » ; une formation est hachurée avec « FOR ». <strong>Deadline\u00a0: '+dlLabel+'.</strong>';
   }
 
   // Panneau demandes de modification en attente (resp/admin seulement)
@@ -1126,9 +1188,10 @@ function rAstrDispo(){
   const loginsKnown=loginsList.filter(l=>USERS.find(u=>u.l===l));
   const loginsUnknown=loginsList.filter(l=>!USERS.find(u=>u.l===l));
   const loginsListFinal=[...loginsUnknown,...sortByGradeThenName(loginsKnown.map(l=>USERS.find(u=>u.l===l))).map(u=>u.l)];
+  const availabilityContext=personnelPlanningWeekContext(wk);
   let html='';
   loginsListFinal.forEach(function(login){
-    html+=renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWeek,myEq);
+    html+=renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWeek,myEq,availabilityContext);
   });
 
   if(!loginsList.length) html='<div style="padding:20px;text-align:center;font-size:13px;color:var(--t2);">Aucun agent à afficher.</div>';
@@ -1338,11 +1401,14 @@ function setAllDispoFor(wk,login,val,eqColor,allowClear){
   const gran=dispoGranularityFor(login);
   const slots=getSlotsPerDay(gran);
   const changedKeys=[];
+  const availabilityContext=personnelPlanningWeekContext(wk);
   for(let d=0;d<7;d++)for(let s=0;s<slots;s++){
+    if(!personnelDispoSlotAllowed(wk,login,d,s,gran,availabilityContext))continue;
     const key=`${d}_${s}`;changedKeys.push(key);
     if(val===null)delete DISPOS[wk][login][key];
-    else DISPOS[wk][login][key]=val===true&&!personnelDispoSlotAllowed(wk,login,d,s,gran)?false:val;
+    else DISPOS[wk][login][key]=val;
   }
+  if(!changedKeys.length){showToast('Aucun créneau modifiable pour cet agent sur cette semaine.','info');return;}
   markDispoSlotsChanged(wk,login,changedKeys);
   saveData();rAstrDispo();
 }
