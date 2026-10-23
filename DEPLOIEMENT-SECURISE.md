@@ -1,5 +1,21 @@
 # AGAI — déploiement sécurisé
 
+## V202610_0065 — équipes dans la saisie des créneaux
+
+La mini-grille « Disponibilités du jour » du formulaire de créneau affiche
+les agents disponibles par astreinte forte, astreinte faible, autres équipes,
+puis sans équipe. Les bandeaux rose et jaune-orangé reprennent le planning,
+avec un petit repère de la couleur propre à chaque équipe. Les cases vertes
+et grises gardent leur signification actuelle. La liste de choix des agents
+utilise les mêmes intitulés d'équipe, tout en plaçant les disponibles avant
+les autres. Aucune disponibilité, aucun piquet ni donnée serveur ne change.
+
+Cette version reprend V202610_0064. Avant publication, confirmer qu'aucune
+intervention ni saisie n'est en cours et que les appareils utilisés affichent
+« Sync OK ». Après publication, vérifier l'ordre sur une semaine avec deux
+équipes d'astreinte et au moins un agent sans équipe, sans créer de piquet
+pour le seul contrôle.
+
 ## V202610_0064 — ordre du planning et couleur des équipes
 
 Le planning affiche d'abord l'équipe en astreinte forte (repère rose), puis
