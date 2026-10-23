@@ -18367,7 +18367,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0069';
+const APP_VERSION='V202610_0070';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -26752,7 +26752,11 @@ function astrTelDutyAllocations(duty){
   const allocations=[];let cursor=start,guard=0;
   while(cursor<end&&guard++<370){
     const current=new Date(cursor),next=new Date(current);next.setHours(24,0,0,0);
-    const segmentEnd=Math.min(end,next.getTime()),hours=Math.round(((segmentEnd-cursor)/3600000)*60)/60;
+    const segmentEnd=Math.min(end,next.getTime());
+    // La grille attribue les heures d'horloge locale : le changement d'heure
+    // ne doit pas transformer le 25/10 en une journée de 25 h attribuées.
+    const wallMinutes=(segmentEnd-cursor)/60000+current.getTimezoneOffset()-new Date(segmentEnd).getTimezoneOffset();
+    const hours=Math.round(wallMinutes)/60;
     if(hours>0)allocations.push({y:current.getFullYear(),m:current.getMonth(),d:current.getDate(),h:hours});
     cursor=segmentEnd;
   }
