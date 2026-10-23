@@ -861,7 +861,7 @@ function personnelPlanningWeekContext(wk){
   const context={training:new Map(),dates:new Map(),lifecycle:new Map(),users:new Map()};
   const range=personnelPlanningSlotRange(wk,0,0,8*1440);if(!range)return context;
   personnelScheduleRecords().forEach(function(source){
-    if(!['FMPA','Formation','Formation formateur'].includes(source.kind))return;
+    if(!['Formation','Formation formateur'].includes(source.kind))return;
     const windows=personnelScheduleWindows(source.kind,source.record,range.start,range.end);
     if(!windows.length)return;
     const title=source.record.titre||source.record.theme||source.kind;
@@ -888,7 +888,7 @@ function personnelPlanningSlotState(login,start,end,context){
   return training?{kind:'formation',code:'FOR',label:training.label}:null;
 }
 function personnelPlanningLegendHTML(){
-  return '<div class="astr-availability-legend"><span><span class="astr-personnel-unavailable">—</span> Indisponibilité du personnel</span><span><span class="astr-formation">FOR</span> Formation / FMPA</span></div>';
+  return '<div class="astr-availability-legend"><span><span class="astr-personnel-unavailable">—</span> Indisponibilité du personnel</span><span><span class="astr-formation">FOR</span> Formation</span></div>';
 }
 function personnelPlanningCheckContext(wk){
   // Partager les calculs d'une même action, sans conserver un état entre deux mises à jour.

@@ -39,7 +39,7 @@ function harness(){
   load(c,read(bundleMode?'app.js':'modules/16-email-js.js'),'hhmmToMinutes');
   load(c,read(bundleMode?'app.js':'modules/14-stats-js.js'),'getJoursFeries');
   const schedule=read(bundleMode?'app.js':'modules/09-pilp-js.js');
-  for(const name of ['personnelScheduleDay','personnelScheduleRecords','formationCalendarDays','formationTrainingDays','formationUnavailableWindow','personnelScheduleWindows','personnelScheduleLogins'])load(c,schedule,name);
+  for(const name of ['personnelScheduleDay','personnelScheduleRecords','formationCalendarDays','formationTrainingDays','formationUnavailableWindow','personnelScheduleWindows','personnelScheduleLogins','findPersonnelScheduleConflict'])load(c,schedule,name);
   for(const name of ['weekKey','validDispoGranularity','dispoGranularityFor','getSlotsPerDay','getSlotsForDay','jourLabel','slotToLabelDay','dispoDayLabel','personnelPlanningSlotRange','personnelPlanningWeekContext','personnelPlanningSlotState','personnelPlanningLegendHTML','personnelPlanningCheckContext','personnelDispoSlotAllowed','renderDispoAgentBlock','rAstrPlanning','setAllDispoFor'])load(c,planning,name);
   c.timeToMin=c.hhmmToMinutes;
   const context=()=>c.personnelPlanningWeekContext(wk);
@@ -62,10 +62,17 @@ test('formation : participants indisponibles du début à la fin, y compris la p
   assert.equal(h.state('bob',0,840).kind,'formation');assert.equal(h.state('bob',0,1020),null);
   assert.equal(h.state('bob',1,600),null);
 });
-test('FMPA : participants et formateurs, passage à minuit et chevauchement partiel',()=>{
+test('FMPA : participants et formateurs restent disponibles, même sur un créneau de nuit',()=>{
   const h=harness();h.data.fmpas.push({id:'f',date:'2026-10-19',theme:'FMPA nuit',hDebut:'22:30',hFin:'01:00',participants:['bob'],formateurs:['alice']});
-  assert.equal(h.state('bob',0,1320,15),null);assert.equal(h.state('alice',0,1335,60).code,'FOR');
-  assert.equal(h.state('bob',1,0).code,'FOR');assert.equal(h.state('bob',1,60),null);
+  assert.equal(h.state('bob',0,1320,15),null);assert.equal(h.state('alice',0,1335,60),null);
+  assert.equal(h.state('bob',1,0),null);assert.equal(h.state('bob',1,60),null);
+  assert.equal(h.c.personnelDispoSlotAllowed(h.wk,'bob',0,23,60),true);
+  assert.equal(h.c.personnelDispoSlotAllowed(h.wk,'alice',0,23,60),true);
+  const start=new Date(2026,9,19,22,45).getTime(),end=new Date(2026,9,19,23).getTime();
+  assert.equal(h.c.findPersonnelScheduleConflict(['alice','bob'],start,end),null);
+  h.data.formStag.push(h.form({hmatind:'22:00',hmatinf:'23:00',hapremd:'',hapremf:''}));
+  assert.equal(h.c.findPersonnelScheduleConflict(['bob'],start,end).kind,'Formation');
+  assert.doesNotMatch(h.c.personnelPlanningLegendHTML(),/FMPA/);
 });
 test('formations de formateurs sur plusieurs jours et anciens horaires incomplets',()=>{
   const h=harness();h.data.formForm.push(h.form({dfin:'2026-10-21'}));

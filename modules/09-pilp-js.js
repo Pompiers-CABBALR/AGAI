@@ -740,6 +740,7 @@ function findPersonnelScheduleConflict(logins,start,end,exclude){
   const wanted=new Set((logins||[]).filter(Boolean));if(!wanted.size)return null;
   const matches=[];
   for(const source of personnelScheduleRecords()){
+    if(source.kind==='FMPA')continue;
     if(exclude&&source.kind===exclude.kind&&source.record.id===exclude.id&&source.caserneId===exclude.caserneId)continue;
     const relevant=personnelScheduleLogins(source.kind,source.record).filter(function(login){return wanted.has(login);});
     if(!relevant.length)continue;

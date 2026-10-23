@@ -10061,6 +10061,7 @@ function findPersonnelScheduleConflict(logins,start,end,exclude){
   const wanted=new Set((logins||[]).filter(Boolean));if(!wanted.size)return null;
   const matches=[];
   for(const source of personnelScheduleRecords()){
+    if(source.kind==='FMPA')continue;
     if(exclude&&source.kind===exclude.kind&&source.record.id===exclude.id&&source.caserneId===exclude.caserneId)continue;
     const relevant=personnelScheduleLogins(source.kind,source.record).filter(function(login){return wanted.has(login);});
     if(!relevant.length)continue;
@@ -12215,7 +12216,7 @@ function personnelPlanningWeekContext(wk){
   const context={training:new Map(),dates:new Map(),lifecycle:new Map(),users:new Map()};
   const range=personnelPlanningSlotRange(wk,0,0,8*1440);if(!range)return context;
   personnelScheduleRecords().forEach(function(source){
-    if(!['FMPA','Formation','Formation formateur'].includes(source.kind))return;
+    if(!['Formation','Formation formateur'].includes(source.kind))return;
     const windows=personnelScheduleWindows(source.kind,source.record,range.start,range.end);
     if(!windows.length)return;
     const title=source.record.titre||source.record.theme||source.kind;
@@ -12242,7 +12243,7 @@ function personnelPlanningSlotState(login,start,end,context){
   return training?{kind:'formation',code:'FOR',label:training.label}:null;
 }
 function personnelPlanningLegendHTML(){
-  return '<div class="astr-availability-legend"><span><span class="astr-personnel-unavailable">—</span> Indisponibilité du personnel</span><span><span class="astr-formation">FOR</span> Formation / FMPA</span></div>';
+  return '<div class="astr-availability-legend"><span><span class="astr-personnel-unavailable">—</span> Indisponibilité du personnel</span><span><span class="astr-formation">FOR</span> Formation</span></div>';
 }
 function personnelPlanningCheckContext(wk){
   // Partager les calculs d'une même action, sans conserver un état entre deux mises à jour.
@@ -18319,7 +18320,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0062';
+const APP_VERSION='V202610_0063';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
