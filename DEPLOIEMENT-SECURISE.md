@@ -1,5 +1,22 @@
 # AGAI — déploiement sécurisé
 
+## V202610_0070 — heures de grille au passage à l'heure d'hiver
+
+Le calcul des heures d'astreinte téléphonique suit désormais les heures de
+la grille locale lors des changements d'heure. Le dimanche 25/10/2026,
+Nicolas jusqu'à 18:00 représente 18 h sur la grille et Valéry à partir de
+18:00 représente 6 h, soit 24 h attribuées, même si l'horloge réelle recule
+d'une heure. Le changement d'heure de printemps suit la même règle.
+
+Cette correction permet la relève temporaire du 23/10 sans modifier les
+périodes enregistrées ni recalculer automatiquement les anciennes fiches.
+Les tests couvrent la copie existante (19 h dans l'ancienne fiche, 18 h dans
+la grille), les deux périodes jointives du 25/10 et la reprise automatique.
+
+Avant publication, confirmer l'absence d'intervention ou de saisie en cours
+et « Sync OK » sur les appareils utilisés. Après publication, vérifier la
+version et laisser l'administrateur confirmer lui-même la relève dans AGAI.
+
 ## V202610_0069 — relève temporaire de l'astreinte téléphonique
 
 Lorsqu'une nouvelle permanence est entièrement incluse dans une seule

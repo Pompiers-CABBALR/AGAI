@@ -171,7 +171,11 @@ function astrTelDutyAllocations(duty){
   const allocations=[];let cursor=start,guard=0;
   while(cursor<end&&guard++<370){
     const current=new Date(cursor),next=new Date(current);next.setHours(24,0,0,0);
-    const segmentEnd=Math.min(end,next.getTime()),hours=Math.round(((segmentEnd-cursor)/3600000)*60)/60;
+    const segmentEnd=Math.min(end,next.getTime());
+    // La grille attribue les heures d'horloge locale : le changement d'heure
+    // ne doit pas transformer le 25/10 en une journée de 25 h attribuées.
+    const wallMinutes=(segmentEnd-cursor)/60000+current.getTimezoneOffset()-new Date(segmentEnd).getTimezoneOffset();
+    const hours=Math.round(wallMinutes)/60;
     if(hours>0)allocations.push({y:current.getFullYear(),m:current.getMonth(),d:current.getDate(),h:hours});
     cursor=segmentEnd;
   }

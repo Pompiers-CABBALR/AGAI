@@ -82,9 +82,42 @@ for(const [label,source] of [['module',moduleSource],['application assemblée',a
     assert.equal(data(h)['nicolas_2026_9'][23],16.5);
     assert.equal(data(h)['valery_2026_9'][23],7.5);
     assert.equal(data(h)['nicolas_2026_9'][24],24);
-    assert.equal(data(h)['nicolas_2026_9'][25],19);
+    assert.equal(data(h)['nicolas_2026_9'][25],18);
   });
 }
+
+test('le changement d’heure conserve 24 h de grille par journée civile',()=>{
+  const h=harness();
+  for(const day of ['2026-03-29','2026-10-25']){
+    const start=new Date(day+'T00:00'),end=new Date(start);end.setDate(end.getDate()+1);
+    h.context.sampleDuty={mode:'person',login:'nicolas',start:start.toISOString(),end:end.toISOString()};
+    const allocations=vm.runInContext('astrTelDutyAllocations(sampleDuty)',h.context);
+    assert.equal(allocations.length,1);
+    assert.equal(allocations[0].h,24,day);
+  }
+});
+
+test('la relève du 23/10 est enregistrée malgré la jonction du 25/10 à l’heure d’hiver',()=>{
+  const h=harness();
+  const old=duties(h)[0];
+  // Copie déjà enregistrée avant le correctif : 19 h physiques dans la fiche,
+  // mais 18 h sur la grille, puis 6 h attribuées à Valéry dès 18:00.
+  old._hoursApplied.find(part=>part.y===2026&&part.m===9&&part.d===25).h=19;
+  data(h)['nicolas_2026_9'][25]=18;
+  duties(h).push({id:'valery-suivant',mode:'person',login:'valery',
+    start:new Date('2026-10-25T18:00').toISOString(),end:new Date('2026-11-08T18:00').toISOString(),
+    _hoursSourceOfTruth:true,_hoursApplied:[{y:2026,m:9,d:25,h:6}]});
+  data(h)['valery_2026_9']={25:6};
+  save(h);
+  assert.ok(h.calls.confirmation);
+  h.calls.confirmation.callback();
+  assert.equal(h.calls.saved,1);
+  assert.equal(data(h)['nicolas_2026_9'][25],18);
+  assert.equal(data(h)['valery_2026_9'][25],6);
+  assert.equal(duties(h).length,4);
+  assert.equal(activeLogin(h,'2026-10-25T17:59'),'nicolas');
+  assert.equal(activeLogin(h,'2026-10-25T18:00'),'valery');
+});
 
 test('annulation ou données modifiées pendant la confirmation : aucune écriture',()=>{
   const h=harness(),before=JSON.stringify(data(h));
