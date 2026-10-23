@@ -1591,6 +1591,9 @@ function rAstrPiquets(){
     html+='<div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#166534;">&#x2705; Piquets et disponibilités validés pour cette semaine. Contactez un administrateur pour toute modification.</div>';
   }
   html+='<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:11px;color:#1D4ED8;">Les rangs « 1er départ », « 2e départ » désignent les équipages du piquet. Le camion réellement utilisé est choisi au premier départ de la tournée.</div>';
+  if(canAdd&&(ASTR_CONFIG.engins||[]).some(function(e){return /^VTU\b/i.test(String(e));})){
+    html+='<button type="button" class="btn sm" style="margin-bottom:10px;background:#059669;color:#fff;border-color:#059669;" onclick="openPiquetWeekly(\''+wk+'\')">💡 Préparer la semaine VTU</button>';
+  }
 
   // Afficher avertissement si deadline piquet passee
   if(pastDeadlinePiquet&&!isAdmin){
@@ -1686,11 +1689,13 @@ function rAstrPiquets(){
             });
           });
           const del=canAdd?'<button class="btn sm" style="font-size:10px;padding:1px 5px;color:#E24B4A;margin-top:2px;" onclick="delPiquet(\''+wk+'\','+globalIdx+')">&times;</button>':'';
+          const incomplete=!p.chefAgres||!p.conducteur;
+          const warning=incomplete?'<div style="font-size:10px;font-weight:700;color:#9A3412;background:#FFEDD5;border-radius:4px;padding:3px;margin:3px 0;">À compléter — départ non garanti</div>':'';
           const edit=canAdd?'<button class="btn sm" style="font-size:10px;padding:1px 5px;margin-top:2px;margin-right:2px;" onclick="editPiquet(\''+wk+'\','+globalIdx+')">&#x270F;</button>':'';
           const dragAttrs=canAdd?' draggable="true" ondragstart="piquetDragStart(event,\''+wk+'\','+globalIdx+')" style="background:'+bg+';color:'+fg+';border-radius:5px;padding:4px 7px;margin-bottom:3px;cursor:grab;"':' style="background:'+bg+';color:'+fg+';border-radius:5px;padding:4px 7px;margin-bottom:3px;"';
           return '<div'+dragAttrs+'>'
             +'<div style="font-size:10px;font-weight:500;opacity:.8;margin-bottom:2px;">'+p.debut+'&ndash;'+p.fin+'</div>'
-            +crew+'<div>'+edit+del+'</div></div>';
+            +crew+warning+'<div>'+edit+del+'</div></div>';
         }).join('');
       }
 
@@ -1955,8 +1960,11 @@ function validerPiquets(){
   if(astrPiquetWeek<0){showToast('Impossible de modifier une semaine passée','warn');return;}
   const mon=getMondayOfWeek(astrPiquetWeek);
   const wk=weekKey(mon);
+  const incomplete=(PIQUETS[wk]||[]).filter(function(p){return !p.chefAgres||!p.conducteur;}).length;
+  if(incomplete){showToast(incomplete+' piquet(s) à compléter : chef et conducteur requis avant validation.','warn');return;}
   confirmModal(
-    'Valider les piquets ET les disponibilités de la semaine '+weekLabel(mon)+'. Après validation, les chefs d\'équipe ne pourront plus modifier.',
+    'Valider les piquets ET les disponibilités de la semaine '+weekLabel(mon)+'. '
+      +'Après validation, les chefs d\'équipe ne pourront plus modifier.',
     function(){
       // Valider piquets
       PIQUETS_VALIDATED[wk]=true;
