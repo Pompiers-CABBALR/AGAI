@@ -1,5 +1,18 @@
 # AGAI — déploiement sécurisé
 
+## V202610_0072 — grille d'astreinte téléphonique adaptative
+
+Le tableau mensuel suit maintenant immédiatement la largeur du panneau quand
+la fenêtre de l'ordinateur est réduite ou agrandie. Les colonnes des jours
+s'étirent avec l'espace disponible ; un défilement horizontal n'apparaît que
+si la largeur minimale lisible n'est plus atteinte. Sur téléphone, les
+colonnes et les deux repères fixes gardent leur taille tactile. Cette mise à
+jour ne modifie ni périodes, ni heures, ni historique de relève.
+
+Avant publication, confirmer l'absence d'intervention ou de saisie en cours
+et « Sync OK » sur les appareils utilisés. Après publication, ouvrir le
+tableau mensuel puis réduire et agrandir la fenêtre sans actualiser la page.
+
 ## V202610_0071 — relève explicite dans l'historique du portable
 
 « Historique et périodes prévues » affiche toutes les périodes enregistrées,
