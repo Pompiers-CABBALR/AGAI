@@ -1,5 +1,19 @@
 # AGAI — déploiement sécurisé
 
+## V202610_0068 — disponibilités adaptatives à la largeur de la fenêtre
+
+Les grilles de disponibilités n'enregistrent plus une largeur en pixels au
+chargement. Leurs colonnes s'étirent ou se resserrent automatiquement quand
+la fenêtre d'ordinateur change de taille, sans actualiser AGAI et sans perdre
+une saisie en cours. Sous la largeur minimale lisible, chaque grille défile
+horizontalement. Le contenu, les couleurs et les règles de saisie restent
+inchangés. Aucun changement de schéma ni de données serveur.
+
+Avant publication, confirmer l'absence d'intervention ou de saisie en cours
+et « Sync OK » sur les appareils utilisés. Après publication, vérifier les
+sous-menus « Mes disponibilités », « Mon équipe » et « Autres équipes » en
+réduisant puis en agrandissant la fenêtre, sans recharger la page.
+
 ## V202610_0067 — priorité du chef d’agrès dans un VTU
 
 Quand plusieurs agents qualifiés chef d’agrès sont disponibles dans le

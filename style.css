@@ -591,6 +591,11 @@ select.fi{min-width:0;width:100%;max-width:100%;}
 @media(min-width:480px){.egrid{grid-template-columns:repeat(4,1fr);}}
 .frow{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px;}
 #astr-planning-grid{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+.dispo-scroll{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;}
+.dispo-grid-inner{width:100%;min-width:var(--dispo-min-width);box-sizing:border-box;}
+@media(hover:none) and (pointer:coarse){
+  .dispo-grid-inner{min-width:var(--dispo-touch-min-width);}
+}
 #astr-planning-grid .astr-fct-col{width:38px;min-width:38px;max-width:38px;box-sizing:border-box;overflow:hidden;text-overflow:ellipsis;}
 #astr-planning-grid .astr-slot-col{min-width:var(--astr-slot-width,30px)!important;}
 .astr-personnel-unavailable{background:#D1D5DB!important;color:#4B5563!important;text-align:center;font-weight:700;}
@@ -959,8 +964,6 @@ button,.btn,.nb,.subtab-btn,.smopt,.fb,.ec,.ivr,[onclick]{
   .app{height:auto;min-height:100vh;overflow-y:visible;}
   .cnt,.sec.active{overflow-y:visible;}
   .mod{overscroll-behavior-y:auto;}
-  .dispo-scroll{overflow-x:hidden!important;scrollbar-width:none;}
-  .dispo-scroll::-webkit-scrollbar{display:none;}
 }
 @media(hover:none) and (pointer:coarse){
   html,body{
