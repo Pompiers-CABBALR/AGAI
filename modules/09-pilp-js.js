@@ -664,10 +664,42 @@ function personnelScheduleRecords(){
   });
   return rows;
 }
+function formationCalendarDays(record){
+  const valid=function(value){const parsed=new Date(String(value||'')+'T00:00:00Z');return /^\d{4}-\d{2}-\d{2}$/.test(value||'')&&Number.isFinite(parsed.getTime())&&parsed.toISOString().slice(0,10)===value;};
+  if(!valid(record.ddebut)||!valid(record.dfin)||record.dfin<record.ddebut)return [];
+  const first=new Date(record.ddebut+'T12:00:00'),last=new Date(record.dfin+'T12:00:00');
+  if((last-first)/86400000>3660)return [];
+  const selected=Array.isArray(record.joursFormation)?new Set(record.joursFormation):null,holidays=new Map(),days=[];
+  for(const day=new Date(first);day<=last;day.setDate(day.getDate()+1)){
+    const year=day.getFullYear(),date=year+'-'+String(day.getMonth()+1).padStart(2,'0')+'-'+String(day.getDate()).padStart(2,'0');
+    if(!holidays.has(year))holidays.set(year,getJoursFeries(year));
+    const holiday=holidays.get(year).has(date),weekday=day.getDay(),working=weekday!==0&&weekday!==6&&!holiday;
+    days.push({date:date,weekday:weekday,holiday:holiday,working:working,selected:selected?selected.has(date):working});
+  }
+  return days;
+}
+function formationTrainingDays(record){
+  return formationCalendarDays(record).filter(function(day){return day.selected;}).map(function(day){return day.date;});
+}
+function formationUnavailableWindow(record){
+  const days=formationTrainingDays(record);if(!days.length)return null;
+  const slots=[[record.hmatind,record.hmatinf],[record.hapremd,record.hapremf]];
+  const complete=slots.filter(function(slot){return slot[0]||slot[1];});
+  const precise=complete.length&&complete.every(function(slot){const from=hhmmToMinutes(slot[0]),to=hhmmToMinutes(slot[1]);return from!==null&&to!==null&&to>from;});
+  const first=new Date(days[0]+'T00:00:00'),last=new Date(days[days.length-1]+'T00:00:00');
+  const from=precise?Math.min(...complete.map(function(slot){return hhmmToMinutes(slot[0]);})):0;
+  const through=precise?Math.max(...complete.map(function(slot){return hhmmToMinutes(slot[1]);})):1440;
+  first.setMinutes(from);last.setMinutes(through);
+  return {start:first.getTime(),end:last.getTime(),imprecise:!precise};
+}
 function personnelScheduleWindows(kind,record,rangeStart,rangeEnd){
   const formation=kind==='Formation'||kind==='Formation formateur';
-  let first=personnelScheduleDay(formation?record.ddebut:record.date);
-  let last=personnelScheduleDay(formation?record.dfin||record.ddebut:record.date);
+  if(formation){
+    const window=formationUnavailableWindow(record);
+    return window&&(!Number.isFinite(rangeStart)||window.end>rangeStart)&&(!Number.isFinite(rangeEnd)||window.start<rangeEnd)?[window]:[];
+  }
+  let first=personnelScheduleDay(record.date);
+  let last=first;
   if(!Number.isFinite(first)||!Number.isFinite(last)||last<first)return [];
   if(Number.isFinite(rangeStart)){
     const near=new Date(rangeStart);near.setHours(0,0,0,0);near.setDate(near.getDate()-1);
@@ -677,13 +709,12 @@ function personnelScheduleWindows(kind,record,rangeStart,rangeEnd){
     const near=new Date(rangeEnd);near.setHours(0,0,0,0);near.setDate(near.getDate()+1);
     last=Math.min(last,near.getTime());
   }
-  const slots=formation?[[record.hmatind,record.hmatinf],[record.hapremd,record.hapremf]]:[[record.hDebut,record.hFin]];
-  const incomplete=formation&&(!slots.some(function(pair){return pair[0]&&pair[1];})||slots.some(function(pair){return !!pair[0]!==!!pair[1];}));
+  const slots=[[record.hDebut,record.hFin]];
   const windows=[];
   let cursor=new Date(first),days=0;
   while(cursor.getTime()<=last&&days<730){
     const day=cursor.getTime();
-    const parts=incomplete?[[null,null]]:slots.filter(function(pair){return pair[0]&&pair[1];});
+    const parts=slots.filter(function(pair){return pair[0]&&pair[1];});
     if(!parts.length)parts.push([null,null]);
     parts.forEach(function(pair){
       const from=hhmmToMinutes(pair[0]),to=hhmmToMinutes(pair[1]);

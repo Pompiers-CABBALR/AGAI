@@ -9985,10 +9985,42 @@ function personnelScheduleRecords(){
   });
   return rows;
 }
+function formationCalendarDays(record){
+  const valid=function(value){const parsed=new Date(String(value||'')+'T00:00:00Z');return /^\d{4}-\d{2}-\d{2}$/.test(value||'')&&Number.isFinite(parsed.getTime())&&parsed.toISOString().slice(0,10)===value;};
+  if(!valid(record.ddebut)||!valid(record.dfin)||record.dfin<record.ddebut)return [];
+  const first=new Date(record.ddebut+'T12:00:00'),last=new Date(record.dfin+'T12:00:00');
+  if((last-first)/86400000>3660)return [];
+  const selected=Array.isArray(record.joursFormation)?new Set(record.joursFormation):null,holidays=new Map(),days=[];
+  for(const day=new Date(first);day<=last;day.setDate(day.getDate()+1)){
+    const year=day.getFullYear(),date=year+'-'+String(day.getMonth()+1).padStart(2,'0')+'-'+String(day.getDate()).padStart(2,'0');
+    if(!holidays.has(year))holidays.set(year,getJoursFeries(year));
+    const holiday=holidays.get(year).has(date),weekday=day.getDay(),working=weekday!==0&&weekday!==6&&!holiday;
+    days.push({date:date,weekday:weekday,holiday:holiday,working:working,selected:selected?selected.has(date):working});
+  }
+  return days;
+}
+function formationTrainingDays(record){
+  return formationCalendarDays(record).filter(function(day){return day.selected;}).map(function(day){return day.date;});
+}
+function formationUnavailableWindow(record){
+  const days=formationTrainingDays(record);if(!days.length)return null;
+  const slots=[[record.hmatind,record.hmatinf],[record.hapremd,record.hapremf]];
+  const complete=slots.filter(function(slot){return slot[0]||slot[1];});
+  const precise=complete.length&&complete.every(function(slot){const from=hhmmToMinutes(slot[0]),to=hhmmToMinutes(slot[1]);return from!==null&&to!==null&&to>from;});
+  const first=new Date(days[0]+'T00:00:00'),last=new Date(days[days.length-1]+'T00:00:00');
+  const from=precise?Math.min(...complete.map(function(slot){return hhmmToMinutes(slot[0]);})):0;
+  const through=precise?Math.max(...complete.map(function(slot){return hhmmToMinutes(slot[1]);})):1440;
+  first.setMinutes(from);last.setMinutes(through);
+  return {start:first.getTime(),end:last.getTime(),imprecise:!precise};
+}
 function personnelScheduleWindows(kind,record,rangeStart,rangeEnd){
   const formation=kind==='Formation'||kind==='Formation formateur';
-  let first=personnelScheduleDay(formation?record.ddebut:record.date);
-  let last=personnelScheduleDay(formation?record.dfin||record.ddebut:record.date);
+  if(formation){
+    const window=formationUnavailableWindow(record);
+    return window&&(!Number.isFinite(rangeStart)||window.end>rangeStart)&&(!Number.isFinite(rangeEnd)||window.start<rangeEnd)?[window]:[];
+  }
+  let first=personnelScheduleDay(record.date);
+  let last=first;
   if(!Number.isFinite(first)||!Number.isFinite(last)||last<first)return [];
   if(Number.isFinite(rangeStart)){
     const near=new Date(rangeStart);near.setHours(0,0,0,0);near.setDate(near.getDate()-1);
@@ -9998,13 +10030,12 @@ function personnelScheduleWindows(kind,record,rangeStart,rangeEnd){
     const near=new Date(rangeEnd);near.setHours(0,0,0,0);near.setDate(near.getDate()+1);
     last=Math.min(last,near.getTime());
   }
-  const slots=formation?[[record.hmatind,record.hmatinf],[record.hapremd,record.hapremf]]:[[record.hDebut,record.hFin]];
-  const incomplete=formation&&(!slots.some(function(pair){return pair[0]&&pair[1];})||slots.some(function(pair){return !!pair[0]!==!!pair[1];}));
+  const slots=[[record.hDebut,record.hFin]];
   const windows=[];
   let cursor=new Date(first),days=0;
   while(cursor.getTime()<=last&&days<730){
     const day=cursor.getTime();
-    const parts=incomplete?[[null,null]]:slots.filter(function(pair){return pair[0]&&pair[1];});
+    const parts=slots.filter(function(pair){return pair[0]&&pair[1];});
     if(!parts.length)parts.push([null,null]);
     parts.forEach(function(pair){
       const from=hhmmToMinutes(pair[0]),to=hhmmToMinutes(pair[1]);
@@ -16861,11 +16892,9 @@ function rStatsIndemnites(){
     (list||[]).forEach(function(f){
       if(!f.ddebut||!f.dfin)return;
       const dayMinutes=formSlotMins(f.hmatind,f.hmatinf)+formSlotMins(f.hapremd,f.hapremf);if(!dayMinutes)return;
-      const start=new Date(f.ddebut+'T12:00:00'),end=new Date(f.dfin+'T12:00:00');
-      for(let day=new Date(start);day<=end;day.setDate(day.getDate()+1)){
-        const date=day.getFullYear()+'-'+String(day.getMonth()+1).padStart(2,'0')+'-'+String(day.getDate()).padStart(2,'0');
+      formationTrainingDays(f).forEach(function(date){
         (f.participants||[]).forEach(function(login){add(login,key,dayMinutes,date,percentage);});
-      }
+      });
     });
   }
   addFormationDays(formStagGetData(),'formation',rates.formStag);
@@ -18117,7 +18146,7 @@ function adminExportFormationRegisterRow(f,nature,rapport,taux){
   const debut=f.hmatind||f.hapremd||'',fin=f.hapremf||f.hmatinf||'';
   return adminExportRegisterRow({
     4:adminExportDateIso(f.ddebut),5:rapport,6:taux+'%',
-    7:adminExportDuration(f.htotal,'',''),11:nature,
+    7:adminExportDuration(formMinsToStr(formMinsTotal(f)),'',''),11:nature,
     13:f.lieu||'',16:debut,19:fin
   },adminExportPeople(f.participants));
 }
@@ -18290,7 +18319,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0061';
+const APP_VERSION='V202610_0062';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -25628,6 +25657,30 @@ function formSlotMins(hd,hf){
 }
 function formMinsToHStr(mins){return dureeMinutesHHMM(mins);}
 
+let _formationDayChoices={};
+function formResetTrainingDays(pfx,record){
+  _formationDayChoices[pfx]={};
+  if(record&&Array.isArray(record.joursFormation))formationCalendarDays(record).forEach(function(day){_formationDayChoices[pfx][day.date]=day.selected;});
+}
+function formSelectedTrainingDays(pfx,record){
+  const choices=_formationDayChoices[pfx]||{};
+  return formationCalendarDays(record).filter(function(day){return Object.prototype.hasOwnProperty.call(choices,day.date)?choices[day.date]:day.selected;}).map(function(day){return day.date;});
+}
+function formChooseTrainingDay(pfx,date,checked){
+  if(!_formationDayChoices[pfx])_formationDayChoices[pfx]={};
+  _formationDayChoices[pfx][date]=!!checked;
+  formCalcDuree(pfx);
+}
+function formRenderTrainingDays(pfx,record){
+  const host=document.getElementById('f'+pfx+'-days');if(!host)return;
+  const days=formationCalendarDays(record),selected=new Set(formSelectedTrainingDays(pfx,record));
+  host.innerHTML='<div class="fgl">Jours comptés dans les heures</div><p style="font-size:12px;color:var(--t2);margin:5px 0;">Jours ouvrés cochés par défaut, hors jours fériés. Cochez une journée exceptionnelle si nécessaire, par exemple un samedi. L’indisponibilité reste continue du début du premier jour retenu à la fin du dernier, nuits et jours intermédiaires compris.</p>'
+    +(days.length?'<div style="display:flex;flex-wrap:wrap;gap:6px;max-height:220px;overflow:auto;">'+days.map(function(day){
+      const label=new Date(day.date+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'2-digit',month:'2-digit'});
+      return '<label style="display:flex;align-items:center;gap:4px;padding:6px;border:1px solid var(--brd);border-radius:6px;'+(!day.working?'background:#FFF7ED;':'')+'"><input type="checkbox" data-formation-day="'+day.date+'"'+(selected.has(day.date)?' checked':'')+' onchange="formChooseTrainingDay(\''+pfx+'\',\''+day.date+'\',this.checked)"><span>'+escHtml(label)+(day.holiday?' (férié)':'')+'</span></label>';
+    }).join('')+'</div>':'<div style="font-size:12px;color:var(--t2);">Renseignez une période de dates valide (dix ans maximum).</div>');
+}
+
 // ── Calcul durée (matin + après-midi, multi-jours) ──
 function formCalcDuree(pfx){
   const dd=document.getElementById('f'+pfx+'-ddebut')?.value;
@@ -25639,10 +25692,12 @@ function formCalcDuree(pfx){
   const elJour=document.getElementById('f'+pfx+'-hjour');
   const elTotal=document.getElementById('f'+pfx+'-htotal');
   if(!elJour||!elTotal)return;
+  const record={ddebut:dd,dfin:df};
+  formRenderTrainingDays(pfx,record);
   if(!dd||!df){elJour.value='';elTotal.value='';return;}
   const d1=new Date(dd+'T00:00:00'),d2=new Date(df+'T00:00:00');
   if(d2<d1){elJour.value='\u26a0 Dates invalides';elTotal.value='';return;}
-  const nbJours=Math.round((d2-d1)/(1000*60*60*24))+1;
+  const nbJours=formSelectedTrainingDays(pfx,record).length;
   const minsMatin=formSlotMins(hmd,hmf);
   const minsAprem=formSlotMins(had,haf);
   const minsJour=minsMatin+minsAprem;
@@ -25654,9 +25709,7 @@ function formCalcDuree(pfx){
 }
 
 function formMinsTotal(f){
-  if(!f.ddebut||!f.dfin)return 0;
-  const d1=new Date(f.ddebut+'T00:00:00'),d2=new Date(f.dfin+'T00:00:00');
-  const nbJ=Math.max(1,Math.round((d2-d1)/(1000*60*60*24))+1);
+  const nbJ=formationTrainingDays(f).length;
   const minsMatin=formSlotMins(f.hmatind,f.hmatinf);
   const minsAprem=formSlotMins(f.hapremd,f.hapremf);
   return (minsMatin+minsAprem)*nbJ;
@@ -25705,6 +25758,8 @@ function formStagToggleForm(){
   panel.style.display=open?'block':'none';
   if(btn){btn.style.display=open?'none':'';btn.textContent='+ Nouvelle formation';}
   if(open){
+    formResetTrainingDays('stag');
+    const days=document.getElementById('fstag-days');if(days)days.innerHTML='';
     ['fstag-titre','fstag-ref','fstag-lieu','fstag-ddebut','fstag-dfin','fstag-hmatin-d','fstag-hmatin-f','fstag-haprem-d','fstag-haprem-f','fstag-hjour','fstag-htotal'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
     formLoadAgents('fstag-participants',[],'var(--blu)');
     panel.scrollIntoView({behavior:'smooth',block:'start'});
@@ -25717,6 +25772,8 @@ function formFormToggleForm(){
   panel.style.display=open?'block':'none';
   if(btn){btn.style.display=open?'none':'';btn.textContent='+ Nouvelle formation';}
   if(open){
+    formResetTrainingDays('form');
+    const days=document.getElementById('fform-days');if(days)days.innerHTML='';
     ['fform-titre','fform-ref','fform-lieu','fform-ddebut','fform-dfin','fform-hmatin-d','fform-hmatin-f','fform-haprem-d','fform-haprem-f','fform-hjour','fform-htotal'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
     formLoadFormateurs('fform-participants',[]);
     panel.scrollIntoView({behavior:'smooth',block:'start'});
@@ -25894,8 +25951,6 @@ function _saveFormEntry(pfx,idPrefix,getDataFn,toggleFn,listFn,recapFn){
   const hmatinf=document.getElementById(pfx+'-hmatin-f')?.value;
   const hapremd=document.getElementById(pfx+'-haprem-d')?.value;
   const hapremf=document.getElementById(pfx+'-haprem-f')?.value;
-  const hjour=document.getElementById(pfx+'-hjour')?.value||'';
-  const htotal=document.getElementById(pfx+'-htotal')?.value||'';
   const err=document.getElementById(pfx+'-err');
   err.style.display='none';
   if(!titre||!ddebut||!dfin){err.style.display='block';err.textContent='Intitulé, date début et date fin sont obligatoires.';return;}
@@ -25910,13 +25965,16 @@ function _saveFormEntry(pfx,idPrefix,getDataFn,toggleFn,listFn,recapFn){
   const unavailable=personnelUnavailableForPeriod(participants,ddebut,dfin);
   if(unavailable){err.style.display='block';err.textContent=personnelScheduleName(unavailable.login)+' ne peut pas être inscrit à cette formation pendant son indisponibilité.';return;}
   const proposed={ddebut:ddebut,dfin:dfin,hmatind:hmatind,hmatinf:hmatinf,hapremd:hapremd,hapremf:hapremf,participants:participants};
+  proposed.joursFormation=formSelectedTrainingDays(pfx.slice(1),proposed);
+  if(!proposed.joursFormation.length){err.style.display='block';err.textContent='Cochez au moins une journée de formation dans une période valide (dix ans maximum).';return;}
   const hoursError=personnelFormationHoursError(proposed);
   if(hoursError){err.style.display='block';err.textContent=hoursError;return;}
   const kind=pfx==='fform'?'Formation formateur':'Formation';
   const interventionConflict=findInterventionConflictForSchedule(kind,proposed);
   if(interventionConflict){err.style.display='block';err.textContent=personnelScheduleConflictMessage(interventionConflict,'Cette formation');return;}
   const id=idPrefix+'_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
-  getDataFn().push({id,titre,ref,lieu,ddebut,dfin,hmatind,hmatinf,hapremd,hapremf,hjour,htotal,participants,auteur:CU?CU.l:'',ts:Date.now()});
+  const hjour=formMinsToStr(formSlotMins(hmatind,hmatinf)+formSlotMins(hapremd,hapremf)),htotal=formMinsToStr(formMinsTotal(proposed));
+  getDataFn().push({id,titre,ref,lieu,ddebut,dfin,hmatind,hmatinf,hapremd,hapremf,hjour,htotal,joursFormation:proposed.joursFormation,participants,auteur:CU?CU.l:'',ts:Date.now()});
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true); // push immédiat : sinon risque d'écrasement au prochain pull
   toggleFn();
@@ -25928,10 +25986,10 @@ function saveFormForm(){_saveFormEntry('fform','FFORM',formFormGetData,formFormT
 
 // ── Correction d'une formation existante par un administrateur actif ──
 let _formationEditContext=null;
-const FORMATION_EDIT_FIELDS=['titre','ref','lieu','ddebut','dfin','hmatind','hmatinf','hapremd','hapremf','participants'];
+const FORMATION_EDIT_FIELDS=['titre','ref','lieu','ddebut','dfin','hmatind','hmatinf','hapremd','hapremf','participants','joursFormation'];
 function formationEditSnapshot(entry){
   const snapshot={};
-  FORMATION_EDIT_FIELDS.forEach(function(key){snapshot[key]=key==='participants'?[...(entry[key]||[])].sort():entry[key]||'';});
+  FORMATION_EDIT_FIELDS.forEach(function(key){snapshot[key]=key==='joursFormation'?formationTrainingDays(entry):key==='participants'?[...(entry[key]||[])].sort():entry[key]||'';});
   return JSON.stringify(snapshot);
 }
 function formationHistoryHTML(entry){
@@ -25960,6 +26018,7 @@ function formEditEntry(type,id){
   const entry=(type==='stag'?formStagGetData():formFormGetData()).find(function(item){return item.id===id;});
   if(!entry)return;
   _formationEditContext={type:type,id:id,station:CURRENT_CASERNE_ID,snapshot:formationEditSnapshot(entry)};
+  formResetTrainingDays('edit',entry);
   document.getElementById('mt').textContent=type==='stag'?'Modifier la formation':'Modifier la formation des formateurs';
   document.getElementById('mi').textContent=entry.titre||'';
   const field=function(label,id,value,inputType){return '<div class="fg"><label class="fgl" for="'+id+'">'+label+'</label><input class="fi" id="'+id+'" type="'+(inputType||'text')+'" value="'+escHtml(value||'')+'"'+(inputType==='date'||inputType==='time'?' oninput="formCalcDuree(\'edit\')"':'')+'></div>';};
@@ -25968,6 +26027,7 @@ function formEditEntry(type,id){
     +field('Date de début','fedit-ddebut',entry.ddebut,'date')+field('Date de fin','fedit-dfin',entry.dfin,'date')
     +field('Matin : début','fedit-hmatin-d',entry.hmatind,'time')+field('Matin : fin','fedit-hmatin-f',entry.hmatinf,'time')
     +field('Après-midi : début','fedit-haprem-d',entry.hapremd,'time')+field('Après-midi : fin','fedit-haprem-f',entry.hapremf,'time')+'</div>'
+    +'<div class="fg" id="fedit-days"></div>'
     +'<div class="fg"><label class="fgl">Heures par jour</label><input class="fi" id="fedit-hjour" readonly></div>'
     +'<div class="fg"><label class="fgl">Total</label><input class="fi" id="fedit-htotal" readonly></div>'
     +'<div class="fgl">'+(type==='form'?'Formateurs':'Participants')+'</div><div id="fedit-participants" style="max-height:220px;overflow:auto;">'+formationEditParticipantsHTML(type,entry.participants)+'</div>'
@@ -25994,6 +26054,8 @@ function formSaveEdit(type,id){
     hmatind:value('fedit-hmatin-d'),hmatinf:value('fedit-hmatin-f'),hapremd:value('fedit-haprem-d'),hapremf:value('fedit-haprem-f')};
   const validDate=function(value){const date=new Date(value+'T00:00:00Z');return /^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(date.getTime())&&date.toISOString().slice(0,10)===value;};
   if(!next.titre||!validDate(next.ddebut)||!validDate(next.dfin)||next.dfin<next.ddebut){fail('Renseignez un intitulé et une période de dates valide.');return;}
+  next.joursFormation=formSelectedTrainingDays('edit',next);
+  if(!next.joursFormation.length){fail('Cochez au moins une journée de formation dans une période valide (dix ans maximum).');return;}
   next.participants=[...new Set(Array.from(document.querySelectorAll('#fedit-participants input:checked')).map(function(cb){return cb.value;}))];
   const allowed=new Set((type==='form'?declaredFormateurUsers():USERS||[]).map(function(user){return user.l;}).concat(entry.participants||[]));
   if(next.participants.some(function(login){return !allowed.has(login);})){fail('La liste des participants contient une personne non autorisée pour cette formation.');return;}
@@ -26003,7 +26065,7 @@ function formSaveEdit(type,id){
   const conflict=findInterventionConflictForSchedule(type==='form'?'Formation formateur':'Formation',next);
   if(conflict){fail(personnelScheduleConflictMessage(conflict,'Cette formation'));return;}
   const before=JSON.parse(formationEditSnapshot(entry)),after=JSON.parse(formationEditSnapshot(next));
-  const labels={titre:'intitulé',ref:'référence',lieu:'lieu',ddebut:'date début',dfin:'date fin',hmatind:'début matin',hmatinf:'fin matin',hapremd:'début après-midi',hapremf:'fin après-midi',participants:type==='form'?'formateurs':'participants'};
+  const labels={titre:'intitulé',ref:'référence',lieu:'lieu',ddebut:'date début',dfin:'date fin',hmatind:'début matin',hmatinf:'fin matin',hapremd:'début après-midi',hapremf:'fin après-midi',participants:type==='form'?'formateurs':'participants',joursFormation:'jours de formation'};
   const changed=FORMATION_EDIT_FIELDS.filter(function(key){return JSON.stringify(before[key])!==JSON.stringify(after[key]);});
   if(!changed.length){showToast('Aucun changement à enregistrer.','info');return;}
   const dayMins=formSlotMins(next.hmatind,next.hmatinf)+formSlotMins(next.hapremd,next.hapremf);
@@ -26031,6 +26093,7 @@ function formVoirDetail(type,id){
   document.getElementById('mb').innerHTML=`<div>
     ${f.ref?`<div class="mr"><div class="ml">Référence</div><div class="mv2">${f.ref}</div></div>`:''}
     <div class="mr"><div class="ml">Période</div><div class="mv2">${f.ddebut}${f.dfin!==f.ddebut?' → '+f.dfin:''}</div></div>
+    <div class="mr"><div class="ml">Jours de formation</div><div class="mv2">${formationTrainingDays(f).length} jour(s) — ${formationTrainingDays(f).map(function(day){return day.slice(8,10)+'/'+day.slice(5,7);}).join(', ')}</div></div>
     ${(f.hmatind||f.hmatinf)?`<div class="mr"><div class="ml">Matin</div><div class="mv2">${f.hmatind||'—'} → ${f.hmatinf||'—'}</div></div>`:''}
     ${(f.hapremd||f.hapremf)?`<div class="mr"><div class="ml">Après-midi</div><div class="mv2">${f.hapremd||'—'} → ${f.hapremf||'—'}</div></div>`:''}
     <div class="mr"><div class="ml">Heures/jour</div><div class="mv2">${formMinsToStr(formSlotMins(f.hmatind,f.hmatinf)+formSlotMins(f.hapremd,f.hapremf))}</div></div>

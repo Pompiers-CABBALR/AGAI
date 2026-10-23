@@ -26,10 +26,11 @@ function harness(role='admin',type='stag'){
     personnelUnavailableForPeriod:()=>null,personnelScheduleName:x=>x,findInterventionConflictForSchedule:()=>null,
     personnelScheduleConflictMessage:()=> 'Conflit opérationnel',showToast:(...args)=>events.push(['toast',...args]),
     saveData:immediate=>events.push(['save',immediate]),cM:()=>events.push(['close']),
-    dureeFormatHHMM:x=>x||'',_jbEditLock:0,console,Date,Set,JSON,
+    dureeFormatHHMM:x=>x||'',pad:x=>String(x).padStart(2,'0'),_jbEditLock:0,console,Date,Set,JSON,
   };
   for(const [file,name] of [['modules/02-auth-js-partie-1-2-structure-casernes-numerotation.js','hasRight'],['modules/02-auth-js-partie-1-2-structure-casernes-numerotation.js','isSuperAdmin'],['modules/02-auth-js-partie-1-2-structure-casernes-numerotation.js','isAdminModeActive'],['modules/16-email-js.js','hhmmToMinutes'],['modules/12-astreintes-js.js','dureeMinutesHHMM'],['modules/09-pilp-js.js','personnelFormationHoursError']])vm.runInNewContext(extract(read(file),name),c);
   c.dureeHHMM=(a,b)=>c.dureeMinutesHHMM((c.hhmmToMinutes(b)-c.hhmmToMinutes(a)+1440)%1440);
+  for(const [file,name] of [['modules/14-stats-js.js','getJoursFeries'],['modules/09-pilp-js.js','formationCalendarDays'],['modules/09-pilp-js.js','formationTrainingDays']])vm.runInNewContext(extract(read(file),name),c);
   vm.runInNewContext(read('modules/20-formations-js.js'),c);
   for(const name of ['rFormStagList','rFormStagRecap','rFormFormList','rFormFormRecap','rFmpaList'])c[name]=()=>events.push([name]);
   function open(){c.formEditEntry(type,entry.id);fill();}
@@ -91,4 +92,12 @@ test('les modifications FMPA restent accessibles au superadmin et à l’admin a
     h.c.fmpaSaveEdit(h.fmpa.id);
     assert.equal(h.fmpa.theme,'Secours corrigé');assert.equal(h.fmpa.duree,'03:00');assert.equal(h.fmpa.historique.length,1);
   }
+});
+test('une correction peut ajouter un samedi et conserve ce choix à la réouverture',()=>{
+  const h=harness();h.open();h.fill({'fedit-dfin':'2026-10-24'});
+  h.c.formChooseTrainingDay('edit','2026-10-24',true);h.save();
+  assert.equal(h.entry.htotal,'24:00');assert.ok(h.entry.joursFormation.includes('2026-10-24'));
+  assert.ok(h.entry.historique[0].champs.includes('jours de formation'));
+  h.c.formEditEntry('stag',h.entry.id);
+  assert.match(h.element('fedit-days').innerHTML,/data-formation-day="2026-10-24" checked/);
 });
