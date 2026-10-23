@@ -1,5 +1,26 @@
 # AGAI — déploiement sécurisé
 
+## V202610_0069 — relève temporaire de l'astreinte téléphonique
+
+Lorsqu'une nouvelle permanence est entièrement incluse dans une seule
+période existante, une confirmation annonce les trois périodes : titulaire
+initial avant la relève, remplaçant pendant la relève, puis reprise du
+titulaire initial jusqu'à l'heure de fin prévue. Les heures sont recalculées
+sur chaque journée, y compris si la relève est saisie après son début. Aucun
+autre chevauchement n'est accepté automatiquement. Si les données changent
+avant la confirmation ou si une journée dépasse 24 heures, l'opération
+s'arrête sans sauvegarde.
+
+La relève de Nicolas par Valéry le 23/10 de 13:45 à 21:15 peut ainsi être
+enregistrée sans perdre la fin initiale du 25/10 à 18:00. Le correctif
+n'altère aucune permanence existante tant qu'un administrateur ne confirme
+pas un remplacement dans l'application.
+
+Avant publication, confirmer l'absence d'intervention ou de saisie en cours
+et « Sync OK » sur les appareils utilisés. Après publication, contrôler les
+trois périodes et leurs heures sur la grille, sans nouvelle saisie de test
+sur la production.
+
 ## V202610_0068 — disponibilités adaptatives à la largeur de la fenêtre
 
 Les grilles de disponibilités n'enregistrent plus une largeur en pixels au
