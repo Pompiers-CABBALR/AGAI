@@ -41,7 +41,7 @@ function contextFor(users,options={}){
   vm.runInContext(source,context);
   return {context,dispos};
 }
-test('aperçu VTU : 28 tranches, priorité forte initiale puis répartition sur la semaine',()=>{
+test('aperçu VTU : 28 tranches, chef d’agrès de l’astreinte forte prioritaire',()=>{
   const users=[
     {l:'ca-f',chief:true},{l:'conducteur-f'},
     {l:'ca-b',chief:true},{l:'conducteur-b'},
@@ -54,8 +54,34 @@ test('aperçu VTU : 28 tranches, priorité forte initiale puis répartition sur 
   assert.equal(draft.slice(0,4).map(s=>s.label).join(','),'Matin,Après-midi,Soir,Nuit');
   assert.equal(draft[0].chief,'ca-f');
   assert.equal(draft[0].driver,'conducteur-f');
-  assert.ok(draft.some(s=>s.chief==='ca-b'),'la faible doit être sollicitée pour équilibrer la semaine');
+  assert.ok(draft.every(s=>s.chief==='ca-f'),'le chef de l’astreinte forte reste prioritaire quand il est disponible');
   assert.equal(JSON.stringify(context.PIQUETS),before,'aucun piquet n’est enregistré par l’aperçu');
+});
+test('deux sergents-chefs dans le même VTU : celui de l’astreinte forte est chef même avec plus d’heures',()=>{
+  const users=[
+    {l:'ca-f',chief:true,grade:'Sergent-chef'},
+    {l:'ca-b',chief:true,grade:'Sergent-chef'}
+  ];
+  const existing=[
+    {engin:'VPI',jour:'Samedi',debut:'08:00',fin:'18:00',
+      membres:[{role:'Chef d’agrès',login:'ca-f'}]},
+    {engin:'VPI',jour:'Dimanche',debut:'08:00',fin:'18:00',
+      membres:[{role:'Chef d’agrès',login:'ca-f'}]}
+  ];
+  const {context}=contextFor(users,{existing});
+  const monday=context.pqDraftPlan('week','VTU-01')[0];
+  assert.equal(monday.state,'ready');
+  assert.equal(monday.chief,'ca-f');
+  assert.equal(monday.driver,'ca-b');
+});
+test('le chef de l’astreinte faible prend le rôle si celui de la forte est indisponible',()=>{
+  const {context,dispos}=contextFor([
+    {l:'ca-f',chief:true},{l:'ca-b',chief:true},{l:'conducteur-f'}
+  ]);
+  for(let slot=8;slot<12;slot++)delete dispos['ca-f']['0_'+slot];
+  const monday=context.pqDraftPlan('week','VTU-01')[0];
+  assert.equal(monday.chief,'ca-b');
+  assert.equal(monday.driver,'conducteur-f');
 });
 test('chef seul ou conducteur seul : créneau incomplet, jamais prêt au départ',()=>{
   const chief=contextFor([{l:'ca-f',chief:true}]);
