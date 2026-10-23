@@ -44,12 +44,13 @@ function pqDraftPlan(wk,engin){
     const eq=getEquipeOfUser(u.l);
     return eq&&tiers.has(eq.id)?tiers.get(eq.id):groups.length;
   }
-  function pick(list,night,driver){
+  function pick(list,night,driver,strictTeamPriority){
     return list.slice().sort(function(a,b){
       const al=load.get(a.l),bl=load.get(b.l);
       const scoreA=al.minutes+tier(a)*720+(night?al.nights*240:0);
       const scoreB=bl.minutes+tier(b)*720+(night?bl.nights*240:0);
-      return scoreA-scoreB
+      return (strictTeamPriority?tier(a)-tier(b):0)
+        ||scoreA-scoreB
         ||(driver?Number(isChefAgresByGrade(a))-Number(isChefAgresByGrade(b)):0)
         ||tier(a)-tier(b)
         ||String(a.l).localeCompare(String(b.l),'fr');
@@ -91,7 +92,7 @@ function pqDraftPlan(wk,engin){
         return !hasConflitPiquet(wk,u.l,jour,debut,fin,-1);
       });
       const night=period.label==='Nuit';
-      const chief=pick(available.filter(isChefAgresByGrade),night,false);
+      const chief=pick(available.filter(isChefAgresByGrade),night,false,true);
       const driver=pick(available.filter(function(u){return !chief||u.l!==chief.l;}),night,true);
       const equipier=pick(available.filter(function(u){
         return (!chief||u.l!==chief.l)&&(!driver||u.l!==driver.l);
@@ -122,8 +123,8 @@ function suggestCreneaux(wk,engin){
   const partial=_pqWeeklyDraft.filter(function(s){return s.state==='partial';}).length;
   let html='<div style="background:#F8FAFC;border:1px solid #CBD5E1;border-radius:8px;padding:10px;margin-bottom:8px;">'
     +'<div style="font-weight:700;font-size:13px;">Proposition VTU sur toute la semaine</div>'
-    +'<div style="font-size:11px;color:#475569;margin:4px 0 8px;">Astreinte forte, faible, autres équipes, puis sans équipe. '
-    +'Répartition selon les heures déjà attribuées. '+ready+' créneaux avec chef et conducteur ; '
+    +'<div style="font-size:11px;color:#475569;margin:4px 0 8px;">Chef d’agrès : astreinte forte prioritaire, puis faible, autres équipes et sans équipe. '
+    +'Les heures déjà attribuées départagent les agents de même priorité. '+ready+' créneaux avec chef et conducteur ; '
     +partial+' incomplets. Aucun enregistrement automatique.</div>'
     +'<div style="max-height:50vh;overflow-y:auto;">';
   JOURS_FULL.forEach(function(jour){

@@ -1,5 +1,22 @@
 # AGAI — déploiement sécurisé
 
+## V202610_0067 — priorité du chef d’agrès dans un VTU
+
+Quand plusieurs agents qualifiés chef d’agrès sont disponibles dans le
+même équipage VTU proposé, la fonction revient d’abord à un agent de
+l’astreinte forte, puis faible, puis des autres équipes, enfin sans équipe.
+Cette priorité de rôle ne peut plus être renversée par les heures déjà
+attribuées. À priorité égale, la répartition des heures et des nuits reste
+prise en compte. Si le chef prioritaire est indisponible ou en conflit,
+l’aide passe au suivant. Le conducteur et l’équipier conservent la
+répartition pondérée de V202610_0066. Aucun piquet n’est enregistré par
+l’aperçu.
+
+Avant publication, confirmer l’absence d’intervention ou de saisie en cours
+et « Sync OK » sur les appareils utilisés. Après publication, vérifier sur
+une semaine de test le cas de deux sergents-chefs dans le même VTU, un de
+chaque équipe d’astreinte, sans enregistrer de piquet pour ce seul contrôle.
+
 ## V202610_0066 — aide hebdomadaire aux piquets VTU
 
 Le bouton « Préparer la semaine » présente les 28 tranches du lundi au
