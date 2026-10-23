@@ -1,5 +1,20 @@
 # AGAI — déploiement sécurisé
 
+## V202610_0064 — ordre du planning et couleur des équipes
+
+Le planning affiche d'abord l'équipe en astreinte forte (repère rose), puis
+l'équipe en astreinte faible (repère jaune-orangé), les autres équipes et
+enfin les agents sans équipe. Ces repères indiquent la priorité d'astreinte ;
+les couleurs propres aux équipes et le rouge « indisponible » restent
+distincts. Dans « Équipes » → « Modifier », la couleur peut désormais être
+changée puis enregistrée. Aucun changement de schéma ni de données serveur.
+
+Cette version reprend V202610_0063. Avant publication, confirmer qu'aucune
+intervention ni saisie n'est en cours et que les appareils utilisés affichent
+« Sync OK ». Après publication, vérifier le nouvel ordre du planning sur une
+semaine avec deux équipes d'astreinte, puis le changement de couleur d'une
+équipe sur un cas de test autorisé.
+
 ## V202610_0060 — finalisation des comptes rendus avant le 5
 
 Migration serveur `20261022210000_report_finalization_deadline.sql` à appliquer

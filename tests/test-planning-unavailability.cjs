@@ -40,7 +40,7 @@ function harness(){
   load(c,read(bundleMode?'app.js':'modules/14-stats-js.js'),'getJoursFeries');
   const schedule=read(bundleMode?'app.js':'modules/09-pilp-js.js');
   for(const name of ['personnelScheduleDay','personnelScheduleRecords','formationCalendarDays','formationTrainingDays','formationUnavailableWindow','personnelScheduleWindows','personnelScheduleLogins','findPersonnelScheduleConflict'])load(c,schedule,name);
-  for(const name of ['weekKey','validDispoGranularity','dispoGranularityFor','getSlotsPerDay','getSlotsForDay','jourLabel','slotToLabelDay','dispoDayLabel','personnelPlanningSlotRange','personnelPlanningWeekContext','personnelPlanningSlotState','personnelPlanningLegendHTML','personnelPlanningCheckContext','personnelDispoSlotAllowed','renderDispoAgentBlock','rAstrPlanning','setAllDispoFor'])load(c,planning,name);
+  for(const name of ['weekKey','validDispoGranularity','dispoGranularityFor','getSlotsPerDay','getSlotsForDay','jourLabel','slotToLabelDay','dispoDayLabel','planningEquipeGroups','personnelPlanningSlotRange','personnelPlanningWeekContext','personnelPlanningSlotState','personnelPlanningLegendHTML','personnelPlanningCheckContext','personnelDispoSlotAllowed','renderDispoAgentBlock','rAstrPlanning','setAllDispoFor'])load(c,planning,name);
   c.timeToMin=c.hhmmToMinutes;
   const context=()=>c.personnelPlanningWeekContext(wk);
   const state=(login,day,minute,duration=60,ctx=context())=>{const r=c.personnelPlanningSlotRange(wk,day,minute,duration);return c.personnelPlanningSlotState(login,r.start,r.end,ctx);};

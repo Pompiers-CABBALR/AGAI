@@ -11473,6 +11473,19 @@ function sortEquipes(list){
     return String(a&&a.nom||a&&a.id||'').localeCompare(String(b&&b.nom||b&&b.id||''),'fr',{numeric:true,sensitivity:'base'});
   });
 }
+function planningEquipeGroups(wKey){
+  const rotation=PLANNING_ROTATIONS[wKey];
+  const slots=typeof rotation==='string'?[rotation]:Array.isArray(rotation)?rotation:[];
+  const groups=[],seen=new Set();
+  function add(id,tone){
+    const eq=id&&getEquipeById(id);
+    if(eq&&!seen.has(eq.id)){seen.add(eq.id);groups.push({eq,tone});}
+  }
+  add(slots[0],'forte');
+  add(slots[1],'faible');
+  sortEquipes(EQUIPES).forEach(eq=>add(eq.id,'autre'));
+  return groups;
+}
 
 // ── Planning rotation : assigner équipe par semaine ──
 function getEquipeSemaine(wKey){
@@ -11562,35 +11575,44 @@ function rAstrPlanning(){
   const gran=EQUIPES.reduce((mn,e)=>Math.min(mn,validDispoGranularity(e.granularity)),60);
 
   // Équipes de garde
-  const _pv=PLANNING_ROTATIONS[wk];
-  const planSlots=!_pv?[]:(typeof _pv==='string'?[_pv]:(Array.isArray(_pv)?_pv:[]));
-  const eq1=planSlots[0]?getEquipeById(planSlots[0]):null;
-  const eq2=planSlots[1]?getEquipeById(planSlots[1]):null;
+  const equipeGroups=planningEquipeGroups(wk);
+  const eq1=equipeGroups.find(group=>group.tone==='forte')?.eq||null;
+  const eq2=equipeGroups.find(group=>group.tone==='faible')?.eq||null;
 
   // Filtres équipes
   const sansEqAll=USERS.filter(u=>!EQUIPES.some(e=>e.membres.includes(u.l)));
   const filterDiv=document.getElementById('astr-planning-filter');
   if(filterDiv){
     filterDiv.innerHTML=`<button class="fb${astrPlanningFilter.has('all')?' active':''}" onclick="setAstrFilter('all',this)">Toutes</button>`
-      +(sansEqAll.length?`<button class="fb${astrPlanningFilter.has('sans-equipe')?' active':''}" onclick="setAstrFilter('sans-equipe',this)">Sans équipe</button>`:'')
-      +sortEquipes(EQUIPES).map(e=>`<button class="fb${astrPlanningFilter.has(e.id)?' active':''}" style="border-left:3px solid ${e.color};" onclick="setAstrFilter('${e.id}',this)">${e.nom}</button>`).join('');
+      +equipeGroups.map(function(group){
+        const e=group.eq;
+        const accent=group.tone==='forte'?'#BE185D':group.tone==='faible'?'#B45309':e.color;
+        const prefix=group.tone==='forte'?'Forte · ':group.tone==='faible'?'Faible · ':'';
+        return `<button class="fb${astrPlanningFilter.has(e.id)?' active':''}" style="border-left:4px solid ${accent};" onclick="setAstrFilter('${e.id}',this)">${prefix}${escHtml(e.nom)}</button>`;
+      }).join('')
+      +(sansEqAll.length?`<button class="fb${astrPlanningFilter.has('sans-equipe')?' active':''}" onclick="setAstrFilter('sans-equipe',this)">Sans équipe</button>`:'');
   }
 
   // Agents à afficher selon les filtres sélectionnés
   const showAll=astrPlanningFilter.has('all');
   let allRows=[];
-  if(showAll||astrPlanningFilter.has('sans-equipe'))
-    sortByGradeThenName(sansEqAll).forEach(u=>allRows.push({u,eqColor:'#888',eqNom:'Sans équipe'}));
-  sortEquipes(EQUIPES).forEach(function(eq){
+  equipeGroups.forEach(function(group){
+    const eq=group.eq;
     if(showAll||astrPlanningFilter.has(eq.id)){
-      sortByGradeThenName(eq.membres.map(l=>USERS.find(x=>x.l===l)).filter(Boolean))
-        .forEach(u=>allRows.push({u,eqColor:eq.color,eqNom:eq.nom}));
+      const members=sortByGradeThenName(eq.membres.map(l=>USERS.find(x=>x.l===l)).filter(Boolean));
+      members.forEach(u=>allRows.push({u,eqColor:eq.color,groupKey:eq.id,
+        groupTone:group.tone,groupLabel:eq.nom,groupCount:members.length}));
     }
   });
+  if(showAll||astrPlanningFilter.has('sans-equipe')){
+    const members=sortByGradeThenName(sansEqAll);
+    members.forEach(u=>allRows.push({u,eqColor:'#888',groupKey:'sans-equipe',
+      groupTone:'sans-equipe',groupLabel:'Sans équipe',groupCount:members.length}));
+  }
 
   // Validation / deadline
-  const badge1=eq1?`<span class="eq-badge" style="background:${eq1.color};font-size:11px;">${eq1.nom}</span>`:'<span style="color:var(--t2);">—</span>';
-  const badge2=eq2?`<span class="eq-badge" style="background:${eq2.color};font-size:11px;">${eq2.nom}</span>`:'<span style="color:var(--t2);">—</span>';
+  const badge1=eq1?`<span style="background:#FCE7F3;color:#9D174D;border:1px solid #F9A8D4;border-radius:8px;padding:3px 8px;font-size:11px;font-weight:700;">${escHtml(eq1.nom)}</span>`:'<span style="color:var(--t2);">Non définie</span>';
+  const badge2=eq2?`<span style="background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;border-radius:8px;padding:3px 8px;font-size:11px;font-weight:700;">${escHtml(eq2.nom)}</span>`:'<span style="color:var(--t2);">Non définie</span>';
   const validated=isDispoValidated(wk);
   const isPastWeek=astrPlanningWeek<0;
   const dlPassed=TODAY>getDeadlineDate(astrPlanningWeek);
@@ -11618,8 +11640,8 @@ function rAstrPlanning(){
   }
 
   let html=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:8px 12px;background:var(--bg);border-radius:10px;border:1px solid var(--brd);flex-wrap:wrap;">
-    <span style="font-size:11px;color:var(--t2);">&#x1F534; Astr. forte :</span> ${badge1}
-    <span style="font-size:11px;color:var(--t2);margin-left:8px;">&#x1F7E1; 2\u00e8me astreinte :</span> ${badge2}
+    <span style="font-size:11px;color:#9D174D;font-weight:700;">Astreinte forte :</span> ${badge1}
+    <span style="font-size:11px;color:#92400E;font-weight:700;margin-left:8px;">Astreinte faible :</span> ${badge2}
     ${validBadge}
   </div>`;
   html+=personnelPlanningLegendHTML();
@@ -11726,8 +11748,21 @@ function rAstrPlanning(){
     const dayAvailability=new Map();
     ROLE_KEYS.forEach(function(r){roleCounts[r]=new Array(nbSlots).fill(0);});
 
-    // Lignes agents
-    allRows.forEach(function({u,eqColor}){
+    // Les bandeaux ordonnent la lecture sans modifier la disponibilité ni
+    // les couleurs propres aux équipes et aux créneaux.
+    let previousGroup='';
+    allRows.forEach(function({u,eqColor,groupKey,groupTone,groupLabel,groupCount}){
+      if(groupKey!==previousGroup){
+        const palette=groupTone==='forte'?{bg:'#FCE7F3',fg:'#9D174D',line:'#DB2777'}
+          :groupTone==='faible'?{bg:'#FEF3C7',fg:'#92400E',line:'#D97706'}
+          :{bg:'#F1F5F9',fg:'#475569',line:'#94A3B8'};
+        const label=groupTone==='forte'?'Astreinte forte':groupTone==='faible'?'Astreinte faible'
+          :groupTone==='sans-equipe'?'Sans équipe':'Autre équipe';
+        const heading=groupTone==='sans-equipe'?label:label+' · '+groupLabel;
+        html+=`<tr><th scope="row" style="position:sticky;left:0;z-index:1;min-width:130px;max-width:130px;padding:5px 8px;text-align:left;white-space:normal;overflow-wrap:anywhere;line-height:1.3;background:${palette.bg};color:${palette.fg};border-left:4px solid ${palette.line};border-top:1px solid ${palette.line};font-size:10px;">${escHtml(heading)} (${groupCount})</th>`
+          +`<td colspan="${nbSlots+1}" style="background:${palette.bg};border-top:1px solid ${palette.line};"></td></tr>`;
+        previousGroup=groupKey;
+      }
       const login=u.l;
       const uGran=dispoGranularityFor(login);
       const roleKey=getRoleKey(u);
@@ -11895,7 +11930,11 @@ function rAstrPlanning(){
     +'<div style="display:flex;align-items:center;gap:5px;font-size:11px;"><div style="width:20px;height:12px;border-radius:2px;background:#fff;border:1px solid #e5e7eb;"></div>Non renseign\u00e9</div>'
     +'<div style="display:flex;align-items:center;gap:5px;font-size:11px;"><div style="width:20px;height:12px;border-radius:2px;background:#DBEAFE;border:2px solid #2563EB;box-sizing:border-box;"></div>Cr\u00e9neau actuel</div>'
     +'<div style="font-size:11px;color:var(--t2);margin-left:8px;"><span style="color:#854F0B;font-weight:700;">x</span> = piquets &nbsp;/&nbsp; <span style="color:#0369A1;font-weight:700;">y</span> = dispos</div>'
-    +sortEquipes(EQUIPES).map(e=>`<div style="display:flex;align-items:center;gap:5px;font-size:11px;"><div style="width:20px;height:12px;border-radius:2px;background:${e.color};"></div>${e.nom}</div>`).join('');
+    +equipeGroups.map(function(group){
+      const label=group.tone==='forte'?'Astreinte forte':group.tone==='faible'?'Astreinte faible':'Équipe';
+      return `<div style="display:flex;align-items:center;gap:5px;font-size:11px;"><div style="width:20px;height:12px;border-radius:2px;background:${group.eq.color};"></div>${label} · ${escHtml(group.eq.nom)}</div>`;
+    }).join('')
+    +(sansEqLeg.length?'<div style="display:flex;align-items:center;gap:5px;font-size:11px;"><div style="width:20px;height:12px;border-radius:2px;background:#888;"></div>Sans équipe</div>':'');
 }
 
 function oAstrCellDetailSansEq(wk,dayIdx,slotIdx){
@@ -13587,11 +13626,18 @@ function delEquipe(id){
 function editEquipe(id){
   const eq=getEquipeById(id);if(!eq)return;
   const respOpts=sortByName(USERS).map(u=>`<option value="${u.l}"${u.l===eq.resp?' selected':''}>${fullNameAff(u)}</option>`).join('');
+  const currentColor=/^#[0-9a-fA-F]{6}$/.test(eq.color||'')?eq.color:'#3498DB';
   document.getElementById('mt').textContent='Modifier '+eq.nom;
   document.getElementById('mi').textContent='';
   document.getElementById('mb').innerHTML=`
     <div>
       <div class="fg"><div class="fgl">Nom</div><input class="fi" type="text" id="edit-eq-nom" value="${eq.nom}"/></div>
+      <div class="fg"><label class="fgl" for="edit-eq-color">Couleur de l'équipe</label>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <input type="color" id="edit-eq-color" value="${currentColor}" aria-label="Choisir la couleur de l'équipe" oninput="document.getElementById('edit-eq-color-code').textContent=this.value.toUpperCase()" style="width:64px;height:42px;padding:2px;border:1px solid var(--brd);border-radius:8px;background:#fff;cursor:pointer;"/>
+          <span id="edit-eq-color-code" style="font-size:12px;color:var(--t2);font-family:monospace;">${currentColor.toUpperCase()}</span>
+        </div>
+      </div>
       <div class="fg"><div class="fgl">Granularité</div>
         <select class="fi" id="edit-eq-gran">
           <option value="60"${eq.granularity===60?' selected':''}>1 heure</option>
@@ -13609,10 +13655,13 @@ function editEquipe(id){
 }
 function saveEditEquipe(id){
   const eq=getEquipeById(id);if(!eq)return;
-  eq.nom=document.getElementById('edit-eq-nom').value.trim()||eq.nom;
-  eq.granularity=parseInt(document.getElementById('edit-eq-gran').value);
+  const nom=document.getElementById('edit-eq-nom').value.trim()||eq.nom;
+  const granularity=parseInt(document.getElementById('edit-eq-gran').value);
+  const color=document.getElementById('edit-eq-color').value;
   const resp=document.getElementById('edit-eq-resp').value;
   if(resp&&!USERS.some(function(user){return user.l===resp;})){showToast('Le responsable doit appartenir à cette caserne.','warn');return;}
+  if(!/^#[0-9a-fA-F]{6}$/.test(color)){showToast('Choisissez une couleur valide.','warn');return;}
+  eq.nom=nom;eq.granularity=granularity;eq.color=color;
   eq.resp=resp;eq.caserneId=CURRENT_CASERNE_ID;
   cM();saveData();rAstrEquipes();applyNavRights();
 }
@@ -18320,7 +18369,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0063';
+const APP_VERSION='V202610_0064';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
