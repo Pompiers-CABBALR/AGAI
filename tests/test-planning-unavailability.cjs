@@ -37,8 +37,9 @@ function harness(){
   const auth=read(bundleMode?'app.js':'modules/02-auth-js-partie-1-2-structure-casernes-numerotation.js');
   for(const name of ['personnelLocalDate','personnelIsoDate','personnelCanOperateForPeriod','personnelCurrentRecord'])load(c,auth,name);
   load(c,read(bundleMode?'app.js':'modules/16-email-js.js'),'hhmmToMinutes');
+  load(c,read(bundleMode?'app.js':'modules/14-stats-js.js'),'getJoursFeries');
   const schedule=read(bundleMode?'app.js':'modules/09-pilp-js.js');
-  for(const name of ['personnelScheduleDay','personnelScheduleRecords','personnelScheduleWindows','personnelScheduleLogins'])load(c,schedule,name);
+  for(const name of ['personnelScheduleDay','personnelScheduleRecords','formationCalendarDays','formationTrainingDays','formationUnavailableWindow','personnelScheduleWindows','personnelScheduleLogins'])load(c,schedule,name);
   for(const name of ['weekKey','validDispoGranularity','dispoGranularityFor','getSlotsPerDay','getSlotsForDay','jourLabel','slotToLabelDay','dispoDayLabel','personnelPlanningSlotRange','personnelPlanningWeekContext','personnelPlanningSlotState','personnelPlanningLegendHTML','personnelPlanningCheckContext','personnelDispoSlotAllowed','renderDispoAgentBlock','rAstrPlanning','setAllDispoFor'])load(c,planning,name);
   c.timeToMin=c.hhmmToMinutes;
   const context=()=>c.personnelPlanningWeekContext(wk);
@@ -54,10 +55,10 @@ for(const kind of ['arret','disponibilite','suspension'])test(kind+' : dates inc
   h.users[0]._personnelPeriods[0].end='';assert.equal(h.state('alice',6,600).kind,'absence');
   h.users[0]._personnelPeriods[0].cancelledFrom='2026-10-22';assert.equal(h.state('alice',3,600),null);
 });
-test('formation : uniquement les participants, les horaires saisis et les jours concernés',()=>{
+test('formation : participants indisponibles du début à la fin, y compris la pause de midi',()=>{
   const h=harness();h.data.formStag.push(h.form());
   assert.equal(h.state('alice',0,600),null);assert.equal(h.state('bob',0,480),null);
-  assert.equal(h.state('bob',0,540).code,'FOR');assert.equal(h.state('bob',0,720),null);
+  assert.equal(h.state('bob',0,540).code,'FOR');assert.equal(h.state('bob',0,720).code,'FOR');
   assert.equal(h.state('bob',0,840).kind,'formation');assert.equal(h.state('bob',0,1020),null);
   assert.equal(h.state('bob',1,600),null);
 });
@@ -87,7 +88,7 @@ test('la nuit du dimanche consulte les dates réelles du lundi suivant',()=>{
   assert.equal(h.state('alice',6,1380),null);assert.equal(h.state('alice',6,1440).kind,'absence');
 });
 test('le changement d’heure conserve les heures locales des formations',()=>{
-  const h=harness();h.data.formStag.push(h.form({ddebut:'2026-10-25',dfin:'2026-10-25',hmatind:'09:00',hmatinf:'12:00',hapremd:'',hapremf:''}));
+  const h=harness();h.data.formStag.push(h.form({ddebut:'2026-10-25',dfin:'2026-10-25',joursFormation:['2026-10-25'],hmatind:'09:00',hmatinf:'12:00',hapremd:'',hapremf:''}));
   assert.equal(h.state('bob',6,480),null);assert.equal(h.state('bob',6,540).code,'FOR');
   assert.equal(h.state('bob',6,660).code,'FOR');assert.equal(h.state('bob',6,720),null);
 });
@@ -109,13 +110,20 @@ test('planning : lignes grisées, FOR et exclusion des comptes de disponibilité
   const counts=[...firstDay.matchAll(/<tr style="background:var\(--bg\);">([\s\S]*?)<\/tr>/g)].at(-1)[1];
   const cells=[...counts.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].slice(2);
   assert.match(cells[1][1],/color:#e5e7eb/); // 09h : aucun agent disponible ni comptabilisé en piquet.
-  assert.match(cells[4][1],/>1<\/span>/); // 12h : Bob disponible à nouveau.
+  assert.match(cells[9][1],/>1<\/span>/); // 17h : Bob disponible à nouveau.
   assert.equal(JSON.stringify(h.dispos),before);assert.equal(h.events.some(e=>e[0]==='save'),false);
 });
 test('les commandes de masse préservent les créneaux couverts par une absence ou une formation',()=>{
   const h=harness();h.data.formStag.push(h.form());h.c.setAllDispoFor(h.wk,'bob',false,'#888');
-  assert.equal(h.dispos.bob['0_10'],true);assert.equal(h.dispos.bob['0_12'],false);
+  assert.equal(h.dispos.bob['0_10'],true);assert.equal(h.dispos.bob['0_17'],false);
   h.users[0]._personnelPeriods=[{kind:'disponibilite',start:'2026-10-19'}];
   const before=JSON.stringify(h.dispos.alice);h.c.setAllDispoFor(h.wk,'alice',null,'#888',true);
   assert.equal(JSON.stringify(h.dispos.alice),before);
+});
+test('une formation du 21 au 30 reste indisponible la nuit et le week-end intermédiaire',()=>{
+  const h=harness();h.data.formStag.push(h.form({ddebut:'2026-10-21',dfin:'2026-10-30'}));
+  assert.equal(h.state('bob',2,480),null);assert.equal(h.state('bob',2,540).code,'FOR');
+  assert.equal(h.state('bob',2,1380).code,'FOR');assert.equal(h.state('bob',5,720).code,'FOR');
+  assert.equal(h.state('bob',6,720).code,'FOR');assert.equal(h.state('bob',11,960).code,'FOR');
+  assert.equal(h.state('bob',11,1020),null);
 });

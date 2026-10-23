@@ -226,11 +226,9 @@ function rStatsIndemnites(){
     (list||[]).forEach(function(f){
       if(!f.ddebut||!f.dfin)return;
       const dayMinutes=formSlotMins(f.hmatind,f.hmatinf)+formSlotMins(f.hapremd,f.hapremf);if(!dayMinutes)return;
-      const start=new Date(f.ddebut+'T12:00:00'),end=new Date(f.dfin+'T12:00:00');
-      for(let day=new Date(start);day<=end;day.setDate(day.getDate()+1)){
-        const date=day.getFullYear()+'-'+String(day.getMonth()+1).padStart(2,'0')+'-'+String(day.getDate()).padStart(2,'0');
+      formationTrainingDays(f).forEach(function(date){
         (f.participants||[]).forEach(function(login){add(login,key,dayMinutes,date,percentage);});
-      }
+      });
     });
   }
   addFormationDays(formStagGetData(),'formation',rates.formStag);
@@ -1482,7 +1480,7 @@ function adminExportFormationRegisterRow(f,nature,rapport,taux){
   const debut=f.hmatind||f.hapremd||'',fin=f.hapremf||f.hmatinf||'';
   return adminExportRegisterRow({
     4:adminExportDateIso(f.ddebut),5:rapport,6:taux+'%',
-    7:adminExportDuration(f.htotal,'',''),11:nature,
+    7:adminExportDuration(formMinsToStr(formMinsTotal(f)),'',''),11:nature,
     13:f.lieu||'',16:debut,19:fin
   },adminExportPeople(f.participants));
 }
@@ -1641,4 +1639,3 @@ function exportAdminMonthlyExcel(){
     document.head.appendChild(s);
   }
 }
-
