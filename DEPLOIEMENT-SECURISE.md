@@ -1,5 +1,22 @@
 # AGAI — déploiement sécurisé
 
+## V202610_0075 — enregistrement groupé des piquets disponibles
+
+La présence de créneaux sans agent ou d'un piquet existant partiellement
+couvrant une tranche ne bloque plus les autres propositions hebdomadaires.
+L'aperçu affiche le nombre et les horaires des créneaux laissés de côté.
+Après confirmation explicite, seuls les créneaux proposés avec au moins un
+agent sont ajoutés en une seule sauvegarde locale ; les piquets existants
+ne sont jamais remplacés. Les créneaux laissés de côté et ceux enregistrés
+avec un seul agent restent à compléter, sans validation automatique de la
+semaine. La configuration, les droits, les piquets et les disponibilités
+sont revérifiés au moment de la confirmation.
+
+Avant publication, confirmer l'absence d'intervention ou de saisie en cours
+et « Sync OK » sur les appareils utilisés. Après publication, ouvrir un
+aperçu comportant des créneaux manquants et vérifier les nombres affichés
+avant tout enregistrement réel.
+
 ## V202610_0074 — proposition VTU selon les rangs de départ
 
 La préparation hebdomadaire couvre maintenant tous les VTU configurés :

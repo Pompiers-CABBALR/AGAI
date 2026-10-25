@@ -204,7 +204,7 @@ test('la proposition complète utilise uniquement chef et conducteur, avec prior
   assert.equal(draft[0].chief,'ca-f');
   assert.equal(draft[0].driver,'conducteur-f');
   const html=preview(context).innerHTML;
-  assert.match(html,/Enregistrer les 28 nouveaux créneaux/);
+  assert.match(html,/Enregistrer en groupe les 28 créneaux proposés/);
   assert.doesNotMatch(html,/Équipier/);
 });
 test('la confirmation enregistre les 28 binômes en une seule sauvegarde sans valider la semaine',()=>{
@@ -276,23 +276,67 @@ test('si un seul agent est disponible, le piquet partiel est conservé mais la s
   assert.equal(context.PIQUETS.week[0].membres.length,1);
   assert.equal(context.PIQUETS_VALIDATED.week,undefined);
 });
-test('aucun enregistrement groupé si un créneau est vide ou un piquet existant ne couvre qu’une partie',()=>{
+test('cinq créneaux vides ne bloquent pas l’enregistrement groupé des vingt-trois autres',()=>{
   const users=[{l:'ca-f',chief:true},{l:'conducteur-f'}];
   const empty=contextFor(users);
-  for(let slot=8;slot<12;slot++){
-    delete empty.dispos['ca-f']['0_'+slot];
-    delete empty.dispos['conducteur-f']['0_'+slot];
+  const missing=[[0,8,12],[0,12,18],[0,18,24],[0,0,8],[1,8,12]];
+  for(const [day,from,to] of missing)for(let slot=from;slot<to;slot++){
+    delete empty.dispos['ca-f'][day+'_'+slot];
+    delete empty.dispos['conducteur-f'][day+'_'+slot];
   }
-  assert.match(preview(empty.context).innerHTML,/Enregistrement groupé indisponible/);
-  assert.ok(empty.context.pqWeeklyWrites().error);
-  const overlap=contextFor(users,{existing:[{
+  let callback,saveCount=0;
+  empty.context.confirmModal=(message,cb)=>{assert.match(message,/5 autres créneaux seront laissés de côté/);callback=cb;};
+  empty.context.saveData=()=>{saveCount++;};
+  const html=preview(empty.context).innerHTML;
+  assert.match(html,/Enregistrer en groupe les 23 créneaux proposés/);
+  assert.match(html,/5 créneau\(x\) laissé\(s\) de côté/);
+  assert.equal(empty.context.pqWeeklyWrites().entries.length,23);
+  assert.equal(empty.context.pqWeeklyWrites().skipped.length,5);
+  empty.context.pqWeeklySaveWeek();
+  assert.equal(empty.context.PIQUETS.week.length,0);
+  callback();
+  assert.equal(empty.context.PIQUETS.week.length,23);
+  assert.equal(saveCount,1);
+  assert.equal(empty.context.PIQUETS_VALIDATED.week,undefined);
+});
+test('un piquet déjà partiel reste intact et les autres créneaux peuvent être ajoutés en groupe',()=>{
+  const users=[{l:'ca-f',chief:true},{l:'conducteur-f'}];
+  const original={
     engin:'VTU-01',jour:'Lundi',debut:'08:00',fin:'10:00',
-    chefAgres:'ca-f',conducteur:'conducteur-f'
+    chefAgres:'ca-f',conducteur:'',note:'À compléter'
+  };
+  const overlap=contextFor(users,{existing:[{
+    ...original
   }]});
   assert.equal(overlap.context.pqDraftPlan('week','VTU-01')[0].state,'existing-partial');
-  preview(overlap.context);
-  assert.ok(overlap.context.pqWeeklyWrites().error);
+  let callback,saveCount=0;
+  overlap.context.confirmModal=(_message,cb)=>{callback=cb;};
+  overlap.context.saveData=()=>{saveCount++;};
+  assert.match(preview(overlap.context).innerHTML,/Enregistrer en groupe les 27 créneaux proposés/);
+  assert.equal(overlap.context.pqWeeklyWrites().skipped.length,1);
+  overlap.context.pqWeeklySaveWeek();
   assert.equal(overlap.context.PIQUETS.week.length,1);
+  callback();
+  assert.equal(overlap.context.PIQUETS.week.length,28);
+  assert.equal(JSON.stringify(overlap.context.PIQUETS.week[0]),JSON.stringify(original));
+  assert.equal(saveCount,1);
+  assert.equal(overlap.context.PIQUETS_VALIDATED.week,undefined);
+});
+test('un changement d’un créneau laissé de côté annule la confirmation groupée',()=>{
+  const users=[{l:'ca-f',chief:true},{l:'conducteur-f'}];
+  const {context,dispos}=contextFor(users);
+  for(let slot=8;slot<12;slot++){
+    delete dispos['ca-f']['0_'+slot];
+    delete dispos['conducteur-f']['0_'+slot];
+  }
+  let callback;
+  context.confirmModal=(_message,cb)=>{callback=cb;};
+  preview(context);
+  context.pqWeeklySaveWeek();
+  context.PIQUETS.week.push({engin:'VTU-01',jour:'Lundi',debut:'08:00',fin:'12:00',
+    chefAgres:'ca-f',conducteur:'conducteur-f'});
+  callback();
+  assert.equal(context.PIQUETS.week.length,1);
 });
 test('une modification des piquets ou des disponibilités pendant la confirmation annule tout',()=>{
   const users=[{l:'ca-f',chief:true},{l:'conducteur-f'}];
@@ -344,7 +388,7 @@ test('deux départs VTU : 56 créneaux, chefs réservés avant conducteurs et au
   context.saveData=()=>{saveCount++;};
   const html=preview(context).innerHTML;
   assert.match(html,/2 départ\(s\) VTU/);
-  assert.match(html,/Enregistrer les 56 nouveaux créneaux/);
+  assert.match(html,/Enregistrer en groupe les 56 créneaux proposés/);
   context.pqWeeklySaveWeek();
   callback();
   assert.equal(context.PIQUETS.week.length,56);
@@ -402,7 +446,9 @@ test('un troisième départ configuré multiplie les créneaux sans inventer d�
   assert.equal(draft.length,84);
   assert.equal(draft[2].engin,'VTU-03');
   assert.equal(draft[2].state,'empty');
-  assert.match(preview(context).innerHTML,/Enregistrement groupé indisponible/);
+  const html=preview(context).innerHTML;
+  assert.match(html,/Enregistrer en groupe les 56 créneaux proposés/);
+  assert.match(html,/28 créneau\(x\) laissé\(s\) de côté/);
 });
 test('un changement du nombre de VTU pendant la confirmation annule tout',()=>{
   const {context}=contextFor([
