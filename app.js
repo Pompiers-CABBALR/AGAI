@@ -18367,7 +18367,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0073';
+const APP_VERSION='V202610_0074';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -27215,6 +27215,9 @@ function astrTelSaveParams(){
 // Aide au piquet VTU : aperçu complet avant confirmation, sans écraser l'existant.
 let _pqWeeklyDraft=[];
 let _pqWeeklySnapshot=null;
+function pqWeeklyVtuEngins(){
+  return [...new Set(sortVehicleNames((ASTR_CONFIG.engins||[]).filter(function(e){return /^VTU\b/i.test(String(e));})))];
+}
 function pqWeeklyCanEdit(wk){
   return astrPiquetWeek>=0
     &&wk===weekKey(getMondayOfWeek(astrPiquetWeek))
@@ -27222,7 +27225,7 @@ function pqWeeklyCanEdit(wk){
 }
 function openPiquetWeekly(wk){
   if(!pqWeeklyCanEdit(wk)){showToast('Cette semaine ne peut pas être modifiée.','warn');return;}
-  const engin=(ASTR_CONFIG.engins||[]).find(function(e){return /^VTU\b/i.test(String(e));});
+  const engin=pqWeeklyVtuEngins()[0];
   if(!engin){showToast('Aucun VTU configuré pour cette caserne.','warn');return;}
   addPiquet(wk,engin,JOURS_FULL[0]);
   suggestCreneaux(wk,engin);
@@ -27232,6 +27235,7 @@ function pqDraftClock(minutes){
   return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
 }
 function pqDraftPlan(wk,engin){
+  const engins=Array.isArray(engin)?engin:[engin];
   const gran=ASTR_CONFIG.granularity||60;
   const start=(ASTR_CONFIG.weekStartHour??0)*60;
   const slots=getSlotsPerDay(gran);
@@ -27277,13 +27281,13 @@ function pqDraftPlan(wk,engin){
         ||String(a.l).localeCompare(String(b.l),'fr');
     })[0]||null;
   }
-  function coverage(di,debut,fin){
+  function coverage(targetEngin,di,debut,fin){
     const effective=di+(timeToMin(debut)<start?1:0);
     const proposed=piquetToAbsRangeIdx(effective,debut,fin);
     const complete=[];
     let overlaps=false;
     (PIQUETS[wk]||[]).forEach(function(p){
-      if(p.engin!==engin||!p.debut||!p.fin)return;
+      if(p.engin!==targetEngin||!p.debut||!p.fin)return;
       const pdi=JOURS_FULL.indexOf(p.jour);
       if(pdi<0)return;
       const effectiveExisting=pdi+(timeToMin(p.debut)<start?1:0);
@@ -27303,39 +27307,46 @@ function pqDraftPlan(wk,engin){
   JOURS_FULL.forEach(function(jour,di){
     periods.forEach(function(period){
       const debut=pqDraftClock(period.from),fin=pqDraftClock(period.to);
-      const s={wk,engin,jour,label:period.label,debut,fin,
-        chief:'',driver:'',eligible:[],chiefEligible:[],state:'empty'};
-      const existing=coverage(di,debut,fin);
-      if(existing){
-        s.state=existing;
-        draft.push(s);return;
-      }
       const duration=period.to-period.from;
-      const available=USERS.filter(function(u){
-        const dispo=DISPOS[wk]?.[u.l];
-        if(!dispo)return false;
-        for(let elapsed=0;elapsed<duration;elapsed+=gran){
-          const clock=(period.from+elapsed)%1440;
-          const slot=Math.floor(((clock-start+1440)%1440)/gran);
-          if(slot>=slots||dispo[di+'_'+slot]!==true
-            ||!personnelDispoSlotAllowed(wk,u.l,di,slot,gran))return false;
-        }
-        return !hasConflitPiquet(wk,u.l,jour,debut,fin,-1);
+      const slotDrafts=engins.map(function(targetEngin){
+        const s={wk,engin:targetEngin,jour,label:period.label,debut,fin,
+          chief:'',driver:'',eligible:[],chiefEligible:[],state:'empty'};
+        const existing=coverage(targetEngin,di,debut,fin);
+        if(existing){s.state=existing;return s;}
+        const available=USERS.filter(function(u){
+          const dispo=DISPOS[wk]?.[u.l];
+          if(!dispo)return false;
+          for(let elapsed=0;elapsed<duration;elapsed+=gran){
+            const clock=(period.from+elapsed)%1440;
+            const slot=Math.floor(((clock-start+1440)%1440)/gran);
+            if(slot>=slots||dispo[di+'_'+slot]!==true
+              ||!personnelDispoSlotAllowed(wk,u.l,di,slot,gran))return false;
+          }
+          return !hasConflitPiquet(wk,u.l,jour,debut,fin,-1);
+        });
+        s.eligible=available.slice().sort(function(a,b){return tier(a)-tier(b)||String(a.l).localeCompare(String(b.l),'fr');}).map(function(u){return u.l;});
+        s.chiefEligible=available.filter(isChefAgresByGrade).map(function(u){return u.l;});
+        return s;
       });
       const night=period.label==='Nuit';
-      s.eligible=available.slice().sort(function(a,b){return tier(a)-tier(b)||String(a.l).localeCompare(String(b.l),'fr');}).map(function(u){return u.l;});
-      s.chiefEligible=available.filter(isChefAgresByGrade).map(function(u){return u.l;});
-      const chief=pick(available.filter(isChefAgresByGrade),night,false,true);
-      const driver=pick(available.filter(function(u){return !chief||u.l!==chief.l;}),night,true,true);
-      s.chief=chief?.l||'';s.driver=driver?.l||'';
-      s.state=chief&&driver?'ready':available.length?'partial':'empty';
-      [chief,driver].forEach(function(u){
+      const allocated=new Set();
+      function assign(s,role,agents){
+        const u=pick(agents.filter(function(agent){return !allocated.has(agent.l);}),night,role==='driver',true);
         if(!u)return;
+        s[role]=u.l;allocated.add(u.l);
         const burden=load.get(u.l);
-        burden.minutes+=period.to-period.from;
+        burden.minutes+=duration;
         if(night)burden.nights++;
+      }
+      // Réserver les chefs de chaque rang avant de choisir les conducteurs.
+      slotDrafts.filter(function(s){return !s.state.startsWith('existing');}).forEach(function(s){
+        assign(s,'chief',USERS.filter(function(u){return s.chiefEligible.includes(u.l);}));
       });
-      draft.push(s);
+      slotDrafts.filter(function(s){return !s.state.startsWith('existing');}).forEach(function(s){
+        assign(s,'driver',USERS.filter(function(u){return s.eligible.includes(u.l);}));
+        s.state=s.chief&&s.driver?'ready':s.chief||s.driver?'partial':'empty';
+      });
+      draft.push(...slotDrafts);
     });
   });
   return draft;
@@ -27348,8 +27359,10 @@ function suggestCreneaux(wk,engin){
     target.innerHTML='<div style="padding:10px;background:#FEF3C7;border-radius:8px;">Cette aide hebdomadaire concerne le VTU. Préparez les autres engins manuellement.</div>';
     return;
   }
-  _pqWeeklyDraft=pqDraftPlan(wk,engin);
-  _pqWeeklySnapshot={wk,engin,caserneId:CURRENT_CASERNE_ID,
+  const engins=pqWeeklyVtuEngins();
+  if(!engins.length)return;
+  _pqWeeklyDraft=pqDraftPlan(wk,engins);
+  _pqWeeklySnapshot={wk,engins,caserneId:CURRENT_CASERNE_ID,
     piquets:JSON.stringify(PIQUETS[wk]||[]),rotation:JSON.stringify(PLANNING_ROTATIONS[wk]||null)};
   pqWeeklyRenderDraft();
 }
@@ -27358,6 +27371,13 @@ function pqWeeklySetChoice(index,role,login){
   if(!slot||!['ready','partial','empty'].includes(slot.state)||!['chief','driver'].includes(role))return;
   const permitted=role==='chief'?slot.chiefEligible:slot.eligible;
   if(login&&!permitted.includes(login))return;
+  if(login&&_pqWeeklyDraft.some(function(other){
+    return other!==slot&&other.jour===slot.jour&&other.label===slot.label
+      &&(other.chief===login||other.driver===login);
+  })){
+    showToast('Cet agent est déjà proposé sur un autre départ VTU au même horaire.','warn');
+    pqWeeklyRenderDraft();return;
+  }
   slot[role]=login;
   if(login&&slot.chief&&slot.chief===slot.driver)slot[role==='chief'?'driver':'chief']='';
   slot.state=slot.chief&&slot.driver?'ready':slot.chief||slot.driver?'partial':'empty';
@@ -27371,9 +27391,10 @@ function pqWeeklyRenderDraft(){
   const partialCount=_pqWeeklyDraft.filter(function(s){return s.state==='partial';}).length;
   const existing=_pqWeeklyDraft.filter(function(s){return s.state==='existing';}).length;
   const blocked=_pqWeeklyDraft.length-ready-partialCount-existing;
-  const complete=_pqWeeklyDraft.length===28&&blocked===0;
+  const expected=28*(_pqWeeklySnapshot?.engins.length||0);
+  const complete=_pqWeeklyDraft.length===expected&&expected>0&&blocked===0;
   let html='<div style="background:#F8FAFC;border:1px solid #CBD5E1;border-radius:8px;padding:10px;margin-bottom:8px;">'
-    +'<div style="font-weight:700;font-size:13px;">Proposition VTU sur toute la semaine — 2 agents par créneau</div>'
+    +'<div style="font-weight:700;font-size:13px;">Proposition sur toute la semaine — '+(_pqWeeklySnapshot?.engins.length||0)+' départ(s) VTU, 2 agents par créneau</div>'
     +'<div style="font-size:11px;color:#475569;margin:4px 0 8px;">Chef d’agrès et conducteur distincts. Astreinte forte prioritaire, puis faible, autres équipes et sans équipe. '
     +'Les heures déjà attribuées départagent les agents de même priorité. '+existing+' créneaux déjà couverts ; '
     +ready+' binômes proposés ; '+partialCount+' piquets incomplets ; '+blocked+' créneaux sans proposition enregistrable. Aucun enregistrement automatique.</div>'
@@ -27389,7 +27410,7 @@ function pqWeeklyRenderDraft(){
         :partial?'Incomplet — départ non garanti'
         :s.state==='existing'?'Piquet déjà présent'
         :s.state==='existing-partial'?'Piquet existant incomplet — départ non garanti'
-        :s.eligible.length?'Aucun agent sélectionné':'Aucun agent disponible';
+        :s.eligible.length?'Aucun agent libre pour ce départ':'Aucun agent disponible';
       const name=function(login){
         const u=USERS.find(function(agent){return agent.l===login;});
         return login?escHtml(u?fullName(u):login):'À compléter';
@@ -27406,7 +27427,7 @@ function pqWeeklyRenderDraft(){
           +'onchange="pqWeeklySetChoice('+index+',\''+role+'\',this.value)">'+options+'</select></label>';
       };
       html+='<div style="background:'+bg+';border:1px solid '+border+';border-radius:7px;padding:6px;margin:4px 0;font-size:11px;">'
-        +'<div style="font-weight:700;">'+escHtml(s.label)+' · '+s.debut+'–'+s.fin+' · '+status+'</div>';
+        +'<div style="font-weight:700;">'+escHtml(piquetDepartureLabel(s.engin))+' · '+escHtml(s.label)+' · '+s.debut+'–'+s.fin+' · '+status+'</div>';
       if(['ready','partial','empty'].includes(s.state)){
         html+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:5px;margin-top:5px;">'
           +select('chief')+select('driver')+'</div>'
@@ -27426,18 +27447,21 @@ function pqWeeklyRenderDraft(){
 }
 function pqWeeklyWrites(){
   const snapshot=_pqWeeklySnapshot;
-  if(!snapshot||!pqWeeklyCanEdit(snapshot.wk)||_pqWeeklyDraft.length!==28)
+  if(!snapshot||!pqWeeklyCanEdit(snapshot.wk)
+    ||!snapshot.engins.length||_pqWeeklyDraft.length!==28*snapshot.engins.length)
     return {error:'Cette proposition n’est plus disponible. Rouvrez la préparation de semaine.'};
   if(CURRENT_CASERNE_ID!==snapshot.caserneId
+    ||JSON.stringify(pqWeeklyVtuEngins())!==JSON.stringify(snapshot.engins)
     ||JSON.stringify(PLANNING_ROTATIONS[snapshot.wk]||null)!==snapshot.rotation)
     return {error:'La caserne ou les équipes ont changé. Relancez la proposition.'};
   if(JSON.stringify(PIQUETS[snapshot.wk]||[])!==snapshot.piquets)
     return {error:'Les piquets ont changé. Relancez la proposition avant d’enregistrer.'};
-  const current=pqDraftPlan(snapshot.wk,snapshot.engin);
-  const entries=[];
+  const current=pqDraftPlan(snapshot.wk,snapshot.engins);
+  const entries=[],usedByPeriod=new Map();
   for(let i=0;i<_pqWeeklyDraft.length;i++){
     const selected=_pqWeeklyDraft[i],fresh=current[i];
-    if(!fresh||selected.jour!==fresh.jour||selected.label!==fresh.label||selected.debut!==fresh.debut||selected.fin!==fresh.fin)
+    if(!fresh||selected.engin!==fresh.engin||selected.jour!==fresh.jour
+      ||selected.label!==fresh.label||selected.debut!==fresh.debut||selected.fin!==fresh.fin)
       return {error:'Les créneaux ont changé. Relancez la proposition.'};
     if(selected.state==='existing'){
       if(fresh.state!=='existing')return {error:'Un piquet existant a changé. Relancez la proposition.'};
@@ -27449,7 +27473,14 @@ function pqWeeklyWrites(){
       ||(selected.driver&&!fresh.eligible.includes(selected.driver))
       ||(selected.chief&&selected.chief===selected.driver))
       return {error:'La semaine comporte un créneau non enregistrable. Aucun piquet ajouté.'};
-    entries.push({engin:snapshot.engin,jour:selected.jour,debut:selected.debut,fin:selected.fin,note:'',
+    const periodKey=selected.jour+'|'+selected.label;
+    if(!usedByPeriod.has(periodKey))usedByPeriod.set(periodKey,new Set());
+    const used=usedByPeriod.get(periodKey);
+    if((selected.chief&&used.has(selected.chief))||(selected.driver&&used.has(selected.driver)))
+      return {error:'Un agent figure sur deux départs VTU simultanés. Aucun piquet ajouté.'};
+    if(selected.chief)used.add(selected.chief);
+    if(selected.driver)used.add(selected.driver);
+    entries.push({engin:selected.engin,jour:selected.jour,debut:selected.debut,fin:selected.fin,note:'',
       membres:[
         selected.chief?{role:'Chef d’agrès',login:selected.chief,hDebut:selected.debut,hFin:selected.fin}:null,
         selected.driver?{role:'Conducteur',login:selected.driver,hDebut:selected.debut,hFin:selected.fin}:null
@@ -27486,6 +27517,10 @@ function pqWeeklySaveWeek(){
 function applySuggestion(index){
   const previous=_pqWeeklyDraft[index];
   if(!previous)return;
+  if(!pqWeeklyCanEdit(previous.wk)||CURRENT_CASERNE_ID!==_pqWeeklySnapshot?.caserneId
+    ||!pqWeeklyVtuEngins().includes(previous.engin)){
+    showToast('Cette proposition n’est plus disponible. Relancez la préparation.','warn');return;
+  }
   // Recontrôler les disponibilités et les piquets avant le préremplissage.
   const fresh=pqDraftPlan(previous.wk,previous.engin).find(function(s){
     return s.jour===previous.jour&&s.label===previous.label;
@@ -27497,6 +27532,9 @@ function applySuggestion(index){
   }
   fresh.chief=previous.chief;fresh.driver=previous.driver;
   fresh.state=fresh.chief&&fresh.driver?'ready':'partial';
+  // Le formulaire initial peut concerner le premier départ alors que ce
+  // créneau appartient à un autre VTU : ouvrir celui du bon rang.
+  addPiquet(previous.wk,previous.engin,previous.jour);
   const jour=document.getElementById('pq-jour');
   const debut=document.getElementById('pq-debut');
   const fin=document.getElementById('pq-fin');

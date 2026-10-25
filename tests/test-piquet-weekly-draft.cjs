@@ -25,7 +25,8 @@ function contextFor(users,options={}){
     USERS:users,DISPOS:{week:dispos},PIQUETS:{week:options.existing||[]},
     PIQUETS_VALIDATED:{},PLANNING_ROTATIONS:{week:['forte','faible']},
     CURRENT_CASERNE_ID:'CIS05',astrPiquetWeek:0,
-    ASTR_CONFIG:{granularity:60,weekStartHour:0},JOURS_FULL:days,
+    ASTR_CONFIG:{granularity:60,weekStartHour:0,engins:['VTU-01']},JOURS_FULL:days,
+    sortVehicleNames:list=>list.slice().sort(),piquetDepartureLabel:engin=>engin,
     getMondayOfWeek:()=>new Date(2026,9,26),weekKey:()=> 'week',
     hasRight:()=>true,isRespEquipe:()=>false,
     getSlotsPerDay:()=>24,planningEquipeGroups:()=>teams.map((eq,i)=>({eq,tone:i?'faible':'forte'})),
@@ -44,7 +45,7 @@ function contextFor(users,options={}){
     document:{getElementById:()=>null,querySelectorAll:()=>[]},
     pqSyncTimes:()=>{},pqFinHint:()=>{},pqRefreshDispos:()=>{},
     _encodeRole:role=>role.replace(/[^a-zA-Z0-9]/g,'_'),
-    confirmModal:()=>{},logPiquetChange:()=>{},saveData:()=>{},cM:()=>{},rAstrPiquets:()=>{}
+    confirmModal:()=>{},logPiquetChange:()=>{},saveData:()=>{},cM:()=>{},rAstrPiquets:()=>{},addPiquet:()=>{}
   };
   vm.createContext(context);
   vm.runInContext(source,context);
@@ -148,11 +149,11 @@ test('préremplissage : la proposition est revérifiée et ne sauvegarde rien',(
   };
   const roles=['Chef d’agrès','Conducteur','Équipier'];
   const selects=roles.map(role=>({value:'',dataset:{role:context._encodeRole(role)}}));
+  preview(context);
   context.document={
     getElementById:id=>controls[id]||null,
     querySelectorAll:selector=>selector==='.pq-agent-sel'?selects:[]
   };
-  vm.runInContext('_pqWeeklyDraft=pqDraftPlan("week","VTU-01")',context);
   context.applySuggestion(0);
   assert.equal(controls['pq-jour'].value,'Lundi');
   assert.equal(controls['pq-debut'].value,'08:00');
@@ -324,4 +325,115 @@ test('droits ou caserne changés : aucune proposition ne peut être sauvegardée
   context.CURRENT_CASERNE_ID='CIS05';
   context.hasRight=()=>false;
   assert.match(context.pqWeeklyWrites().error,/plus disponible/);
+});
+test('deux départs VTU : 56 créneaux, chefs réservés avant conducteurs et aucun doublon simultané',()=>{
+  const {context}=contextFor([
+    {l:'ca-f',chief:true},{l:'conducteur-f',chief:true},
+    {l:'ca-b'},{l:'conducteur-b'}
+  ]);
+  context.ASTR_CONFIG.engins=['VTU-02','VTU-01'];
+  const draft=context.pqDraftPlan('week',context.pqWeeklyVtuEngins());
+  assert.equal(draft.length,56);
+  assert.equal(JSON.stringify(draft.slice(0,2).map(s=>s.engin)),JSON.stringify(['VTU-01','VTU-02']));
+  assert.ok(draft.every(s=>s.state==='ready'));
+  assert.equal(new Set(draft.slice(0,2).flatMap(s=>[s.chief,s.driver])).size,4);
+  assert.ok(draft.slice(0,2).every(s=>['ca-f','conducteur-f'].includes(s.chief)));
+  assert.ok(draft.slice(0,2).every(s=>['ca-b','conducteur-b'].includes(s.driver)));
+  let callback,saveCount=0;
+  context.confirmModal=(_message,cb)=>{callback=cb;};
+  context.saveData=()=>{saveCount++;};
+  const html=preview(context).innerHTML;
+  assert.match(html,/2 départ\(s\) VTU/);
+  assert.match(html,/Enregistrer les 56 nouveaux créneaux/);
+  context.pqWeeklySaveWeek();
+  callback();
+  assert.equal(context.PIQUETS.week.length,56);
+  assert.equal(saveCount,1);
+  for(let i=0;i<56;i+=2)
+    assert.equal(new Set(context.PIQUETS.week.slice(i,i+2).flatMap(p=>[p.chefAgres,p.conducteur])).size,4);
+});
+test('un rang VTU existant est préservé et son équipage n’est pas proposé sur le deuxième rang',()=>{
+  const existing={engin:'VTU-01',jour:'Lundi',debut:'08:00',fin:'12:00',
+    chefAgres:'ca-f',conducteur:'conducteur-f',note:'Maintenir'};
+  const users=[
+    {l:'ca-f',chief:true},{l:'conducteur-f'},
+    {l:'ca-b',chief:true},{l:'conducteur-b'}
+  ];
+  const {context}=contextFor(users,{existing:[existing],
+    conflict:(_wk,login,jour,debut)=>jour==='Lundi'&&debut==='08:00'
+      &&['ca-f','conducteur-f'].includes(login)});
+  context.ASTR_CONFIG.engins=['VTU-01','VTU-02'];
+  const first=context.pqDraftPlan('week',context.pqWeeklyVtuEngins()).slice(0,2);
+  assert.equal(first[0].state,'existing');
+  assert.equal(first[1].state,'ready');
+  assert.equal(first[1].chief,'ca-b');
+  assert.equal(first[1].driver,'conducteur-b');
+  let callback;
+  context.confirmModal=(_message,cb)=>{callback=cb;};
+  preview(context);
+  context.pqWeeklySaveWeek();
+  callback();
+  assert.equal(context.PIQUETS.week.length,56);
+  assert.equal(context.PIQUETS.week[0],existing);
+  assert.equal(existing.note,'Maintenir');
+});
+test('une correction manuelle ne peut pas affecter un agent aux deux départs du même créneau',()=>{
+  const {context}=contextFor([
+    {l:'ca-f',chief:true},{l:'conducteur-f'},
+    {l:'ca-b',chief:true},{l:'conducteur-b'}
+  ]);
+  context.ASTR_CONFIG.engins=['VTU-01','VTU-02'];
+  const warnings=[];
+  context.showToast=message=>warnings.push(message);
+  preview(context);
+  const before=vm.runInContext('_pqWeeklyDraft[1].driver',context);
+  const firstChief=vm.runInContext('_pqWeeklyDraft[0].chief',context);
+  context.pqWeeklySetChoice(1,'driver',firstChief);
+  assert.equal(vm.runInContext('_pqWeeklyDraft[1].driver',context),before);
+  assert.match(warnings[0],/autre départ VTU/);
+});
+test('un troisième départ configuré multiplie les créneaux sans inventer d’agents',()=>{
+  const {context}=contextFor([
+    {l:'ca-f',chief:true},{l:'conducteur-f'},
+    {l:'ca-b',chief:true},{l:'conducteur-b'}
+  ]);
+  context.ASTR_CONFIG.engins=['VTU-01','VTU-02','VTU-03'];
+  const draft=context.pqDraftPlan('week',context.pqWeeklyVtuEngins());
+  assert.equal(draft.length,84);
+  assert.equal(draft[2].engin,'VTU-03');
+  assert.equal(draft[2].state,'empty');
+  assert.match(preview(context).innerHTML,/Enregistrement groupé indisponible/);
+});
+test('un changement du nombre de VTU pendant la confirmation annule tout',()=>{
+  const {context}=contextFor([
+    {l:'ca-f',chief:true},{l:'conducteur-f'},
+    {l:'ca-b',chief:true},{l:'conducteur-b'}
+  ]);
+  context.ASTR_CONFIG.engins=['VTU-01','VTU-02'];
+  let callback;
+  context.confirmModal=(_message,cb)=>{callback=cb;};
+  preview(context);
+  context.pqWeeklySaveWeek();
+  context.ASTR_CONFIG.engins.push('VTU-03');
+  callback();
+  assert.equal(context.PIQUETS.week.length,0);
+});
+test('le préremplissage du deuxième rang ouvre le formulaire du VTU correspondant',()=>{
+  const {context}=contextFor([
+    {l:'ca-f',chief:true},{l:'conducteur-f'},
+    {l:'ca-b',chief:true},{l:'conducteur-b'}
+  ]);
+  context.ASTR_CONFIG.engins=['VTU-01','VTU-02'];
+  preview(context);
+  const calls=[];
+  context.addPiquet=(...args)=>calls.push(args);
+  context.document={
+    getElementById:id=>({
+      'pq-jour':{value:'',dataset:{}},'pq-debut':{value:'',dataset:{}},
+      'pq-fin':{value:'',dataset:{}},'pq-suggestions':{innerHTML:''}
+    })[id]||null,
+    querySelectorAll:()=>[]
+  };
+  context.applySuggestion(1);
+  assert.equal(JSON.stringify(calls),JSON.stringify([['week','VTU-02','Lundi']]));
 });
