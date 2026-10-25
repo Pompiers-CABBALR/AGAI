@@ -5,7 +5,11 @@ const test=require('node:test');
 const vm=require('node:vm');
 
 const source=fs.readFileSync(path.join(__dirname,'../modules/26-piquet-weekly-js.js'),'utf8');
+const assembled=fs.readFileSync(path.join(__dirname,'../app.js'),'utf8');
 const days=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
+test('le module et le script assemblé gardent la même préparation VTU',()=>{
+  assert.ok(assembled.replace(/\r\n/g,'\n').includes(source.replace(/\r\n/g,'\n').trimEnd()));
+});
 function contextFor(users,options={}){
   const dispos={};
   for(const user of users){
@@ -19,7 +23,11 @@ function contextFor(users,options={}){
   ];
   const context={
     USERS:users,DISPOS:{week:dispos},PIQUETS:{week:options.existing||[]},
+    PIQUETS_VALIDATED:{},PLANNING_ROTATIONS:{week:['forte','faible']},
+    CURRENT_CASERNE_ID:'CIS05',astrPiquetWeek:0,
     ASTR_CONFIG:{granularity:60,weekStartHour:0},JOURS_FULL:days,
+    getMondayOfWeek:()=>new Date(2026,9,26),weekKey:()=> 'week',
+    hasRight:()=>true,isRespEquipe:()=>false,
     getSlotsPerDay:()=>24,planningEquipeGroups:()=>teams.map((eq,i)=>({eq,tone:i?'faible':'forte'})),
     getEquipeOfUser:login=>teams.find(eq=>eq.membres.includes(login)),
     isChefAgresByGrade:user=>user.chief===true,
@@ -35,11 +43,18 @@ function contextFor(users,options={}){
     fullName:user=>user.l,showToast:()=>{},
     document:{getElementById:()=>null,querySelectorAll:()=>[]},
     pqSyncTimes:()=>{},pqFinHint:()=>{},pqRefreshDispos:()=>{},
-    _encodeRole:role=>role.replace(/[^a-zA-Z0-9]/g,'_')
+    _encodeRole:role=>role.replace(/[^a-zA-Z0-9]/g,'_'),
+    confirmModal:()=>{},logPiquetChange:()=>{},saveData:()=>{},cM:()=>{},rAstrPiquets:()=>{}
   };
   vm.createContext(context);
   vm.runInContext(source,context);
   return {context,dispos};
+}
+function preview(context){
+  const target={innerHTML:'',querySelector:()=>null};
+  context.document.getElementById=id=>id==='pq-suggestions'?target:null;
+  context.suggestCreneaux('week','VTU-01');
+  return target;
 }
 test('aperçu VTU : 28 tranches, chef d’agrès de l’astreinte forte prioritaire',()=>{
   const users=[
@@ -176,4 +191,137 @@ test('une semaine avec piquet incomplet ne peut pas être marquée validée',()=
   context.validerPiquets();
   assert.equal(confirmed,false);
   assert.match(warning,/chef et conducteur requis/);
+});
+test('la proposition complète utilise uniquement chef et conducteur, avec priorité forte pour les deux rôles',()=>{
+  const {context}=contextFor([
+    {l:'ca-f',chief:true},{l:'ca-b',chief:true},
+    {l:'conducteur-f'},{l:'conducteur-b'}
+  ]);
+  const draft=context.pqDraftPlan('week','VTU-01');
+  assert.equal(draft.length,28);
+  assert.ok(draft.every(slot=>slot.state==='ready'&&!('equipier' in slot)));
+  assert.equal(draft[0].chief,'ca-f');
+  assert.equal(draft[0].driver,'conducteur-f');
+  const html=preview(context).innerHTML;
+  assert.match(html,/Enregistrer les 28 nouveaux créneaux/);
+  assert.doesNotMatch(html,/Équipier/);
+});
+test('la confirmation enregistre les 28 binômes en une seule sauvegarde sans valider la semaine',()=>{
+  const {context}=contextFor([{l:'ca-f',chief:true},{l:'conducteur-f'}]);
+  const calls={confirm:null,saved:[],logs:0,closed:0,rendered:0};
+  context.confirmModal=(message,callback)=>{calls.confirm={message,callback};};
+  context.saveData=immediate=>calls.saved.push(immediate);
+  context.logPiquetChange=()=>{calls.logs++;};
+  context.cM=()=>{calls.closed++;};
+  context.rAstrPiquets=()=>{calls.rendered++;};
+  preview(context);
+  assert.equal(context.PIQUETS.week.length,0);
+  context.pqWeeklySaveWeek();
+  assert.equal(context.PIQUETS.week.length,0,'la prévisualisation et la demande de confirmation ne sauvegardent rien');
+  assert.match(calls.confirm.message,/28 créneaux/);
+  calls.confirm.callback();
+  assert.equal(context.PIQUETS.week.length,28);
+  assert.ok(context.PIQUETS.week.every(p=>p.membres.length===2&&p.chefAgres!==p.conducteur));
+  assert.equal(calls.logs,28);
+  assert.equal(JSON.stringify(calls.saved),JSON.stringify([true]));
+  assert.equal(calls.closed,1);
+  assert.equal(calls.rendered,1);
+  assert.equal(context.PIQUETS_VALIDATED.week,undefined);
+});
+test('les deux agents sont modifiables dans l’aperçu et ne peuvent pas être la même personne',()=>{
+  const {context}=contextFor([
+    {l:'ca-f',chief:true},{l:'ca-b',chief:true},
+    {l:'conducteur-f'},{l:'conducteur-b'}
+  ]);
+  let callback;
+  context.confirmModal=(_message,cb)=>{callback=cb;};
+  const target=preview(context);
+  context.pqWeeklySetChoice(0,'driver','ca-f');
+  assert.match(target.innerHTML,/piquets incomplets/);
+  context.pqWeeklySetChoice(0,'chief','ca-b');
+  context.pqWeeklySetChoice(0,'driver','conducteur-b');
+  context.pqWeeklySaveWeek();
+  callback();
+  assert.equal(context.PIQUETS.week[0].chefAgres,'ca-b');
+  assert.equal(context.PIQUETS.week[0].conducteur,'conducteur-b');
+  assert.equal(context.PIQUETS.week[0].membres.length,2);
+});
+test('un piquet existant complet reste intact et seuls les 27 autres sont ajoutés',()=>{
+  const existing={engin:'VTU-01',jour:'Lundi',debut:'08:00',fin:'12:00',
+    chefAgres:'ca-f',conducteur:'conducteur-f',note:'Conserver'};
+  const {context}=contextFor([{l:'ca-f',chief:true},{l:'conducteur-f'}],{existing:[existing]});
+  let callback;
+  context.confirmModal=(_message,cb)=>{callback=cb;};
+  preview(context);
+  context.pqWeeklySaveWeek();
+  callback();
+  assert.equal(context.PIQUETS.week.length,28);
+  assert.equal(context.PIQUETS.week[0],existing);
+  assert.equal(existing.note,'Conserver');
+});
+test('si un seul agent est disponible, le piquet partiel est conservé mais la semaine reste non validée',()=>{
+  const {context,dispos}=contextFor([{l:'ca-f',chief:true},{l:'conducteur-f'}]);
+  for(let slot=8;slot<12;slot++)delete dispos['conducteur-f']['0_'+slot];
+  let confirmation;
+  context.confirmModal=(message,callback)=>{confirmation={message,callback};};
+  const html=preview(context).innerHTML;
+  assert.match(html,/1 piquets incomplets/);
+  context.pqWeeklySaveWeek();
+  assert.match(confirmation.message,/empêcheront la validation/);
+  confirmation.callback();
+  assert.equal(context.PIQUETS.week.length,28);
+  assert.equal(context.PIQUETS.week[0].chefAgres,'ca-f');
+  assert.equal(context.PIQUETS.week[0].conducteur,'');
+  assert.equal(context.PIQUETS.week[0].membres.length,1);
+  assert.equal(context.PIQUETS_VALIDATED.week,undefined);
+});
+test('aucun enregistrement groupé si un créneau est vide ou un piquet existant ne couvre qu’une partie',()=>{
+  const users=[{l:'ca-f',chief:true},{l:'conducteur-f'}];
+  const empty=contextFor(users);
+  for(let slot=8;slot<12;slot++){
+    delete empty.dispos['ca-f']['0_'+slot];
+    delete empty.dispos['conducteur-f']['0_'+slot];
+  }
+  assert.match(preview(empty.context).innerHTML,/Enregistrement groupé indisponible/);
+  assert.ok(empty.context.pqWeeklyWrites().error);
+  const overlap=contextFor(users,{existing:[{
+    engin:'VTU-01',jour:'Lundi',debut:'08:00',fin:'10:00',
+    chefAgres:'ca-f',conducteur:'conducteur-f'
+  }]});
+  assert.equal(overlap.context.pqDraftPlan('week','VTU-01')[0].state,'existing-partial');
+  preview(overlap.context);
+  assert.ok(overlap.context.pqWeeklyWrites().error);
+  assert.equal(overlap.context.PIQUETS.week.length,1);
+});
+test('une modification des piquets ou des disponibilités pendant la confirmation annule tout',()=>{
+  const users=[{l:'ca-f',chief:true},{l:'conducteur-f'}];
+  const altered=contextFor(users);
+  preview(altered.context);
+  altered.context.PIQUETS.week.push({engin:'VPI',jour:'Lundi',debut:'08:00',fin:'12:00'});
+  assert.match(altered.context.pqWeeklyWrites().error,/piquets ont changé/);
+  const unavailable=contextFor(users);
+  let callback;
+  unavailable.context.confirmModal=(_message,cb)=>{callback=cb;};
+  preview(unavailable.context);
+  unavailable.context.pqWeeklySaveWeek();
+  delete unavailable.dispos['ca-f']['0_8'];
+  callback();
+  assert.equal(unavailable.context.PIQUETS.week.length,0);
+  const changedChoice=contextFor([{l:'ca-f',chief:true},{l:'conducteur-f'},{l:'conducteur-b'}]);
+  let choiceCallback;
+  changedChoice.context.confirmModal=(_message,cb)=>{choiceCallback=cb;};
+  preview(changedChoice.context);
+  changedChoice.context.pqWeeklySaveWeek();
+  changedChoice.context.pqWeeklySetChoice(0,'driver','conducteur-b');
+  choiceCallback();
+  assert.equal(changedChoice.context.PIQUETS.week.length,0);
+});
+test('droits ou caserne changés : aucune proposition ne peut être sauvegardée',()=>{
+  const {context}=contextFor([{l:'ca-f',chief:true},{l:'conducteur-f'}]);
+  preview(context);
+  context.CURRENT_CASERNE_ID='AUTRE';
+  assert.match(context.pqWeeklyWrites().error,/caserne/);
+  context.CURRENT_CASERNE_ID='CIS05';
+  context.hasRight=()=>false;
+  assert.match(context.pqWeeklyWrites().error,/plus disponible/);
 });
