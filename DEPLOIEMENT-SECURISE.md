@@ -1,5 +1,27 @@
 # AGAI — déploiement sécurisé
 
+## V202610_0073 — préparation complète de la semaine VTU
+
+L'aide aux piquets propose les 28 tranches de la semaine avec exactement deux
+rôles VTU : chef d'agrès et conducteur. Les deux choix sont ajustables dans
+l'aperçu. La priorité reste l'astreinte forte, puis faible, autres équipes et
+sans équipe ; les heures déjà attribuées départagent les agents de même rang.
+
+Les piquets existants ne sont pas remplacés. Une tranche partiellement
+couverte par un piquet existant doit être corrigée manuellement. Une nouvelle
+tranche avec un seul agent disponible peut être enregistrée comme piquet
+incomplet, mais la validation définitive de la semaine reste bloquée tant
+qu'un chef ou un conducteur manque. Aucune sauvegarde n'a lieu à l'ouverture
+de l'aperçu : le responsable confirme séparément l'enregistrement groupé.
+Avant cette confirmation, les droits, la caserne, les piquets et la
+disponibilité des agents sont revérifiés. Un seul enregistrement local est
+déclenché, avec synchronisation immédiate ; attendre « Sync OK » avant de
+considérer la semaine transmise.
+
+Avant publication, confirmer l'absence d'intervention ou de saisie en cours
+et « Sync OK » sur les appareils utilisés. Après publication, tester la
+préparation d'une semaine dans l'aperçu sans l'enregistrer sur la production.
+
 ## V202610_0072 — grille d'astreinte téléphonique adaptative
 
 Le tableau mensuel suit maintenant immédiatement la largeur du panneau quand
