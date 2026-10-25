@@ -1,5 +1,22 @@
 # AGAI — déploiement sécurisé
 
+## V202610_0074 — proposition VTU selon les rangs de départ
+
+La préparation hebdomadaire couvre maintenant tous les VTU configurés :
+28 tranches par rang de départ, chacune avec un chef d'agrès et un conducteur.
+Sur un même créneau, les chefs sont affectés aux rangs dans l'ordre avant
+les conducteurs ; un agent ne peut pas être proposé sur deux départs
+simultanés. Les priorités d'équipe et l'équilibrage des heures restent
+appliqués. Un piquet existant est conservé et ses agents sont exclus des
+autres propositions qui se chevauchent.
+
+Si les agents disponibles ne suffisent pas, les rangs concernés restent
+incomplets et la semaine ne peut pas être validée. La configuration des
+véhicules, les droits, les disponibilités et les piquets sont revérifiés
+avant l'enregistrement groupé. Aucune donnée n'est modifiée à l'ouverture
+de l'aperçu. Vérifier l'absence de saisie en cours et « Sync OK » avant
+publication ; contrôler ensuite l'aperçu sans l'enregistrer en production.
+
 ## V202610_0073 — préparation complète de la semaine VTU
 
 L'aide aux piquets propose les 28 tranches de la semaine avec exactement deux
