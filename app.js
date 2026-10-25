@@ -18367,7 +18367,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0074';
+const APP_VERSION='V202610_0075';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -27392,7 +27392,12 @@ function pqWeeklyRenderDraft(){
   const existing=_pqWeeklyDraft.filter(function(s){return s.state==='existing';}).length;
   const blocked=_pqWeeklyDraft.length-ready-partialCount-existing;
   const expected=28*(_pqWeeklySnapshot?.engins.length||0);
-  const complete=_pqWeeklyDraft.length===expected&&expected>0&&blocked===0;
+  const validShape=_pqWeeklyDraft.length===expected&&expected>0;
+  const toSave=ready+partialCount;
+  const leftAside=_pqWeeklyDraft.filter(function(s){return s.state==='empty'||s.state==='existing-partial';});
+  const leftAsideLabels=leftAside.slice(0,8).map(function(s){
+    return escHtml(s.jour+' '+s.label+' · '+piquetDepartureLabel(s.engin));
+  }).join(' ; ')+(leftAside.length>8?' ; … +'+(leftAside.length-8):'');
   let html='<div style="background:#F8FAFC;border:1px solid #CBD5E1;border-radius:8px;padding:10px;margin-bottom:8px;">'
     +'<div style="font-weight:700;font-size:13px;">Proposition sur toute la semaine — '+(_pqWeeklySnapshot?.engins.length||0)+' départ(s) VTU, 2 agents par créneau</div>'
     +'<div style="font-size:11px;color:#475569;margin:4px 0 8px;">Chef d’agrès et conducteur distincts. Astreinte forte prioritaire, puis faible, autres équipes et sans équipe. '
@@ -27437,9 +27442,13 @@ function pqWeeklyRenderDraft(){
     });
   });
   html+='</div>'
-    +(complete&&(ready+partialCount)?'<button type="button" class="btn pr sm" style="margin-top:9px;" onclick="pqWeeklySaveWeek()">Enregistrer les '+(ready+partialCount)+' nouveaux créneaux de la semaine'+(partialCount?' ('+partialCount+' à compléter)':'')+'</button>'
-      :complete?'<div style="margin-top:8px;color:#166534;font-size:11px;font-weight:600;">La semaine est déjà couverte par les piquets existants.</div>'
-      :'<div style="margin-top:8px;color:#9A3412;font-size:11px;font-weight:600;">Enregistrement groupé indisponible : '+blocked+' créneaux sans agent ou déjà partiellement couverts. Corrigez-les manuellement ; les piquets existants restent inchangés.</div>')
+    +(validShape&&toSave?'<button type="button" class="btn pr sm" style="margin-top:9px;" onclick="pqWeeklySaveWeek()">Enregistrer en groupe les '+toSave+' créneaux proposés'+(partialCount?' ('+partialCount+' incomplets)':'')+'</button>'
+      :validShape&&blocked===0?'<div style="margin-top:8px;color:#166534;font-size:11px;font-weight:600;">La semaine est déjà couverte par les piquets existants.</div>'
+      :validShape?'<div style="margin-top:8px;color:#9A3412;font-size:11px;font-weight:600;">Aucun nouveau créneau enregistrable pour le moment.</div>'
+      :'<div style="margin-top:8px;color:#9A3412;font-size:11px;font-weight:600;">Proposition incomplète : relancez la préparation.</div>')
+    +(validShape&&blocked?'<div style="margin-top:8px;color:#9A3412;font-size:11px;">'
+      +blocked+' créneau(x) laissé(s) de côté (sans agent ou piquet existant partiel) : '+leftAsideLabels+'. '
+      +'Ils ne seront pas modifiés et la semaine ne sera pas validée automatiquement.</div>':'')
     +'</div>';
   target.innerHTML=html;
   const list=target.querySelector('.pq-weekly-list');
@@ -27457,7 +27466,7 @@ function pqWeeklyWrites(){
   if(JSON.stringify(PIQUETS[snapshot.wk]||[])!==snapshot.piquets)
     return {error:'Les piquets ont changé. Relancez la proposition avant d’enregistrer.'};
   const current=pqDraftPlan(snapshot.wk,snapshot.engins);
-  const entries=[],usedByPeriod=new Map();
+  const entries=[],skipped=[],usedByPeriod=new Map();
   for(let i=0;i<_pqWeeklyDraft.length;i++){
     const selected=_pqWeeklyDraft[i],fresh=current[i];
     if(!fresh||selected.engin!==fresh.engin||selected.jour!==fresh.jour
@@ -27465,6 +27474,18 @@ function pqWeeklyWrites(){
       return {error:'Les créneaux ont changé. Relancez la proposition.'};
     if(selected.state==='existing'){
       if(fresh.state!=='existing')return {error:'Un piquet existant a changé. Relancez la proposition.'};
+      continue;
+    }
+    if(selected.state==='existing-partial'){
+      if(fresh.state!=='existing-partial')
+        return {error:'Un piquet existant a changé. Relancez la proposition.'};
+      skipped.push({engin:selected.engin,jour:selected.jour,label:selected.label,reason:'existing-partial'});
+      continue;
+    }
+    if(selected.state==='empty'&&!selected.chief&&!selected.driver){
+      if(fresh.state==='existing'||fresh.state==='existing-partial')
+        return {error:'Un piquet existant a changé. Relancez la proposition.'};
+      skipped.push({engin:selected.engin,jour:selected.jour,label:selected.label,reason:'empty'});
       continue;
     }
     if(!['ready','partial'].includes(selected.state)||fresh.state==='existing'||fresh.state==='existing-partial'
@@ -27486,21 +27507,27 @@ function pqWeeklyWrites(){
         selected.driver?{role:'Conducteur',login:selected.driver,hDebut:selected.debut,hFin:selected.fin}:null
       ].filter(Boolean),chefAgres:selected.chief,conducteur:selected.driver,chefEquipe:'',stagiaire:''});
   }
-  return {entries};
+  return {entries,skipped};
 }
 function pqWeeklySaveWeek(){
   const checked=pqWeeklyWrites();
   if(checked.error){showToast(checked.error,'warn');return;}
-  if(!checked.entries.length){showToast('La semaine est déjà couverte.','warn');return;}
+  if(!checked.entries.length){
+    showToast(checked.skipped.length?'Aucun nouveau créneau enregistrable ; des créneaux restent à traiter.':'La semaine est déjà couverte.','warn');
+    return;
+  }
   const snapshot=_pqWeeklySnapshot;
   const entriesAtConfirmation=JSON.stringify(checked.entries);
+  const skippedAtConfirmation=JSON.stringify(checked.skipped);
   const partial=checked.entries.filter(function(p){return !p.chefAgres||!p.conducteur;}).length;
   confirmModal('Ajouter '+checked.entries.length+' créneaux VTU ? '
     +(partial?partial+' resteront incomplets et empêcheront la validation de la semaine. ':'')
+    +(checked.skipped.length?checked.skipped.length+' autres créneaux seront laissés de côté et resteront à traiter. ':'')
     +'Les piquets existants ne seront pas modifiés. Vérifiez ensuite « Sync OK ».',function(){
     const fresh=pqWeeklyWrites();
     if(fresh.error||_pqWeeklySnapshot!==snapshot
-      ||JSON.stringify(fresh.entries)!==entriesAtConfirmation){
+      ||JSON.stringify(fresh.entries)!==entriesAtConfirmation
+      ||JSON.stringify(fresh.skipped)!==skippedAtConfirmation){
       showToast(fresh.error||'La proposition a changé. Relancez-la sans rien enregistrer.','warn');return;
     }
     const wk=_pqWeeklySnapshot.wk;
@@ -27511,7 +27538,9 @@ function pqWeeklySaveWeek(){
     });
     saveData(true);
     cM();rAstrPiquets();
-    showToast(fresh.entries.length+' créneaux enregistrés localement. Attendez « Sync OK ».','success');
+    showToast(fresh.entries.length+' créneaux enregistrés localement'
+      +(fresh.skipped.length?' ; '+fresh.skipped.length+' laissés à traiter':'')
+      +'. Attendez « Sync OK ».','success');
   });
 }
 function applySuggestion(index){
