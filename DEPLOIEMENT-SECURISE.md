@@ -1,5 +1,25 @@
 # AGAI — déploiement sécurisé
 
+## V202610_0076 — disponibilités partielles et aperçu de reprise des piquets VTU
+
+Les propositions du matin, de l'après-midi, du soir et de la nuit sont
+découpées aux limites réelles de disponibilité. Une personne disponible
+sur une partie seulement d'une tranche peut participer à un piquet sur
+ces seules heures. Chaque portion est proposée avec un chef d'agrès et
+un conducteur distincts ; un équipage incomplet n'est pas présenté comme
+prêt au départ. Les relais de nuit sont retrouvés à la bonne date,
+y compris avant le début de semaine configuré à 08 h.
+
+Pour les semaines déjà renseignées, un volet « Aperçu de reprise » simule
+une nouvelle répartition en lecture seule. Il ne remplace ni ne supprime
+aucun piquet existant. Toute reprise effective des piquets enregistrés
+nécessitera un contrôle distinct et une confirmation explicite.
+
+Avant publication, confirmer l'absence d'intervention ou de saisie en cours
+et « Sync OK » sur les appareils utilisés. Vérifier l'aperçu de la semaine
+du 26 octobre avant toute saisie réelle ; aucun piquet existant ne doit être
+modifié par l'ouverture de cet aperçu.
+
 ## V202610_0075 — enregistrement groupé des piquets disponibles
 
 La présence de créneaux sans agent ou d'un piquet existant partiellement

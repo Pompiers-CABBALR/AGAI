@@ -1,6 +1,7 @@
 // Aide au piquet VTU : aperçu complet avant confirmation, sans écraser l'existant.
 let _pqWeeklyDraft=[];
 let _pqWeeklySnapshot=null;
+let _pqWeeklyRepriseDraft=[];
 function pqWeeklyVtuEngins(){
   return [...new Set(sortVehicleNames((ASTR_CONFIG.engins||[]).filter(function(e){return /^VTU\b/i.test(String(e));})))];
 }
@@ -20,8 +21,18 @@ function pqDraftClock(minutes){
   const m=((minutes%1440)+1440)%1440;
   return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
 }
-function pqDraftPlan(wk,engin){
+function pqWeeklyRange(slot){
+  const day=JOURS_FULL.indexOf(slot.jour);
+  const start=(ASTR_CONFIG.weekStartHour??0)*60;
+  return piquetToAbsRangeIdx(day+(timeToMin(slot.debut)<start?1:0),slot.debut,slot.fin);
+}
+function pqWeeklyOverlaps(a,b){
+  const ar=pqWeeklyRange(a),br=pqWeeklyRange(b);
+  return ar[0]<br[1]&&br[0]<ar[1];
+}
+function pqDraftPlan(wk,engin,options={}){
   const engins=Array.isArray(engin)?engin:[engin];
+  const existingForPlan=options.ignoreExisting?[]:(PIQUETS[wk]||[]);
   const gran=ASTR_CONFIG.granularity||60;
   const start=(ASTR_CONFIG.weekStartHour??0)*60;
   const slots=getSlotsPerDay(gran);
@@ -35,7 +46,7 @@ function pqDraftPlan(wk,engin){
   const tiers=new Map(groups.map(function(g,i){return [g.eq.id,i];}));
   const load=new Map();
   USERS.forEach(function(u){
-    const existing=(PIQUETS[wk]||[]).filter(function(p){
+    const existing=existingForPlan.filter(function(p){
       return (p.membres||[]).some(function(m){return m.login===u.l;})
         ||[p.chefAgres,p.conducteur,p.chefEquipe,p.stagiaire].includes(u.l);
     });
@@ -55,12 +66,14 @@ function pqDraftPlan(wk,engin){
     const eq=getEquipeOfUser(u.l);
     return eq&&tiers.has(eq.id)?tiers.get(eq.id):groups.length;
   }
-  function pick(list,night,driver,strictTeamPriority){
+  function pick(list,night,driver,strictTeamPriority,scarcity,previous){
     return list.slice().sort(function(a,b){
       const al=load.get(a.l),bl=load.get(b.l);
       const scoreA=al.minutes+tier(a)*720+(night?al.nights*240:0);
       const scoreB=bl.minutes+tier(b)*720+(night?bl.nights*240:0);
       return (strictTeamPriority?tier(a)-tier(b):0)
+        ||(scarcity?.get(a.l)??0)-(scarcity?.get(b.l)??0)
+        ||(previous?Number(b.l===previous)-Number(a.l===previous):0)
         ||scoreA-scoreB
         ||(driver?Number(isChefAgresByGrade(a))-Number(isChefAgresByGrade(b)):0)
         ||tier(a)-tier(b)
@@ -72,7 +85,7 @@ function pqDraftPlan(wk,engin){
     const proposed=piquetToAbsRangeIdx(effective,debut,fin);
     const complete=[];
     let overlaps=false;
-    (PIQUETS[wk]||[]).forEach(function(p){
+    existingForPlan.forEach(function(p){
       if(p.engin!==targetEngin||!p.debut||!p.fin)return;
       const pdi=JOURS_FULL.indexOf(p.jour);
       if(pdi<0)return;
@@ -92,47 +105,70 @@ function pqDraftPlan(wk,engin){
   const draft=[];
   JOURS_FULL.forEach(function(jour,di){
     periods.forEach(function(period){
-      const debut=pqDraftClock(period.from),fin=pqDraftClock(period.to);
-      const duration=period.to-period.from;
-      const slotDrafts=engins.map(function(targetEngin){
-        const s={wk,engin:targetEngin,jour,label:period.label,debut,fin,
-          chief:'',driver:'',eligible:[],chiefEligible:[],state:'empty'};
-        const existing=coverage(targetEngin,di,debut,fin);
-        if(existing){s.state=existing;return s;}
-        const available=USERS.filter(function(u){
-          const dispo=DISPOS[wk]?.[u.l];
-          if(!dispo)return false;
-          for(let elapsed=0;elapsed<duration;elapsed+=gran){
-            const clock=(period.from+elapsed)%1440;
-            const slot=Math.floor(((clock-start+1440)%1440)/gran);
-            if(slot>=slots||dispo[di+'_'+slot]!==true
-              ||!personnelDispoSlotAllowed(wk,u.l,di,slot,gran))return false;
-          }
-          return !hasConflitPiquet(wk,u.l,jour,debut,fin,-1);
-        });
-        s.eligible=available.slice().sort(function(a,b){return tier(a)-tier(b)||String(a.l).localeCompare(String(b.l),'fr');}).map(function(u){return u.l;});
-        s.chiefEligible=available.filter(isChefAgresByGrade).map(function(u){return u.l;});
-        return s;
-      });
-      const night=period.label==='Nuit';
-      const allocated=new Set();
-      function assign(s,role,agents){
-        const u=pick(agents.filter(function(agent){return !allocated.has(agent.l);}),night,role==='driver',true);
-        if(!u)return;
-        s[role]=u.l;allocated.add(u.l);
-        const burden=load.get(u.l);
-        burden.minutes+=duration;
-        if(night)burden.nights++;
+      const slices=[];
+      for(let from=period.from;from<period.to;from+=gran){
+        const to=Math.min(from+gran,period.to);
+        slices.push({from,to,debut:pqDraftClock(from),fin:pqDraftClock(to)});
       }
-      // Réserver les chefs de chaque rang avant de choisir les conducteurs.
-      slotDrafts.filter(function(s){return !s.state.startsWith('existing');}).forEach(function(s){
-        assign(s,'chief',USERS.filter(function(u){return s.chiefEligible.includes(u.l);}));
+      const availableByUser=new Map();
+      USERS.forEach(function(u){
+        const dispo=DISPOS[wk]?.[u.l];
+        availableByUser.set(u.l,slices.map(function(slice){
+          const clock=slice.from%1440;
+          const slot=Math.floor(((clock-start+1440)%1440)/gran);
+          return !!dispo&&slot<slots&&dispo[di+'_'+slot]===true
+            &&personnelDispoSlotAllowed(wk,u.l,di,slot,gran)
+            &&(options.ignoreExisting||!hasConflitPiquet(wk,u.l,jour,slice.debut,slice.fin,-1));
+        }));
       });
-      slotDrafts.filter(function(s){return !s.state.startsWith('existing');}).forEach(function(s){
-        assign(s,'driver',USERS.filter(function(u){return s.eligible.includes(u.l);}));
-        s.state=s.chief&&s.driver?'ready':s.chief||s.driver?'partial':'empty';
+      const scarcity=new Map(USERS.map(function(u){
+        return [u.l,availableByUser.get(u.l).filter(Boolean).length];
+      }));
+      const previousCrew=new Map(),lastSegment=new Map();
+      slices.forEach(function(slice,sliceIndex){
+        const slotDrafts=engins.map(function(targetEngin){
+          const s={wk,engin:targetEngin,jour,label:period.label,
+            debut:slice.debut,fin:slice.fin,chief:'',driver:'',
+            eligible:[],chiefEligible:[],state:'empty'};
+          const existing=coverage(targetEngin,di,slice.debut,slice.fin);
+          if(existing){s.state=existing;return s;}
+          const available=USERS.filter(function(u){return availableByUser.get(u.l)[sliceIndex];});
+          s.eligible=available.slice().sort(function(a,b){return tier(a)-tier(b)||String(a.l).localeCompare(String(b.l),'fr');}).map(function(u){return u.l;});
+          s.chiefEligible=available.filter(isChefAgresByGrade).map(function(u){return u.l;});
+          return s;
+        });
+        const night=period.label==='Nuit',allocated=new Set();
+        function assign(s,role,agents){
+          const previous=previousCrew.get(s.engin)?.[role]||'';
+          const u=pick(agents.filter(function(agent){return !allocated.has(agent.l);}),
+            night,role==='driver',true,scarcity,previous);
+          if(!u)return;
+          s[role]=u.l;allocated.add(u.l);
+          const burden=load.get(u.l);
+          burden.minutes+=slice.to-slice.from;
+          if(night)burden.nights++;
+        }
+        // Chaque heure réserve d'abord les chefs de tous les départs.
+        slotDrafts.filter(function(s){return !s.state.startsWith('existing');}).forEach(function(s){
+          assign(s,'chief',USERS.filter(function(u){return s.chiefEligible.includes(u.l);}));
+        });
+        slotDrafts.filter(function(s){return !s.state.startsWith('existing');}).forEach(function(s){
+          assign(s,'driver',USERS.filter(function(u){return s.eligible.includes(u.l);}));
+          s.state=s.chief&&s.driver?'ready':s.chief||s.driver?'partial':'empty';
+        });
+        slotDrafts.forEach(function(s){
+          const last=lastSegment.get(s.engin);
+          if(last&&last.fin===s.debut&&last.state===s.state
+            &&last.chief===s.chief&&last.driver===s.driver){
+            last.fin=s.fin;
+            last.eligible=last.eligible.filter(function(login){return s.eligible.includes(login);});
+            last.chiefEligible=last.chiefEligible.filter(function(login){return s.chiefEligible.includes(login);});
+          }else{
+            draft.push(s);lastSegment.set(s.engin,s);
+          }
+          previousCrew.set(s.engin,{chief:s.chief,driver:s.driver});
+        });
       });
-      draft.push(...slotDrafts);
     });
   });
   return draft;
@@ -148,7 +184,10 @@ function suggestCreneaux(wk,engin){
   const engins=pqWeeklyVtuEngins();
   if(!engins.length)return;
   _pqWeeklyDraft=pqDraftPlan(wk,engins);
+  _pqWeeklyRepriseDraft=(PIQUETS[wk]||[]).length
+    ?pqDraftPlan(wk,engins,{ignoreExisting:true}):[];
   _pqWeeklySnapshot={wk,engins,caserneId:CURRENT_CASERNE_ID,
+    granularity:ASTR_CONFIG.granularity||60,weekStartHour:ASTR_CONFIG.weekStartHour??0,
     piquets:JSON.stringify(PIQUETS[wk]||[]),rotation:JSON.stringify(PLANNING_ROTATIONS[wk]||null)};
   pqWeeklyRenderDraft();
 }
@@ -158,7 +197,7 @@ function pqWeeklySetChoice(index,role,login){
   const permitted=role==='chief'?slot.chiefEligible:slot.eligible;
   if(login&&!permitted.includes(login))return;
   if(login&&_pqWeeklyDraft.some(function(other){
-    return other!==slot&&other.jour===slot.jour&&other.label===slot.label
+    return other!==slot&&pqWeeklyOverlaps(other,slot)
       &&(other.chief===login||other.driver===login);
   })){
     showToast('Cet agent est déjà proposé sur un autre départ VTU au même horaire.','warn');
@@ -177,8 +216,7 @@ function pqWeeklyRenderDraft(){
   const partialCount=_pqWeeklyDraft.filter(function(s){return s.state==='partial';}).length;
   const existing=_pqWeeklyDraft.filter(function(s){return s.state==='existing';}).length;
   const blocked=_pqWeeklyDraft.length-ready-partialCount-existing;
-  const expected=28*(_pqWeeklySnapshot?.engins.length||0);
-  const validShape=_pqWeeklyDraft.length===expected&&expected>0;
+  const validShape=_pqWeeklyDraft.length>0&&!!_pqWeeklySnapshot?.engins.length;
   const toSave=ready+partialCount;
   const leftAside=_pqWeeklyDraft.filter(function(s){return s.state==='empty'||s.state==='existing-partial';});
   const leftAsideLabels=leftAside.slice(0,8).map(function(s){
@@ -236,6 +274,33 @@ function pqWeeklyRenderDraft(){
       +blocked+' créneau(x) laissé(s) de côté (sans agent ou piquet existant partiel) : '+leftAsideLabels+'. '
       +'Ils ne seront pas modifiés et la semaine ne sera pas validée automatiquement.</div>':'')
     +'</div>';
+  const existingPiquets=PIQUETS[_pqWeeklySnapshot?.wk]||[];
+  const replacements=_pqWeeklyRepriseDraft.filter(function(s){
+    if(!s.chief&&!s.driver)return false;
+    return existingPiquets.some(function(p){
+      return p.engin===s.engin&&pqWeeklyOverlaps(p,s)
+        &&(p.chefAgres!==s.chief||p.conducteur!==s.driver);
+    });
+  });
+  if(replacements.length){
+    html+='<details style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:10px;margin-bottom:8px;font-size:11px;">'
+      +'<summary style="cursor:pointer;font-weight:700;">Aperçu de reprise des piquets déjà enregistrés ('+replacements.length+' plages à examiner)</summary>'
+      +'<p>Simulation en lecture seule : ces propositions supposent une nouvelle répartition de la semaine. '
+      +'Les piquets actuels, leurs agents et leurs horaires restent inchangés. Aucun bouton ne les remplace automatiquement.</p>'
+      +'<div style="max-height:220px;overflow-y:auto;">'
+      +replacements.map(function(s){
+        const person=function(login){
+          const user=USERS.find(function(u){return u.l===login;});
+          return login?(user?fullName(user):login):'—';
+        };
+        const overlaps=existingPiquets.filter(function(p){return p.engin===s.engin&&pqWeeklyOverlaps(p,s);});
+        const old=overlaps.map(function(p){return [person(p.chefAgres),person(p.conducteur)].join(' / ');}).join(' ; ');
+        return '<div style="border-top:1px solid #BFDBFE;padding:4px 0;">'
+          +escHtml(s.jour+' '+s.label+' '+s.debut+'–'+s.fin+' · '+s.engin)
+          +' : '+escHtml(old)+' → '+escHtml(person(s.chief)+' / '+person(s.driver))
+          +(s.state!=='ready'?' · équipage incomplet':'')+'</div>';
+      }).join('')+'</div></details>';
+  }
   target.innerHTML=html;
   const list=target.querySelector('.pq-weekly-list');
   if(list)list.scrollTop=scrollTop;
@@ -243,16 +308,20 @@ function pqWeeklyRenderDraft(){
 function pqWeeklyWrites(){
   const snapshot=_pqWeeklySnapshot;
   if(!snapshot||!pqWeeklyCanEdit(snapshot.wk)
-    ||!snapshot.engins.length||_pqWeeklyDraft.length!==28*snapshot.engins.length)
+    ||!snapshot.engins.length||!_pqWeeklyDraft.length)
     return {error:'Cette proposition n’est plus disponible. Rouvrez la préparation de semaine.'};
   if(CURRENT_CASERNE_ID!==snapshot.caserneId
     ||JSON.stringify(pqWeeklyVtuEngins())!==JSON.stringify(snapshot.engins)
+    ||(ASTR_CONFIG.granularity||60)!==snapshot.granularity
+    ||(ASTR_CONFIG.weekStartHour??0)!==snapshot.weekStartHour
     ||JSON.stringify(PLANNING_ROTATIONS[snapshot.wk]||null)!==snapshot.rotation)
     return {error:'La caserne ou les équipes ont changé. Relancez la proposition.'};
   if(JSON.stringify(PIQUETS[snapshot.wk]||[])!==snapshot.piquets)
     return {error:'Les piquets ont changé. Relancez la proposition avant d’enregistrer.'};
   const current=pqDraftPlan(snapshot.wk,snapshot.engins);
-  const entries=[],skipped=[],usedByPeriod=new Map();
+  if(current.length!==_pqWeeklyDraft.length)
+    return {error:'Les créneaux ont changé. Relancez la proposition.'};
+  const entries=[],skipped=[],usedByAgent=new Map();
   for(let i=0;i<_pqWeeklyDraft.length;i++){
     const selected=_pqWeeklyDraft[i],fresh=current[i];
     if(!fresh||selected.engin!==fresh.engin||selected.jour!==fresh.jour
@@ -280,13 +349,12 @@ function pqWeeklyWrites(){
       ||(selected.driver&&!fresh.eligible.includes(selected.driver))
       ||(selected.chief&&selected.chief===selected.driver))
       return {error:'La semaine comporte un créneau non enregistrable. Aucun piquet ajouté.'};
-    const periodKey=selected.jour+'|'+selected.label;
-    if(!usedByPeriod.has(periodKey))usedByPeriod.set(periodKey,new Set());
-    const used=usedByPeriod.get(periodKey);
-    if((selected.chief&&used.has(selected.chief))||(selected.driver&&used.has(selected.driver)))
-      return {error:'Un agent figure sur deux départs VTU simultanés. Aucun piquet ajouté.'};
-    if(selected.chief)used.add(selected.chief);
-    if(selected.driver)used.add(selected.driver);
+    for(const login of [selected.chief,selected.driver].filter(Boolean)){
+      const prior=usedByAgent.get(login)||[];
+      if(prior.some(function(other){return pqWeeklyOverlaps(other,selected);}))
+        return {error:'Un agent figure sur deux départs VTU simultanés. Aucun piquet ajouté.'};
+      prior.push(selected);usedByAgent.set(login,prior);
+    }
     entries.push({engin:selected.engin,jour:selected.jour,debut:selected.debut,fin:selected.fin,note:'',
       membres:[
         selected.chief?{role:'Chef d’agrès',login:selected.chief,hDebut:selected.debut,hFin:selected.fin}:null,
@@ -337,8 +405,9 @@ function applySuggestion(index){
     showToast('Cette proposition n’est plus disponible. Relancez la préparation.','warn');return;
   }
   // Recontrôler les disponibilités et les piquets avant le préremplissage.
-  const fresh=pqDraftPlan(previous.wk,previous.engin).find(function(s){
-    return s.jour===previous.jour&&s.label===previous.label;
+  const fresh=pqDraftPlan(previous.wk,_pqWeeklySnapshot.engins).find(function(s){
+    return s.engin===previous.engin&&s.jour===previous.jour&&s.label===previous.label
+      &&s.debut===previous.debut&&s.fin===previous.fin;
   });
   if(!fresh||(fresh.state!=='ready'&&fresh.state!=='partial')
     ||(previous.chief&&!fresh.chiefEligible.includes(previous.chief))

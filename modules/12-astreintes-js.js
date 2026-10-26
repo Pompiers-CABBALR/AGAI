@@ -2799,10 +2799,13 @@ function _enginRoleCount(nom){
 // ── Récupère le piquet actif pour un login donné ──
 function getPiquetActif(wk,login){
   const now=N();
-  const nowMin=now.getHours()*60+now.getMinutes();
-  const dowJS=now.getDay();
-  const jourActuel=JOURS_FULL[dowJS===0?6:dowJS-1];
-  const jourPrec=JOURS_FULL[(dowJS===0?6:dowJS-1+6)%7];
+  const year=Number(wk.slice(0,4)),month=Number(wk.slice(4,6))-1,day=Number(wk.slice(6,8));
+  if(!Number.isFinite(year)||!Number.isFinite(month)||!Number.isFinite(day))return null;
+  // Comparer les jours calendaires en UTC évite le décalage du changement d'heure.
+  const dayIndex=Math.round((Date.UTC(now.getFullYear(),now.getMonth(),now.getDate())
+    -Date.UTC(year,month,day))/86400000);
+  const nowAbs=dayIndex*1440+now.getHours()*60+now.getMinutes();
+  const weekStart=(ASTR_CONFIG.weekStartHour??0)*60;
   return (PIQUETS[wk]||[]).find(function(p){
     // chef d'agrès : raccourci p.chefAgres, ou repli sur les membres (insensible apostrophe)
     let caLogin=p.chefAgres;
@@ -2812,15 +2815,11 @@ function getPiquetActif(wk,login){
       if(caM)caLogin=caM.login;
     }
     if(caLogin!==login)return false;
-    const dMin=timeToMin(p.debut),fMin=timeToMin(p.fin);
-    const overnight=p.fin<=p.debut;
-    if(overnight){
-      if(p.jour===jourActuel&&nowMin>=dMin)return true;
-      if(p.jour===jourPrec&&nowMin<fMin)return true;
-    } else {
-      if(p.jour===jourActuel&&nowMin>=dMin&&nowMin<fMin)return true;
-    }
-    return false;
+    const piquetDay=JOURS_FULL.indexOf(p.jour);
+    if(piquetDay<0||!p.debut||!p.fin)return false;
+    const effectiveDay=piquetDay+(timeToMin(p.debut)<weekStart?1:0);
+    const [from,to]=piquetToAbsRangeIdx(effectiveDay,p.debut,p.fin);
+    return from<=nowAbs&&nowAbs<to;
   })||null;
 }
 
@@ -3174,7 +3173,12 @@ function showPersonnelModal(id){
   const interruptedHandoff=findInterruptedDepartureHandoff(CU.l,id);
   const heure=interruptedHandoff?interruptedHandoff.handoff.heure:(_pendingNextInterventionStarts[id]||getHHMM(N()));
   const chained=!interruptedHandoff&&!!_pendingNextInterventionStarts[id];
-  const wk=weekKey(getMondayOfWeek(0));
+  const piquetNow=N(),piquetStart=new Date(piquetNow);
+  const piquetStartDay=ASTR_CONFIG.weekStartDay??1;
+  piquetStart.setDate(piquetStart.getDate()-((piquetStart.getDay()-piquetStartDay+7)%7));
+  piquetStart.setHours(ASTR_CONFIG.weekStartHour??0,0,0,0);
+  if(piquetNow<piquetStart)piquetStart.setDate(piquetStart.getDate()-7);
+  const wk=weekKey(piquetStart);
   const previous=chained&&iv._chainPreviousInterventionId?interventionById(iv._chainPreviousInterventionId):null;
   const inherited=chainedDepartureSuggestions(previous,CU.l,iv._agr2||'');
 
