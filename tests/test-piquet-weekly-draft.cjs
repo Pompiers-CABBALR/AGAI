@@ -7,6 +7,17 @@ const vm=require('node:vm');
 const source=fs.readFileSync(path.join(__dirname,'../modules/26-piquet-weekly-js.js'),'utf8');
 const assembled=fs.readFileSync(path.join(__dirname,'../app.js'),'utf8');
 const days=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
+function functionSource(source,name){
+  const start=source.indexOf('function '+name+'(');
+  assert.ok(start>=0,name+' exists');
+  const body=source.indexOf('{',start);
+  let depth=0;
+  for(let i=body;i<source.length;i++){
+    if(source[i]==='{')depth++;
+    if(source[i]==='}'&&!--depth)return source.slice(start,i+1);
+  }
+  throw Error('Unclosed '+name);
+}
 test('le module et le script assemblé gardent la même préparation VTU',()=>{
   assert.ok(assembled.replace(/\r\n/g,'\n').includes(source.replace(/\r\n/g,'\n').trimEnd()));
 });
@@ -312,12 +323,12 @@ test('un piquet déjà partiel reste intact et les autres créneaux peuvent êtr
   let callback,saveCount=0;
   overlap.context.confirmModal=(_message,cb)=>{callback=cb;};
   overlap.context.saveData=()=>{saveCount++;};
-  assert.match(preview(overlap.context).innerHTML,/Enregistrer en groupe les 27 créneaux proposés/);
+  assert.match(preview(overlap.context).innerHTML,/Enregistrer en groupe les 28 créneaux proposés/);
   assert.equal(overlap.context.pqWeeklyWrites().skipped.length,1);
   overlap.context.pqWeeklySaveWeek();
   assert.equal(overlap.context.PIQUETS.week.length,1);
   callback();
-  assert.equal(overlap.context.PIQUETS.week.length,28);
+  assert.equal(overlap.context.PIQUETS.week.length,29);
   assert.equal(JSON.stringify(overlap.context.PIQUETS.week[0]),JSON.stringify(original));
   assert.equal(saveCount,1);
   assert.equal(overlap.context.PIQUETS_VALIDATED.week,undefined);
@@ -396,6 +407,111 @@ test('deux départs VTU : 56 créneaux, chefs réservés avant conducteurs et au
   for(let i=0;i<56;i+=2)
     assert.equal(new Set(context.PIQUETS.week.slice(i,i+2).flatMap(p=>[p.chefAgres,p.conducteur])).size,4);
 });
+test('une disponibilité partielle de l’astreinte faible crée des relais réels dans le soir et la nuit',()=>{
+  const users=[
+    {l:'ca-f',chief:true},{l:'conducteur-f'},
+    {l:'ca-b',chief:true},{l:'conducteur-b'},
+    {l:'marien.matthis'}
+  ];
+  const {context,dispos}=contextFor(users);
+  context.ASTR_CONFIG.engins=['VTU-01','VTU-02'];
+  context.ASTR_CONFIG.weekStartHour=8;
+  const originalGetEquipe=context.getEquipeOfUser;
+  context.getEquipeOfUser=login=>login==='marien.matthis'?{id:'faible'}:originalGetEquipe(login);
+  for(let slot=0;slot<24;slot++)dispos['marien.matthis']['0_'+slot]=slot>=11&&slot<18;
+  const draft=context.pqDraftPlan('week',context.pqWeeklyVtuEngins());
+  const matthis=draft.filter(s=>s.jour==='Lundi'&&s.engin==='VTU-02'&&s.driver==='marien.matthis');
+  assert.ok(matthis.some(s=>s.label==='Soir'&&s.debut==='19:00'&&s.fin==='00:00'));
+  assert.ok(matthis.some(s=>s.label==='Nuit'&&s.debut==='00:00'&&s.fin==='02:00'));
+  assert.ok(draft.some(s=>s.jour==='Lundi'&&s.engin==='VTU-02'&&s.label==='Soir'
+    &&s.debut==='18:00'&&s.fin==='19:00'&&s.driver==='conducteur-b'));
+  assert.ok(draft.every(s=>s.state==='ready'));
+  assert.ok(matthis.every(s=>s.chief==='ca-b'));
+  assert.ok(draft.length>56);
+  let callback,saveCount=0;
+  context.confirmModal=(_message,cb)=>{callback=cb;};
+  context.saveData=()=>{saveCount++;};
+  assert.match(preview(context).innerHTML,/Enregistrer en groupe les \d+ créneaux proposés/);
+  assert.equal(context.pqWeeklyWrites().error,undefined);
+  context.pqWeeklySaveWeek();
+  assert.equal(context.PIQUETS.week.length,0);
+  callback();
+  assert.equal(context.PIQUETS.week.length,draft.length);
+  assert.equal(saveCount,1);
+  assert.ok(context.PIQUETS.week.some(p=>p.jour==='Lundi'&&p.engin==='VTU-02'
+    &&p.conducteur==='marien.matthis'&&p.debut==='19:00'&&p.fin==='00:00'));
+  assert.ok(context.PIQUETS.week.some(p=>p.jour==='Lundi'&&p.engin==='VTU-02'
+    &&p.conducteur==='marien.matthis'&&p.debut==='00:00'&&p.fin==='02:00'));
+});
+test('le piquet actif respecte la relève de nuit, y compris le lundi avant 08 h',()=>{
+  const planning=fs.readFileSync(path.join(__dirname,'../modules/12-astreintes-js.js'),'utf8');
+  for(const source of [planning,assembled]){
+    const monday={jour:'Lundi',debut:'00:00',fin:'02:00',chefAgres:'ca-b',conducteur:'marien.matthis'};
+    const sunday={jour:'Dimanche',debut:'00:00',fin:'02:00',chefAgres:'ca-b',conducteur:'marien.matthis'};
+    let now=new Date(2026,9,27,1,30);
+    const context={
+      N:()=>now,PIQUETS:{'20261026':[monday],'20261019':[sunday]},
+      ASTR_CONFIG:{weekStartHour:8},JOURS_FULL:days,
+      timeToMin:value=>Number(value.slice(0,2))*60+Number(value.slice(3)),
+      piquetToAbsRangeIdx:(day,debut,fin)=>{
+        const toMin=value=>Number(value.slice(0,2))*60+Number(value.slice(3));
+        const a=toMin(debut),b=toMin(fin);
+        return [day*1440+a,day*1440+b+(b<=a?1440:0)];
+      }
+    };
+    vm.createContext(context);
+    vm.runInContext(functionSource(source,'getPiquetActif'),context);
+    assert.equal(context.getPiquetActif('20261026','ca-b'),monday);
+    now=new Date(2026,9,27,2,0);
+    assert.equal(context.getPiquetActif('20261026','ca-b'),null);
+    now=new Date(2026,9,26,1,30);
+    assert.equal(context.getPiquetActif('20261019','ca-b'),sunday);
+    assert.equal(context.getPiquetActif('20261026','ca-b'),null);
+  }
+});
+test('la reprise affiche des relais sur les piquets existants sans modifier la semaine',()=>{
+  const original={engin:'VTU-02',jour:'Lundi',debut:'18:00',fin:'00:00',
+    chefAgres:'ca-b',conducteur:'conducteur-b',note:'Piquet validé manuellement'};
+  const {context,dispos}=contextFor([
+    {l:'ca-f',chief:true},{l:'conducteur-f'},
+    {l:'ca-b',chief:true},{l:'conducteur-b'},
+    {l:'marien.matthis'}
+  ],{existing:[original]});
+  context.ASTR_CONFIG.engins=['VTU-01','VTU-02'];
+  context.ASTR_CONFIG.weekStartHour=8;
+  const originalGetEquipe=context.getEquipeOfUser;
+  context.getEquipeOfUser=login=>login==='marien.matthis'?{id:'faible'}:originalGetEquipe(login);
+  for(let slot=0;slot<24;slot++)dispos['marien.matthis']['0_'+slot]=slot>=11&&slot<18;
+  const before=JSON.stringify(context.PIQUETS);
+  const html=preview(context).innerHTML;
+  assert.match(html,/Aperçu de reprise des piquets déjà enregistrés/);
+  assert.match(html,/Lundi Soir 19:00–00:00 · VTU-02/);
+  assert.match(html,/marien\.matthis/);
+  assert.match(html,/Aucun bouton ne les remplace automatiquement/);
+  assert.equal(JSON.stringify(context.PIQUETS),before);
+});
+test('une disponibilité changée après aperçu annule les relais avant sauvegarde',()=>{
+  const {context,dispos}=contextFor([
+    {l:'ca-f',chief:true},{l:'conducteur-f'},
+    {l:'ca-b',chief:true},{l:'conducteur-b'},
+    {l:'marien.matthis'}
+  ]);
+  context.ASTR_CONFIG.engins=['VTU-01','VTU-02'];
+  context.ASTR_CONFIG.weekStartHour=8;
+  const originalGetEquipe=context.getEquipeOfUser;
+  context.getEquipeOfUser=login=>login==='marien.matthis'?{id:'faible'}:originalGetEquipe(login);
+  for(let slot=0;slot<24;slot++)dispos['marien.matthis']['0_'+slot]=slot>=11&&slot<18;
+  let callback,saveCount=0;
+  context.confirmModal=(_message,cb)=>{callback=cb;};
+  context.saveData=()=>{saveCount++;};
+  preview(context);
+  context.pqWeeklySaveWeek();
+  delete dispos['marien.matthis']['0_11'];
+  assert.match(context.pqWeeklyWrites().error,/créneaux ont changé|non enregistrable/);
+  callback();
+  assert.equal(context.PIQUETS.week.length,0);
+  assert.equal(saveCount,0);
+});
 test('un rang VTU existant est préservé et son équipage n’est pas proposé sur le deuxième rang',()=>{
   const existing={engin:'VTU-01',jour:'Lundi',debut:'08:00',fin:'12:00',
     chefAgres:'ca-f',conducteur:'conducteur-f',note:'Maintenir'};
@@ -404,8 +520,9 @@ test('un rang VTU existant est préservé et son équipage n’est pas proposé 
     {l:'ca-b',chief:true},{l:'conducteur-b'}
   ];
   const {context}=contextFor(users,{existing:[existing],
-    conflict:(_wk,login,jour,debut)=>jour==='Lundi'&&debut==='08:00'
-      &&['ca-f','conducteur-f'].includes(login)});
+    conflict:(_wk,login,jour,debut,fin)=>jour==='Lundi'
+      &&['ca-f','conducteur-f'].includes(login)
+      &&Number(debut.slice(0,2))<12&&Number(fin.slice(0,2))>8});
   context.ASTR_CONFIG.engins=['VTU-01','VTU-02'];
   const first=context.pqDraftPlan('week',context.pqWeeklyVtuEngins()).slice(0,2);
   assert.equal(first[0].state,'existing');
