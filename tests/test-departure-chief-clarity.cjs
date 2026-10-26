@@ -37,7 +37,8 @@ for(const source of [moduleSource,bundleSource]){
     findInterruptedDepartureHandoff:()=>null,
     getHHMM:()=> '12:00',N:()=>new Date(),
     hasActiveOutgoingPersonnelReinforcementRequest:()=>false,
-    showToast:message=>messages.push(message)
+    showToast:message=>messages.push(message),
+    showOperationalDepartureFormError:message=>messages.push(message)
   };
   vm.createContext(context);
   vm.runInContext(functionSource(source,'confirmerDepart'),context);

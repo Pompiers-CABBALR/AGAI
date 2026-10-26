@@ -1060,6 +1060,7 @@ function renderInterventionRow(iv, ag, tireur) {
     <div class="ivrr" onclick="${onclick}">
       ${interventionRouteBadgeHTML(iv)}
       <span class="bdg ${bc}">${bt}</span>
+      ${iv._departGeoControle&&iv._departGeoControle.degrade===true?'<span class="bdg" style="background:#FFF7ED;color:#92400E;font-size:10px;">⚠️ Position à contrôler</span>':''}
       ${isPilp ? '<span class="bdg bpilp" style="font-size:10px;">PILP</span>' : ''}
       ${isRenfortUT ? '<span class="bdg" style="background:#7C3AED;color:#fff;font-size:10px;">Renfort UT</span>' : isRenfortInternal ? '<span class="bdg" style="background:#047857;color:#fff;font-size:10px;">Renfort interne</span>' : ''}
       ${iv._urgence ? '<span class="bdg" style="background:#B91C1C;color:#fff;font-size:10px;font-weight:700;">PRIORITAIRE — ERP</span>' : ''}
@@ -1640,7 +1641,7 @@ function oM(id){
     }
   }
   document.getElementById('mb').innerHTML=`
-    <div style="margin-bottom:8px;"><span class="bdg ${bc}">${bt}</span>${pilpScope?' <span class="bdg bpilp">PILP</span>':''}${iv.rappels?` <span class="bdg bp" style="${isAdminModeActive()?'cursor:pointer;':''}"${isAdminModeActive()?` title="Déjà intervenu ici ?" onclick="showInterventionsLiees('${iv.id}')"`:''}>${iv.rappels} rappel(s)</span>`:''}</div>
+    <div style="margin-bottom:8px;"><span class="bdg ${bc}">${bt}</span>${iv._departGeoControle&&iv._departGeoControle.degrade===true?' <span class="bdg" style="background:#FFF7ED;color:#92400E;">⚠️ Départ dégradé — position à contrôler</span>':''}${pilpScope?' <span class="bdg bpilp">PILP</span>':''}${iv.rappels?` <span class="bdg bp" style="${isAdminModeActive()?'cursor:pointer;':''}"${isAdminModeActive()?` title="Déjà intervenu ici ?" onclick="showInterventionsLiees('${iv.id}')"`:''}>${iv.rappels} rappel(s)</span>`:''}</div>
     ${pilpReadOnly?'<div style="background:#EFF6FF;border:1px solid #93C5FD;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;color:#1D4ED8;margin-bottom:10px;">👁️ Consultation PILP en lecture seule</div>':''}
     ${iv._urgence?'<div style="background:#FEE2E2;border:2px solid #B91C1C;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:800;color:#991B1B;margin-bottom:10px;text-align:center;">PRIORITAIRE — ÉTABLISSEMENT RECEVANT DU PUBLIC (ERP)</div>':''}
     ${iv._sdis?'<div style="background:#DBEAFE;border:1px solid #93C5FD;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;color:#1D4ED8;margin-bottom:10px;text-align:center;">&#x1F691; INTERVENTION SDIS</div>':''}
@@ -1955,6 +1956,8 @@ const OPERATIONAL_START_GRACE_MINUTES=15;
 const OPERATIONAL_START_MAX_GPS_UNCERTAINTY_METERS=10000;
 const OPERATIONAL_START_DENIED_MESSAGE='Impossible de passer cette intervention « En cours ».';
 const _operationalStartAuthorizations={};
+const _operationalStartLocationPending=new Set();
+const _operationalStartDegradedEligibility={};
 function operationalStartGeolocationEnabled(caserneId){
   if((typeof isChefCorps==='function'&&isChefCorps())||(CU&&CU.appRole==='chef_corps'))return false;
   const id=caserneId||CURRENT_CASERNE_ID;
@@ -2088,6 +2091,75 @@ function operationalStartGeoExemption(iv){
   if(chained)return {reason:chained.reason,sourceId:chained.sourceId};
   return null;
 }
+function canCurrentUserUseDegradedStart(iv){
+  const eligible=iv&&_operationalStartDegradedEligibility[iv.id];
+  return !!(eligible&&Date.now()-eligible.at>=0&&Date.now()-eligible.at<=2*60*1000
+    &&CU&&isAgres()&&!isPilpIntervention(iv)&&canCurrentUserStartIntervention(iv)
+    &&canUseOperationalStartDevice()
+    &&(!PERSONNEL_ONLINE_GATE||(typeof _agaiAuthAccessToken==='function'&&_agaiAuthAccessToken())));
+}
+function openOperationalStartDialog(title,message){
+  const previous=document.getElementById('operational-start-dialog');
+  if(previous)previous.remove();
+  const overlay=document.createElement('div');
+  overlay.id='operational-start-dialog';
+  overlay.setAttribute('role','dialog');
+  overlay.setAttribute('aria-modal','true');
+  overlay.style.cssText='position:fixed;inset:0;z-index:20000;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:16px;overflow:auto;';
+  const panel=document.createElement('div');
+  panel.style.cssText='width:min(100%,520px);max-height:calc(100vh - 32px);overflow:auto;background:#fff;color:#1F2937;border-radius:14px;padding:20px;box-shadow:0 14px 40px rgba(0,0,0,.25);';
+  const heading=document.createElement('h2');
+  heading.textContent=title;heading.style.cssText='font-size:18px;margin:0 0 10px;';
+  const body=document.createElement('p');
+  body.textContent=message;body.style.cssText='font-size:14px;line-height:1.5;margin:0 0 14px;';
+  const actions=document.createElement('div');
+  actions.style.cssText='display:flex;gap:8px;flex-wrap:wrap;';
+  panel.append(heading,body,actions);overlay.appendChild(panel);document.body.appendChild(overlay);
+  return {overlay:overlay,panel:panel,actions:actions,close:function(){overlay.remove();}};
+}
+function addOperationalStartDialogButton(dialog,label,onClick,primary){
+  const button=document.createElement('button');
+  button.type='button';button.className='btn sm';button.textContent=label;
+  if(primary)button.style.cssText='background:#B45309;color:#fff;border-color:#B45309;';
+  button.onclick=function(){dialog.close();if(onClick)onClick();};
+  dialog.actions.appendChild(button);
+  return button;
+}
+function showOperationalDegradedStartConfirmation(iv,onApproved){
+  if(!canCurrentUserUseDegradedStart(iv)){
+    showToast('Départ dégradé indisponible : vérifiez votre session et vos droits de chef d’agrès.','warn',10000);return;
+  }
+  const dialog=openOperationalStartDialog('Départ dégradé — position non vérifiée',
+    'Le téléphone n’a pas pu vérifier votre position. Confirmez uniquement si vous êtes physiquement à la caserne. Votre attestation et la cause de l’échec seront conservées dans l’historique pour un contrôle après coup.');
+  const check=document.createElement('label');
+  check.style.cssText='display:flex;align-items:flex-start;gap:8px;padding:10px;margin-bottom:14px;border:1px solid #F59E0B;border-radius:8px;font-size:13px;';
+  const input=document.createElement('input');
+  input.type='checkbox';input.style.cssText='margin-top:3px;accent-color:#B45309;';
+  const text=document.createElement('span');
+  text.textContent='Je confirme être physiquement à la caserne et demande ce départ sans position vérifiée.';
+  check.append(input,text);dialog.panel.insertBefore(check,dialog.actions);
+  const button=addOperationalStartDialogButton(dialog,'Confirmer le départ dégradé',function(){
+    if(!input.checked){showToast('Attestation de présence non confirmée : départ annulé.','warn',10000);return;}
+    if(!canCurrentUserUseDegradedStart(iv)){
+      showToast('Départ dégradé annulé : session ou droit de chef d’agrès indisponible.','warn',10000);return;
+    }
+    const reason=_operationalStartDegradedEligibility[iv.id].reason;
+    delete _operationalStartDegradedEligibility[iv.id];
+    _operationalStartAuthorizations[iv.id]={at:Date.now(),exempt:false,degraded:true,reason:reason,actor:CU.l,caserneId:CURRENT_CASERNE_ID};
+    onApproved();
+  },true);
+  button.disabled=true;
+  input.onchange=function(){button.disabled=!input.checked;};
+  addOperationalStartDialogButton(dialog,'Annuler');
+}
+function showOperationalStartLocationFailure(message,onRetry,onDegraded){
+  const progress=document.getElementById('app-toast');
+  if(progress){clearTimeout(progress._timer);progress.style.opacity='0';progress.style.transform='translateX(-50%) translateY(80px)';}
+  const dialog=openOperationalStartDialog('Départ non lancé',message+' Aucun statut d’intervention n’a été modifié.');
+  if(onRetry)addOperationalStartDialogButton(dialog,'Réessayer la position',onRetry);
+  if(onDegraded)addOperationalStartDialogButton(dialog,'Départ dégradé',onDegraded,true);
+  addOperationalStartDialogButton(dialog,'Fermer');
+}
 function requestOperationalStartAuthorization(iv,onApproved,options){
   if(hasSuperAdminOperationalStartOverride()){
     _operationalStartAuthorizations[iv.id]={at:Date.now(),exempt:true,reason:'départ autorisé sur ordinateur par le superadmin avec pouvoirs activés'};
@@ -2114,19 +2186,44 @@ function requestOperationalStartAuthorization(iv,onApproved,options){
   const caserne=CC(),stationLocation=getCaserneStationLocation(CURRENT_CASERNE_ID);
   const stationLat=stationLocation.latitude,stationLon=stationLocation.longitude;
   if(!caserne||!validCaserneCoordinates(stationLat,stationLon)){
-    showToast(OPERATIONAL_START_DENIED_MESSAGE,'warn');return;
+    showOperationalStartLocationFailure('La position de la caserne est indisponible. Le départ ne peut pas être autorisé sur cet appareil.');return;
   }
-  if(!navigator.geolocation){showToast(OPERATIONAL_START_DENIED_MESSAGE,'warn');return;}
+  if(!navigator.geolocation){
+    _operationalStartDegradedEligibility[iv.id]={at:Date.now(),reason:'localisation indisponible dans le navigateur'};
+    showOperationalStartLocationFailure('Ce navigateur ne fournit pas la position. Vérifiez que la localisation est autorisée pour ce navigateur, puis rouvrez l’intervention.',null,
+      canCurrentUserUseDegradedStart(iv)?function(){showOperationalDegradedStartConfirmation(iv,onApproved);}:null);return;
+  }
+  if(_operationalStartLocationPending.has(iv.id)){
+    showToast('La vérification de présence est déjà en cours.','info',6000);return;
+  }
+  delete _operationalStartDegradedEligibility[iv.id];
+  _operationalStartLocationPending.add(iv.id);
   let bestMeasurement=null,authorizationCompleted=false;
   const approvePosition=function(distance,accuracy){
     if(authorizationCompleted)return;
     authorizationCompleted=true;
+    _operationalStartLocationPending.delete(iv.id);
+    delete _operationalStartDegradedEligibility[iv.id];
     _operationalStartAuthorizations[iv.id]={at:Date.now(),exempt:false,distanceMeters:Math.round(distance),accuracyMeters:Math.round(accuracy),caserneId:caserne.id};
+    showToast('Présence à la caserne confirmée.','success');
     onApproved();
   };
   const evaluatePosition=function(position,attempt){
-    const accuracy=Math.max(0,Number(position.coords.accuracy)||0);
-    const distance=operationalDistanceMeters(position.coords.latitude,position.coords.longitude,stationLat,stationLon);
+    const coords=position&&position.coords||{};
+    const latitude=coords.latitude,longitude=coords.longitude;
+    if(typeof latitude!=='number'||typeof longitude!=='number'||!Number.isFinite(latitude)||!Number.isFinite(longitude)
+      ||latitude < -90||latitude > 90||longitude < -180||longitude > 180){
+      if(attempt<4){window.setTimeout(function(){locateForOperationalStart(attempt+1);},600);return;}
+      authorizationCompleted=true;
+      _operationalStartLocationPending.delete(iv.id);
+      if(!bestMeasurement)_operationalStartDegradedEligibility[iv.id]={at:Date.now(),reason:'position invalide après les essais'};
+      showOperationalStartLocationFailure('Le téléphone a fourni une position invalide. Réessayez après avoir vérifié la localisation.',
+        function(){requestOperationalStartAuthorization(iv,onApproved,options);},
+        !bestMeasurement&&canCurrentUserUseDegradedStart(iv)?function(){showOperationalDegradedStartConfirmation(iv,onApproved);}:null);
+      return;
+    }
+    const accuracy=Math.max(0,Number(coords.accuracy)||0);
+    const distance=operationalDistanceMeters(latitude,longitude,stationLat,stationLon);
     const score=operationalStartMeasurementScore(distance,accuracy);
     if(!bestMeasurement||score<bestMeasurement.score)bestMeasurement={distance:distance,accuracy:accuracy,score:score};
     // La précision représente le rayon d’incertitude annoncé par le téléphone.
@@ -2141,13 +2238,27 @@ function requestOperationalStartAuthorization(iv,onApproved,options){
       window.setTimeout(function(){locateForOperationalStart(attempt+1);},600);return;
     }
     if(bestMeasurement&&operationalStartPositionAccepted(bestMeasurement.distance,bestMeasurement.accuracy))approvePosition(bestMeasurement.distance,bestMeasurement.accuracy);
-    else showToast(OPERATIONAL_START_DENIED_MESSAGE,'warn');
+    else{
+      authorizationCompleted=true;
+      _operationalStartLocationPending.delete(iv.id);
+      delete _operationalStartDegradedEligibility[iv.id];
+      showOperationalStartLocationFailure('La position reçue ne confirme pas la présence dans le périmètre de la caserne. Vérifiez la localisation du téléphone, puis réessayez.',function(){requestOperationalStartAuthorization(iv,onApproved,options);});
+    }
   };
   const locateForOperationalStart=function(attempt){
+    showToast('Vérification de présence à la caserne — essai '+attempt+'/4…','info',24000);
     navigator.geolocation.getCurrentPosition(function(position){evaluatePosition(position,attempt);},function(error){
       const denied=error&&error.code===1;
       if(!denied&&attempt<4){window.setTimeout(function(){locateForOperationalStart(attempt+1);},600);return;}
-      showToast(OPERATIONAL_START_DENIED_MESSAGE,'warn');
+      authorizationCompleted=true;
+      _operationalStartLocationPending.delete(iv.id);
+      const reason=denied
+        ?'Le navigateur n’a pas accès à la position. Autorisez sa localisation sur ce téléphone, puis réessayez.'
+        :'Le téléphone n’a pas fourni de position utilisable. Vérifiez que la localisation est activée, puis réessayez.';
+      if(!bestMeasurement)_operationalStartDegradedEligibility[iv.id]={at:Date.now(),reason:denied?'accès à la position refusé':'position indisponible après les essais'};
+      showOperationalStartLocationFailure(reason,function(){requestOperationalStartAuthorization(iv,onApproved,options);},
+        !bestMeasurement&&canCurrentUserUseDegradedStart(iv)
+          ?function(){showOperationalDegradedStartConfirmation(iv,onApproved);}:null);
     },attempt<=2
       ?{enableHighAccuracy:true,timeout:18000,maximumAge:0}
       :{enableHighAccuracy:false,timeout:20000,maximumAge:60000});
@@ -2164,9 +2275,14 @@ function takeOperationalStartAuthorization(iv){
 function saveOperationalStartAuthorization(iv,authorization){
   if(!iv||!authorization)return;
   iv._departGeoControle={date:getH(N()),caserneId:authorization.caserneId||CURRENT_CASERNE_ID,exonere:authorization.exempt===true,
-    motif:authorization.reason||'',distanceMetres:authorization.distanceMeters==null?null:authorization.distanceMeters,precisionMetres:authorization.accuracyMeters==null?null:authorization.accuracyMeters};
+    degrade:authorization.degraded===true,attestePar:authorization.actor||'',motif:authorization.reason||'',
+    distanceMetres:authorization.distanceMeters==null?null:authorization.distanceMeters,precisionMetres:authorization.accuracyMeters==null?null:authorization.accuracyMeters};
   if(!Array.isArray(iv.tl))iv.tl=[];
-  iv.tl.push({s:'controle-depart',h:getH(N()),who:CU.l,note:authorization.exempt?'Contrôle de position non requis — '+authorization.reason:'Présence à la caserne confirmée à '+authorization.distanceMeters+' m (précision '+authorization.accuracyMeters+' m)'});
+  const note=authorization.degraded
+    ?'Départ dégradé — position non vérifiée, présence à la caserne attestée par '+(authorization.actor||CU.l)+' ; '+authorization.reason+' ; contrôle après coup requis'
+    :authorization.exempt?'Contrôle de position non requis — '+authorization.reason
+      :'Présence à la caserne confirmée à '+authorization.distanceMeters+' m (précision '+authorization.accuracyMeters+' m)';
+  iv.tl.push({s:'controle-depart',h:getH(N()),who:CU.l,note:note});
 }
 function cS(id,s,confirmed){
   const iv=interventionById(id);if(!iv)return;

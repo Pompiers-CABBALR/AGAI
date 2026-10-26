@@ -445,7 +445,7 @@ function rAccueilAstreinte(){
 }
 
 // ── Toast notification (remplace alert() natif) ──
-function showToast(msg, type){
+function showToast(msg, type, durationMs){
   type=type||'info';
   const colors={info:'#3B82F6',success:'#22C55E',warn:'#F59E0B',error:'#E24B4A'};
   const icons={info:'&#x2139;&#xFE0F;',success:'&#x2705;',warn:'&#x26A0;&#xFE0F;',error:'&#x274C;'};
@@ -457,7 +457,7 @@ function showToast(msg, type){
   t.innerHTML=icons[type]+' '+msg;
   t.style.opacity='1';t.style.transform='translateX(-50%) translateY(0)';
   clearTimeout(t._timer);
-  t._timer=setTimeout(function(){t.style.opacity='0';t.style.transform='translateX(-50%) translateY(80px)';},3000);
+  t._timer=setTimeout(function(){t.style.opacity='0';t.style.transform='translateX(-50%) translateY(80px)';},durationMs||3000);
 }
 
 // ── Modale de confirmation (remplace confirm() natif) ──
