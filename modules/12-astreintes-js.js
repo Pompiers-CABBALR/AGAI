@@ -3470,8 +3470,28 @@ function confirmerClotureSuperAdminDirecte(id,validated){
   clot(id,{superAdminManual:true,endTime:endTime,directClosure:true,_closeConfirmed:true});
 }
 
+function showOperationalDepartureFormError(message,fieldId){
+  const body=document.getElementById('mb');
+  if(!body){showToast(message,'warn');return;}
+  let notice=document.getElementById('operational-departure-form-error');
+  if(!notice){
+    notice=document.createElement('div');
+    notice.id='operational-departure-form-error';
+    notice.setAttribute('role','alert');
+    notice.style.cssText='background:#FEF2F2;border:1px solid #FCA5A5;color:#991B1B;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:13px;line-height:1.4;';
+  }
+  const field=fieldId&&document.getElementById(fieldId);
+  const anchor=field&&(field.closest('[data-role-block]')||field.closest('.fg')||field.parentElement);
+  if(anchor&&anchor.parentElement)anchor.parentElement.insertBefore(notice,anchor);
+  else body.prepend(notice);
+  notice.textContent=message;
+  notice.scrollIntoView({block:'center'});
+  if(field)field.setAttribute('aria-invalid','true');
+}
 function confirmerDepart(id){
   const iv=interventionById(id);if(!iv)return;
+  const previousFormError=document.getElementById('operational-departure-form-error');
+  if(previousFormError)previousFormError.remove();
   if(operationalActionInProgress(iv,'depart')){showToast('Ce départ est déjà en cours d’enregistrement.','warn');return;}
   if(!canCurrentUserStartIntervention(iv)){
     cM();
@@ -3504,9 +3524,9 @@ function confirmerDepart(id){
   const driver1=eq1.find(function(member){return member&&interventionRoleKey(member.role)==='conducteur'&&member.login;});
   const driver2=eq2.find(function(member){return member&&interventionRoleKey(member.role)==='conducteur'&&member.login;});
   if(!personnelReinforcementException){
-    if(!engin1){showToast('Sélectionnez obligatoirement le véhicule avant de passer l’intervention en cours.','warn');return;}
+    if(!engin1){showOperationalDepartureFormError('Sélectionnez obligatoirement le véhicule avant de passer l’intervention en cours.','pers-engin');return;}
     if(!CU||!CU.l){showToast('Votre session ne permet plus d’identifier le chef d’agrès. Reconnectez-vous avant de confirmer le départ.','warn');return;}
-    if(!driver1){showToast('Sélectionnez obligatoirement le conducteur avant de passer l’intervention en cours.','warn');return;}
+    if(!driver1){showOperationalDepartureFormError('Sélectionnez obligatoirement le conducteur avant de passer l’intervention en cours.','eq-conducteur');return;}
   }else if(engin1&&!driver1){
     showToast('Un véhicule local a été sélectionné : renseignez aussi son conducteur.','warn');return;
   }
