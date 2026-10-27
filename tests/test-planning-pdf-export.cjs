@@ -34,7 +34,11 @@ for(const file of ['modules/27-planning-pdf-js.js','app.js']){
     const body=source.slice(exportStart,exportEnd);
     assert.match(body,/days\.length!==7/);
     assert.match(body,/pdf\.addPage\(\[841\.89,595\.28\]\)/);
-    assert.match(body,/const margin=0\.5\*72\/25\.4/);
+    assert.match(body,/const margin=5\*72\/25\.4/);
+    assert.match(body,/const titleTop=margin,dayTop=margin\+16/);
+    assert.match(body,/const availableH=pageH-margin-25-bodyTop/);
+    assert.match(body,/pageH-margin-20/);
+    assert.match(body,/pageH-margin-10/);
     assert.match(body,/pdf\.getPageCount\(\)!==7/);
     assert.match(body,/const bytes=await pdf\.save\(\)/);
     assert.match(body,/URL\.createObjectURL\(blob\)/);
