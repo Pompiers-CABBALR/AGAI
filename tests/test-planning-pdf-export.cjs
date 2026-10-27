@@ -8,10 +8,8 @@ for(const file of ['modules/12-astreintes-js.js','app.js']){
   const source=fs.readFileSync(path.join(__dirname,'..',file),'utf8');
   const start=source.indexOf('function canExportAstrPlanningPDF(){');
   const end=source.indexOf('function astrWeekNav(',start);
-  const exportStart=source.indexOf('function exportAstrPlanningPDF(){');
-  const exportEnd=source.indexOf('function oAstrCellDetailSansEq(',exportStart);
   test(`${file} : export limité aux responsables et administrateurs`,()=>{
-    assert.ok(start>=0&&end>start&&exportStart>=0&&exportEnd>exportStart);
+    assert.ok(start>=0&&end>start);
     const context={CU:{l:'agent'},isRespEquipe:()=>false,isAdminModeActive:()=>false};
     vm.createContext(context);
     vm.runInContext(source.slice(start,end),context);
@@ -25,34 +23,41 @@ for(const file of ['modules/12-astreintes-js.js','app.js']){
     assert.equal(context.canExportAstrPlanningPDF(),false);
   });
 
-  test(`${file} : export de sept journées, A4 paysage et marge 0,5 mm`,()=>{
+}
+
+for(const file of ['modules/27-planning-pdf-js.js','app.js']){
+  const source=fs.readFileSync(path.join(__dirname,'..',file),'utf8');
+  const exportStart=source.indexOf('async function exportAstrPlanningPDF(){');
+  const exportEnd=file==='app.js'?source.indexOf('\nfunction showAstrTelParams(',exportStart):source.length;
+  test(`${file} : téléchargement direct de sept pages A4 paysage`,()=>{
+    assert.ok(exportStart>=0&&exportEnd>exportStart);
     const body=source.slice(exportStart,exportEnd);
     assert.match(body,/days\.length!==7/);
-    assert.match(body,/@page\{size:A4 landscape;margin:0\.5mm;\}/);
-    assert.match(body,/break-after:page/);
-    assert.match(body,/print-color-adjust:exact/);
-    assert.match(body,/printDoc\.importNode\(day,true\)/);
-    assert.match(body,/\.astr-planning-day table\{width:100%!important;min-width:0!important;table-layout:fixed;\}/);
-    assert.match(body,/table tr>\*:first-child\{width:155px!important;min-width:155px!important;max-width:155px!important;\}/);
-    assert.match(body,/fit\.style\.width=page\.clientWidth\/scale\+'px'/);
-    assert.match(body,/anchor\.colSpan=slotsPerHour/);
-    assert.doesNotMatch(body,/saveData\(|_rcPush\(|fetch\(/);
+    assert.match(body,/pdf\.addPage\(\[841\.89,595\.28\]\)/);
+    assert.match(body,/const margin=0\.5\*72\/25\.4/);
+    assert.match(body,/pdf\.getPageCount\(\)!==7/);
+    assert.match(body,/const bytes=await pdf\.save\(\)/);
+    assert.match(body,/URL\.createObjectURL\(blob\)/);
+    assert.match(body,/link\.download=/);
+    assert.match(body,/link\.click\(\)/);
+    assert.doesNotMatch(body,/window\.print\(|window\.open\(|saveData\(|_rcPush\(|fetch\(/);
     const toasts=[];
     const context={
-      canExportAstrPlanningPDF:()=>true,
+      canExportAstrPlanningPDF:()=>true,astrPlanningPdfBusy:false,
       document:{getElementById:()=>({querySelectorAll:()=>Array(6).fill({})})},
-      showToast:(message,type)=>toasts.push({message,type}),
-      window:{open:()=>assert.fail('aucune page ne doit être ouverte sans sept journées')}
+      showToast:(message,type)=>toasts.push({message,type})
     };
     vm.createContext(context);
     vm.runInContext(body,context);
-    context.exportAstrPlanningPDF();
-    assert.equal(toasts.length,1);
-    assert.equal(toasts[0].type,'error');
+    return context.exportAstrPlanningPDF().then(()=>{
+      assert.equal(toasts.length,1);
+      assert.equal(toasts[0].type,'error');
+    });
   });
 }
 
 test('le bouton est masqué avant contrôle des droits',()=>{
   const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8');
   assert.match(html,/<button id="astr-planning-export"[^>]*style="display:none;"[^>]*onclick="exportAstrPlanningPDF\(\)"/);
+  assert.match(html,/modules\/27-planning-pdf-js\.js/);
 });
