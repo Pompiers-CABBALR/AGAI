@@ -616,14 +616,16 @@ function exportAstrPlanningPDF(){
     .print-toolbar button{padding:8px 14px;border:0;border-radius:6px;background:#bd382c;color:white;cursor:pointer;font-weight:700;}
     .pdf-page{width:296mm;height:209mm;margin:0 auto;overflow:hidden;break-after:page;page-break-after:always;}
     .pdf-page:last-child{break-after:auto;page-break-after:auto;}
-    .page-fit{width:max-content;transform-origin:top left;}
+    .page-fit{width:100%;transform-origin:top left;}
     .pdf-head{display:flex;justify-content:space-between;align-items:baseline;gap:15px;padding:2px 0 5px;font-size:13px;font-weight:700;}
     .pdf-head small{font-size:10px;color:#475569;font-weight:400;}
-    .astr-planning-day{margin:0!important;box-shadow:none!important;}
+    .astr-planning-day{margin:0!important;box-shadow:none!important;overflow:visible!important;}
     .astr-planning-day>div[style*="overflow-x"]{overflow:visible!important;}
-    .astr-planning-day table{width:max-content!important;min-width:0!important;}
+    .astr-planning-day table{width:100%!important;min-width:0!important;table-layout:fixed;}
     .astr-planning-day th,.astr-planning-day td{position:static!important;z-index:auto!important;}
-    .astr-fct-col{width:38px;min-width:38px;max-width:38px;overflow:hidden;text-overflow:ellipsis;}
+    .astr-planning-day table tr>*:first-child{width:155px!important;min-width:155px!important;max-width:155px!important;}
+    .astr-planning-day table tr>td:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .astr-fct-col{width:36px!important;min-width:36px!important;max-width:36px!important;overflow:hidden;text-overflow:ellipsis;}
     .astr-slot-col{min-width:var(--astr-slot-width,30px)!important;}
     .astr-personnel-unavailable{background:#d1d5db!important;color:#4b5563!important;text-align:center;font-weight:700;}
     .astr-formation{background:#ede9fe repeating-linear-gradient(135deg,transparent,transparent 5px,rgba(124,58,237,.16) 5px,rgba(124,58,237,.16) 7px)!important;color:#5b21b6!important;text-align:center;font-weight:700;}
@@ -664,6 +666,22 @@ function exportAstrPlanningPDF(){
     copy.querySelectorAll('*').forEach(function(node){
       Array.from(node.attributes).forEach(function(attr){if(/^on/i.test(attr.name))node.removeAttribute(attr.name);});
     });
+    const hourRows=copy.querySelectorAll('thead tr');
+    const slotCount=hourRows[0]?hourRows[0].children.length-2:0;
+    const slotsPerHour=slotCount/24;
+    if(Number.isInteger(slotsPerHour)&&slotsPerHour>1){
+      hourRows.forEach(function(row,rowIndex){
+        const cells=Array.from(row.children).slice(2);
+        for(let h=0;h<24;h++){
+          const first=h*slotsPerHour;
+          const anchor=cells[first];
+          if(!anchor)continue;
+          if(rowIndex===1)anchor.textContent=cells[first+slotsPerHour-1].textContent;
+          anchor.colSpan=slotsPerHour;
+          cells.slice(first+1,first+slotsPerHour).forEach(function(cell){cell.remove();});
+        }
+      });
+    }
     fit.appendChild(copy);
     if(legend){
       const legendCopy=printDoc.importNode(legend,true);
@@ -681,7 +699,11 @@ function exportAstrPlanningPDF(){
   // Chaque journée tient sur une feuille, même avec de nombreuses équipes ou des pas de 30 min.
   Array.from(printDoc.querySelectorAll('.pdf-page')).forEach(function(page){
     const fit=page.querySelector('.page-fit');
-    const scale=Math.min(1,page.clientWidth/Math.max(1,fit.scrollWidth),page.clientHeight/Math.max(1,fit.scrollHeight));
+    // Le tableau s'étire sur toute la largeur, même si la hauteur impose une réduction.
+    let scale=Math.min(1,page.clientWidth/Math.max(1,fit.scrollWidth),page.clientHeight/Math.max(1,fit.scrollHeight));
+    fit.style.width=page.clientWidth/scale+'px';
+    scale=Math.min(scale,page.clientWidth/Math.max(1,fit.scrollWidth),page.clientHeight/Math.max(1,fit.scrollHeight));
+    fit.style.width=page.clientWidth/scale+'px';
     fit.style.transform='scale('+scale+')';
   });
   printWindow.focus();
