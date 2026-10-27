@@ -96,7 +96,7 @@ async function exportAstrPlanningPDF(){
     snapshots.forEach(function(day,index){
       const page=pdf.addPage([841.89,595.28]); // A4 paysage, points PDF.
       const pageW=page.getWidth(),pageH=page.getHeight();
-      const margin=0.5*72/25.4; // 0,5 mm de chaque côté.
+      const margin=5*72/25.4; // 5 mm sur les quatre côtés, zone imprimable.
       const contentW=pageW-2*margin;
       const nameW=130,roleW=25,slotW=(contentW-nameW-roleW)/day.slotCount;
       const slotX=margin+nameW+roleW;
@@ -119,11 +119,12 @@ async function exportAstrPlanningPDF(){
         page.drawText(label,{x:x+(center?Math.max(0,(width-textW)/2):0),
           y:pageH-top-(height+actualSize)/2+1,size:actualSize,font:font,color:color});
       };
-      drawLabel('AGAI - Planning des astreintes',margin+2,2,contentW*0.65,14,11,bold,dark,false);
-      drawLabel(weekLabelText,margin+contentW*0.65,2,contentW*0.35-2,14,8,regular,muted,true);
-      drawBox(margin,18,contentW,17,pdfColor(day.bg,headerBg),line);
-      drawLabel(day.label,margin+6,18,contentW-12,17,11,bold,pdfColor(day.fg,dark),false);
-      const headerTop=38,firstHeaderH=10,secondHeaderH=8,bodyTop=headerTop+firstHeaderH+secondHeaderH;
+      const titleTop=margin,dayTop=margin+16;
+      drawLabel('AGAI - Planning des astreintes',margin+2,titleTop,contentW*0.65,14,11,bold,dark,false);
+      drawLabel(weekLabelText,margin+contentW*0.65,titleTop,contentW*0.35-2,14,8,regular,muted,true);
+      drawBox(margin,dayTop,contentW,17,pdfColor(day.bg,headerBg),line);
+      drawLabel(day.label,margin+6,dayTop,contentW-12,17,11,bold,pdfColor(day.fg,dark),false);
+      const headerTop=margin+36,firstHeaderH=10,secondHeaderH=8,bodyTop=headerTop+firstHeaderH+secondHeaderH;
       drawBox(margin,headerTop,nameW,firstHeaderH+secondHeaderH,headerBg,line);
       drawBox(margin+nameW,headerTop,roleW,firstHeaderH+secondHeaderH,headerBg,line);
       drawLabel('Grade Nom Prénom',margin+3,headerTop,nameW-6,firstHeaderH+secondHeaderH,8,bold,dark,false);
@@ -138,7 +139,7 @@ async function exportAstrPlanningPDF(){
       }
       const rowWeight=function(row){return row.kind==='group'?14:row.kind==='separator'?3:row.kind==='count'?10:12;};
       const totalWeight=day.rows.reduce(function(sum,row){return sum+rowWeight(row);},0);
-      const availableH=pageH-27-bodyTop;
+      const availableH=pageH-margin-25-bodyTop;
       const factor=Math.min(1,availableH/Math.max(1,totalWeight));
       let top=bodyTop;
       day.rows.forEach(function(row){
@@ -165,9 +166,9 @@ async function exportAstrPlanningPDF(){
         top+=height;
       });
       drawLabel('Vert : disponible   |   Vert clair + X : piquet   |   Rouge : indisponible   |   Gris : absence   |   FOR : formation',
-        margin+2,pageH-24,contentW-4,10,6.5,regular,muted,false);
+        margin+2,pageH-margin-20,contentW-4,10,6.5,regular,muted,false);
       drawLabel('Page '+(index+1)+' / 7 - Vue affichée au moment de l\'export',
-        margin+contentW*0.60,pageH-12,contentW*0.40-2,9,6.5,regular,muted,true);
+        margin+contentW*0.60,pageH-margin-10,contentW*0.40-2,9,6.5,regular,muted,true);
     });
     if(pdf.getPageCount()!==7)throw new Error('Nombre de pages incorrect');
     const bytes=await pdf.save();
