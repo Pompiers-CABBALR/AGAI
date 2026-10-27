@@ -12058,128 +12058,6 @@ function rAstrPlanning(){
     +(sansEqLeg.length?'<div style="display:flex;align-items:center;gap:5px;font-size:11px;"><div style="width:20px;height:12px;border-radius:2px;background:#888;"></div>Sans équipe</div>':'');
 }
 
-function exportAstrPlanningPDF(){
-  // Impression native : sept pages vectorielles, sans dépendance réseau ni écriture serveur.
-  if(!canExportAstrPlanningPDF())return;
-  const grid=document.getElementById('astr-planning-grid');
-  const days=grid?Array.from(grid.querySelectorAll('.astr-planning-day')):[];
-  if(days.length!==7){
-    showToast('Le planning complet doit être affiché avant l’export PDF.','error');
-    return;
-  }
-  const printWindow=window.open('','_blank');
-  if(!printWindow){
-    showToast('Autorisez l’ouverture de l’aperçu PDF dans le navigateur.','error');
-    return;
-  }
-  printWindow.opener=null;
-  const printDoc=printWindow.document;
-  printDoc.open();
-  printDoc.write('<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>AGAI - Planning hebdomadaire</title></head><body></body></html>');
-  printDoc.close();
-  const style=printDoc.createElement('style');
-  style.textContent=`
-    @page{size:A4 landscape;margin:0.5mm;}
-    :root{--bg:#f8fafc;--brd:#d9dee7;--t2:#64748b;}
-    *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-    html,body{margin:0;padding:0;background:#fff;color:#172033;font-family:Arial,Helvetica,sans-serif;}
-    .print-toolbar{padding:12px;display:flex;align-items:center;gap:12px;background:#f1f5f9;font-size:13px;}
-    .print-toolbar button{padding:8px 14px;border:0;border-radius:6px;background:#bd382c;color:white;cursor:pointer;font-weight:700;}
-    .pdf-page{width:296mm;height:209mm;margin:0 auto;overflow:hidden;break-after:page;page-break-after:always;}
-    .pdf-page:last-child{break-after:auto;page-break-after:auto;}
-    .page-fit{width:100%;transform-origin:top left;}
-    .pdf-head{display:flex;justify-content:space-between;align-items:baseline;gap:15px;padding:2px 0 5px;font-size:13px;font-weight:700;}
-    .pdf-head small{font-size:10px;color:#475569;font-weight:400;}
-    .astr-planning-day{margin:0!important;box-shadow:none!important;overflow:visible!important;}
-    .astr-planning-day>div[style*="overflow-x"]{overflow:visible!important;}
-    .astr-planning-day table{width:100%!important;min-width:0!important;table-layout:fixed;}
-    .astr-planning-day th,.astr-planning-day td{position:static!important;z-index:auto!important;}
-    .astr-planning-day table tr>*:first-child{width:155px!important;min-width:155px!important;max-width:155px!important;}
-    .astr-planning-day table tr>td:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-    .astr-fct-col{width:36px!important;min-width:36px!important;max-width:36px!important;overflow:hidden;text-overflow:ellipsis;}
-    .astr-slot-col{min-width:var(--astr-slot-width,30px)!important;}
-    .astr-personnel-unavailable{background:#d1d5db!important;color:#4b5563!important;text-align:center;font-weight:700;}
-    .astr-formation{background:#ede9fe repeating-linear-gradient(135deg,transparent,transparent 5px,rgba(124,58,237,.16) 5px,rgba(124,58,237,.16) 7px)!important;color:#5b21b6!important;text-align:center;font-weight:700;}
-    .astr-personnel-unavailable-row>td:first-child,.astr-personnel-unavailable-row>.astr-fct-col{background:#d1d5db!important;color:#4b5563!important;}
-    .pdf-legend{display:flex;flex-wrap:wrap;gap:5px 10px;padding-top:5px;font-size:10px;}
-    .pdf-foot{padding-top:4px;font-size:9px;color:#64748b;text-align:right;}
-    @media print{.print-toolbar{display:none!important;}body{width:296mm!important;}.pdf-page{margin:0!important;}}
-  `;
-  printDoc.head.appendChild(style);
-  const toolbar=printDoc.createElement('div');
-  toolbar.className='print-toolbar';
-  const printButton=printDoc.createElement('button');
-  printButton.type='button';
-  printButton.textContent='Enregistrer en PDF / Imprimer';
-  printButton.addEventListener('click',function(){printWindow.print();});
-  toolbar.appendChild(printButton);
-  const hint=printDoc.createElement('span');
-  hint.textContent='Choisissez « Enregistrer au format PDF » dans la fenêtre d’impression.';
-  toolbar.appendChild(hint);
-  printDoc.body.appendChild(toolbar);
-  const weekLabelText=document.getElementById('astr-week-label')?.textContent||'';
-  const legend=document.getElementById('astr-legende');
-  days.forEach(function(day,index){
-    const page=printDoc.createElement('section');
-    page.className='pdf-page';
-    const fit=printDoc.createElement('div');
-    fit.className='page-fit';
-    const head=printDoc.createElement('div');
-    head.className='pdf-head';
-    const title=printDoc.createElement('span');
-    title.textContent='AGAI · Planning des astreintes';
-    const week=printDoc.createElement('small');
-    week.textContent=weekLabelText;
-    head.append(title,week);
-    fit.appendChild(head);
-    const copy=printDoc.importNode(day,true);
-    copy.querySelectorAll('script,iframe,object,embed,form,button,input,select,textarea').forEach(function(node){node.remove();});
-    copy.querySelectorAll('*').forEach(function(node){
-      Array.from(node.attributes).forEach(function(attr){if(/^on/i.test(attr.name))node.removeAttribute(attr.name);});
-    });
-    const hourRows=copy.querySelectorAll('thead tr');
-    const slotCount=hourRows[0]?hourRows[0].children.length-2:0;
-    const slotsPerHour=slotCount/24;
-    if(Number.isInteger(slotsPerHour)&&slotsPerHour>1){
-      hourRows.forEach(function(row,rowIndex){
-        const cells=Array.from(row.children).slice(2);
-        for(let h=0;h<24;h++){
-          const first=h*slotsPerHour;
-          const anchor=cells[first];
-          if(!anchor)continue;
-          if(rowIndex===1)anchor.textContent=cells[first+slotsPerHour-1].textContent;
-          anchor.colSpan=slotsPerHour;
-          cells.slice(first+1,first+slotsPerHour).forEach(function(cell){cell.remove();});
-        }
-      });
-    }
-    fit.appendChild(copy);
-    if(legend){
-      const legendCopy=printDoc.importNode(legend,true);
-      legendCopy.removeAttribute('id');
-      legendCopy.className='pdf-legend';
-      fit.appendChild(legendCopy);
-    }
-    const foot=printDoc.createElement('div');
-    foot.className='pdf-foot';
-    foot.textContent='Page '+(index+1)+' / 7 · Vue affichée au moment de l’export';
-    fit.appendChild(foot);
-    page.appendChild(fit);
-    printDoc.body.appendChild(page);
-  });
-  // Chaque journée tient sur une feuille, même avec de nombreuses équipes ou des pas de 30 min.
-  Array.from(printDoc.querySelectorAll('.pdf-page')).forEach(function(page){
-    const fit=page.querySelector('.page-fit');
-    // Le tableau s'étire sur toute la largeur, même si la hauteur impose une réduction.
-    let scale=Math.min(1,page.clientWidth/Math.max(1,fit.scrollWidth),page.clientHeight/Math.max(1,fit.scrollHeight));
-    fit.style.width=page.clientWidth/scale+'px';
-    scale=Math.min(scale,page.clientWidth/Math.max(1,fit.scrollWidth),page.clientHeight/Math.max(1,fit.scrollHeight));
-    fit.style.width=page.clientWidth/scale+'px';
-    fit.style.transform='scale('+scale+')';
-  });
-  printWindow.focus();
-  printWindow.setTimeout(function(){printWindow.print();},250);
-}
 
 function oAstrCellDetailSansEq(wk,dayIdx,slotIdx){
   const sansEq=USERS.filter(u=>!EQUIPES.some(e=>e.membres.includes(u.l)));
@@ -18635,7 +18513,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0079';
+const APP_VERSION='V202610_0080';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -27927,6 +27805,199 @@ function applySuggestion(index){
     +(fresh.state==='partial'?'<strong>Incomplet : départ non garanti.</strong>':'')+'</div>';
 }
 
+// Export du planning tel qu'affiché : PDF téléchargé, sans impression ni envoi réseau.
+let astrPlanningPdfLibPromise=null;
+let astrPlanningPdfBusy=false;
+
+function loadAstrPlanningPdfLib(){
+  if(window.PDFLib)return Promise.resolve(window.PDFLib);
+  if(astrPlanningPdfLibPromise)return astrPlanningPdfLibPromise;
+  astrPlanningPdfLibPromise=new Promise(function(resolve,reject){
+    const script=document.createElement('script');
+    const url=new URL('vendor/pdf-lib-1.17.1.min.js',document.baseURI);
+    url.searchParams.set('v',APP_VERSION);
+    script.src=url.href;
+    script.onload=function(){window.PDFLib?resolve(window.PDFLib):reject(new Error('Bibliothèque PDF indisponible'));};
+    script.onerror=function(){script.remove();reject(new Error('Chargement local du PDF impossible'));};
+    document.head.appendChild(script);
+  }).catch(function(error){astrPlanningPdfLibPromise=null;throw error;});
+  return astrPlanningPdfLibPromise;
+}
+
+function astrPlanningPdfSnapshotDay(day){
+  const table=day.querySelector('table');
+  const head=table&&table.tHead;
+  const body=table&&table.tBodies[0];
+  const slotCount=head&&head.rows[0]?head.rows[0].cells.length-2:0;
+  if(!body||slotCount<24||slotCount%24!==0)throw new Error('Grille horaire incomplète');
+  const styleOf=function(element){return window.getComputedStyle(element);};
+  const dayHeading=day.firstElementChild;
+  const rows=Array.from(body.rows).map(function(row){
+    const cells=Array.from(row.cells);
+    const first=cells[0];
+    if(!first)return {kind:'separator'};
+    if(first.tagName==='TH')return {
+      kind:'group',label:first.textContent.trim(),
+      bg:styleOf(first).backgroundColor,fg:styleOf(first).color,
+      line:styleOf(first).borderLeftColor
+    };
+    if(first.colSpan>1)return {kind:'separator'};
+    if(cells.length!==slotCount+2)throw new Error('Lignes du planning incomplètes');
+    return {
+      kind:row.style.background?'count':'agent',
+      name:first.textContent.trim(),nameBg:styleOf(first).backgroundColor,nameFg:styleOf(first).color,
+      role:cells[1].textContent.trim(),roleBg:styleOf(cells[1]).backgroundColor,
+      slots:cells.slice(2).map(function(cell){
+        const textElement=cell.querySelector('span')||cell;
+        return {text:cell.textContent.trim(),bg:styleOf(cell).backgroundColor,fg:styleOf(textElement).color};
+      })
+    };
+  });
+  return {
+    label:dayHeading.querySelector('span')?.textContent.trim()||dayHeading.textContent.trim(),
+    bg:styleOf(dayHeading).backgroundColor,fg:styleOf(dayHeading).color,
+    hours:Array.from(head.rows[0].cells).slice(2).map(function(cell){return cell.textContent.trim();}),
+    ends:head.rows[1]?Array.from(head.rows[1].cells).slice(2).map(function(cell){return cell.textContent.trim();}):[],
+    slotCount:slotCount,rows:rows
+  };
+}
+
+async function exportAstrPlanningPDF(){
+  if(!canExportAstrPlanningPDF()||astrPlanningPdfBusy)return;
+  const grid=document.getElementById('astr-planning-grid');
+  const days=grid?Array.from(grid.querySelectorAll('.astr-planning-day')):[];
+  if(days.length!==7){
+    showToast('Le planning complet doit être affiché avant l’export PDF.','error');
+    return;
+  }
+  let snapshots;
+  try{snapshots=days.map(astrPlanningPdfSnapshotDay);}
+  catch(error){showToast('Le planning affiché est incomplet : PDF non créé.','error');return;}
+  const button=document.getElementById('astr-planning-export');
+  const originalLabel=button?button.textContent:'';
+  astrPlanningPdfBusy=true;
+  if(button){button.disabled=true;button.textContent='Création du PDF...';}
+  try{
+    const lib=await loadAstrPlanningPdfLib();
+    const pdf=await lib.PDFDocument.create();
+    pdf.setTitle('AGAI - Planning hebdomadaire');
+    pdf.setSubject('Planning des astreintes - sept journées');
+    const regular=await pdf.embedFont(lib.StandardFonts.Helvetica);
+    const bold=await pdf.embedFont(lib.StandardFonts.HelveticaBold);
+    const rgb=lib.rgb;
+    const dark=rgb(0.10,0.15,0.23),muted=rgb(0.36,0.43,0.52),line=rgb(0.83,0.86,0.90);
+    const white=rgb(1,1,1),headerBg=rgb(0.95,0.97,0.99);
+    const pdfColor=function(value,fallback){
+      const hex=/^#([0-9a-f]{6})$/i.exec(value||'');
+      if(hex)return rgb(parseInt(hex[1].slice(0,2),16)/255,parseInt(hex[1].slice(2,4),16)/255,parseInt(hex[1].slice(4,6),16)/255);
+      const parts=/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)/i.exec(value||'');
+      if(parts&&(!parts[4]||Number(parts[4])>0))return rgb(Number(parts[1])/255,Number(parts[2])/255,Number(parts[3])/255);
+      return fallback;
+    };
+    const pdfText=function(value){
+      return String(value??'').replace(/\s+/g,' ').replace(/[\u2010-\u2015\u2212]/g,'-')
+        .replace(/œ/g,'oe').replace(/Œ/g,'OE').replace(/\u2026/g,'...')
+        .replace(/[^\x20-\x7e\u00a1-\u00ff]/g,'?').trim();
+    };
+    const weekLabelText=document.getElementById('astr-week-label')?.textContent||'';
+    snapshots.forEach(function(day,index){
+      const page=pdf.addPage([841.89,595.28]); // A4 paysage, points PDF.
+      const pageW=page.getWidth(),pageH=page.getHeight();
+      const margin=0.5*72/25.4; // 0,5 mm de chaque côté.
+      const contentW=pageW-2*margin;
+      const nameW=130,roleW=25,slotW=(contentW-nameW-roleW)/day.slotCount;
+      const slotX=margin+nameW+roleW;
+      const slotsPerHour=day.slotCount/24;
+      const drawBox=function(x,top,width,height,fill,border){
+        page.drawRectangle({x:x,y:pageH-top-height,width:width,height:height,
+          color:fill,borderColor:border||line,borderWidth:0.25});
+      };
+      const drawLabel=function(value,x,top,width,height,size,font,color,center){
+        let label=pdfText(value);
+        if(!label||width<=1)return;
+        let actualSize=Math.max(3,Math.min(size,height-1));
+        while(actualSize>3&&font.widthOfTextAtSize(label,actualSize)>width-1)actualSize-=0.25;
+        if(font.widthOfTextAtSize(label,actualSize)>width-1){
+          while(label&&font.widthOfTextAtSize(label+'...',actualSize)>width-1)label=label.slice(0,-1);
+          label=label?label+'...':'';
+        }
+        if(!label)return;
+        const textW=font.widthOfTextAtSize(label,actualSize);
+        page.drawText(label,{x:x+(center?Math.max(0,(width-textW)/2):0),
+          y:pageH-top-(height+actualSize)/2+1,size:actualSize,font:font,color:color});
+      };
+      drawLabel('AGAI - Planning des astreintes',margin+2,2,contentW*0.65,14,11,bold,dark,false);
+      drawLabel(weekLabelText,margin+contentW*0.65,2,contentW*0.35-2,14,8,regular,muted,true);
+      drawBox(margin,18,contentW,17,pdfColor(day.bg,headerBg),line);
+      drawLabel(day.label,margin+6,18,contentW-12,17,11,bold,pdfColor(day.fg,dark),false);
+      const headerTop=38,firstHeaderH=10,secondHeaderH=8,bodyTop=headerTop+firstHeaderH+secondHeaderH;
+      drawBox(margin,headerTop,nameW,firstHeaderH+secondHeaderH,headerBg,line);
+      drawBox(margin+nameW,headerTop,roleW,firstHeaderH+secondHeaderH,headerBg,line);
+      drawLabel('Grade Nom Prénom',margin+3,headerTop,nameW-6,firstHeaderH+secondHeaderH,8,bold,dark,false);
+      drawLabel('Fct',margin+nameW,headerTop,roleW,firstHeaderH+secondHeaderH,7,bold,dark,true);
+      for(let hour=0;hour<24;hour++){
+        const from=hour*slotsPerHour,to=from+slotsPerHour-1;
+        const x=slotX+from*slotW,width=slotsPerHour*slotW;
+        drawBox(x,headerTop,width,firstHeaderH,headerBg,line);
+        drawBox(x,headerTop+firstHeaderH,width,secondHeaderH,headerBg,line);
+        drawLabel(day.hours[from],x,headerTop,width,firstHeaderH,7,bold,dark,true);
+        drawLabel(day.ends[to]||'',x,headerTop+firstHeaderH,width,secondHeaderH,6.5,regular,muted,true);
+      }
+      const rowWeight=function(row){return row.kind==='group'?14:row.kind==='separator'?3:row.kind==='count'?10:12;};
+      const totalWeight=day.rows.reduce(function(sum,row){return sum+rowWeight(row);},0);
+      const availableH=pageH-27-bodyTop;
+      const factor=Math.min(1,availableH/Math.max(1,totalWeight));
+      let top=bodyTop;
+      day.rows.forEach(function(row){
+        const height=rowWeight(row)*factor;
+        if(row.kind==='separator'){
+          drawBox(margin,top,contentW,height,line,line);
+        } else if(row.kind==='group'){
+          drawBox(margin,top,contentW,height,pdfColor(row.bg,headerBg),line);
+          drawBox(margin,top,3,height,pdfColor(row.line,muted),pdfColor(row.line,muted));
+          drawLabel(row.label,margin+6,top,contentW-9,height,Math.min(8.5,height-1),bold,pdfColor(row.fg,dark),false);
+        } else {
+          const count=row.kind==='count';
+          drawBox(margin,top,nameW,height,pdfColor(row.nameBg,count?headerBg:white),line);
+          drawBox(margin+nameW,top,roleW,height,pdfColor(row.roleBg,count?headerBg:white),line);
+          drawLabel(row.name,margin+3,top,nameW-6,height,Math.min(8,height-1),count?bold:regular,pdfColor(row.nameFg,dark),false);
+          if(row.role)drawLabel(row.role,margin+nameW,top,roleW,height,Math.min(7,height-1),regular,muted,true);
+          row.slots.forEach(function(cell,slot){
+            const x=slotX+slot*slotW;
+            drawBox(x,top,slotW,height,pdfColor(cell.bg,count?headerBg:white),line);
+            if(cell.text)drawLabel(cell.text,x+0.3,top,slotW-0.6,height,
+              Math.min(count?6:7,height-1),count?bold:regular,pdfColor(cell.fg,dark),true);
+          });
+        }
+        top+=height;
+      });
+      drawLabel('Vert : disponible   |   Vert clair + X : piquet   |   Rouge : indisponible   |   Gris : absence   |   FOR : formation',
+        margin+2,pageH-24,contentW-4,10,6.5,regular,muted,false);
+      drawLabel('Page '+(index+1)+' / 7 - Vue affichée au moment de l\'export',
+        margin+contentW*0.60,pageH-12,contentW*0.40-2,9,6.5,regular,muted,true);
+    });
+    if(pdf.getPageCount()!==7)throw new Error('Nombre de pages incorrect');
+    const bytes=await pdf.save();
+    const blob=new Blob([bytes],{type:'application/pdf'});
+    const url=URL.createObjectURL(blob);
+    const link=document.createElement('a');
+    const monday=getMondayOfWeek(astrPlanningWeek);
+    const station=String(CURRENT_CASERNE_ID||'caserne').replace(/[^a-zA-Z0-9_-]/g,'');
+    link.href=url;
+    link.download='AGAI-planning-'+station+'-'+weekKey(monday)+'.pdf';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(function(){URL.revokeObjectURL(url);},60000);
+    showToast('Planning PDF téléchargé.','success');
+  }catch(error){
+    console.error('Export planning PDF',error);
+    showToast('Impossible de créer le PDF sur cet appareil. Aucune donnée modifiée.','error');
+  }finally{
+    astrPlanningPdfBusy=false;
+    if(button){button.disabled=false;button.textContent=originalLabel;}
+  }
+}
 function showAstrTelParams(){
   // Lire quota actuel (depuis la 1ère caserne dispo ou valeur globale)
   let currentQuota=QUOTA_ASTREINTE_TEL_H;
