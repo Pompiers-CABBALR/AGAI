@@ -32,6 +32,10 @@ for(const file of ['modules/12-astreintes-js.js','app.js']){
     assert.match(body,/break-after:page/);
     assert.match(body,/print-color-adjust:exact/);
     assert.match(body,/printDoc\.importNode\(day,true\)/);
+    assert.match(body,/\.astr-planning-day table\{width:100%!important;min-width:0!important;table-layout:fixed;\}/);
+    assert.match(body,/table tr>\*:first-child\{width:155px!important;min-width:155px!important;max-width:155px!important;\}/);
+    assert.match(body,/fit\.style\.width=page\.clientWidth\/scale\+'px'/);
+    assert.match(body,/anchor\.colSpan=slotsPerHour/);
     assert.doesNotMatch(body,/saveData\(|_rcPush\(|fetch\(/);
     const toasts=[];
     const context={
