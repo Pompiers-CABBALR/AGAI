@@ -11668,6 +11668,9 @@ function showAstrTab(sub,btn){
 // ══════════════════════════════════════════════════════
 let astrPlanningFilter=new Set(['all']);
 let astrPlanningNowTimer=null;
+function canExportAstrPlanningPDF(){
+  return !!CU&&(isRespEquipe()||isAdminModeActive());
+}
 function astrWeekNav(dir){astrPlanningWeek+=dir;rAstrPlanning();}
 function setAstrFilter(f,btn){
   if(f==='all'){
@@ -11686,6 +11689,8 @@ function rAstrPlanning(){
   const wk=weekKey(mon);
   const availabilityContext=personnelPlanningWeekContext(wk);
   document.getElementById('astr-week-label').textContent=weekLabel(mon);
+  const exportButton=document.getElementById('astr-planning-export');
+  if(exportButton)exportButton.style.display=canExportAstrPlanningPDF()?'inline-flex':'none';
   const now=new Date();
   const todayStr=getDS(now);
   const gran=EQUIPES.reduce((mn,e)=>Math.min(mn,validDispoGranularity(e.granularity)),60);
@@ -11821,7 +11826,7 @@ function rAstrPlanning(){
       :-1;
 
     // En-tête du tableau
-    html+='<div style="margin-bottom:16px;border:1.5px solid var(--brd);border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.05);">';
+    html+='<div class="astr-planning-day" style="margin-bottom:16px;border:1.5px solid var(--brd);border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.05);">';
     html+=`<div style="padding:8px 14px;background:${bg};border-bottom:1.5px solid var(--brd);display:flex;align-items:center;gap:8px;">
       <span style="font-size:14px;font-weight:700;color:${fg};">${jour} ${dateStr}</span>
       ${isToday?'<span style="background:#185FA5;color:#fff;border-radius:10px;padding:1px 8px;font-size:10px;margin-left:4px;">Aujourd\'hui</span>':''}
@@ -12051,6 +12056,107 @@ function rAstrPlanning(){
       return `<div style="display:flex;align-items:center;gap:5px;font-size:11px;"><div style="width:20px;height:12px;border-radius:2px;background:${group.eq.color};"></div>${label} · ${escHtml(group.eq.nom)}</div>`;
     }).join('')
     +(sansEqLeg.length?'<div style="display:flex;align-items:center;gap:5px;font-size:11px;"><div style="width:20px;height:12px;border-radius:2px;background:#888;"></div>Sans équipe</div>':'');
+}
+
+function exportAstrPlanningPDF(){
+  // Impression native : sept pages vectorielles, sans dépendance réseau ni écriture serveur.
+  if(!canExportAstrPlanningPDF())return;
+  const grid=document.getElementById('astr-planning-grid');
+  const days=grid?Array.from(grid.querySelectorAll('.astr-planning-day')):[];
+  if(days.length!==7){
+    showToast('Le planning complet doit être affiché avant l’export PDF.','error');
+    return;
+  }
+  const printWindow=window.open('','_blank');
+  if(!printWindow){
+    showToast('Autorisez l’ouverture de l’aperçu PDF dans le navigateur.','error');
+    return;
+  }
+  printWindow.opener=null;
+  const printDoc=printWindow.document;
+  printDoc.open();
+  printDoc.write('<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>AGAI - Planning hebdomadaire</title></head><body></body></html>');
+  printDoc.close();
+  const style=printDoc.createElement('style');
+  style.textContent=`
+    @page{size:A4 landscape;margin:0.5mm;}
+    :root{--bg:#f8fafc;--brd:#d9dee7;--t2:#64748b;}
+    *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    html,body{margin:0;padding:0;background:#fff;color:#172033;font-family:Arial,Helvetica,sans-serif;}
+    .print-toolbar{padding:12px;display:flex;align-items:center;gap:12px;background:#f1f5f9;font-size:13px;}
+    .print-toolbar button{padding:8px 14px;border:0;border-radius:6px;background:#bd382c;color:white;cursor:pointer;font-weight:700;}
+    .pdf-page{width:296mm;height:209mm;margin:0 auto;overflow:hidden;break-after:page;page-break-after:always;}
+    .pdf-page:last-child{break-after:auto;page-break-after:auto;}
+    .page-fit{width:max-content;transform-origin:top left;}
+    .pdf-head{display:flex;justify-content:space-between;align-items:baseline;gap:15px;padding:2px 0 5px;font-size:13px;font-weight:700;}
+    .pdf-head small{font-size:10px;color:#475569;font-weight:400;}
+    .astr-planning-day{margin:0!important;box-shadow:none!important;}
+    .astr-planning-day>div[style*="overflow-x"]{overflow:visible!important;}
+    .astr-planning-day table{width:max-content!important;min-width:0!important;}
+    .astr-planning-day th,.astr-planning-day td{position:static!important;z-index:auto!important;}
+    .astr-fct-col{width:38px;min-width:38px;max-width:38px;overflow:hidden;text-overflow:ellipsis;}
+    .astr-slot-col{min-width:var(--astr-slot-width,30px)!important;}
+    .astr-personnel-unavailable{background:#d1d5db!important;color:#4b5563!important;text-align:center;font-weight:700;}
+    .astr-formation{background:#ede9fe repeating-linear-gradient(135deg,transparent,transparent 5px,rgba(124,58,237,.16) 5px,rgba(124,58,237,.16) 7px)!important;color:#5b21b6!important;text-align:center;font-weight:700;}
+    .astr-personnel-unavailable-row>td:first-child,.astr-personnel-unavailable-row>.astr-fct-col{background:#d1d5db!important;color:#4b5563!important;}
+    .pdf-legend{display:flex;flex-wrap:wrap;gap:5px 10px;padding-top:5px;font-size:10px;}
+    .pdf-foot{padding-top:4px;font-size:9px;color:#64748b;text-align:right;}
+    @media print{.print-toolbar{display:none!important;}body{width:296mm!important;}.pdf-page{margin:0!important;}}
+  `;
+  printDoc.head.appendChild(style);
+  const toolbar=printDoc.createElement('div');
+  toolbar.className='print-toolbar';
+  const printButton=printDoc.createElement('button');
+  printButton.type='button';
+  printButton.textContent='Enregistrer en PDF / Imprimer';
+  printButton.addEventListener('click',function(){printWindow.print();});
+  toolbar.appendChild(printButton);
+  const hint=printDoc.createElement('span');
+  hint.textContent='Choisissez « Enregistrer au format PDF » dans la fenêtre d’impression.';
+  toolbar.appendChild(hint);
+  printDoc.body.appendChild(toolbar);
+  const weekLabelText=document.getElementById('astr-week-label')?.textContent||'';
+  const legend=document.getElementById('astr-legende');
+  days.forEach(function(day,index){
+    const page=printDoc.createElement('section');
+    page.className='pdf-page';
+    const fit=printDoc.createElement('div');
+    fit.className='page-fit';
+    const head=printDoc.createElement('div');
+    head.className='pdf-head';
+    const title=printDoc.createElement('span');
+    title.textContent='AGAI · Planning des astreintes';
+    const week=printDoc.createElement('small');
+    week.textContent=weekLabelText;
+    head.append(title,week);
+    fit.appendChild(head);
+    const copy=printDoc.importNode(day,true);
+    copy.querySelectorAll('script,iframe,object,embed,form,button,input,select,textarea').forEach(function(node){node.remove();});
+    copy.querySelectorAll('*').forEach(function(node){
+      Array.from(node.attributes).forEach(function(attr){if(/^on/i.test(attr.name))node.removeAttribute(attr.name);});
+    });
+    fit.appendChild(copy);
+    if(legend){
+      const legendCopy=printDoc.importNode(legend,true);
+      legendCopy.removeAttribute('id');
+      legendCopy.className='pdf-legend';
+      fit.appendChild(legendCopy);
+    }
+    const foot=printDoc.createElement('div');
+    foot.className='pdf-foot';
+    foot.textContent='Page '+(index+1)+' / 7 · Vue affichée au moment de l’export';
+    fit.appendChild(foot);
+    page.appendChild(fit);
+    printDoc.body.appendChild(page);
+  });
+  // Chaque journée tient sur une feuille, même avec de nombreuses équipes ou des pas de 30 min.
+  Array.from(printDoc.querySelectorAll('.pdf-page')).forEach(function(page){
+    const fit=page.querySelector('.page-fit');
+    const scale=Math.min(1,page.clientWidth/Math.max(1,fit.scrollWidth),page.clientHeight/Math.max(1,fit.scrollHeight));
+    fit.style.transform='scale('+scale+')';
+  });
+  printWindow.focus();
+  printWindow.setTimeout(function(){printWindow.print();},250);
 }
 
 function oAstrCellDetailSansEq(wk,dayIdx,slotIdx){
@@ -18507,7 +18613,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0077';
+const APP_VERSION='V202610_0078';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;

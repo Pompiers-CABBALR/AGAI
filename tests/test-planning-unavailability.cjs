@@ -26,7 +26,7 @@ function harness(){
     TODAY:new Date(2026,9,23,12),astrPlanningWeek:0,astrPlanningNowTimer:null,astrPlanningFilter:new Set(['all']),
     document:{getElementById:element},window:{matchMedia:()=>({matches:false})},
     setTimeout:()=>1,clearTimeout(){},isDispoValidated:()=>false,isRespEqForte:()=>true,isRespEquipe:()=>false,
-    isSuperAdmin:()=>true,hasRight:()=>true,getDeadlineDate:()=>new Date(2026,9,28),getWeekOffset:()=>1,
+    isSuperAdmin:()=>true,isAdminModeActive:()=>true,hasRight:()=>true,getDeadlineDate:()=>new Date(2026,9,28),getWeekOffset:()=>1,
     getMondayOfWeek:()=>new Date(2026,9,19),weekLabel:()=> 'Semaine',getEquipeById:()=>eq,getEquipeOfUser:()=>eq,
     sortEquipes:x=>x,sortByGradeThenName:x=>x,gradeAbbr:String,fullName:u=>u.nom+' '+u.prenom,
     getDS:d=>d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0'),
@@ -40,7 +40,7 @@ function harness(){
   load(c,read(bundleMode?'app.js':'modules/14-stats-js.js'),'getJoursFeries');
   const schedule=read(bundleMode?'app.js':'modules/09-pilp-js.js');
   for(const name of ['personnelScheduleDay','personnelScheduleRecords','formationCalendarDays','formationTrainingDays','formationUnavailableWindow','personnelScheduleWindows','personnelScheduleLogins','findPersonnelScheduleConflict'])load(c,schedule,name);
-  for(const name of ['weekKey','validDispoGranularity','dispoGranularityFor','getSlotsPerDay','getSlotsForDay','jourLabel','slotToLabelDay','dispoDayLabel','planningEquipeGroups','personnelPlanningSlotRange','personnelPlanningWeekContext','personnelPlanningSlotState','personnelPlanningLegendHTML','personnelPlanningCheckContext','personnelDispoSlotAllowed','renderDispoAgentBlock','rAstrPlanning','setAllDispoFor'])load(c,planning,name);
+  for(const name of ['weekKey','validDispoGranularity','dispoGranularityFor','getSlotsPerDay','getSlotsForDay','jourLabel','slotToLabelDay','dispoDayLabel','planningEquipeGroups','canExportAstrPlanningPDF','personnelPlanningSlotRange','personnelPlanningWeekContext','personnelPlanningSlotState','personnelPlanningLegendHTML','personnelPlanningCheckContext','personnelDispoSlotAllowed','renderDispoAgentBlock','rAstrPlanning','setAllDispoFor'])load(c,planning,name);
   c.timeToMin=c.hhmmToMinutes;
   const context=()=>c.personnelPlanningWeekContext(wk);
   const state=(login,day,minute,duration=60,ctx=context())=>{const r=c.personnelPlanningSlotRange(wk,day,minute,duration);return c.personnelPlanningSlotState(login,r.start,r.end,ctx);};
