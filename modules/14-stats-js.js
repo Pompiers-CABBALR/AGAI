@@ -56,6 +56,11 @@ function statsRepeatValidDate(value){
 function statsRepeatNormalize(value){
   return nm(String(value||'')).replace(/[\s’'.,;:/()_—–-]+/g,' ').trim();
 }
+function statsRepeatHasHouseNumber(address){
+  // Un chiffre dans le nom de voie (rue du 8 Mai, RD 941…) ne localise
+  // pas un logement. Seul un numéro en tête de l’adresse est exploitable.
+  return /^(?:(?:n[°ºo]|numero)\s*)?[1-9]\d*(?=\s|bis\b|ter\b|quater\b|[a-z]\b|$)/.test(normalizeInterventionAddressForMatch(address));
+}
 function statsRepeatVisitDate(iv){
   const explicit=String(iv._dateDebut||'').replace(/\D/g,'');
   const key=/^\d{8}$/.test(explicit)?explicit:statsInterventionDateKey(iv);
@@ -65,7 +70,7 @@ function statsRepeatVisitDate(iv){
 function statsRepeatSummary(interventions,since,until){
   if(!canViewRepeatStatistics())return null;
   if(!statsRepeatValidDate(since)||!statsRepeatValidDate(until)||since>until)return {error:'Choisissez une date de début valide, antérieure ou égale à aujourd’hui.'};
-  const groups=new Map(),seen=new Set();let ignored=0;
+  const groups=new Map(),seen=new Set();let ignored=0,unnumbered=0;
   (interventions||[]).forEach(function(iv){
     if(!iv||iv.s!=='terminee'||iv._avisPassage||iv._avisEnAttente||iv._avisPassageClasse||iv._isRenfort||iv._isRenfortInterneMission||iv._refugeAnimalier||iv.deleted||iv._deleted)return;
     const date=statsRepeatVisitDate(iv);if(!date||date>until)return;
@@ -79,6 +84,7 @@ function statsRepeatSummary(interventions,since,until){
     const motifKey=statsRepeatNormalize(interventionNatureForDuplicate(iv.n));
     const missing=function(text){return !text||/^(?:inconnu[e]?|non renseigne[e]?|a preciser|neant|sans adresse)$/.test(text);};
     if(missing(addressKey)||!/[a-z]/i.test(addressKey)||missing(communeKey)||missing(motifKey)){if(date>=since)ignored++;return;}
+    if(!statsRepeatHasHouseNumber(base)){if(date>=since)unnumbered++;return;}
     const placeKey=JSON.stringify([addressKey,statsRepeatNormalize(extra),communeKey]);
     const key=JSON.stringify([placeKey,motifKey]);
     if(!groups.has(key))groups.set(key,{placeKey:placeKey,address:[base,extra].filter(Boolean).join(' — '),commune:iv.com,motif:motif,visits:[]});
@@ -93,7 +99,7 @@ function statsRepeatSummary(interventions,since,until){
     rows.push({placeKey:group.placeKey,address:group.address,commune:group.commune,motif:group.motif,requesters:[...new Set(group.visits.map(function(visit){return visit.requester;}).filter(Boolean))],first:group.visits[0].date,period:period,visits:group.visits,total:group.visits.length,before:group.visits.length-period.length,repeats:repeatVisits.length});
   });
   rows.sort(function(a,b){return b.repeats-a.repeats||String(a.commune).localeCompare(String(b.commune),'fr')||a.address.localeCompare(b.address,'fr');});
-  return {rows:rows,addresses:new Set(rows.map(function(row){return row.placeKey;})).size,reinterventions:rows.reduce(function(total,row){return total+row.repeats;},0),passages:rows.reduce(function(total,row){return total+row.period.length;},0),ignored:ignored};
+  return {rows:rows,addresses:new Set(rows.map(function(row){return row.placeKey;})).size,reinterventions:rows.reduce(function(total,row){return total+row.repeats;},0),passages:rows.reduce(function(total,row){return total+row.period.length;},0),ignored:ignored,unnumbered:unnumbered};
 }
 function setStatsRepeatDate(value){
   if(!canViewRepeatStatistics())return;
@@ -118,9 +124,10 @@ function rStatsReinterventions(){
   if(summary.error)return html+'<div role="alert" style="color:#B42318;">'+escHtml(summary.error)+'</div></div>';
   html+='<p style="font-size:12px;color:var(--t2);">Du '+fmt(stRepeatDate)+' au '+fmt(today)+', pour la caserne consultée. Seules les interventions terminées sont comptées, hors avis de passage, renforts et transport vers un refuge. Une réintervention est une intervention après la première connue, recherchée aussi avant la date choisie.</p>'
     +'<p style="font-size:12px;color:var(--t2);">Le total connu inclut les interventions avant la date choisie : 1 passage avant la période puis 1 dans la période donnent 2 passages connus et 1 réintervention. Le détail permet d’ouvrir chaque fiche, y compris les précédentes.</p>'
-    +'<p style="font-size:12px;color:var(--t2);">Même motif, même adresse et même commune, même si le nom du requérant change. Les compléments d’adresse distinguent les logements. Les rapprochements utilisent l’historique chargé dans AGAI.</p>'
+    +'<p style="font-size:12px;color:var(--t2);">Même motif, même adresse avec numéro d’habitation et même commune, même si le nom du requérant change. Les compléments d’adresse distinguent les logements. Sans numéro, des interventions dans une même rue peuvent concerner des lieux différents : elles ne sont pas regroupées automatiquement. Les rapprochements utilisent l’historique chargé dans AGAI.</p>'
     +'<div class="repeat-stats-summary">'+[[summary.addresses,'Adresses revisitées'],[summary.reinterventions,'Réinterventions depuis la date'],[summary.passages,'Passages listés depuis la date']].map(function(item){return '<div><strong>'+item[0]+'</strong><span>'+item[1]+'</span></div>';}).join('')+'</div>';
   if(summary.ignored)html+='<p style="font-size:12px;color:var(--t2);">'+summary.ignored+' fiche(s) de la période sans adresse, commune ou motif exploitable : non incluses dans les rapprochements.</p>';
+  if(summary.unnumbered)html+='<p style="font-size:12px;color:var(--t2);">'+summary.unnumbered+' intervention(s) de la période sans numéro d’habitation : exclues du calcul des réinterventions pour éviter les rapprochements incertains.</p>';
   if(!summary.rows.length)return html+'<p>Aucune réintervention trouvée pour cette période.</p></div>';
   html+='<div style="overflow-x:auto;"><table class="repeat-stats-table"><thead><tr><th>Adresse et commune</th><th>Motif</th><th>Requérant(s)</th><th>Premier passage connu</th><th>Avant la date choisie</th><th>Depuis la date choisie</th><th>Total connu</th><th>Réinterventions dans la période</th><th>Détail</th></tr></thead><tbody>';
   summary.rows.forEach(function(row){

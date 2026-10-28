@@ -29,7 +29,7 @@ function harness(role='admin'){
   const load=(file,name)=>vm.runInContext(extract(read(file),name),c);
   for(const name of ['nm','formatInterventionStreetAddress','normalizeInterventionAddressForMatch','interventionBaseAddressForDuplicate','interventionNatureForDuplicate','personnelLocalDate','isSuperAdmin','hasRight','isAdminModeActive'])load('modules/02-auth-js-partie-1-2-structure-casernes-numerotation.js',name);
   load('modules/08-interventions-js.js','hasAdministrativeAccount');
-  for(const name of ['adminExportTimeCompact','adminExportInterventionStartDate','statsInterventionDateKey','canViewDetailedStatistics','canViewIndemnitesStatistics','canViewRepeatStatistics','statsRepeatToday','statsRepeatValidDate','statsRepeatNormalize','statsRepeatVisitDate','statsRepeatSummary','setStatsRepeatDate','openStatsRepeatIntervention','rStatsReinterventions','rStats','rStatsContent'])load('modules/14-stats-js.js',name);
+  for(const name of ['adminExportTimeCompact','adminExportInterventionStartDate','statsInterventionDateKey','canViewDetailedStatistics','canViewIndemnitesStatistics','canViewRepeatStatistics','statsRepeatToday','statsRepeatValidDate','statsRepeatNormalize','statsRepeatHasHouseNumber','statsRepeatVisitDate','statsRepeatSummary','setStatsRepeatDate','openStatsRepeatIntervention','rStatsReinterventions','rStats','rStatsContent'])load('modules/14-stats-js.js',name);
   const iv=(id,date,extra={})=>({id,s:'terminee',h:date.replace(/-/g,'')+'_1000',addr:'12 bis Rue de la Paix',com:'Lillers',req:'Mme Martin',n:'Nid de guêpes et frelons',...extra});
   const summary=(ivs,since='2026-10-01')=>c.statsRepeatSummary(ivs,since,'2026-10-28');
   return {c,iv,summary,element,writes:()=>writes,opened:()=>nodes.get('opened'),state:expr=>vm.runInContext(expr,c)};
@@ -69,6 +69,33 @@ test('deux motifs répétés à une adresse produisent deux lignes, sans doubler
 test('normalisation du bis, de la ponctuation et des communes ; numéros distincts conservés',()=>{
   const h=harness(),data=[h.iv('a','2026-10-01'),h.iv('b','2026-10-03',{addr:'12BIS RUE DE LA PAIX',com:'LILLERS'}),h.iv('c','2026-10-04',{addr:'12 Rue de la Paix'}),h.iv('d','2026-10-04',{com:'Autre commune'})];
   assert.equal(h.summary(data).reinterventions,1);
+});
+test('les animaux et insectes sans numéro ne deviennent pas des réinterventions par leur seule rue',()=>{
+  const h=harness();
+  for(const n of ['Sauvetage et capture d’animaux','Nid de guêpes et frelons','Nid de frelons asiatiques — PILP']){
+    const s=h.summary([h.iv('a','2026-10-01',{addr:'Rue de la Piscine',n}),h.iv('b','2026-10-02',{addr:'Rue de la Piscine',n})]);
+    assert.equal(s.reinterventions,0);assert.equal(s.rows.length,0);assert.equal(s.passages,0);assert.equal(s.unnumbered,2);
+  }
+});
+test('une date, un numéro de route ou un complément numéroté ne valent pas numéro d’habitation',()=>{
+  const h=harness();
+  for(const addr of ['Rue du 8 Mai 1945','Place du 11 Novembre','RD 941','Route départementale 943','Rue de la Paix — Bâtiment 12','Sans numéro Rue de la Paix','0 Rue de la Paix']){
+    const s=h.summary([h.iv('a','2026-10-01',{addr}),h.iv('b','2026-10-02',{addr})]);
+    assert.equal(s.reinterventions,0,addr);assert.equal(s.unnumbered,2,addr);
+  }
+});
+test('les numéros d’habitation usuels, bis, ter et lettres restent regroupables',()=>{
+  const h=harness();
+  for(const addr of ['12 Rue de la Paix','12bis Rue de la Paix','12 ter Rue de la Paix','12 quater Rue de la Paix','12A Rue de la Paix','N° 12 Rue de la Paix','Numéro 12 Rue de la Paix']){
+    const s=h.summary([h.iv('a','2026-10-01',{addr}),h.iv('b','2026-10-02',{addr})]);
+    assert.equal(s.reinterventions,1,addr);assert.equal(s.unnumbered,0,addr);
+  }
+});
+test('le bilan distingue les exclusions sans numéro des fiches incomplètes et des vrais retours',()=>{
+  const h=harness();h.c.IVS=[h.iv('old','2026-09-01',{addr:'Rue de la Piscine'}),h.iv('unknown','2026-10-01',{addr:'Rue de la Piscine'}),h.iv('first','2026-10-02'),h.iv('return','2026-10-03'),h.iv('incomplete','2026-10-04',{addr:''})];
+  const s=h.summary(h.c.IVS.concat(h.c.IVS));assert.equal(s.reinterventions,1);assert.equal(s.passages,2);assert.equal(s.unnumbered,1);assert.equal(s.ignored,1);
+  const html=h.c.rStatsReinterventions();assert.match(html,/1 intervention\(s\) de la période sans numéro d’habitation/);
+  assert.match(html,/Sans numéro, des interventions dans une même rue peuvent concerner des lieux différents/);
 });
 test('les appartements distincts ne sont pas regroupés ; ancien complément en ligne reconnu',()=>{
   const h=harness(),data=[h.iv('a','2026-10-01',{addr:'12 Rue de la Paix — Appartement 1'}),h.iv('b','2026-10-02',{addr:'12 Rue de la Paix',_addrBase:'12 Rue de la Paix',addrComp:'Appartement 1'}),h.iv('c','2026-10-03',{addr:'12 Rue de la Paix',addrComp:'Appartement 2'})];
