@@ -323,6 +323,7 @@ function pilpAvisEnAttente(iv){
 }
 
 function rPilp(){
+  reconcileRouteConfirmation();
   // Lecture seule : consulter PILP ne déclenche aucune écriture Supabase.
   // Même règle que la liste Interventions : les statuts actifs restent visibles,
   // tandis qu'une terminée disparaît dès le changement de journée.
@@ -912,6 +913,8 @@ function restoreRouteViewPosition(position){
 function rPL(sel,position){
   const viewPosition=position||captureRouteViewPosition();
   const ordered=sortRouteSelection(sel);
+  const confirmButton=document.getElementById('route-confirmation-button');
+  if(confirmButton)confirmButton.textContent=ordered.length&&ordered.every(function(iv){return parcConfirmed.has(iv.id);})?'Fermer':'✅ Confirmer';
   rEgrid();
   const list=document.getElementById('pl2');
   if(!list)return;
@@ -925,8 +928,10 @@ function rPL(sel,position){
   restoreRouteViewPosition(viewPosition);
 }
 function getSelMixte(){
-  const norm=IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l&&!parcConfirmed.has(iv.id)&&!iv._isPilip);
-  const pilp=isTireurPILP()?PILP_IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l&&!parcConfirmed.has(iv.id)):[];
+  reconcileRouteConfirmation();
+  const editing=routeOrderIsEditing('standard');
+  const norm=IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l&&(editing||!parcConfirmed.has(iv.id))&&!iv._isPilip);
+  const pilp=isTireurPILP()?PILP_IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l&&(editing||!parcConfirmed.has(iv.id))):[];
   return sortRouteSelection([...norm,...pilp]);
 }
 
@@ -952,10 +957,13 @@ function persistRouteOrder(ordered,position){
 }
 
 function getSelPilp(){
-  return sortRouteSelection(PILP_IVS.filter(function(iv){return iv.s==='selectionne'&&iv.agr===CU.l&&!parcConfirmed.has(iv.id);}));
+  reconcileRouteConfirmation();
+  return sortRouteSelection(PILP_IVS.filter(function(iv){return iv.s==='selectionne'&&iv.agr===CU.l&&(routeOrderIsEditing('pilp')||!parcConfirmed.has(iv.id));}));
 }
 function rPLPilp(sel){
   const ordered=sortRouteSelection(sel),list=document.getElementById('pilp-pl2');if(!list)return;
+  const confirmButton=document.getElementById('pilp-route-confirmation-button');
+  if(confirmButton)confirmButton.textContent=ordered.length&&ordered.every(function(iv){return parcConfirmed.has(iv.id);})?'Fermer':'✅ Confirmer';
   list.innerHTML=ordered.map(function(iv,index){
     return '<div class="pi" data-route-id="'+escHtml(iv.id)+'" draggable="true" ondragstart="pilpRouteDragStart(event,\''+iv.id+'\')" ondragover="event.preventDefault()" ondrop="pilpRouteDrop(event,\''+iv.id+'\')">'
       +'<button type="button" class="pdrag" title="Glisser pour modifier l\'ordre">⠿</button>'
@@ -992,7 +1000,10 @@ function pilpRouteDrop(event,targetId){
 function confirmerSelPilp(){
   if(!canOperatePilp()){showToast('La sélection PILP est réservée aux tireurs PILP, aux administrateurs actifs et au superadmin.','warn');return;}
   const selected=getSelPilp();if(!selected.length)return;
-  persistPilpRouteOrder(selected);selected.forEach(function(iv){parcConfirmed.add(iv.id);});rPilp();
+  if(selected.every(function(iv){return parcConfirmed.has(iv.id);})){_routeOrderEditingKey='';rPilp();return;}
+  persistPilpRouteOrder(selected);const durable=rememberRouteConfirmation(selected);if(durable===null)return;
+  _routeOrderEditingKey='';rPilp();
+  if(!durable){showToast('Tournée confirmée pour cet onglet ; le navigateur n’a pas pu mémoriser la validation.','warn');return;}
   showToast('Tournée PILP confirmée : l’ordre reste visible sur chaque intervention.','success');
 }
 async function optPilp(){
@@ -1181,9 +1192,12 @@ async function opt(){
 function confirmerSel(){
   const selected=getSelMixte();
   if(!selected.length)return;
+  if(selected.every(function(iv){return parcConfirmed.has(iv.id);})){_routeOrderEditingKey='';rI();return;}
   persistRouteOrder(selected,captureRouteViewPosition());
-  selected.forEach(function(iv){parcConfirmed.add(iv.id);});
+  const durable=rememberRouteConfirmation(selected);if(durable===null)return;
+  _routeOrderEditingKey='';
   rI();
+  if(!durable){showToast('Tournée confirmée pour cet onglet ; le navigateur n’a pas pu mémoriser la validation.','warn');return;}
   showToast('Tourn\u00e9e confirm\u00e9e : l\u2019ordre reste visible sur chaque intervention.','success');
 }
 function sE(el,e){

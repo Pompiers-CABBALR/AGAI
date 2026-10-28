@@ -80,6 +80,7 @@ async function doLogin(){
   const l=document.getElementById('lu').value.trim().toLowerCase();
   const p=document.getElementById('lp').value;
   if(!l||!p){lerr.style.display='block';lerr.textContent='Identifiant et mot de passe requis.';return;}
+  if(typeof _agaiStopSessionRestoreRetry==='function')_agaiStopSessionRestoreRetry();
 
   // Désactiver le bouton pendant la vérification async
   if(PERSONNEL_ONLINE_GATE)_agaiLoginTimingBegin();
@@ -242,4 +243,3 @@ async function doLogin(){
     if(btn&&!_loginLocked&&(typeof _loginVersionGateState==='undefined'||_loginVersionGateState!=='blocked')){btn.disabled=false;btn.textContent='Se connecter';}
   }
 }
-

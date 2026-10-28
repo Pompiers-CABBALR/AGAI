@@ -23,15 +23,16 @@ function harness(role='admin'){
     N:()=>new Date('2026-10-28T11:00:00Z'),canUseMonthlyExport:()=>true,
     escHtml:s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'),
     interventionDisplayCallNumber:iv=>String(iv.id),saveData:()=>writes++,
+    interventionById:id=>[].concat(c.IVS,c.PILP_IVS).find(iv=>iv.id===id),oM:id=>nodes.set('opened',id),showToast:()=>{},
   });
   vm.runInContext("let stAnnee=2026,stMois=10,stVue='reinterventions',stRepeatDate=null; const ST_MOIS=Array(12).fill('Mois');",c);
   const load=(file,name)=>vm.runInContext(extract(read(file),name),c);
   for(const name of ['nm','formatInterventionStreetAddress','normalizeInterventionAddressForMatch','interventionBaseAddressForDuplicate','interventionNatureForDuplicate','personnelLocalDate','isSuperAdmin','hasRight','isAdminModeActive'])load('modules/02-auth-js-partie-1-2-structure-casernes-numerotation.js',name);
   load('modules/08-interventions-js.js','hasAdministrativeAccount');
-  for(const name of ['adminExportTimeCompact','adminExportInterventionStartDate','statsInterventionDateKey','canViewDetailedStatistics','canViewIndemnitesStatistics','canViewRepeatStatistics','statsRepeatToday','statsRepeatValidDate','statsRepeatNormalize','statsRepeatVisitDate','statsRepeatSummary','setStatsRepeatDate','rStatsReinterventions','rStats','rStatsContent'])load('modules/14-stats-js.js',name);
+  for(const name of ['adminExportTimeCompact','adminExportInterventionStartDate','statsInterventionDateKey','canViewDetailedStatistics','canViewIndemnitesStatistics','canViewRepeatStatistics','statsRepeatToday','statsRepeatValidDate','statsRepeatNormalize','statsRepeatVisitDate','statsRepeatSummary','setStatsRepeatDate','openStatsRepeatIntervention','rStatsReinterventions','rStats','rStatsContent'])load('modules/14-stats-js.js',name);
   const iv=(id,date,extra={})=>({id,s:'terminee',h:date.replace(/-/g,'')+'_1000',addr:'12 bis Rue de la Paix',com:'Lillers',req:'Mme Martin',n:'Nid de guêpes et frelons',...extra});
   const summary=(ivs,since='2026-10-01')=>c.statsRepeatSummary(ivs,since,'2026-10-28');
-  return {c,iv,summary,element,writes:()=>writes,state:expr=>vm.runInContext(expr,c)};
+  return {c,iv,summary,element,writes:()=>writes,opened:()=>nodes.get('opened'),state:expr=>vm.runInContext(expr,c)};
 }
 test('premier passage compris : quatre passages donnent trois réinterventions',()=>{
   const h=harness(),data=['02','04','06','08'].map((d,i)=>h.iv('iv'+i,'2026-10-'+d));
@@ -79,9 +80,26 @@ test('appels en attente, en cours, annulés, renforts et refuges ne sont pas des
   for(const [id,extra] of [['renfort',{_isRenfort:true}],['interne',{_isRenfortInterneMission:true}],['refuge',{_refugeAnimalier:true}],['deleted',{deleted:true}]])data.push(h.iv(id,'2026-10-10',extra));
   assert.equal(h.summary(data).reinterventions,0);
 });
-test('les avis de passage et PILP terminés sont inclus, sans compter les doublons de fiche',()=>{
+test('les avis de passage sont exclus ; les PILP terminés restent inclus sans doublon de fiche',()=>{
   const h=harness(),first=h.iv('first','2026-09-01',{n:'Nid de frelons asiatiques'}),avis=h.iv('avis','2026-10-01',{s:'avis-passage',n:'Nid de frelons asiatiques'}),pilp=h.iv('pilp','2026-10-02',{n:'Nid de frelons asiatiques — PILP'});
-  const s=h.summary([first,avis,pilp,{...pilp}]);assert.equal(s.passages,2);assert.equal(s.reinterventions,2);
+  const s=h.summary([first,avis,pilp,{...pilp}]);assert.equal(s.passages,1);assert.equal(s.reinterventions,1);
+});
+test('un avis antérieur ne peut pas transformer un premier vrai passage en réintervention',()=>{
+  const h=harness();
+  for(const flag of ['_avisPassage','_avisEnAttente','_avisPassageClasse']){
+    const before=h.iv('avis','2026-09-01',{[flag]:true}),real=h.iv('real','2026-10-10');
+    assert.equal(h.summary([before,real]).reinterventions,0);
+  }
+});
+test('un passage avant puis un dans la période sont explicitement présentés comme deux passages connus',()=>{
+  const h=harness();h.c.IVS=[h.iv('before','2026-09-01'),h.iv('current','2026-10-10')];
+  const row=h.summary(h.c.IVS).rows[0];assert.equal(row.before,1);assert.equal(row.period.length,1);assert.equal(row.total,2);assert.equal(row.repeats,1);
+  const html=h.c.rStatsReinterventions();assert.match(html,/Total connu/);assert.match(html,/Avant la période/);
+  assert.match(html,/data-repeat-intervention-id="before"/);assert.match(html,/data-repeat-intervention-id="current"/);
+  h.c.openStatsRepeatIntervention('before');assert.equal(h.opened(),'before');
+});
+test('l’ouverture des fiches depuis le bilan reste réservée aux administrateurs',()=>{
+  const h=harness('agent');h.c.IVS=[h.iv('private','2026-10-10')];h.c.openStatsRepeatIntervention('private');assert.equal(h.opened(),undefined);
 });
 test('date de départ réelle et correction explicite priment sur la date de l’appel',()=>{
   const h=harness(),s=h.summary([h.iv('a','2026-09-01'),h.iv('b','2026-09-30',{tl:[{s:'en-cours',h:'20261002_1030'}]}),h.iv('c','2026-09-29',{_dateDebut:'2026-10-03'})]);

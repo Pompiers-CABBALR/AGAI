@@ -106,7 +106,7 @@ function restoreHarness(access = 'allowed', loaded = true) {
   };
   const source = between(admin, 'async function _restoreSessionAfterLoad(){', 'function doLoginSuccess(){');
   vm.runInNewContext(source + '\nglobalThis.restore=_restoreSessionAfterLoad;', context);
-  return { context, events, element, token };
+  return { context, events, element, token, stored };
 }
 
 test('une actualisation vérifie, charge, puis rouvre la même session', async () => {
@@ -138,6 +138,32 @@ test('le refus explicite du serveur demeure bloquant', async () => {
   assert.equal(await h.context.restore(), false);
   assert.deepEqual(h.events, ['access', 'clear', 'clearAuth']);
 });
+test('le délai de 40 minutes de la caserne est chargé avant de juger une absence de 20 minutes', async () => {
+  const h=restoreHarness();h.stored.backgroundAt=Date.now()-20*60000;
+  h.context._getBgLogoutMs=()=>h.events.includes('pull')?40*60000:15*60000;
+  assert.equal(await h.context.restore(),true);assert.equal(h.events.includes('clearAuth'),false);
+});
+test('un délai réellement dépassé et une session expirée pendant le chargement restent bloquants', async () => {
+  const background=restoreHarness();background.stored.backgroundAt=Date.now()-45*60000;
+  background.context._getBgLogoutMs=()=>40*60000;
+  background.context.saveData=()=>background.events.push('expiry-audit');
+  assert.equal(await background.context.restore(),false);assert.ok(background.events.includes('clearAuth'));assert.equal(background.events.includes('ui'),false);
+  const expired=restoreHarness();const load=expired.context._agaiLoadSavedSessionData;
+  expired.context._agaiLoadSavedSessionData=async stored=>{await load(stored);expired.stored.expiresAt=Date.now()-1;return true;};
+  assert.equal(await expired.context.restore(),false);assert.equal(expired.events.includes('ui'),false);
+});
+test('une ancienne vérification ne peut pas effacer une session ouverte entre-temps', async () => {
+  const h=restoreHarness('denied');
+  h.context._agaiOnlineCheckSavedSession=async()=>{h.context._readStoredSession=()=>({...h.stored,token:'nouvelle-session'});return 'denied';};
+  assert.equal(await h.context.restore(),false);assert.equal(h.events.includes('clear'),false);assert.equal(h.events.includes('clearAuth'),false);
+});
+test('un téléphone reverrouillé pendant le chargement attend le prochain retour au premier plan', async () => {
+  const h=restoreHarness();const load=h.context._agaiLoadSavedSessionData;
+  h.context._agaiLoadSavedSessionData=async stored=>{const ok=await load(stored);h.context.document.hidden=true;return ok;};
+  assert.equal(await h.context.restore(),false);assert.equal(h.events.includes('ui'),false);assert.equal(h.events.includes('clear'),false);
+  h.context.document.hidden=false;h.context._agaiLoadSavedSessionData=load;
+  assert.equal(await h.context.restore(),true);
+});
 
 test('les modules chargés et le point d’entrée de référence ont exactement les mêmes protections', () => {
   for (const [source, start, end] of [
@@ -151,4 +177,3 @@ test('les modules chargés et le point d’entrée de référence ont exactement
   assert.match(auth, raceGuard);
   assert.match(bundle, raceGuard);
 });
-

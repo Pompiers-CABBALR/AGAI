@@ -1345,17 +1345,45 @@ async function _agaiLoadSavedSessionData(stored){
 }
 
 let _agaiSessionRestorePromise=null;
+let _agaiSessionRestoreRetryTimer=null,_agaiSessionRestoreRetryCount=0;
+function _agaiStopSessionRestoreRetry(){
+  if(_agaiSessionRestoreRetryTimer){clearTimeout(_agaiSessionRestoreRetryTimer);_agaiSessionRestoreRetryTimer=null;}
+  _agaiSessionRestoreRetryCount=0;
+}
+function _agaiCanRetrySessionRestore(){
+  if(!PERSONNEL_ONLINE_GATE||CU||document.hidden||(typeof navigator!=='undefined'&&navigator.onLine===false))return false;
+  const stored=_readStoredSession();
+  return !!(stored&&stored.token&&stored.login&&Number(stored.expiresAt)>Date.now());
+}
+function _agaiScheduleSessionRestoreRetry(){
+  if(_agaiSessionRestoreRetryTimer||!_agaiCanRetrySessionRestore())return;
+  const waits=[1000,3000,5000,10000,30000];
+  const wait=waits[Math.min(_agaiSessionRestoreRetryCount++,waits.length-1)];
+  _agaiSessionRestoreRetryTimer=setTimeout(function(){
+    _agaiSessionRestoreRetryTimer=null;
+    if(_agaiCanRetrySessionRestore())_agaiQueueSessionRestore();
+  },wait);
+}
 function _agaiQueueSessionRestore(){
-  if(CU||_agaiSessionRestorePromise)return;
+  if(CU||_agaiSessionRestorePromise||(PERSONNEL_ONLINE_GATE&&document.hidden))return;
+  if(_agaiSessionRestoreRetryTimer){clearTimeout(_agaiSessionRestoreRetryTimer);_agaiSessionRestoreRetryTimer=null;}
   _agaiSessionRestorePromise=Promise.resolve().then(_restoreSessionAfterLoad)
     .catch(function(error){console.warn('[AGAI] Restauration de session impossible:',error);})
     .finally(function(){
       document.documentElement.classList.remove('agai-restoring-session');
       _agaiSessionRestorePromise=null;
+      if(CU)_agaiStopSessionRestoreRetry();else _agaiScheduleSessionRestoreRetry();
     });
+  return _agaiSessionRestorePromise;
 }
 window.addEventListener('online',function(){
   if(PERSONNEL_ONLINE_GATE&&!CU&&_readStoredSession())_agaiQueueSessionRestore();
+});
+document.addEventListener('visibilitychange',function(){
+  if(!document.hidden&&_agaiCanRetrySessionRestore())_agaiQueueSessionRestore();
+});
+window.addEventListener('pageshow',function(){
+  if(_agaiCanRetrySessionRestore())_agaiQueueSessionRestore();
 });
 function _postLoadInit(){
   if(CASERNE_DATA._global&&CASERNE_DATA._global.logoB64){
@@ -3816,4 +3844,3 @@ async function _rcMigrate(){
 
 function saveAndRefresh(){saveData();}
 function _odSyncAfterSave(){if(typeof odScheduleSync==='function')odScheduleSync();}
-
