@@ -436,13 +436,14 @@ document.addEventListener('visibilitychange',function(){
   const ms=_getBgLogoutMs();
   if(document.hidden){
     // L'app passe en arrière-plan : mémoriser l'heure et armer le minuteur
-    _bgHiddenAt=Date.now();
+    if(!_bgHiddenAt)_bgHiddenAt=Date.now();
     _persistSessionState({backgroundAt:_bgHiddenAt});
     if(ms>0 && CU && isSessionValid()){
       if(_bgTimer)clearTimeout(_bgTimer);
+      const hiddenAt=_bgHiddenAt,token=SESSION_TOKEN;
       _bgTimer=setTimeout(function(){
-        if(CU){try{doLogout();}catch(e){}}
-      },ms);
+        if(CU&&document.hidden&&_bgHiddenAt===hiddenAt&&SESSION_TOKEN===token&&Date.now()-hiddenAt>=ms){try{doLogout();}catch(e){}}
+      },Math.max(0,ms-(Date.now()-hiddenAt)));
     }
   } else {
     // L'app revient au premier plan : annuler le minuteur en attente
@@ -1197,4 +1198,3 @@ function rF(){
 }
 function updateH(){document.getElementById('hv').textContent=hoA?getH(hoA):getH(N());}
 function cpH(){const v=document.getElementById('hv').textContent;if(navigator.clipboard)navigator.clipboard.writeText(v).catch(()=>{});const b=document.querySelector('.cpbtn');if(b){b.textContent='✅';setTimeout(()=>b.textContent='&#x1F4CB; Copier',1500);}}
-

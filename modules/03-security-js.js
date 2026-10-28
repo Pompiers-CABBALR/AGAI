@@ -958,14 +958,17 @@ function _armSessionTimers(){
   if(_sessionTimer)clearTimeout(_sessionTimer);
   if(_sessionWarnTimer)clearTimeout(_sessionWarnTimer);
   const remaining=Math.max(0,(SESSION_EXPIRY||0)-Date.now());
+  const token=SESSION_TOKEN,expiresAt=SESSION_EXPIRY;
   if(remaining>10*60*1000){
     _sessionWarnTimer=setTimeout(function(){
+      if(SESSION_TOKEN!==token||SESSION_EXPIRY!==expiresAt||Date.now()>=expiresAt)return;
       showToast('⏱ Session expire dans 10 min — votre travail est sauvegardé.','warn');
     },remaining-10*60*1000);
   }
   _sessionTimer=setTimeout(function(){
+    if(SESSION_TOKEN!==token||SESSION_EXPIRY!==expiresAt||Date.now()<expiresAt)return;
     showToast('Session expirée. Reconnexion requise.','warn');
-    setTimeout(function(){doLogout();},2000);
+    setTimeout(function(){if(SESSION_TOKEN===token&&SESSION_EXPIRY===expiresAt&&Date.now()>=expiresAt)doLogout();},2000);
   },remaining);
 }
 
@@ -1015,6 +1018,7 @@ function _createSession(){
 }
 
 function _clearSession(){
+  if(typeof _agaiStopSessionRestoreRetry==='function')_agaiStopSessionRestoreRetry();
   SESSION_TOKEN=null;SESSION_EXPIRY=null;
   if(_sessionTimer){clearTimeout(_sessionTimer);_sessionTimer=null;}
   if(_sessionWarnTimer){clearTimeout(_sessionWarnTimer);_sessionWarnTimer=null;}
@@ -1055,4 +1059,3 @@ async function _migratePasswords(){
   }
   if(changed){saveData();}
 }
-

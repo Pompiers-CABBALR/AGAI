@@ -2304,16 +2304,12 @@ async function _restoreSessionAfterLoad(){
     }
     return false;
   }
-  if(PERSONNEL_ONLINE_GATE){
-    const backgroundLimit=_getBgLogoutMs(),backgroundAt=Number(stored.backgroundAt)||0;
-    if(backgroundLimit>0&&backgroundAt&&now-backgroundAt>=backgroundLimit){
-      try{localStorage.removeItem(SESSION_STORAGE_KEY);}catch(error){}
-      _agaiStoreAuthSession(null);
-      return false;
-    }
-  }
+  // Le réglage de la caserne n'est connu qu'après le chargement authentifié.
+  // Ne pas appliquer ici les 15 minutes par défaut à une caserne réglée à 40.
   const restoredAccess=PERSONNEL_ONLINE_GATE
     ?await _agaiOnlineCheckSavedSession(stored.login,stored.caserneId):'allowed';
+  const checkedStored=_readStoredSession();
+  if(!checkedStored||checkedStored.token!==stored.token||checkedStored.login!==stored.login||checkedStored.caserneId!==stored.caserneId)return false;
   if(restoredAccess!=='allowed'){
     if(restoredAccess==='denied'){
       try{localStorage.removeItem(SESSION_STORAGE_KEY);}catch(error){}
@@ -2322,7 +2318,7 @@ async function _restoreSessionAfterLoad(){
     const error=document.getElementById('lerr');
     if(error){error.style.display='block';error.textContent=restoredAccess==='denied'
       ?'Accès suspendu ou refusé par le serveur. Contactez votre administrateur.'
-      :'AGAI ne peut pas encore vérifier votre accès. Votre session locale est conservée ; réessayez lorsque le réseau revient.';}
+      :'AGAI ne peut pas encore vérifier votre accès. Votre session locale est conservée ; la reprise automatique réessaie lorsque le réseau revient.';}
     return false;
   }
   if(PERSONNEL_ONLINE_GATE){
@@ -2330,11 +2326,20 @@ async function _restoreSessionAfterLoad(){
     try{loaded=await _agaiLoadSavedSessionData(stored);}catch(error){console.warn('[AGAI] Reprise des données impossible:',error);}
     if(!loaded){
       const error=document.getElementById('lerr');
-      if(error){error.style.display='block';error.textContent='Votre accès est vérifié, mais les données ne chargent pas. Votre session locale est conservée ; réessayez quand la synchronisation revient.';}
+      if(error){error.style.display='block';error.textContent='Votre accès est vérifié, mais les données ne chargent pas. Votre session locale est conservée ; reprise automatique en cours.';}
       return false;
     }
   }
 
+  const currentStored=_readStoredSession();
+  if(!currentStored||currentStored.token!==stored.token||currentStored.login!==stored.login
+    ||currentStored.caserneId!==stored.caserneId||(CU&&SESSION_TOKEN!==stored.token))return false;
+  if(Date.now()>=Number(stored.expiresAt)){
+    try{localStorage.removeItem(SESSION_STORAGE_KEY);}catch(error){}
+    if(PERSONNEL_ONLINE_GATE)_agaiStoreAuthSession(null);
+    return false;
+  }
+  if(document.hidden)return false;
   let restoredUser=null;
   if(stored.globalRole){
     const account=GLOBAL_ACCOUNTS.find(function(item){return item.l===stored.login&&item.role===stored.globalRole;});
@@ -2374,6 +2379,7 @@ async function _restoreSessionAfterLoad(){
       entry.fermetureAuto='Inactivité en arrière-plan';
     }
     try{localStorage.removeItem(SESSION_STORAGE_KEY);}catch(e){}
+    if(PERSONNEL_ONLINE_GATE)_agaiStoreAuthSession(null);
     CU=null;GLOBAL_ROLE=null;CURRENT_CASERNE_ID=null;syncCaserneContext();
     saveData(true);
     return false;

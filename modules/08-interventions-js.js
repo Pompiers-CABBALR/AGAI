@@ -86,6 +86,62 @@ function hasAdministrativeAccount(){
     (Array.isArray(CU.rights)&&CU.rights.includes('Administration'));
 }
 
+const _routeConfirmationMemory=new Map();
+const _routeConfirmationMemoryOnly=new Set();
+let _routeOrderEditingKey='';
+function routeConfirmationScope(iv){return isPilpIntervention(iv)?'pilp':'standard';}
+function routeConfirmationOwnerKey(scope){
+  if(!CU||!CU.l)return '';
+  const station=CURRENT_CASERNE_ID||CU.caserneId;if(!station)return '';
+  return 'agai_route_confirmation_v1:'+encodeURIComponent(station)+':'+encodeURIComponent(CU.l)+':'+scope;
+}
+function routeConfirmationSelection(scope){
+  if(!CU)return [];
+  const source=scope==='pilp'?(PILP_IVS||[]):(IVS||[]);
+  return source.filter(function(iv){return iv&&iv.id&&iv.s==='selectionne'&&iv.agr===CU.l&&(scope==='pilp'||!iv._isPilip);});
+}
+function routeConfirmationTicket(iv){
+  const selections=(iv.tl||[]).filter(function(entry){return entry&&entry.s==='selectionne';});
+  const last=selections[selections.length-1];
+  return JSON.stringify([selections.length,last&&last.h||'']);
+}
+function readRouteConfirmation(scope){
+  const key=routeConfirmationOwnerKey(scope);if(!key)return null;
+  let saved=_routeConfirmationMemoryOnly.has(key)?_routeConfirmationMemory.get(key):null;
+  if(!saved)try{saved=JSON.parse(localStorage.getItem(key)||'null');}catch(error){}
+  if(!saved)saved=_routeConfirmationMemory.get(key);
+  if(!saved||saved.version!==1||saved.login!==CU.l||saved.caserneId!==(CURRENT_CASERNE_ID||CU.caserneId)||saved.scope!==scope||!saved.entries||typeof saved.entries!=='object'||Array.isArray(saved.entries))return null;
+  _routeConfirmationMemory.set(key,saved);return saved;
+}
+function reconcileRouteConfirmation(){
+  if(!CU)return;
+  ['standard','pilp'].forEach(function(scope){
+    const selected=routeConfirmationSelection(scope),saved=readRouteConfirmation(scope);
+    // Une suppression ne change pas les tickets restants. Un ajout ou une
+    // nouvelle sélection du même appel impose de revoir toute la sélection.
+    const confirmed=!!saved&&selected.every(function(iv){return saved.entries[iv.id]===routeConfirmationTicket(iv);});
+    selected.forEach(function(iv){if(confirmed)parcConfirmed.add(iv.id);else parcConfirmed.delete(iv.id);});
+  });
+}
+function rememberRouteConfirmation(selected){
+  if(!CU||!isSessionValid())return null;
+  const approved=new Set((selected||[]).filter(function(iv){return iv&&iv.agr===CU.l&&iv.s==='selectionne';}).map(function(iv){return iv.id;}));
+  let written=false,durable=true;
+  ['standard','pilp'].forEach(function(scope){
+    const current=routeConfirmationSelection(scope);
+    if(!current.length||!current.every(function(iv){return approved.has(iv.id);}))return;
+    const entries={};current.forEach(function(iv){entries[iv.id]=routeConfirmationTicket(iv);});
+    const record={version:1,login:CU.l,caserneId:CURRENT_CASERNE_ID||CU.caserneId,scope:scope,entries:entries};
+    const key=routeConfirmationOwnerKey(scope);
+    _routeConfirmationMemory.set(key,record);written=true;
+    try{localStorage.setItem(key,JSON.stringify(record));_routeConfirmationMemoryOnly.delete(key);}catch(error){durable=false;_routeConfirmationMemoryOnly.add(key);}
+  });
+  if(!written)return null;
+  reconcileRouteConfirmation();return durable;
+}
+function routeOrderIsEditing(scope){
+  const key=routeConfirmationOwnerKey(scope);return !!key&&_routeOrderEditingKey===key;
+}
 function interventionRouteSelectionKey(iv,index){
   if(iv&&Number.isFinite(Number(iv._routeSelectedAt)))return Number(iv._routeSelectedAt);
   const entries=(iv&&iv.tl||[]).filter(function(entry){return entry&&entry.s==='selectionne';});
@@ -154,15 +210,16 @@ function editInterventionRoute(chefLogin,batchId){
     return iv.s==='selectionne'&&iv.agr===chefLogin;
   });
   if(!route.length){showToast('Aucune intervention s\u00e9lectionn\u00e9e \u00e0 r\u00e9organiser.','info');return;}
-  const normalized=normalizeInterventionRoute(chefLogin,batchId||route.map(function(iv){return iv._routeBatchId;}).find(Boolean));
-  normalized.forEach(function(iv){if(iv.s==='selectionne')parcConfirmed.delete(iv.id);});
+  normalizeInterventionRoute(chefLogin,batchId||route.map(function(iv){return iv._routeBatchId;}).find(Boolean));
+  const scope=route.every(function(iv){return isPilpIntervention(iv);})?'pilp':'standard';
+  _routeOrderEditingKey=routeConfirmationOwnerKey(scope);
   saveData(true);
-  rI();
+  if(scope==='pilp')rPilp();else rI();
   requestAnimationFrame(function(){
-    const panel=document.getElementById('pap');
+    const panel=document.getElementById(scope==='pilp'?'pilp-pap':'pap');
     if(panel)panel.scrollIntoView({behavior:'smooth',block:'start'});
   });
-  showToast('Vous pouvez modifier l\u2019ordre puis confirmer de nouveau la tourn\u00e9e.','info');
+  showToast('L’ordre est enregistré au fur et à mesure. Fermez le panneau quand vous avez terminé.','info');
 }
 
 function prepareInterventionRoute(iv){
@@ -1166,6 +1223,7 @@ function deactivateRainMode(){
   saveData(true);renderRainModeZone();showToast('Mode pluie désactivé.','success');
 }
 function rI(){
+  reconcileRouteConfirmation();
   // Lecture seule : aucune migration ni correction automatique pendant le rendu.
   // Les réparations historiques restent disponibles pour une maintenance
   // volontaire, mais ne sont plus déclenchées en ouvrant Interventions.
@@ -1248,7 +1306,7 @@ function rI(){
   // Panneau tournée
   // Une tournée peut contenir des appels des jours précédents. Leur date de
   // création ne doit jamais empêcher le chef d'agrès d'en choisir l'ordre.
-  const selNonConf=IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l&&!parcConfirmed.has(iv.id)&&!iv._isPilip);
+  const selNonConf=getSelMixte();
   const pp=document.getElementById('pap');
   if(ag&&selNonConf.length>0){pp.style.display='block';document.getElementById('pagl').textContent=interventionRouteChefName({agr:CU.l});document.getElementById('pac').textContent=selNonConf.length;rPL(selNonConf);}
   else{pp.style.display='none';rEgrid();}
@@ -2610,4 +2668,3 @@ function reclasser(id){
   // Reopen modal with fresh data
   setTimeout(()=>oM(id),50);
 }
-

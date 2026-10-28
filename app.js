@@ -2331,14 +2331,17 @@ function _armSessionTimers(){
   if(_sessionTimer)clearTimeout(_sessionTimer);
   if(_sessionWarnTimer)clearTimeout(_sessionWarnTimer);
   const remaining=Math.max(0,(SESSION_EXPIRY||0)-Date.now());
+  const token=SESSION_TOKEN,expiresAt=SESSION_EXPIRY;
   if(remaining>10*60*1000){
     _sessionWarnTimer=setTimeout(function(){
+      if(SESSION_TOKEN!==token||SESSION_EXPIRY!==expiresAt||Date.now()>=expiresAt)return;
       showToast('⏱ Session expire dans 10 min — votre travail est sauvegardé.','warn');
     },remaining-10*60*1000);
   }
   _sessionTimer=setTimeout(function(){
+    if(SESSION_TOKEN!==token||SESSION_EXPIRY!==expiresAt||Date.now()<expiresAt)return;
     showToast('Session expirée. Reconnexion requise.','warn');
-    setTimeout(function(){doLogout();},2000);
+    setTimeout(function(){if(SESSION_TOKEN===token&&SESSION_EXPIRY===expiresAt&&Date.now()>=expiresAt)doLogout();},2000);
   },remaining);
 }
 
@@ -2388,6 +2391,7 @@ function _createSession(){
 }
 
 function _clearSession(){
+  if(typeof _agaiStopSessionRestoreRetry==='function')_agaiStopSessionRestoreRetry();
   SESSION_TOKEN=null;SESSION_EXPIRY=null;
   if(_sessionTimer){clearTimeout(_sessionTimer);_sessionTimer=null;}
   if(_sessionWarnTimer){clearTimeout(_sessionWarnTimer);_sessionWarnTimer=null;}
@@ -2511,6 +2515,7 @@ async function doLogin(){
   const l=document.getElementById('lu').value.trim().toLowerCase();
   const p=document.getElementById('lp').value;
   if(!l||!p){lerr.style.display='block';lerr.textContent='Identifiant et mot de passe requis.';return;}
+  if(typeof _agaiStopSessionRestoreRetry==='function')_agaiStopSessionRestoreRetry();
 
   // Désactiver le bouton pendant la vérification async
   if(PERSONNEL_ONLINE_GATE)_agaiLoginTimingBegin();
@@ -4972,16 +4977,12 @@ async function _restoreSessionAfterLoad(){
     }
     return false;
   }
-  if(PERSONNEL_ONLINE_GATE){
-    const backgroundLimit=_getBgLogoutMs(),backgroundAt=Number(stored.backgroundAt)||0;
-    if(backgroundLimit>0&&backgroundAt&&now-backgroundAt>=backgroundLimit){
-      try{localStorage.removeItem(SESSION_STORAGE_KEY);}catch(error){}
-      _agaiStoreAuthSession(null);
-      return false;
-    }
-  }
+  // Le réglage de la caserne n'est connu qu'après le chargement authentifié.
+  // Ne pas appliquer ici les 15 minutes par défaut à une caserne réglée à 40.
   const restoredAccess=PERSONNEL_ONLINE_GATE
     ?await _agaiOnlineCheckSavedSession(stored.login,stored.caserneId):'allowed';
+  const checkedStored=_readStoredSession();
+  if(!checkedStored||checkedStored.token!==stored.token||checkedStored.login!==stored.login||checkedStored.caserneId!==stored.caserneId)return false;
   if(restoredAccess!=='allowed'){
     if(restoredAccess==='denied'){
       try{localStorage.removeItem(SESSION_STORAGE_KEY);}catch(error){}
@@ -4990,7 +4991,7 @@ async function _restoreSessionAfterLoad(){
     const error=document.getElementById('lerr');
     if(error){error.style.display='block';error.textContent=restoredAccess==='denied'
       ?'Accès suspendu ou refusé par le serveur. Contactez votre administrateur.'
-      :'AGAI ne peut pas encore vérifier votre accès. Votre session locale est conservée ; réessayez lorsque le réseau revient.';}
+      :'AGAI ne peut pas encore vérifier votre accès. Votre session locale est conservée ; la reprise automatique réessaie lorsque le réseau revient.';}
     return false;
   }
   if(PERSONNEL_ONLINE_GATE){
@@ -4998,11 +4999,20 @@ async function _restoreSessionAfterLoad(){
     try{loaded=await _agaiLoadSavedSessionData(stored);}catch(error){console.warn('[AGAI] Reprise des données impossible:',error);}
     if(!loaded){
       const error=document.getElementById('lerr');
-      if(error){error.style.display='block';error.textContent='Votre accès est vérifié, mais les données ne chargent pas. Votre session locale est conservée ; réessayez quand la synchronisation revient.';}
+      if(error){error.style.display='block';error.textContent='Votre accès est vérifié, mais les données ne chargent pas. Votre session locale est conservée ; reprise automatique en cours.';}
       return false;
     }
   }
 
+  const currentStored=_readStoredSession();
+  if(!currentStored||currentStored.token!==stored.token||currentStored.login!==stored.login
+    ||currentStored.caserneId!==stored.caserneId||(CU&&SESSION_TOKEN!==stored.token))return false;
+  if(Date.now()>=Number(stored.expiresAt)){
+    try{localStorage.removeItem(SESSION_STORAGE_KEY);}catch(error){}
+    if(PERSONNEL_ONLINE_GATE)_agaiStoreAuthSession(null);
+    return false;
+  }
+  if(document.hidden)return false;
   let restoredUser=null;
   if(stored.globalRole){
     const account=GLOBAL_ACCOUNTS.find(function(item){return item.l===stored.login&&item.role===stored.globalRole;});
@@ -5042,6 +5052,7 @@ async function _restoreSessionAfterLoad(){
       entry.fermetureAuto='Inactivité en arrière-plan';
     }
     try{localStorage.removeItem(SESSION_STORAGE_KEY);}catch(e){}
+    if(PERSONNEL_ONLINE_GATE)_agaiStoreAuthSession(null);
     CU=null;GLOBAL_ROLE=null;CURRENT_CASERNE_ID=null;syncCaserneContext();
     saveData(true);
     return false;
@@ -6150,13 +6161,14 @@ document.addEventListener('visibilitychange',function(){
   const ms=_getBgLogoutMs();
   if(document.hidden){
     // L'app passe en arrière-plan : mémoriser l'heure et armer le minuteur
-    _bgHiddenAt=Date.now();
+    if(!_bgHiddenAt)_bgHiddenAt=Date.now();
     _persistSessionState({backgroundAt:_bgHiddenAt});
     if(ms>0 && CU && isSessionValid()){
       if(_bgTimer)clearTimeout(_bgTimer);
+      const hiddenAt=_bgHiddenAt,token=SESSION_TOKEN;
       _bgTimer=setTimeout(function(){
-        if(CU){try{doLogout();}catch(e){}}
-      },ms);
+        if(CU&&document.hidden&&_bgHiddenAt===hiddenAt&&SESSION_TOKEN===token&&Date.now()-hiddenAt>=ms){try{doLogout();}catch(e){}}
+      },Math.max(0,ms-(Date.now()-hiddenAt)));
     }
   } else {
     // L'app revient au premier plan : annuler le minuteur en attente
@@ -6974,6 +6986,62 @@ function hasAdministrativeAccount(){
     (Array.isArray(CU.rights)&&CU.rights.includes('Administration'));
 }
 
+const _routeConfirmationMemory=new Map();
+const _routeConfirmationMemoryOnly=new Set();
+let _routeOrderEditingKey='';
+function routeConfirmationScope(iv){return isPilpIntervention(iv)?'pilp':'standard';}
+function routeConfirmationOwnerKey(scope){
+  if(!CU||!CU.l)return '';
+  const station=CURRENT_CASERNE_ID||CU.caserneId;if(!station)return '';
+  return 'agai_route_confirmation_v1:'+encodeURIComponent(station)+':'+encodeURIComponent(CU.l)+':'+scope;
+}
+function routeConfirmationSelection(scope){
+  if(!CU)return [];
+  const source=scope==='pilp'?(PILP_IVS||[]):(IVS||[]);
+  return source.filter(function(iv){return iv&&iv.id&&iv.s==='selectionne'&&iv.agr===CU.l&&(scope==='pilp'||!iv._isPilip);});
+}
+function routeConfirmationTicket(iv){
+  const selections=(iv.tl||[]).filter(function(entry){return entry&&entry.s==='selectionne';});
+  const last=selections[selections.length-1];
+  return JSON.stringify([selections.length,last&&last.h||'']);
+}
+function readRouteConfirmation(scope){
+  const key=routeConfirmationOwnerKey(scope);if(!key)return null;
+  let saved=_routeConfirmationMemoryOnly.has(key)?_routeConfirmationMemory.get(key):null;
+  if(!saved)try{saved=JSON.parse(localStorage.getItem(key)||'null');}catch(error){}
+  if(!saved)saved=_routeConfirmationMemory.get(key);
+  if(!saved||saved.version!==1||saved.login!==CU.l||saved.caserneId!==(CURRENT_CASERNE_ID||CU.caserneId)||saved.scope!==scope||!saved.entries||typeof saved.entries!=='object'||Array.isArray(saved.entries))return null;
+  _routeConfirmationMemory.set(key,saved);return saved;
+}
+function reconcileRouteConfirmation(){
+  if(!CU)return;
+  ['standard','pilp'].forEach(function(scope){
+    const selected=routeConfirmationSelection(scope),saved=readRouteConfirmation(scope);
+    // Une suppression ne change pas les tickets restants. Un ajout ou une
+    // nouvelle sélection du même appel impose de revoir toute la sélection.
+    const confirmed=!!saved&&selected.every(function(iv){return saved.entries[iv.id]===routeConfirmationTicket(iv);});
+    selected.forEach(function(iv){if(confirmed)parcConfirmed.add(iv.id);else parcConfirmed.delete(iv.id);});
+  });
+}
+function rememberRouteConfirmation(selected){
+  if(!CU||!isSessionValid())return null;
+  const approved=new Set((selected||[]).filter(function(iv){return iv&&iv.agr===CU.l&&iv.s==='selectionne';}).map(function(iv){return iv.id;}));
+  let written=false,durable=true;
+  ['standard','pilp'].forEach(function(scope){
+    const current=routeConfirmationSelection(scope);
+    if(!current.length||!current.every(function(iv){return approved.has(iv.id);}))return;
+    const entries={};current.forEach(function(iv){entries[iv.id]=routeConfirmationTicket(iv);});
+    const record={version:1,login:CU.l,caserneId:CURRENT_CASERNE_ID||CU.caserneId,scope:scope,entries:entries};
+    const key=routeConfirmationOwnerKey(scope);
+    _routeConfirmationMemory.set(key,record);written=true;
+    try{localStorage.setItem(key,JSON.stringify(record));_routeConfirmationMemoryOnly.delete(key);}catch(error){durable=false;_routeConfirmationMemoryOnly.add(key);}
+  });
+  if(!written)return null;
+  reconcileRouteConfirmation();return durable;
+}
+function routeOrderIsEditing(scope){
+  const key=routeConfirmationOwnerKey(scope);return !!key&&_routeOrderEditingKey===key;
+}
 function interventionRouteSelectionKey(iv,index){
   if(iv&&Number.isFinite(Number(iv._routeSelectedAt)))return Number(iv._routeSelectedAt);
   const entries=(iv&&iv.tl||[]).filter(function(entry){return entry&&entry.s==='selectionne';});
@@ -7042,15 +7110,16 @@ function editInterventionRoute(chefLogin,batchId){
     return iv.s==='selectionne'&&iv.agr===chefLogin;
   });
   if(!route.length){showToast('Aucune intervention s\u00e9lectionn\u00e9e \u00e0 r\u00e9organiser.','info');return;}
-  const normalized=normalizeInterventionRoute(chefLogin,batchId||route.map(function(iv){return iv._routeBatchId;}).find(Boolean));
-  normalized.forEach(function(iv){if(iv.s==='selectionne')parcConfirmed.delete(iv.id);});
+  normalizeInterventionRoute(chefLogin,batchId||route.map(function(iv){return iv._routeBatchId;}).find(Boolean));
+  const scope=route.every(function(iv){return isPilpIntervention(iv);})?'pilp':'standard';
+  _routeOrderEditingKey=routeConfirmationOwnerKey(scope);
   saveData(true);
-  rI();
+  if(scope==='pilp')rPilp();else rI();
   requestAnimationFrame(function(){
-    const panel=document.getElementById('pap');
+    const panel=document.getElementById(scope==='pilp'?'pilp-pap':'pap');
     if(panel)panel.scrollIntoView({behavior:'smooth',block:'start'});
   });
-  showToast('Vous pouvez modifier l\u2019ordre puis confirmer de nouveau la tourn\u00e9e.','info');
+  showToast('L’ordre est enregistré au fur et à mesure. Fermez le panneau quand vous avez terminé.','info');
 }
 
 function prepareInterventionRoute(iv){
@@ -8037,6 +8106,7 @@ function deactivateRainMode(){
   saveData(true);renderRainModeZone();showToast('Mode pluie désactivé.','success');
 }
 function rI(){
+  reconcileRouteConfirmation();
   // Lecture seule : aucune migration ni correction automatique pendant le rendu.
   // Les réparations historiques restent disponibles pour une maintenance
   // volontaire, mais ne sont plus déclenchées en ouvrant Interventions.
@@ -8119,7 +8189,7 @@ function rI(){
   // Panneau tournée
   // Une tournée peut contenir des appels des jours précédents. Leur date de
   // création ne doit jamais empêcher le chef d'agrès d'en choisir l'ordre.
-  const selNonConf=IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l&&!parcConfirmed.has(iv.id)&&!iv._isPilip);
+  const selNonConf=getSelMixte();
   const pp=document.getElementById('pap');
   if(ag&&selNonConf.length>0){pp.style.display='block';document.getElementById('pagl').textContent=interventionRouteChefName({agr:CU.l});document.getElementById('pac').textContent=selNonConf.length;rPL(selNonConf);}
   else{pp.style.display='none';rEgrid();}
@@ -9773,6 +9843,7 @@ function pilpAvisEnAttente(iv){
 }
 
 function rPilp(){
+  reconcileRouteConfirmation();
   // Lecture seule : consulter PILP ne déclenche aucune écriture Supabase.
   // Même règle que la liste Interventions : les statuts actifs restent visibles,
   // tandis qu'une terminée disparaît dès le changement de journée.
@@ -10349,6 +10420,8 @@ function restoreRouteViewPosition(position){
 function rPL(sel,position){
   const viewPosition=position||captureRouteViewPosition();
   const ordered=sortRouteSelection(sel);
+  const confirmButton=document.getElementById('route-confirmation-button');
+  if(confirmButton)confirmButton.textContent=ordered.length&&ordered.every(function(iv){return parcConfirmed.has(iv.id);})?'Fermer':'✅ Confirmer';
   rEgrid();
   const list=document.getElementById('pl2');
   if(!list)return;
@@ -10362,8 +10435,10 @@ function rPL(sel,position){
   restoreRouteViewPosition(viewPosition);
 }
 function getSelMixte(){
-  const norm=IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l&&!parcConfirmed.has(iv.id)&&!iv._isPilip);
-  const pilp=isTireurPILP()?PILP_IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l&&!parcConfirmed.has(iv.id)):[];
+  reconcileRouteConfirmation();
+  const editing=routeOrderIsEditing('standard');
+  const norm=IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l&&(editing||!parcConfirmed.has(iv.id))&&!iv._isPilip);
+  const pilp=isTireurPILP()?PILP_IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l&&(editing||!parcConfirmed.has(iv.id))):[];
   return sortRouteSelection([...norm,...pilp]);
 }
 
@@ -10389,10 +10464,13 @@ function persistRouteOrder(ordered,position){
 }
 
 function getSelPilp(){
-  return sortRouteSelection(PILP_IVS.filter(function(iv){return iv.s==='selectionne'&&iv.agr===CU.l&&!parcConfirmed.has(iv.id);}));
+  reconcileRouteConfirmation();
+  return sortRouteSelection(PILP_IVS.filter(function(iv){return iv.s==='selectionne'&&iv.agr===CU.l&&(routeOrderIsEditing('pilp')||!parcConfirmed.has(iv.id));}));
 }
 function rPLPilp(sel){
   const ordered=sortRouteSelection(sel),list=document.getElementById('pilp-pl2');if(!list)return;
+  const confirmButton=document.getElementById('pilp-route-confirmation-button');
+  if(confirmButton)confirmButton.textContent=ordered.length&&ordered.every(function(iv){return parcConfirmed.has(iv.id);})?'Fermer':'✅ Confirmer';
   list.innerHTML=ordered.map(function(iv,index){
     return '<div class="pi" data-route-id="'+escHtml(iv.id)+'" draggable="true" ondragstart="pilpRouteDragStart(event,\''+iv.id+'\')" ondragover="event.preventDefault()" ondrop="pilpRouteDrop(event,\''+iv.id+'\')">'
       +'<button type="button" class="pdrag" title="Glisser pour modifier l\'ordre">⠿</button>'
@@ -10429,7 +10507,10 @@ function pilpRouteDrop(event,targetId){
 function confirmerSelPilp(){
   if(!canOperatePilp()){showToast('La sélection PILP est réservée aux tireurs PILP, aux administrateurs actifs et au superadmin.','warn');return;}
   const selected=getSelPilp();if(!selected.length)return;
-  persistPilpRouteOrder(selected);selected.forEach(function(iv){parcConfirmed.add(iv.id);});rPilp();
+  if(selected.every(function(iv){return parcConfirmed.has(iv.id);})){_routeOrderEditingKey='';rPilp();return;}
+  persistPilpRouteOrder(selected);const durable=rememberRouteConfirmation(selected);if(durable===null)return;
+  _routeOrderEditingKey='';rPilp();
+  if(!durable){showToast('Tournée confirmée pour cet onglet ; le navigateur n’a pas pu mémoriser la validation.','warn');return;}
   showToast('Tournée PILP confirmée : l’ordre reste visible sur chaque intervention.','success');
 }
 async function optPilp(){
@@ -10618,9 +10699,12 @@ async function opt(){
 function confirmerSel(){
   const selected=getSelMixte();
   if(!selected.length)return;
+  if(selected.every(function(iv){return parcConfirmed.has(iv.id);})){_routeOrderEditingKey='';rI();return;}
   persistRouteOrder(selected,captureRouteViewPosition());
-  selected.forEach(function(iv){parcConfirmed.add(iv.id);});
+  const durable=rememberRouteConfirmation(selected);if(durable===null)return;
+  _routeOrderEditingKey='';
   rI();
+  if(!durable){showToast('Tournée confirmée pour cet onglet ; le navigateur n’a pas pu mémoriser la validation.','warn');return;}
   showToast('Tourn\u00e9e confirm\u00e9e : l\u2019ordre reste visible sur chaque intervention.','success');
 }
 function sE(el,e){
@@ -16927,7 +17011,7 @@ function statsRepeatSummary(interventions,since,until){
   if(!statsRepeatValidDate(since)||!statsRepeatValidDate(until)||since>until)return {error:'Choisissez une date de début valide, antérieure ou égale à aujourd’hui.'};
   const groups=new Map(),seen=new Set();let ignored=0;
   (interventions||[]).forEach(function(iv){
-    if(!iv||!['terminee','avis-passage'].includes(iv.s)||iv._isRenfort||iv._isRenfortInterneMission||iv._refugeAnimalier||iv.deleted||iv._deleted)return;
+    if(!iv||iv.s!=='terminee'||iv._avisPassage||iv._avisEnAttente||iv._avisPassageClasse||iv._isRenfort||iv._isRenfortInterneMission||iv._refugeAnimalier||iv.deleted||iv._deleted)return;
     const date=statsRepeatVisitDate(iv);if(!date||date>until)return;
     if(!iv.id){if(date>=since)ignored++;return;}
     if(seen.has(iv.id))return;seen.add(iv.id);
@@ -16950,7 +17034,7 @@ function statsRepeatSummary(interventions,since,until){
     const period=group.visits.filter(function(visit){return visit.date>=since;});
     const repeatVisits=group.visits.slice(1).filter(function(visit){return visit.date>=since;});
     if(!repeatVisits.length)return;
-    rows.push({placeKey:group.placeKey,address:group.address,commune:group.commune,motif:group.motif,requesters:[...new Set(group.visits.map(function(visit){return visit.requester;}).filter(Boolean))],first:group.visits[0].date,period:period,repeats:repeatVisits.length});
+    rows.push({placeKey:group.placeKey,address:group.address,commune:group.commune,motif:group.motif,requesters:[...new Set(group.visits.map(function(visit){return visit.requester;}).filter(Boolean))],first:group.visits[0].date,period:period,visits:group.visits,total:group.visits.length,before:group.visits.length-period.length,repeats:repeatVisits.length});
   });
   rows.sort(function(a,b){return b.repeats-a.repeats||String(a.commune).localeCompare(String(b.commune),'fr')||a.address.localeCompare(b.address,'fr');});
   return {rows:rows,addresses:new Set(rows.map(function(row){return row.placeKey;})).size,reinterventions:rows.reduce(function(total,row){return total+row.repeats;},0),passages:rows.reduce(function(total,row){return total+row.period.length;},0),ignored:ignored};
@@ -16958,6 +17042,12 @@ function statsRepeatSummary(interventions,since,until){
 function setStatsRepeatDate(value){
   if(!canViewRepeatStatistics())return;
   stRepeatDate=String(value||'');rStatsContent();
+}
+function openStatsRepeatIntervention(id){
+  if(!canViewRepeatStatistics())return;
+  const iv=interventionById(String(id||''));
+  if(!iv){showToast('Cette intervention n’est plus disponible. Actualisez le bilan.','warn');return;}
+  oM(iv.id);
 }
 function rStatsReinterventions(){
   if(!canViewRepeatStatistics())return '<div style="padding:24px;text-align:center;color:var(--t2);">Accès réservé aux administrateurs et au superadmin.</div>';
@@ -16970,14 +17060,15 @@ function rStatsReinterventions(){
     +'<button class="btn pr" onclick="setStatsRepeatDate(document.getElementById(\'stats-repeat-date\').value)">Afficher le bilan</button></div>';
   const summary=statsRepeatSummary([].concat(IVS||[],PILP_IVS||[]),stRepeatDate,today);
   if(summary.error)return html+'<div role="alert" style="color:#B42318;">'+escHtml(summary.error)+'</div></div>';
-  html+='<p style="font-size:12px;color:var(--t2);">Du '+fmt(stRepeatDate)+' au '+fmt(today)+', pour la caserne consultée. Un passage correspond à une fiche terminée ou à un avis de passage, hors renforts et transport vers un refuge. Les fiches en attente, en cours et annulées ne sont pas comptées. Une réintervention est un passage après le premier connu, recherché aussi avant la date choisie.</p>'
+  html+='<p style="font-size:12px;color:var(--t2);">Du '+fmt(stRepeatDate)+' au '+fmt(today)+', pour la caserne consultée. Seules les interventions terminées sont comptées, hors avis de passage, renforts et transport vers un refuge. Une réintervention est une intervention après la première connue, recherchée aussi avant la date choisie.</p>'
+    +'<p style="font-size:12px;color:var(--t2);">Le total connu inclut les interventions avant la date choisie : 1 passage avant la période puis 1 dans la période donnent 2 passages connus et 1 réintervention. Le détail permet d’ouvrir chaque fiche, y compris les précédentes.</p>'
     +'<p style="font-size:12px;color:var(--t2);">Même motif, même adresse et même commune, même si le nom du requérant change. Les compléments d’adresse distinguent les logements. Les rapprochements utilisent l’historique chargé dans AGAI.</p>'
     +'<div class="repeat-stats-summary">'+[[summary.addresses,'Adresses revisitées'],[summary.reinterventions,'Réinterventions depuis la date'],[summary.passages,'Passages listés depuis la date']].map(function(item){return '<div><strong>'+item[0]+'</strong><span>'+item[1]+'</span></div>';}).join('')+'</div>';
   if(summary.ignored)html+='<p style="font-size:12px;color:var(--t2);">'+summary.ignored+' fiche(s) de la période sans adresse, commune ou motif exploitable : non incluses dans les rapprochements.</p>';
   if(!summary.rows.length)return html+'<p>Aucune réintervention trouvée pour cette période.</p></div>';
-  html+='<div style="overflow-x:auto;"><table class="repeat-stats-table"><thead><tr><th>Adresse et commune</th><th>Motif</th><th>Requérant(s)</th><th>Premier passage connu</th><th>Passages depuis la date</th><th>Dont réinterventions</th><th>Détail</th></tr></thead><tbody>';
+  html+='<div style="overflow-x:auto;"><table class="repeat-stats-table"><thead><tr><th>Adresse et commune</th><th>Motif</th><th>Requérant(s)</th><th>Premier passage connu</th><th>Avant la date choisie</th><th>Depuis la date choisie</th><th>Total connu</th><th>Réinterventions dans la période</th><th>Détail</th></tr></thead><tbody>';
   summary.rows.forEach(function(row){
-    html+='<tr><td>'+escHtml(row.address)+'<br>'+escHtml(row.commune)+'</td><td>'+escHtml(row.motif)+'</td><td>'+escHtml(row.requesters.join(' · ')||'Non renseigné')+'</td><td>'+fmt(row.first)+'</td><td>'+row.period.length+'</td><td><strong>'+row.repeats+'</strong></td><td><details><summary>Voir les passages</summary><ul style="padding-left:16px;min-width:220px;">'+row.period.map(function(visit){return '<li>'+fmt(visit.date)+' — '+escHtml(interventionDisplayCallNumber(visit.iv))+' — '+escHtml(visit.iv.n||'Nature non renseignée')+(visit.requester?' — '+escHtml(visit.requester):'')+'</li>';}).join('')+'</ul></details></td></tr>';
+    html+='<tr><td>'+escHtml(row.address)+'<br>'+escHtml(row.commune)+'</td><td>'+escHtml(row.motif)+'</td><td>'+escHtml(row.requesters.join(' · ')||'Non renseigné')+'</td><td>'+fmt(row.first)+'</td><td>'+row.before+'</td><td>'+row.period.length+'</td><td>'+row.total+'</td><td><strong>'+row.repeats+'</strong></td><td><details><summary>Voir les interventions</summary><ul style="padding-left:16px;min-width:220px;">'+row.visits.map(function(visit){return '<li style="margin-bottom:6px;"><button type="button" class="btn sm" data-repeat-intervention-id="'+escHtml(visit.iv.id)+'" onclick="openStatsRepeatIntervention(this.dataset.repeatInterventionId)">'+fmt(visit.date)+' — '+escHtml(interventionDisplayCallNumber(visit.iv))+'</button>'+(visit.date<stRepeatDate?' <span style="font-size:11px;color:var(--t2);">Avant la période</span>':'')+'<div>'+escHtml(visit.iv.n||'Nature non renseignée')+(visit.requester?' — '+escHtml(visit.requester):'')+'</div></li>';}).join('')+'</ul></details></td></tr>';
   });
   return html+'</tbody></table></div></div>';
 }
@@ -18598,7 +18689,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0082';
+const APP_VERSION='V202610_0083';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -21636,17 +21727,45 @@ async function _agaiLoadSavedSessionData(stored){
 }
 
 let _agaiSessionRestorePromise=null;
+let _agaiSessionRestoreRetryTimer=null,_agaiSessionRestoreRetryCount=0;
+function _agaiStopSessionRestoreRetry(){
+  if(_agaiSessionRestoreRetryTimer){clearTimeout(_agaiSessionRestoreRetryTimer);_agaiSessionRestoreRetryTimer=null;}
+  _agaiSessionRestoreRetryCount=0;
+}
+function _agaiCanRetrySessionRestore(){
+  if(!PERSONNEL_ONLINE_GATE||CU||document.hidden||(typeof navigator!=='undefined'&&navigator.onLine===false))return false;
+  const stored=_readStoredSession();
+  return !!(stored&&stored.token&&stored.login&&Number(stored.expiresAt)>Date.now());
+}
+function _agaiScheduleSessionRestoreRetry(){
+  if(_agaiSessionRestoreRetryTimer||!_agaiCanRetrySessionRestore())return;
+  const waits=[1000,3000,5000,10000,30000];
+  const wait=waits[Math.min(_agaiSessionRestoreRetryCount++,waits.length-1)];
+  _agaiSessionRestoreRetryTimer=setTimeout(function(){
+    _agaiSessionRestoreRetryTimer=null;
+    if(_agaiCanRetrySessionRestore())_agaiQueueSessionRestore();
+  },wait);
+}
 function _agaiQueueSessionRestore(){
-  if(CU||_agaiSessionRestorePromise)return;
+  if(CU||_agaiSessionRestorePromise||(PERSONNEL_ONLINE_GATE&&document.hidden))return;
+  if(_agaiSessionRestoreRetryTimer){clearTimeout(_agaiSessionRestoreRetryTimer);_agaiSessionRestoreRetryTimer=null;}
   _agaiSessionRestorePromise=Promise.resolve().then(_restoreSessionAfterLoad)
     .catch(function(error){console.warn('[AGAI] Restauration de session impossible:',error);})
     .finally(function(){
       document.documentElement.classList.remove('agai-restoring-session');
       _agaiSessionRestorePromise=null;
+      if(CU)_agaiStopSessionRestoreRetry();else _agaiScheduleSessionRestoreRetry();
     });
+  return _agaiSessionRestorePromise;
 }
 window.addEventListener('online',function(){
   if(PERSONNEL_ONLINE_GATE&&!CU&&_readStoredSession())_agaiQueueSessionRestore();
+});
+document.addEventListener('visibilitychange',function(){
+  if(!document.hidden&&_agaiCanRetrySessionRestore())_agaiQueueSessionRestore();
+});
+window.addEventListener('pageshow',function(){
+  if(_agaiCanRetrySessionRestore())_agaiQueueSessionRestore();
 });
 function _postLoadInit(){
   if(CASERNE_DATA._global&&CASERNE_DATA._global.logoB64){

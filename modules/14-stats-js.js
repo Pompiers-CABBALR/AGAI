@@ -67,7 +67,7 @@ function statsRepeatSummary(interventions,since,until){
   if(!statsRepeatValidDate(since)||!statsRepeatValidDate(until)||since>until)return {error:'Choisissez une date de début valide, antérieure ou égale à aujourd’hui.'};
   const groups=new Map(),seen=new Set();let ignored=0;
   (interventions||[]).forEach(function(iv){
-    if(!iv||!['terminee','avis-passage'].includes(iv.s)||iv._isRenfort||iv._isRenfortInterneMission||iv._refugeAnimalier||iv.deleted||iv._deleted)return;
+    if(!iv||iv.s!=='terminee'||iv._avisPassage||iv._avisEnAttente||iv._avisPassageClasse||iv._isRenfort||iv._isRenfortInterneMission||iv._refugeAnimalier||iv.deleted||iv._deleted)return;
     const date=statsRepeatVisitDate(iv);if(!date||date>until)return;
     if(!iv.id){if(date>=since)ignored++;return;}
     if(seen.has(iv.id))return;seen.add(iv.id);
@@ -90,7 +90,7 @@ function statsRepeatSummary(interventions,since,until){
     const period=group.visits.filter(function(visit){return visit.date>=since;});
     const repeatVisits=group.visits.slice(1).filter(function(visit){return visit.date>=since;});
     if(!repeatVisits.length)return;
-    rows.push({placeKey:group.placeKey,address:group.address,commune:group.commune,motif:group.motif,requesters:[...new Set(group.visits.map(function(visit){return visit.requester;}).filter(Boolean))],first:group.visits[0].date,period:period,repeats:repeatVisits.length});
+    rows.push({placeKey:group.placeKey,address:group.address,commune:group.commune,motif:group.motif,requesters:[...new Set(group.visits.map(function(visit){return visit.requester;}).filter(Boolean))],first:group.visits[0].date,period:period,visits:group.visits,total:group.visits.length,before:group.visits.length-period.length,repeats:repeatVisits.length});
   });
   rows.sort(function(a,b){return b.repeats-a.repeats||String(a.commune).localeCompare(String(b.commune),'fr')||a.address.localeCompare(b.address,'fr');});
   return {rows:rows,addresses:new Set(rows.map(function(row){return row.placeKey;})).size,reinterventions:rows.reduce(function(total,row){return total+row.repeats;},0),passages:rows.reduce(function(total,row){return total+row.period.length;},0),ignored:ignored};
@@ -98,6 +98,12 @@ function statsRepeatSummary(interventions,since,until){
 function setStatsRepeatDate(value){
   if(!canViewRepeatStatistics())return;
   stRepeatDate=String(value||'');rStatsContent();
+}
+function openStatsRepeatIntervention(id){
+  if(!canViewRepeatStatistics())return;
+  const iv=interventionById(String(id||''));
+  if(!iv){showToast('Cette intervention n’est plus disponible. Actualisez le bilan.','warn');return;}
+  oM(iv.id);
 }
 function rStatsReinterventions(){
   if(!canViewRepeatStatistics())return '<div style="padding:24px;text-align:center;color:var(--t2);">Accès réservé aux administrateurs et au superadmin.</div>';
@@ -110,14 +116,15 @@ function rStatsReinterventions(){
     +'<button class="btn pr" onclick="setStatsRepeatDate(document.getElementById(\'stats-repeat-date\').value)">Afficher le bilan</button></div>';
   const summary=statsRepeatSummary([].concat(IVS||[],PILP_IVS||[]),stRepeatDate,today);
   if(summary.error)return html+'<div role="alert" style="color:#B42318;">'+escHtml(summary.error)+'</div></div>';
-  html+='<p style="font-size:12px;color:var(--t2);">Du '+fmt(stRepeatDate)+' au '+fmt(today)+', pour la caserne consultée. Un passage correspond à une fiche terminée ou à un avis de passage, hors renforts et transport vers un refuge. Les fiches en attente, en cours et annulées ne sont pas comptées. Une réintervention est un passage après le premier connu, recherché aussi avant la date choisie.</p>'
+  html+='<p style="font-size:12px;color:var(--t2);">Du '+fmt(stRepeatDate)+' au '+fmt(today)+', pour la caserne consultée. Seules les interventions terminées sont comptées, hors avis de passage, renforts et transport vers un refuge. Une réintervention est une intervention après la première connue, recherchée aussi avant la date choisie.</p>'
+    +'<p style="font-size:12px;color:var(--t2);">Le total connu inclut les interventions avant la date choisie : 1 passage avant la période puis 1 dans la période donnent 2 passages connus et 1 réintervention. Le détail permet d’ouvrir chaque fiche, y compris les précédentes.</p>'
     +'<p style="font-size:12px;color:var(--t2);">Même motif, même adresse et même commune, même si le nom du requérant change. Les compléments d’adresse distinguent les logements. Les rapprochements utilisent l’historique chargé dans AGAI.</p>'
     +'<div class="repeat-stats-summary">'+[[summary.addresses,'Adresses revisitées'],[summary.reinterventions,'Réinterventions depuis la date'],[summary.passages,'Passages listés depuis la date']].map(function(item){return '<div><strong>'+item[0]+'</strong><span>'+item[1]+'</span></div>';}).join('')+'</div>';
   if(summary.ignored)html+='<p style="font-size:12px;color:var(--t2);">'+summary.ignored+' fiche(s) de la période sans adresse, commune ou motif exploitable : non incluses dans les rapprochements.</p>';
   if(!summary.rows.length)return html+'<p>Aucune réintervention trouvée pour cette période.</p></div>';
-  html+='<div style="overflow-x:auto;"><table class="repeat-stats-table"><thead><tr><th>Adresse et commune</th><th>Motif</th><th>Requérant(s)</th><th>Premier passage connu</th><th>Passages depuis la date</th><th>Dont réinterventions</th><th>Détail</th></tr></thead><tbody>';
+  html+='<div style="overflow-x:auto;"><table class="repeat-stats-table"><thead><tr><th>Adresse et commune</th><th>Motif</th><th>Requérant(s)</th><th>Premier passage connu</th><th>Avant la date choisie</th><th>Depuis la date choisie</th><th>Total connu</th><th>Réinterventions dans la période</th><th>Détail</th></tr></thead><tbody>';
   summary.rows.forEach(function(row){
-    html+='<tr><td>'+escHtml(row.address)+'<br>'+escHtml(row.commune)+'</td><td>'+escHtml(row.motif)+'</td><td>'+escHtml(row.requesters.join(' · ')||'Non renseigné')+'</td><td>'+fmt(row.first)+'</td><td>'+row.period.length+'</td><td><strong>'+row.repeats+'</strong></td><td><details><summary>Voir les passages</summary><ul style="padding-left:16px;min-width:220px;">'+row.period.map(function(visit){return '<li>'+fmt(visit.date)+' — '+escHtml(interventionDisplayCallNumber(visit.iv))+' — '+escHtml(visit.iv.n||'Nature non renseignée')+(visit.requester?' — '+escHtml(visit.requester):'')+'</li>';}).join('')+'</ul></details></td></tr>';
+    html+='<tr><td>'+escHtml(row.address)+'<br>'+escHtml(row.commune)+'</td><td>'+escHtml(row.motif)+'</td><td>'+escHtml(row.requesters.join(' · ')||'Non renseigné')+'</td><td>'+fmt(row.first)+'</td><td>'+row.before+'</td><td>'+row.period.length+'</td><td>'+row.total+'</td><td><strong>'+row.repeats+'</strong></td><td><details><summary>Voir les interventions</summary><ul style="padding-left:16px;min-width:220px;">'+row.visits.map(function(visit){return '<li style="margin-bottom:6px;"><button type="button" class="btn sm" data-repeat-intervention-id="'+escHtml(visit.iv.id)+'" onclick="openStatsRepeatIntervention(this.dataset.repeatInterventionId)">'+fmt(visit.date)+' — '+escHtml(interventionDisplayCallNumber(visit.iv))+'</button>'+(visit.date<stRepeatDate?' <span style="font-size:11px;color:var(--t2);">Avant la période</span>':'')+'<div>'+escHtml(visit.iv.n||'Nature non renseignée')+(visit.requester?' — '+escHtml(visit.requester):'')+'</div></li>';}).join('')+'</ul></details></td></tr>';
   });
   return html+'</tbody></table></div></div>';
 }
