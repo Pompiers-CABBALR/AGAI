@@ -988,6 +988,15 @@ button,.btn,.nb,.subtab-btn,.smopt,.fb,.ec,.ivr,[onclick]{
   -webkit-user-select:none;
   user-select:none;
 }
+.repeat-stats{background:#fff;border:1px solid var(--brd);border-radius:12px;padding:14px;}
+.repeat-stats label{display:flex;flex-direction:column;gap:4px;font-size:12px;}
+.repeat-stats-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:12px 0;}
+.repeat-stats-summary>div{background:var(--bg);border:1px solid var(--brd);border-radius:9px;padding:12px;display:flex;flex-direction:column;gap:5px;}
+.repeat-stats-summary strong{font-size:25px;}
+.repeat-stats-summary span{font-size:12px;color:var(--t2);}
+.repeat-stats-table{border-collapse:collapse;width:100%;font-size:12px;}
+.repeat-stats-table th,.repeat-stats-table td{padding:9px;border:1px solid var(--brd);text-align:left;vertical-align:top;}
+.repeat-stats-table th{background:var(--bg);}
 
 /* Prise d'appel tactile */
 .appel-phone-row{display:grid;grid-template-columns:minmax(0,1fr) 42px;align-items:center;gap:7px;margin-bottom:7px;}
