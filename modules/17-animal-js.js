@@ -3501,41 +3501,50 @@ function _rcPullScopeFilter(){
   const caserneId=_rcSyncScopeCaserne();
   return caserneId?'&caserne=in.(_GLOBAL,'+caserneId+')':'';
 }
-async function _rcFetchAllActiveRows(scopeFilter){
-  const rows=[];
+async function _rcFetchAllActiveRows(scopeFilter,parallelLogin){
   const fixedScope=typeof scopeFilter==='string'?scopeFilter:_rcPullScopeFilter();
-  let lastId='';
-  // Un nouveau dossier inséré pendant une lecture ne doit pas décaler les
-  // pages et faire disparaître temporairement des équipes ou interventions.
-  for(let page=0;page<200;page++){
-    const query='?deleted=eq.false&select=id,caserne,type,data,deleted&order=id.asc&limit='+RC_PULL_PAGE_SIZE
-      +fixedScope+(lastId?'&id=gt.'+encodeURIComponent(lastId):'');
-    const resp=await _agaiFetchWithTimeout(RC_REST+query,{headers:_sbHeaders},45000);
-    if(!resp.ok){
-      if(PERSONNEL_SECURE_CIS05_PILOT){
-        const detail=await resp.json().catch(function(){return{};});
-        const session=_agaiReadAuthSession();
-        console.warn('[AGAI][PILOTE] Lecture Auth refusée : '+JSON.stringify({
-          status:resp.status,code:String(detail.code||''),message:String(detail.message||'').slice(0,160),
-          tokenPresent:!!_agaiAuthAccessToken(),sessionPresent:!!session,
-          expiresInSeconds:session?Math.round(Number(session.expires_at||0)-Date.now()/1000):null,
-          loginPresent:!!(CU&&CU.l),scope:_rcSyncScopeCaserne()
-        }));
+  async function readPartition(typeFilter){
+    const rows=[];
+    let lastId='';
+    // Un nouveau dossier inséré pendant une lecture ne doit pas décaler les
+    // pages et faire disparaître temporairement des équipes ou interventions.
+    for(let page=0;page<200;page++){
+      const query='?deleted=eq.false&select=id,caserne,type,data,deleted&order=id.asc&limit='+RC_PULL_PAGE_SIZE
+        +fixedScope+typeFilter+(lastId?'&id=gt.'+encodeURIComponent(lastId):'');
+      const resp=await _agaiFetchWithTimeout(RC_REST+query,{headers:_sbHeaders},45000);
+      if(!resp.ok){
+        if(PERSONNEL_SECURE_CIS05_PILOT){
+          const detail=await resp.json().catch(function(){return{};});
+          const session=_agaiReadAuthSession();
+          console.warn('[AGAI][PILOTE] Lecture Auth refusée : '+JSON.stringify({
+            status:resp.status,code:String(detail.code||''),message:String(detail.message||'').slice(0,160),
+            tokenPresent:!!_agaiAuthAccessToken(),sessionPresent:!!session,
+            expiresInSeconds:session?Math.round(Number(session.expires_at||0)-Date.now()/1000):null,
+            loginPresent:!!(CU&&CU.l),scope:_rcSyncScopeCaserne()
+          }));
+        }
+        throw new Error('records GET HTTP '+resp.status+' (page '+(page+1)+')');
       }
-      throw new Error('records GET HTTP '+resp.status+' (page '+(page+1)+')');
+      const batch=await resp.json();
+      if(!Array.isArray(batch))throw new Error('Données records invalides (page '+(page+1)+')');
+      rows.push.apply(rows,batch);
+      // La limite réelle du serveur peut être inférieure à celle demandée.
+      // Seule une page vide prouve que la lecture est terminée.
+      if(!batch.length)return rows;
+      const nextId=String(batch[batch.length-1]&&batch[batch.length-1].id||'');
+      if(!nextId||nextId===lastId)throw new Error('Pagination records incohérente (page '+(page+1)+')');
+      lastId=nextId;
     }
-    const batch=await resp.json();
-    if(!Array.isArray(batch))throw new Error('Données records invalides (page '+(page+1)+')');
-    rows.push.apply(rows,batch);
-    // La limite réelle du serveur peut être inférieure à celle demandée.
-    // Seule une page vide prouve que la lecture est terminée : s'arrêter sur
-    // une page courte laisserait des interventions invisibles après connexion.
-    if(!batch.length)return _rcUniqueRowsById(rows);
-    const nextId=String(batch[batch.length-1]&&batch[batch.length-1].id||'');
-    if(!nextId||nextId===lastId)throw new Error('Pagination records incohérente (page '+(page+1)+')');
-    lastId=nextId;
+    throw new Error('Chargement records incomplet : trop de pages');
   }
-  throw new Error('Chargement records incomplet : trop de pages');
+  if(!parallelLogin)return _rcUniqueRowsById(await readPartition(''));
+  // La connexion lit les mêmes lignes, mais les traces de connexion (plus de
+  // la moitié des lignes CIS05) et les autres données partent simultanément.
+  // Un échec dans l'une des deux lectures bloque toujours l'ouverture.
+  const parts=await Promise.all([readPartition('&type=eq.login'),readPartition('&type=neq.login')]);
+  return _rcUniqueRowsById(parts[0].concat(parts[1])).sort(function(a,b){
+    return a.id<b.id?-1:a.id>b.id?1:0;
+  });
 }
 
 function _rcRenderViewsAfterPull(deferViewsUntilLogin){
@@ -3569,7 +3578,7 @@ async function _rcPull(silent,deferViewsUntilLogin,skipPendingPush){
     if(!silent) _jbSetStatus('loading');
     const requestedScope=_rcPullScopeFilter();
     if(deferViewsUntilLogin)_agaiLoginTimingFetchBegin();
-    const rows = await _rcFetchAllActiveRows(requestedScope);
+    const rows = await _rcFetchAllActiveRows(requestedScope,!!deferViewsUntilLogin);
     if(deferViewsUntilLogin)_agaiLoginTimingFetchEnd();
     if(requestedScope!==_rcPullScopeFilter()){
       _rcRequestRealtimePull(250);

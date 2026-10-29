@@ -27,7 +27,7 @@ for (const [file, authFile] of [
     const source = read(file);
     assert.match(read(authFile), /if\(await _rcPull\(false,true,true\)\)/);
     assert.match(source, /async function _rcPull\(silent,deferViewsUntilLogin,skipPendingPush\)/);
-    assert.match(source, /const rows = await _rcFetchAllActiveRows\(requestedScope\)/);
+    assert.match(source, /const rows = await _rcFetchAllActiveRows\(requestedScope,!!deferViewsUntilLogin\)/);
     assert.match(source, /_writeLocalCache\(data\);\s*_rcRenderViewsAfterPull\(deferViewsUntilLogin\);/);
 
     const calls = [];

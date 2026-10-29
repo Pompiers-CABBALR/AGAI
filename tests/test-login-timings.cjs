@@ -47,7 +47,7 @@ test('les durées sont reliées aux phases visibles et à la réception', () => 
     assert.match(login, /if\(PERSONNEL_ONLINE_GATE\)_agaiLoginTimingBegin\(\);/);
     assert.match(login, /_agaiLoginTimingVerified\(\);\s*if\(btn\)btn\.textContent='Chargement…'/);
     assert.match(login, /finally \{\s*if\(PERSONNEL_ONLINE_GATE\)_agaiLoginTimingFinish\(\);/);
-    assert.match(records, /_agaiLoginTimingFetchBegin\(\);\s*const rows = await _rcFetchAllActiveRows\(requestedScope\);\s*if\(deferViewsUntilLogin\)_agaiLoginTimingFetchEnd\(\);/);
+    assert.match(records, /_agaiLoginTimingFetchBegin\(\);\s*const rows = await _rcFetchAllActiveRows\(requestedScope,!!deferViewsUntilLogin\);\s*if\(deferViewsUntilLogin\)_agaiLoginTimingFetchEnd\(\);/);
   }
 });
 
