@@ -1184,6 +1184,10 @@ html.appel-nature-locked .cnt{overflow:hidden!important;}
 }
 /* Le rendu paysage ne doit jamais réafficher un menu retiré par les droits. */
 .nav .nb.hidden{display:none!important;}
+.admin-audit-list{display:grid;gap:8px;max-height:520px;overflow:auto;}
+.admin-audit-entry{border:1px solid var(--brd);border-radius:8px;padding:9px 11px;font-size:12px;background:#fff;overflow-wrap:anywhere;}
+.admin-audit-meta{margin-top:3px;color:var(--t2);font-size:11px;}
+.admin-audit-details{margin-top:5px;color:var(--t);font-size:11px;}
 
 /* Ordinateurs : libellés du menu principal et des sous-menus plus lisibles.
    Cette règle est placée après le mode paysage afin qu'un ordinateur portable

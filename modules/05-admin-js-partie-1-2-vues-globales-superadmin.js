@@ -2461,7 +2461,7 @@ function doLoginSuccess(){
   document.getElementById('subtab-pilp').style.display='none';
   document.getElementById('subtab-hist').style.display='none';
   const pbProfil=document.getElementById('params-btn-profil');
-  if(pbProfil){pbProfil.classList.add('active');document.getElementById('params-btn-admin').classList.remove('active');}
+  if(pbProfil)pbProfil.classList.add('active');
   document.getElementById('params-profil').style.display='';
   document.getElementById('params-admin').style.display='none';
   // Sur mobile, scroller vers le haut pour voir l'accueil

@@ -1238,9 +1238,10 @@ function _reloadActiveView(){
       const telEl=document.getElementById('astr-tel');
       if(telEl&&telEl.style.display!=='none')rAstrTel();
     }
-    else if(id==='tab-params'){
-      if(hasRight('Administration'))rAdm();
-      else rProfil();
+    else if(id==='tab-params')rProfil();
+    else if(id==='tab-users'){
+      if(canManageUsersNow()){rAdm();loadPersonnelAudit();}
+      else showT('home',document.getElementById('nav-home'));
     }
   }catch(e){console.error('_reloadActiveView',e);}
 }

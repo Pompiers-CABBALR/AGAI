@@ -1295,6 +1295,9 @@ function devaliderDispos(wk){
   saveData();
   rAstrPlanning();
 }
+function canManageUsersNow(){
+  return GLOBAL_ROLE==='superadmin'?isSuperAdmin():hasRight('Administration');
+}
 function applyNavRights(){
   document.getElementById('nav-appel').classList.toggle('hidden',!hasRight('Prise d\'appel'));
   document.getElementById('nav-interv').classList.toggle('hidden',!hasRight('Interventions'));
@@ -1303,8 +1306,11 @@ function applyNavRights(){
   if(pilpTab&&!canSeePILP()&&pilpTab.classList.contains('active')){
     showSubtab('std',document.getElementById('subtab-btn-std'));
   }
-  const adminTab=document.getElementById('params-btn-admin');
-  if(adminTab)adminTab.style.display=hasRight('Administration')?'':'none';
+  const usersTab=document.getElementById('nav-users');
+  const canManage=canManageUsersNow();
+  if(usersTab)usersTab.classList.toggle('hidden',!canManage);
+  if(!canManage&&document.getElementById('tab-users')?.classList.contains('active'))
+    showT('home',document.getElementById('nav-home'));
   const syncTab=document.getElementById('params-btn-onedrive');
   if(syncTab)syncTab.style.display=isSuperAdmin()?'':'none';
   document.getElementById('fb-mes-sel').style.display=(isAgres()||canOperatePilp())?'':'none';
@@ -1361,14 +1367,14 @@ function showSubtab(sub,btn){
   else{rI();}
 }
 function showParamsTab(sub,btn){
+  if(sub!=='profil'&&sub!=='onedrive')return;
+  if(sub==='onedrive'&&!isSuperAdmin())return;
   document.querySelectorAll('#tab-params .subtab-btn').forEach(b=>b.classList.remove('active'));
   if(btn)btn.classList.add('active');
   document.getElementById('params-profil').style.display=sub==='profil'?'':'none';
-  document.getElementById('params-admin').style.display=sub==='admin'?'':'none';
   document.getElementById('params-onedrive').style.display=sub==='onedrive'?'':'none';
   if(sub==='onedrive'){var _sml=document.getElementById('sync-mode-label');if(_sml)_sml.textContent=(typeof USE_RECORDS!=='undefined'&&USE_RECORDS)?'Records (multi-utilisateurs temps réel)':((typeof USE_SUPABASE!=='undefined'&&USE_SUPABASE)?'Supabase (temps réel)':'JSONBin');}
   if(sub==='profil')rProfil();
-  else if(sub==='admin')rAdm();
   else if(sub==='onedrive')odRenderStatus();
 }
 // === MODULE: security.js ===
@@ -5132,7 +5138,7 @@ function doLoginSuccess(){
   document.getElementById('subtab-pilp').style.display='none';
   document.getElementById('subtab-hist').style.display='none';
   const pbProfil=document.getElementById('params-btn-profil');
-  if(pbProfil){pbProfil.classList.add('active');document.getElementById('params-btn-admin').classList.remove('active');}
+  if(pbProfil)pbProfil.classList.add('active');
   document.getElementById('params-profil').style.display='';
   document.getElementById('params-admin').style.display='none';
   // Sur mobile, scroller vers le haut pour voir l'accueil
@@ -5697,6 +5703,11 @@ function requestOperationalCloseConfirmation(iv,details,onConfirm){
 
 // ────────────────── TABS ──────────────────
 function showT(id,btn){
+  if(id==='users'&&!canManageUsersNow()){
+    showToast('Activez vos pouvoirs administrateur pour accéder à la gestion des utilisateurs.','warn');
+    applyNavRights();
+    return;
+  }
   if(id==='formation'&&!hasFormationRight()){
     showToast('Accès réservé aux formateurs et aux responsables autorisés.','warn');
     applyNavRights();
@@ -5704,8 +5715,13 @@ function showT(id,btn){
   }
   document.querySelectorAll('.sec').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.nb').forEach(b=>b.classList.remove('active'));
+  if(id==='users'){
+    const management=document.getElementById('params-admin');
+    document.getElementById('tab-users').appendChild(management);
+    management.style.display='';
+  }
   document.getElementById('tab-'+id).classList.add('active');
-  btn.classList.add('active');
+  if(btn)btn.classList.add('active');
   if(window.innerWidth<=480)window.scrollTo(0,0);
   if(id==='appel'){rF();gS(1);}
   if(id==='interv'){
@@ -5714,7 +5730,8 @@ function showT(id,btn){
     if(sub==='pilp')rPilp();else if(sub==='hist')rHist();else rI();
   }
   if(id==='astreintes')rAstreintes();
-  if(id==='params'){rProfil();rAdm();}
+  if(id==='params')rProfil();
+  if(id==='users'){rAdm();loadPersonnelAudit();}
   if(id==='stats'){rStats();window.scrollTo(0,0);}
   if(id==='home')rAccueil();
   if(id==='activite'){rActivite();}
@@ -11221,6 +11238,52 @@ function fullName(u){return u?u.nom+' '+u.prenom:'';}
 function fullNameAff(u){return u?(u.nom+' '+u.prenom).trim():'';}
 function shortName(u){return u?u.nom+' '+u.prenom.charAt(0)+'.':'';}
 const PERSONNEL_STATUS_LABELS={actif:'Actif',arret:'Arrêt de travail',disponibilite:'Mise en disponibilité',suspension:'Suspension administrative',demission:'Démission',licenciement:'Licenciement',retraite:'Retraite',mutation:'Mutation'};
+const PERSONNEL_AUDIT_FIELDS={nom:'nom',prenom:'prénom',matricule:'matricule',grade:'grade',fonction:'fonction',fonction2:'fonction secondaire',rights:'droits',fonctionsFormateur:'fonctions de formateur',responsableFormation:'responsable formation',appRole:'rôle applicatif',p:'mot de passe',status:'situation',starts_on:'début',ends_on:'fin'};
+let _personnelAuditRequest=0;
+function personnelAuditValue(value){
+  if(value===null||value===undefined||value==='')return '—';
+  if(Array.isArray(value))return value.length?value.join(', '):'—';
+  if(typeof value==='boolean')return value?'oui':'non';
+  if(typeof value==='object')return 'détails enregistrés';
+  return String(value);
+}
+async function loadPersonnelAudit(){
+  const state=document.getElementById('admin-audit-state'),list=document.getElementById('admin-audit-list');
+  if(!state||!list||!canManageUsersNow())return;
+  const token=_agaiAuthAccessToken(),caserne=CURRENT_CASERNE_ID;
+  if(!token||!caserne){state.textContent='Historique indisponible : connexion serveur nécessaire.';list.innerHTML='';return;}
+  const request=++_personnelAuditRequest;
+  state.textContent='Chargement des actions confirmées par le serveur…';
+  try{
+    const url=SB_REST+'/agai_personnel_audit?caserne_id=eq.'+encodeURIComponent(caserne)
+      +'&select=occurred_at,actor_login,target_login,action,changes&order=occurred_at.desc,id.desc&limit=150';
+    const response=await _agaiAuthFetchWithTimeout(url,{headers:{apikey:SB_KEY,Authorization:'Bearer '+token}},10000);
+    if(!response.ok)throw new Error('HTTP '+response.status);
+    const entries=await response.json();
+    if(request!==_personnelAuditRequest||!canManageUsersNow()||CURRENT_CASERNE_ID!==caserne)return;
+    state.textContent=entries.length?entries.length+' action'+(entries.length>1?'s':'')+' récente'+(entries.length>1?'s':'')+' (maximum 150).':'Aucune action enregistrée depuis l’activation du journal.';
+    list.innerHTML=entries.map(function(entry){
+      const action={create:'Compte ajouté',update:'Fiche modifiée',delete:'Compte retiré',status:'Situation modifiée',admin_grant:'Pouvoir administrateur accordé',admin_revoke:'Pouvoir administrateur retiré'}[entry.action]||entry.action;
+      const changes=entry.changes&&typeof entry.changes==='object'?entry.changes:{};
+      const details=Object.entries(changes).map(function(pair){
+        const label=PERSONNEL_AUDIT_FIELDS[pair[0]]||pair[0],delta=pair[1];
+        if(pair[0]==='p')return 'mot de passe réinitialisé';
+        if(delta&&typeof delta==='object'&&Object.prototype.hasOwnProperty.call(delta,'avant'))
+          return label+' : '+personnelAuditValue(delta.avant)+' → '+personnelAuditValue(delta.apres);
+        return label;
+      }).join(' · ');
+      const date=new Date(entry.occurred_at);
+      const when=Number.isNaN(date.getTime())?'Date inconnue':new Intl.DateTimeFormat('fr-FR',{dateStyle:'short',timeStyle:'short',timeZone:'Europe/Paris'}).format(date);
+      return '<div class="admin-audit-entry"><strong>'+escHtml(action)+'</strong> — '+escHtml(entry.target_login||'—')
+        +'<div class="admin-audit-meta">'+escHtml(when)+' · par '+escHtml(entry.actor_login||'système')+'</div>'
+        +(details?'<div class="admin-audit-details">'+escHtml(details)+'</div>':'')+'</div>';
+    }).join('');
+  }catch(error){
+    if(request!==_personnelAuditRequest)return;
+    state.textContent='Historique indisponible pour le moment ; aucune action locale n’a été effacée.';
+    list.innerHTML='';
+  }
+}
 function rAdm(){
   // Reconstruire les selects grade/fonction seulement si le formulaire est fermé
   const addFormOpen = document.getElementById('admin-add')&&document.getElementById('admin-add').style.display!=='none';
@@ -18795,7 +18858,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0088';
+const APP_VERSION='V202610_0089';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -20465,9 +20528,10 @@ function _reloadActiveView(){
       const telEl=document.getElementById('astr-tel');
       if(telEl&&telEl.style.display!=='none')rAstrTel();
     }
-    else if(id==='tab-params'){
-      if(hasRight('Administration'))rAdm();
-      else rProfil();
+    else if(id==='tab-params')rProfil();
+    else if(id==='tab-users'){
+      if(canManageUsersNow()){rAdm();loadPersonnelAudit();}
+      else showT('home',document.getElementById('nav-home'));
     }
   }catch(e){console.error('_reloadActiveView',e);}
 }
