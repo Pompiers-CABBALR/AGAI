@@ -1296,7 +1296,9 @@ function devaliderDispos(wk){
   rAstrPlanning();
 }
 function canManageUsersNow(){
-  return GLOBAL_ROLE==='superadmin'?isSuperAdmin():hasRight('Administration');
+  // Le superadmin possède aussi le bouton A : chacun des deux pouvoirs actifs
+  // doit ouvrir la gestion, même si l'autre reste désactivé.
+  return isAdminModeActive();
 }
 function applyNavRights(){
   document.getElementById('nav-appel').classList.toggle('hidden',!hasRight('Prise d\'appel'));
@@ -18858,7 +18860,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0089';
+const APP_VERSION='V202610_0090';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
