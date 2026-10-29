@@ -18,7 +18,7 @@ function functionSource(source,name){
 const bundle=fs.readFileSync(path.join(__dirname,'..','app.js'),'utf8');
 for(const [file,names] of [
   ['modules/06-ui-js-accueil-js.js',['showToast']],
-  ['modules/08-interventions-js.js',['openOperationalStartDialog','addOperationalStartDialogButton','canCurrentUserUseDegradedStart','showOperationalDegradedStartConfirmation','showOperationalStartLocationFailure','requestOperationalStartAuthorization','saveOperationalStartAuthorization']],
+  ['modules/08-interventions-js.js',['openOperationalStartDialog','addOperationalStartDialogButton','canCurrentUserUseDegradedStart','showOperationalDegradedStartConfirmation','showOperationalStartLocationFailure','operationalStartOffsiteEvidence','requestOperationalStartAuthorization','saveOperationalStartAuthorization']],
   ['modules/12-astreintes-js.js',['showOperationalDepartureFormError','confirmerDepart']]
 ]){
   const source=fs.readFileSync(path.join(__dirname,'..',file),'utf8');
@@ -28,12 +28,12 @@ for(const [file,names] of [
 for(const relativePath of ['modules/08-interventions-js.js','app.js']){
   const source=fs.readFileSync(path.join(__dirname,'..',relativePath),'utf8');
   const notices=[],toasts=[];
-  let approved=0,positionAllowed=false,invalidPosition=false,distance=0;
+  let approved=0,positionAllowed=false,invalidPosition=false,distance=0,positionTick=0,chief=true;
   const context={
     CURRENT_CASERNE_ID:'CIS05',
     CU:{l:'chef.test'},
     PERSONNEL_ONLINE_GATE:true,
-    isAgres:()=>true,
+    isAgres:()=>chief,
     isPilpIntervention:()=>false,
     canCurrentUserStartIntervention:()=>true,
     _agaiAuthAccessToken:()=> 'test-token',
@@ -55,12 +55,14 @@ for(const relativePath of ['modules/08-interventions-js.js','app.js']){
     showOperationalDegradedStartConfirmation:()=>{},
     showOperationalStartLocationFailure:(message,onRetry,onDegraded)=>notices.push({message,onRetry,onDegraded}),
     navigator:{geolocation:{getCurrentPosition(onSuccess,onError){
-      if(positionAllowed)onSuccess({coords:{latitude:invalidPosition?NaN:50,longitude:2,accuracy:20}});
+      if(positionAllowed)onSuccess({timestamp:Date.now()-1000+100*(++positionTick),coords:{latitude:invalidPosition?NaN:50,longitude:2,accuracy:20}});
       else onError({code:1});
     }}},
     window:{setTimeout:fn=>fn()}
   };
   vm.createContext(context);
+  vm.runInContext('const OPERATIONAL_START_STATION_PROXIMITY_METERS=500; const OPERATIONAL_START_OFFSITE_MAX_ACCURACY_METERS=250; const OPERATIONAL_START_MAX_GPS_UNCERTAINTY_METERS=500;',context);
+  vm.runInContext(functionSource(source,'operationalStartOffsiteEvidence'),context);
   vm.runInContext(functionSource(source,'requestOperationalStartAuthorization'),context);
   context.requestOperationalStartAuthorization({id:'iv-test'},()=>{approved++;});
   assert.equal(approved,0,relativePath+' refuses departure when location denied');
@@ -78,12 +80,22 @@ for(const relativePath of ['modules/08-interventions-js.js','app.js']){
 
   distance=4000;
   context.requestOperationalStartAuthorization({id:'iv-outside'},()=>{approved++;});
-  assert.equal(approved,1,relativePath+' still rejects a measured position outside the perimeter');
-  assert.ok(!notices.at(-1).onDegraded);
+  assert.equal(approved,2,relativePath+' accepts two fresh, precise offsite positions without an extra dialog');
+  assert.equal(context._operationalStartAuthorizations['iv-outside'].offsite,true);
+  assert.equal(notices.length,1,'an offsite departure does not display a new warning');
+  distance=1100;
+  context.requestOperationalStartAuthorization({id:'iv-garage'},()=>{approved++;});
+  assert.equal(approved,3,relativePath+' flags a garage less than two kilometres away');
+  assert.equal(context._operationalStartAuthorizations['iv-garage'].offsite,true);
+  chief=false;distance=4000;
+  context.requestOperationalStartAuthorization({id:'iv-not-chief'},()=>{approved++;});
+  assert.equal(approved,3,relativePath+' keeps the offsite exception restricted to a chief');
+  assert.equal(context._operationalStartAuthorizations['iv-not-chief'],undefined);
+  chief=true;
 
   distance=0;invalidPosition=true;
   context.requestOperationalStartAuthorization({id:'iv-invalid'},()=>{approved++;});
-  assert.equal(approved,1,relativePath+' cannot accept invalid coordinates as a station position');
+  assert.equal(approved,3,relativePath+' cannot accept invalid coordinates as a station position');
   assert.equal(typeof notices.at(-1).onDegraded,'function');
 
   const saved={tl:[]};
@@ -94,6 +106,11 @@ for(const relativePath of ['modules/08-interventions-js.js','app.js']){
   assert.equal(saved._departGeoControle.degrade,true);
   assert.equal(saved._departGeoControle.exonere,false);
   assert.match(saved.tl[0].note,/contrôle après coup requis/);
+  const offsite={tl:[]};
+  context.saveOperationalStartAuthorization(offsite,{offsite:true,exempt:false,actor:'chef.test',reason:'hors périmètre',caserneId:'CIS05',distanceMeters:4000,accuracyMeters:20,latitude:50.1,longitude:2.1,measuredAt:'2026-10-29T08:00:00Z'});
+  assert.equal(offsite._departGeoControle.horsCaserne,true);
+  assert.equal(offsite._departGeoControle.latitude,50.1);
+  assert.match(offsite.tl[0].note,/Départ hors caserne à contrôler/);
 
   let confirmed=0,accessToken='test-token',isChief=true;
   const checkbox={checked:false,style:{}};

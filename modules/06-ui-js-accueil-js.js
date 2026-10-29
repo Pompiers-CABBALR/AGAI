@@ -38,7 +38,41 @@ function rAccueil(){
   try{rAccueilRapports();}catch(e){console.warn('[AGAI] Rappels de rapports indisponibles',e);}
   try{if(typeof renderHomeAdminReportBanner==='function')renderHomeAdminReportBanner();}
   catch(e){console.warn('[AGAI] Suivi des rapports indisponible',e);}
+  try{rAccueilDepartsHorsCaserne();}catch(e){console.warn('[AGAI] Suivi des départs hors caserne indisponible',e);}
   try{rStatsHeader();}catch(e){}
+}
+
+function rAccueilDepartsHorsCaserne(){
+  const el=document.getElementById('acc-offsite-departures');
+  if(!el)return;
+  if(typeof hasAdministrativeAccount!=='function'||!hasAdministrativeAccount()){
+    el.style.display='none';el.innerHTML='';return;
+  }
+  const cutoff=getH(new Date(Date.now()-7*24*60*60*1000));
+  const seen=new Set();
+  const departures=[].concat(IVS||[],PILP_IVS||[]).filter(function(iv){
+    if(!iv||!iv.id||seen.has(iv.id))return false;
+    seen.add(iv.id);
+    const control=iv._departGeoControle||{};
+    return control.horsCaserne===true&&String(control.date||'')>=cutoff;
+  }).sort(function(a,b){return String(b._departGeoControle.date).localeCompare(String(a._departGeoControle.date));});
+  if(!departures.length){el.style.display='none';el.innerHTML='';return;}
+  el.style.display='block';
+  el.innerHTML='<div style="border:1px solid #FDBA74;background:#FFF7ED;border-radius:10px;padding:12px;color:#92400E;">'
+    +'<strong>⚠️ Départs pris hors caserne — '+departures.length+' sur les 7 derniers jours</strong>'
+    +departures.slice(0,5).map(function(iv){
+      const control=iv._departGeoControle||{};
+      const stamp=String(control.date||'');
+      const parts=stamp.match(/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})$/);
+      const when=parts?parts[3]+'/'+parts[2]+'/'+parts[1]+' '+parts[4]+':'+parts[5]:stamp;
+      return '<button type="button" class="btn sm" data-id="'+escHtml(iv.id)+'" onclick="oM(this.dataset.id)" '
+        +'style="display:block;text-align:left;width:100%;margin-top:6px;white-space:normal;">'
+        +escHtml(interventionDisplayCallNumber(iv)||iv.id)+' · '+escHtml(iv.n||'Intervention')
+        +' · '+escHtml(when)+' · '+escHtml(String(control.distanceMetres??'—'))+' m de la caserne'
+        +'</button>';
+    }).join('')
+    +(departures.length>5?'<div style="font-size:11px;margin-top:6px;">Cinq départs affichés ; les autres restent signalés dans les interventions.</div>':'')
+    +'</div>';
 }
 
 // Le suivi des comptes rendus existe depuis le début d'octobre. Le suivi de
