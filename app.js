@@ -18795,7 +18795,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0087';
+const APP_VERSION='V202610_0088';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -25804,7 +25804,9 @@ function actDateIsValid(dateStr){
   const d=new Date(dateStr+'T00:00:00');
   const limit7=new Date(now); limit7.setDate(limit7.getDate()-7);
   if(d>now) return 'La date ne peut pas être dans le futur.';
-  if(d<limit7) return 'La date ne peut pas être antérieure à 7 jours.';
+  // Le superadmin peut régulariser une activité ancienne uniquement pendant
+  // que ses pouvoirs sont activés ; les autres profils gardent le délai.
+  if(d<limit7&&!isSuperAdmin()) return 'La date ne peut pas être antérieure à 7 jours.';
   return null;
 }
 

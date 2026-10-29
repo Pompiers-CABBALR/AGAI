@@ -1138,7 +1138,9 @@ function actDateIsValid(dateStr){
   const d=new Date(dateStr+'T00:00:00');
   const limit7=new Date(now); limit7.setDate(limit7.getDate()-7);
   if(d>now) return 'La date ne peut pas être dans le futur.';
-  if(d<limit7) return 'La date ne peut pas être antérieure à 7 jours.';
+  // Le superadmin peut régulariser une activité ancienne uniquement pendant
+  // que ses pouvoirs sont activés ; les autres profils gardent le délai.
+  if(d<limit7&&!isSuperAdmin()) return 'La date ne peut pas être antérieure à 7 jours.';
   return null;
 }
 
