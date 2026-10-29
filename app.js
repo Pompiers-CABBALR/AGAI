@@ -12362,26 +12362,28 @@ function envoyerDispoRequest(wk,login){
   });
 
   if(!DISPO_REQUESTS[wk])DISPO_REQUESTS[wk]=[];
-  DISPO_REQUESTS[wk]=DISPO_REQUESTS[wk].filter(function(r){return !(r.login===login&&r.statut==='en-attente');});
+  // Garder la trace des demandes remplacées sur les autres appareils.
+  DISPO_REQUESTS[wk].forEach(function(r){
+    if(r.login===login&&r.statut==='en-attente')r.statut='annulee';
+  });
   DISPO_REQUESTS[wk].push({
-    id:'dr_'+Date.now(),
-    login:login,wk:wk,motif:motif,
+    id:'dr_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),
+    caserneId:CURRENT_CASERNE_ID,login:login,wk:wk,motif:motif,
     slots:slots,slotsDetail:slotsDetail,
     hDemande:getHHMM(N()),dateDemande:getDS(N()),
     statut:'en-attente',reponduPar:null,hReponse:null
   });
   saveData();cM();rAstrDispo();
-  showToast('Demande envoy\u00e9e ('+slots.length+' cr\u00e9neau(x))','success');
+  showToast('Demande conservée sur cet appareil ; envoi au serveur en cours.','info');
 }
 
 function getDispoRequestsBadge(wk){
   if(!DISPO_REQUESTS[wk])return 0;
-  const myEq=getEquipeOfUser(CU.l);
-  if(!myEq&&!hasRight('Administration'))return 0;
+  if(!isRespEquipe()&&!hasRight('Administration')&&!isSuperAdmin())return 0;
   return DISPO_REQUESTS[wk].filter(function(r){
     if(r.statut!=='en-attente')return false;
-    if(hasRight('Administration'))return true;
-    return myEq&&myEq.membres.includes(r.login);
+    return (!r.caserneId||r.caserneId===CURRENT_CASERNE_ID)
+      &&USERS.some(function(user){return user&&user.l===r.login;});
   }).length;
 }
 
@@ -12411,7 +12413,7 @@ function repondreDispoRequest(wk,reqId,reponse){
     if(CD())CD().dispos=DISPOS;
   }
   saveData();rAstrDispo();
-  showToast('Demande '+(reponse==='accepte'?'accept\u00e9e \u2014 l\'agent peut modifier ses dispos':'refus\u00e9e'),'success');
+  showToast('Réponse conservée sur cet appareil ; envoi au serveur en cours.','info');
 }
 
 function toggleDispoUnlock(wk){
@@ -12705,11 +12707,10 @@ function rAstrDispo(){
   // Panneau demandes de modification en attente (resp/admin seulement)
   const reqPanel=document.getElementById('dispo-req-panel');
   if(reqPanel){
-    const myEq2=getEquipeOfUser(CU.l);
     const pendingReqs=(DISPO_REQUESTS[wk]||[]).filter(function(r){
       if(r.statut!=='en-attente')return false;
-      if(isAdmin||isSuperAdmin())return true;
-      return myEq2&&myEq2.membres.includes(r.login);
+      return (!r.caserneId||r.caserneId===CURRENT_CASERNE_ID)
+        &&USERS.some(function(user){return user&&user.l===r.login;});
     });
     if(pendingReqs.length&&(isResp||isAdmin||isSuperAdmin())){
       reqPanel.innerHTML='<div style="background:#F5F3FF;border-radius:10px;padding:10px;margin-bottom:10px;border:2px solid #DDD6FE;">'
@@ -13018,7 +13019,7 @@ function saveDispo(){
   _jbEditLock=Date.now();
   saveData(true); // push immédiat : les disponibilités sont critiques
   const msg=document.getElementById('astr-dispo-msg');
-  if(msg){msg.style.display='block';msg.style.color='var(--grn)';msg.textContent='✅ Disponibilités enregistrées !';setTimeout(()=>msg.style.display='none',3000);}
+  if(msg){msg.style.display='block';msg.style.color='var(--amb)';msg.textContent='Disponibilités conservées sur cet appareil ; envoi au serveur en cours. Vérifiez le badge de synchronisation.';setTimeout(()=>msg.style.display='none',6000);}
 }
 function setAllDispo(val){
   const mon=getMondayOfWeek(astrDispoWeek);
@@ -18696,7 +18697,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0084';
+const APP_VERSION='V202610_0085';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -21349,9 +21350,11 @@ function _jbSetStatus(state){
   if(!el){el=document.createElement('div');el.id='jb-status';document.body.appendChild(el);}
   const queued=typeof _rcPendingCountInScope==='function'?_rcPendingCountInScope():0;
   const queuedElsewhere=typeof _rcPendingDirty!=='undefined'?Math.max(0,_rcPendingDirty.size-queued):0;
+  const rejected=typeof _rcRejectedSummary==='function'?_rcRejectedSummary():{count:0,types:[]};
   // Une file différée de la caserne active reste non synchronisée. Une ligne
   // d'une autre caserne est signalée, mais ne bloque pas la session courante.
   if(state==='ok'&&queued)state='pending';
+  if(rejected.count&&state!=='saving'&&state!=='loading')state='error';
   const cfg={ok:{txt:'☁️ Sync OK',bg:'#ECFDF5',color:'#065F46'},saving:{txt:'⏳ Sync...',bg:'#FFF7ED',color:'#92400E'},pending:{txt:'⏳ Sync en attente',bg:'#FFF7ED',color:'#92400E'},error:{txt:'⚠️ Sync KO',bg:'#FEF2F2',color:'#991B1B'},loading:{txt:'⏳ Chargement',bg:'#EFF6FF',color:'#1D4ED8'}};
   const c=cfg[state]||cfg.ok;
   const syncError=typeof _rcLastSyncError!=='undefined'?_rcLastSyncError:'';
@@ -21359,17 +21362,18 @@ function _jbSetStatus(state){
   if(state==='ok'&&!queued){window._agaiSyncHealth.lastOkAt=Date.now();window._agaiSyncHealth.lastError='';}
   if(state==='error'){window._agaiSyncHealth.lastErrorAt=Date.now();window._agaiSyncHealth.lastError=syncError||'Erreur de synchronisation';}
   const lastOkLabel=state==='ok'&&window._agaiSyncHealth.lastOkAt?' · '+new Date(window._agaiSyncHealth.lastOkAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):'';
-  el.textContent=c.txt+lastOkLabel+((state==='pending'||state==='error')&&queued?' ('+queued+' en attente)':'')+(queuedElsewhere?' · '+queuedElsewhere+' autre caserne en attente':'');
+  el.textContent=c.txt+lastOkLabel+((state==='pending'||state==='error')&&queued?' ('+queued+' en attente)':'')+(rejected.count?' · '+rejected.count+' refusée(s)':'')+(queuedElsewhere?' · '+queuedElsewhere+' autre caserne en attente':'');
   if(typeof agaiScheduleLegacyCheck==='function')agaiScheduleLegacyCheck();
   const legacyLabel=typeof agaiLegacyPendingLabel==='function'?agaiLegacyPendingLabel():'';
   const legacyPending=!!legacyLabel;
   if(legacyPending)el.textContent+=' · '+legacyLabel;
   // Rester visible sur l'application, mais sous les fenêtres de saisie (z-index 200).
   el.style.cssText='position:fixed;bottom:8px;right:8px;z-index:150;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;background:'+c.bg+';color:'+c.color+';box-shadow:0 1px 4px rgba(0,0,0,.15);cursor:pointer;';
-  el.title=(state==='error'&&syncError?syncError:(state==='pending'?'Des actions de cette caserne restent à transmettre — cliquer pour les relancer maintenant':state==='ok'&&window._agaiLocalCacheLimited?'Supabase synchronisé — cache hors ligne limité sur cet appareil':'Dernière synchronisation réussie : '+(window._agaiSyncHealth.lastOkAt?new Date(window._agaiSyncHealth.lastOkAt).toLocaleString('fr-FR'):'—')+' — cliquer pour synchroniser maintenant'))+(queuedElsewhere?' Une action d’une autre caserne reste conservée sur cet appareil ; revenir à cette caserne pour la transmettre.':'');
+  el.title=(rejected.count?'Action refusée par le serveur, conservée sur cet appareil ('+rejected.types.join(', ')+'). Touchez pour une nouvelle tentative ; si le refus persiste, contactez un administrateur.':state==='error'&&syncError?syncError:(state==='pending'?'Des actions de cette caserne restent à transmettre — cliquer pour les relancer maintenant':state==='ok'&&window._agaiLocalCacheLimited?'Supabase synchronisé — cache hors ligne limité sur cet appareil':'Dernière synchronisation réussie : '+(window._agaiSyncHealth.lastOkAt?new Date(window._agaiSyncHealth.lastOkAt).toLocaleString('fr-FR'):'—')+' — cliquer pour synchroniser maintenant'))+(queuedElsewhere?' Une action d’une autre caserne reste conservée sur cet appareil ; revenir à cette caserne pour la transmettre.':'');
   el.onclick=function(){
     if(legacyPending&&state==='ok'&&typeof agaiShowLegacyPending==='function'){agaiShowLegacyPending();return;}
-    if(state==='error'&&syncError)alert('Diagnostic de synchronisation\n\n'+syncError+'\n\nVersion : '+APP_VERSION);
+    if(rejected.count)alert('Diagnostic de synchronisation\n\n'+rejected.count+' action(s) refusée(s) par le serveur et conservée(s) sur cet appareil. Type(s) : '+rejected.types.join(', ')+'.\nUne nouvelle tentative va être lancée. Si le refus persiste, contactez un administrateur.\n\nVersion : '+APP_VERSION);
+    else if(state==='error'&&syncError)alert('Diagnostic de synchronisation\n\n'+syncError+'\n\nVersion : '+APP_VERSION);
     jbSyncNow();
   };
 }
@@ -22539,6 +22543,16 @@ function _rcHasActivePending(){
 function _rcPendingCountInScope(){
   return Array.from(_rcPendingDirty).filter(_rcPendingIdInScope).length;
 }
+function _rcRejectedSummary(){
+  const types=new Set();let count=0;
+  Array.from(_rcPendingDirty).filter(_rcPendingIdInScope).forEach(function(id){
+    const entry=_rcDeferredDirty[id];
+    if(entry&&entry.kind==='server-refused'&&_rcIsDeferred(id)){
+      count++;types.add(String(entry.type||'action'));
+    }
+  });
+  return {count:count,types:Array.from(types).sort()};
+}
 function _rcClearDeferred(ids){
   let changed=false;
   (ids||[]).forEach(function(id){if(_rcDeferredDirty[id]){delete _rcDeferredDirty[id];changed=true;}});
@@ -22546,7 +22560,15 @@ function _rcClearDeferred(ids){
 }
 function _rcDeferFailedRow(failure){
   const row=failure&&failure.row;if(!row||!row.id)return false;
-  _rcDeferredDirty[row.id]={until:Date.now()+5*60*1000,reason:String(failure.detail||'Délai serveur dépassé').slice(0,300)};
+  const serverRefused=Number(failure.status||0)===400
+    &&row.type!=='iv'&&row.type!=='pilp'
+    &&/AGAI_WRITE_FORBIDDEN/.test(String(failure.detail||''));
+  _rcDeferredDirty[row.id]={
+    until:Date.now()+(serverRefused?24*60*60*1000:5*60*1000),
+    kind:serverRefused?'server-refused':'temporary',
+    type:String(row.type||'action'),
+    reason:String(failure.detail||'Délai serveur dépassé').slice(0,300)
+  };
   _rcPersistDeferredDirty();
   return true;
 }
@@ -22752,6 +22774,7 @@ function _rcTrackChangedRecords(previousData,nextData){
     if(previousMap[row.id]!==serialized){_rcPendingDirty.add(row.id);changedRows.push(row);changed=true;}
   });
   if(changed)_rcDirtyGeneration++;
+  if(changedRows.length)_rcClearDeferred(changedRows.map(function(row){return row.id;}));
   _rcPersistPendingDirty();
   if(changedRows.length)_rcOutboxPutRows(changedRows);
 }
@@ -23363,13 +23386,29 @@ function _rcSplitAll(data){
   rows.push({ id:'_GLOBAL'+RC_SEP+'global'+RC_SEP+'main', caserne:'_GLOBAL', type:'global', data:{
     v:data.v, CASERNES:data.CASERNES, GLOBAL_ACCOUNTS:PERSONNEL_ONLINE_GATE?(data.GLOBAL_ACCOUNTS||[]).map(_rcAccountWithoutCredential):data.GLOBAL_ACCOUNTS, NAT:data.NAT, ACT_TYPES:data.ACT_TYPES, REPORT_TYPES:data.REPORT_TYPES, COM:data.COM, ENGIN_TYPES:data.ENGIN_TYPES,
     APL_COUNTER:data.APL_COUNTER, INT_GLOBAL_COUNTER:data.INT_GLOBAL_COUNTER, INT_CAS_COUNTER:data.INT_CAS_COUNTER,
-    PILP_COUNTER:data.PILP_COUNTER, DISPOS_UNLOCKED:data.DISPOS_UNLOCKED, DISPO_REQUESTS:data.DISPO_REQUESTS,
+    PILP_COUNTER:data.PILP_COUNTER, DISPOS_UNLOCKED:data.DISPOS_UNLOCKED, DISPO_REQUESTS:{},
     LOGIN_HISTORY:data.LOGIN_HISTORY,
     LOGIN_HISTORY_DELETED:data.LOGIN_HISTORY_DELETED,
     _cabbalrActif:(data.CASERNE_DATA&&data.CASERNE_DATA._cabbalrActif),
     _initCabbalr:(data.CASERNE_DATA&&data.CASERNE_DATA._initCabbalr),
     _global:(data.CASERNE_DATA&&data.CASERNE_DATA._global)
   }, deleted:false });
+  Object.keys(data.DISPO_REQUESTS||{}).forEach(function(wk){
+    (Array.isArray(data.DISPO_REQUESTS[wk])?data.DISPO_REQUESTS[wk]:[]).forEach(function(request){
+      if(!request||!request.id||!request.login)return;
+      let cid=request.caserneId||'';
+      if(!cid){
+        const candidates=Object.keys(data.CASERNE_DATA||{}).filter(function(station){
+          return Array.isArray(data.CASERNE_DATA[station]&&data.CASERNE_DATA[station].users)
+            &&data.CASERNE_DATA[station].users.some(function(user){return user&&user.l===request.login;});
+        });
+        if(candidates.length===1)cid=candidates[0];
+      }
+      if(!cid||!data.CASERNE_DATA||!data.CASERNE_DATA[cid])return;
+      rows.push({id:_rcId(cid,'dispoRequest',request.id),caserne:cid,type:'dispoRequest',
+        data:Object.assign({},request,{wk:wk,caserneId:cid}),deleted:false});
+    });
+  });
   // Une ligne autonome par session permet aux comptes de caserne d'enregistrer
   // leur connexion et leur présence sans droit d'écriture sur la ligne globale.
   (data.LOGIN_HISTORY||[]).forEach(function(entry){
@@ -23774,15 +23813,18 @@ async function _rcPush(fullPush){
       }
       sendResult.failures=unresolved;
     }
-    // Deux délais successifs (fonction protégée puis écriture standard) ne
-    // doivent plus condamner toute l'application. La fiche reste dans la file
-    // durable et dans le cache local, mais elle passe cinq minutes en reprise
-    // isolée. Pendant ce délai les autres envois et les réceptions continuent.
+    // Une panne transitoire est retentée plus tard. Un refus de droit explicite
+    // sur une action non opérationnelle est conservé sans marteler le serveur :
+    // l'utilisateur peut relancer manuellement ou modifier sa saisie locale.
     if(sendResult.failures.length){
       const stillBlocking=[];
       sendResult.failures.forEach(function(failure){
-        if((Number(failure.status||0)===0||Number(failure.status||0)===502||Number(failure.status||0)===503||Number(failure.status||0)===504)&&_rcDeferFailedRow(failure)){
-          console.warn('[AGAI][RC] Fiche isolée temporairement :',failure.row&&failure.row.id);
+        const status=Number(failure.status||0);
+        const transient=status===0||status===502||status===503||status===504;
+        const forbidden=status===400&&failure.row&&failure.row.type!=='iv'&&failure.row.type!=='pilp'
+          &&/AGAI_WRITE_FORBIDDEN/.test(String(failure.detail||''));
+        if((transient||forbidden)&&_rcDeferFailedRow(failure)){
+          console.warn('[AGAI][RC] Action conservée après refus ou panne :',failure.row&&failure.row.type);
         }else stillBlocking.push(failure);
       });
       sendResult.failures=stillBlocking;
@@ -23807,11 +23849,13 @@ async function _rcPush(fullPush){
     _rcPersistPendingDirty();
     if(sendResult.failures.length){
       const first=sendResult.failures[0];
-      throw new Error('HTTP '+first.status+' — '+first.row.id+(first.detail?' — '+first.detail:''));
+      throw new Error('HTTP '+first.status+' — type '+String(first.row&&first.row.type||'action')+(first.detail?' — '+first.detail:''));
     }
-    _rcLastSyncError='';
+    const rejected=_rcRejectedSummary();
+    _rcLastSyncError=rejected.count?'Action refusée par le serveur et conservée localement : '+rejected.types.join(', '):'';
     window._agaiSyncHealth.lastPushOkAt=Date.now();
-    window._agaiSyncHealth.lastPushError='';
+    window._agaiSyncHealth.lastPushError=_rcLastSyncError;
+    if(rejected.count)window._agaiSyncHealth.lastErrorAt=Date.now();
     _rcRetryDelay=2500;
     if(_rcRetryTimer){clearTimeout(_rcRetryTimer);_rcRetryTimer=null;}
     _jbSetStatus(_rcHasActivePending()?'pending':'ok');
@@ -23929,9 +23973,14 @@ async function _rcPull(silent,deferViewsUntilLogin,skipPendingPush){
     const data = { CASERNE_DATA:{} };
     const byCaserne = {};
     const loginSessionRows=[];
+    const dispoRequestRows=[];
     rows.forEach(function(r){
       if(r.type==='login'){
         if(!r.deleted&&r.data&&r.data.id)loginSessionRows.push(r.data);
+        return;
+      }
+      if(r.type==='dispoRequest'){
+        if(!r.deleted&&r.data&&r.data.id)dispoRequestRows.push(r);
         return;
       }
       if(r.caserne==='_GLOBAL'){
@@ -23962,6 +24011,18 @@ async function _rcPull(silent,deferViewsUntilLogin,skipPendingPush){
       }
       if(!byCaserne[r.caserne]) byCaserne[r.caserne]=[];
       byCaserne[r.caserne].push(r);
+    });
+    // La ligne globale historique reste lisible, mais les lignes individuelles
+    // font foi et ne s'écrasent pas entre collègues. L'overlay local appliqué
+    // plus haut protège une réponse encore en attente d'envoi.
+    data.DISPO_REQUESTS=Object.assign({},data.DISPO_REQUESTS||{});
+    dispoRequestRows.forEach(function(row){
+      const request=row.data,wk=request.wk;
+      if(!wk)return;
+      const items=Array.isArray(data.DISPO_REQUESTS[wk])?data.DISPO_REQUESTS[wk].slice():[];
+      const index=items.findIndex(function(item){return item&&item.id===request.id;});
+      if(index>=0)items[index]=request;else items.push(request);
+      data.DISPO_REQUESTS[wk]=items;
     });
     data.LOGIN_HISTORY_DELETED=Object.assign({},data.LOGIN_HISTORY_DELETED||{},typeof LOGIN_HISTORY_DELETED!=='undefined'?LOGIN_HISTORY_DELETED:{});
     const mergedLoginHistory=_mergeLoginHistory(
@@ -23996,6 +24057,24 @@ async function _rcPull(silent,deferViewsUntilLogin,skipPendingPush){
     // Protéger les modifications locales en cours et récupérer les anciennes
     // heures locales si elles étaient absentes de l'ancien format "records".
     const activeCid = CURRENT_CASERNE_ID;
+    // Une demande créée avant cette version pouvait n'exister que dans le
+    // navigateur. La conserver uniquement si elle appartient au compte actif
+    // (ou si ce compte y a répondu) et si aucune ligne serveur ne la couvre.
+    if(activeCid&&CU&&CU.l){
+      Object.keys(DISPO_REQUESTS||{}).forEach(function(wk){
+        (Array.isArray(DISPO_REQUESTS[wk])?DISPO_REQUESTS[wk]:[]).forEach(function(local){
+          if(!local||!local.id||!(local.login===CU.l||local.reponduPar===CU.l)
+            ||(local.caserneId&&local.caserneId!==activeCid))return;
+          const existing=data.DISPO_REQUESTS[wk]||[];
+          if(existing.some(function(request){return request&&request.id===local.id;}))return;
+          const copy=Object.assign({},local,{wk:wk,caserneId:activeCid});
+          data.DISPO_REQUESTS[wk]=existing.concat([copy]);
+          _rcPendingDirty.add(_rcId(activeCid,'dispoRequest',copy.id));
+          _rcDirtyGeneration++;
+        });
+      });
+      _rcPersistPendingDirty();
+    }
     if(activeCid&&CASERNE_DATA[activeCid]&&data.CASERNE_DATA[activeCid]){
       [['ivs','iv'],['pilpIvs','pilp']].forEach(function(pair){
         const localList=CASERNE_DATA[activeCid][pair[0]]||[],remoteList=data.CASERNE_DATA[activeCid][pair[0]]||[];
