@@ -807,26 +807,30 @@ function envoyerDispoRequest(wk,login){
   });
 
   if(!DISPO_REQUESTS[wk])DISPO_REQUESTS[wk]=[];
-  DISPO_REQUESTS[wk]=DISPO_REQUESTS[wk].filter(function(r){return !(r.login===login&&r.statut==='en-attente');});
+  // Garder la trace des demandes remplacées : chaque demande possède désormais
+  // sa propre ligne synchronisée, et une simple suppression locale la laisserait
+  // ouverte sur les autres appareils.
+  DISPO_REQUESTS[wk].forEach(function(r){
+    if(r.login===login&&r.statut==='en-attente')r.statut='annulee';
+  });
   DISPO_REQUESTS[wk].push({
-    id:'dr_'+Date.now(),
-    login:login,wk:wk,motif:motif,
+    id:'dr_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),
+    caserneId:CURRENT_CASERNE_ID,login:login,wk:wk,motif:motif,
     slots:slots,slotsDetail:slotsDetail,
     hDemande:getHHMM(N()),dateDemande:getDS(N()),
     statut:'en-attente',reponduPar:null,hReponse:null
   });
   saveData();cM();rAstrDispo();
-  showToast('Demande envoy\u00e9e ('+slots.length+' cr\u00e9neau(x))','success');
+  showToast('Demande conservée sur cet appareil ; envoi au serveur en cours.','info');
 }
 
 function getDispoRequestsBadge(wk){
   if(!DISPO_REQUESTS[wk])return 0;
-  const myEq=getEquipeOfUser(CU.l);
-  if(!myEq&&!hasRight('Administration'))return 0;
+  if(!isRespEquipe()&&!hasRight('Administration')&&!isSuperAdmin())return 0;
   return DISPO_REQUESTS[wk].filter(function(r){
     if(r.statut!=='en-attente')return false;
-    if(hasRight('Administration'))return true;
-    return myEq&&myEq.membres.includes(r.login);
+    return (!r.caserneId||r.caserneId===CURRENT_CASERNE_ID)
+      &&USERS.some(function(user){return user&&user.l===r.login;});
   }).length;
 }
 
@@ -856,7 +860,7 @@ function repondreDispoRequest(wk,reqId,reponse){
     if(CD())CD().dispos=DISPOS;
   }
   saveData();rAstrDispo();
-  showToast('Demande '+(reponse==='accepte'?'accept\u00e9e \u2014 l\'agent peut modifier ses dispos':'refus\u00e9e'),'success');
+  showToast('Réponse conservée sur cet appareil ; envoi au serveur en cours.','info');
 }
 
 function toggleDispoUnlock(wk){
@@ -1150,11 +1154,10 @@ function rAstrDispo(){
   // Panneau demandes de modification en attente (resp/admin seulement)
   const reqPanel=document.getElementById('dispo-req-panel');
   if(reqPanel){
-    const myEq2=getEquipeOfUser(CU.l);
     const pendingReqs=(DISPO_REQUESTS[wk]||[]).filter(function(r){
       if(r.statut!=='en-attente')return false;
-      if(isAdmin||isSuperAdmin())return true;
-      return myEq2&&myEq2.membres.includes(r.login);
+      return (!r.caserneId||r.caserneId===CURRENT_CASERNE_ID)
+        &&USERS.some(function(user){return user&&user.l===r.login;});
     });
     if(pendingReqs.length&&(isResp||isAdmin||isSuperAdmin())){
       reqPanel.innerHTML='<div style="background:#F5F3FF;border-radius:10px;padding:10px;margin-bottom:10px;border:2px solid #DDD6FE;">'
@@ -1463,7 +1466,7 @@ function saveDispo(){
   _jbEditLock=Date.now();
   saveData(true); // push immédiat : les disponibilités sont critiques
   const msg=document.getElementById('astr-dispo-msg');
-  if(msg){msg.style.display='block';msg.style.color='var(--grn)';msg.textContent='✅ Disponibilités enregistrées !';setTimeout(()=>msg.style.display='none',3000);}
+  if(msg){msg.style.display='block';msg.style.color='var(--amb)';msg.textContent='Disponibilités conservées sur cet appareil ; envoi au serveur en cours. Vérifiez le badge de synchronisation.';setTimeout(()=>msg.style.display='none',6000);}
 }
 function setAllDispo(val){
   const mon=getMondayOfWeek(astrDispoWeek);
