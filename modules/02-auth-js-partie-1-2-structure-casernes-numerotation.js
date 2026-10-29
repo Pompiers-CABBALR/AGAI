@@ -1195,7 +1195,9 @@ function devaliderDispos(wk){
   rAstrPlanning();
 }
 function canManageUsersNow(){
-  return GLOBAL_ROLE==='superadmin'?isSuperAdmin():hasRight('Administration');
+  // Le superadmin possède aussi le bouton A : chacun des deux pouvoirs actifs
+  // doit ouvrir la gestion, même si l'autre reste désactivé.
+  return isAdminModeActive();
 }
 function applyNavRights(){
   document.getElementById('nav-appel').classList.toggle('hidden',!hasRight('Prise d\'appel'));

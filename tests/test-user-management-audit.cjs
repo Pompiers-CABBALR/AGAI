@@ -15,16 +15,26 @@ test('Gestion Utilisateur est un menu de premier niveau, après Statistiques',()
 });
 
 for(const file of ['modules/02-auth-js-partie-1-2-structure-casernes-numerotation.js','app.js']){
-  test(file+' : les pouvoirs superadmin désactivés masquent la gestion',()=>{
+  test(file+' : le pouvoir A ou SA actif ouvre la gestion',()=>{
     const source=read(file);
-    const snippet=source.slice(source.indexOf('function canManageUsersNow(){'),source.indexOf('function applyNavRights(){'));
-    const ctx={GLOBAL_ROLE:'superadmin',isSuperAdmin:()=>false,hasRight:()=>true};
-    vm.runInNewContext(snippet,ctx);
+    const rights=source.slice(source.indexOf('function hasRight(r){'),source.indexOf('function isAgres(){'));
+    const menu=source.slice(source.indexOf('function canManageUsersNow(){'),source.indexOf('function applyNavRights(){'));
+    const ctx={window:{_adminRoleDisabled:true,_superAdminDisabled:true},
+      CU:{rights:['Administration']},GLOBAL_ROLE:null,
+      isSuperAdmin:()=>ctx.GLOBAL_ROLE==='superadmin'&&!ctx.window._superAdminDisabled};
+    vm.runInNewContext(rights+menu,ctx);
     assert.equal(ctx.canManageUsersNow(),false);
-    ctx.GLOBAL_ROLE='administrateur_caserne';
+    ctx.window._adminRoleDisabled=false;
     assert.equal(ctx.canManageUsersNow(),true);
-    ctx.hasRight=()=>false;
+    ctx.GLOBAL_ROLE='superadmin';
+    assert.equal(ctx.canManageUsersNow(),true,'Le bouton A reste valable pour un compte superadmin');
+    ctx.window._adminRoleDisabled=true;
     assert.equal(ctx.canManageUsersNow(),false);
+    ctx.window._superAdminDisabled=false;
+    assert.equal(ctx.canManageUsersNow(),true);
+    ctx.GLOBAL_ROLE=null;ctx.window._superAdminDisabled=true;ctx.window._adminRoleDisabled=false;
+    ctx.CU={rights:['Interventions']};
+    assert.equal(ctx.canManageUsersNow(),false,'Un agent ne voit pas ce menu');
     const ui=read(file==='app.js'?'app.js':'modules/06-ui-js-accueil-js.js');
     assert.match(ui,/if\(id==='users'&&!canManageUsersNow\(\)\)/);
   });
