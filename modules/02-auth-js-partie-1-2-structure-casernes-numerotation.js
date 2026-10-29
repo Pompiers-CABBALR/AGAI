@@ -1194,6 +1194,9 @@ function devaliderDispos(wk){
   saveData();
   rAstrPlanning();
 }
+function canManageUsersNow(){
+  return GLOBAL_ROLE==='superadmin'?isSuperAdmin():hasRight('Administration');
+}
 function applyNavRights(){
   document.getElementById('nav-appel').classList.toggle('hidden',!hasRight('Prise d\'appel'));
   document.getElementById('nav-interv').classList.toggle('hidden',!hasRight('Interventions'));
@@ -1202,8 +1205,11 @@ function applyNavRights(){
   if(pilpTab&&!canSeePILP()&&pilpTab.classList.contains('active')){
     showSubtab('std',document.getElementById('subtab-btn-std'));
   }
-  const adminTab=document.getElementById('params-btn-admin');
-  if(adminTab)adminTab.style.display=hasRight('Administration')?'':'none';
+  const usersTab=document.getElementById('nav-users');
+  const canManage=canManageUsersNow();
+  if(usersTab)usersTab.classList.toggle('hidden',!canManage);
+  if(!canManage&&document.getElementById('tab-users')?.classList.contains('active'))
+    showT('home',document.getElementById('nav-home'));
   const syncTab=document.getElementById('params-btn-onedrive');
   if(syncTab)syncTab.style.display=isSuperAdmin()?'':'none';
   document.getElementById('fb-mes-sel').style.display=(isAgres()||canOperatePilp())?'':'none';
@@ -1260,13 +1266,13 @@ function showSubtab(sub,btn){
   else{rI();}
 }
 function showParamsTab(sub,btn){
+  if(sub!=='profil'&&sub!=='onedrive')return;
+  if(sub==='onedrive'&&!isSuperAdmin())return;
   document.querySelectorAll('#tab-params .subtab-btn').forEach(b=>b.classList.remove('active'));
   if(btn)btn.classList.add('active');
   document.getElementById('params-profil').style.display=sub==='profil'?'':'none';
-  document.getElementById('params-admin').style.display=sub==='admin'?'':'none';
   document.getElementById('params-onedrive').style.display=sub==='onedrive'?'':'none';
   if(sub==='onedrive'){var _sml=document.getElementById('sync-mode-label');if(_sml)_sml.textContent=(typeof USE_RECORDS!=='undefined'&&USE_RECORDS)?'Records (multi-utilisateurs temps réel)':((typeof USE_SUPABASE!=='undefined'&&USE_SUPABASE)?'Supabase (temps réel)':'JSONBin');}
   if(sub==='profil')rProfil();
-  else if(sub==='admin')rAdm();
   else if(sub==='onedrive')odRenderStatus();
 }

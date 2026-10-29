@@ -547,6 +547,11 @@ function requestOperationalCloseConfirmation(iv,details,onConfirm){
 
 // ────────────────── TABS ──────────────────
 function showT(id,btn){
+  if(id==='users'&&!canManageUsersNow()){
+    showToast('Activez vos pouvoirs administrateur pour accéder à la gestion des utilisateurs.','warn');
+    applyNavRights();
+    return;
+  }
   if(id==='formation'&&!hasFormationRight()){
     showToast('Accès réservé aux formateurs et aux responsables autorisés.','warn');
     applyNavRights();
@@ -555,8 +560,13 @@ function showT(id,btn){
   dismissAppKeyboard();
   document.querySelectorAll('.sec').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.nb').forEach(b=>b.classList.remove('active'));
+  if(id==='users'){
+    const management=document.getElementById('params-admin');
+    document.getElementById('tab-users').appendChild(management);
+    management.style.display='';
+  }
   document.getElementById('tab-'+id).classList.add('active');
-  btn.classList.add('active');
+  if(btn)btn.classList.add('active');
   if(window.innerWidth<=480)window.scrollTo(0,0);
   if(id==='appel'){rF();gS(1);}
   if(id==='interv'){
@@ -565,7 +575,8 @@ function showT(id,btn){
     if(sub==='pilp')rPilp();else if(sub==='hist')rHist();else rI();
   }
   if(id==='astreintes')rAstreintes();
-  if(id==='params'){rProfil();rAdm();}
+  if(id==='params')rProfil();
+  if(id==='users'){rAdm();loadPersonnelAudit();}
   if(id==='stats'){rStats();window.scrollTo(0,0);}
   if(id==='home')rAccueil();
   if(id==='activite'){rActivite();}

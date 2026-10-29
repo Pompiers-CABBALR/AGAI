@@ -44,6 +44,52 @@ function fullName(u){return u?u.nom+' '+u.prenom:'';}
 function fullNameAff(u){return u?(u.nom+' '+u.prenom).trim():'';}
 function shortName(u){return u?u.nom+' '+u.prenom.charAt(0)+'.':'';}
 const PERSONNEL_STATUS_LABELS={actif:'Actif',arret:'Arrêt de travail',disponibilite:'Mise en disponibilité',suspension:'Suspension administrative',demission:'Démission',licenciement:'Licenciement',retraite:'Retraite',mutation:'Mutation'};
+const PERSONNEL_AUDIT_FIELDS={nom:'nom',prenom:'prénom',matricule:'matricule',grade:'grade',fonction:'fonction',fonction2:'fonction secondaire',rights:'droits',fonctionsFormateur:'fonctions de formateur',responsableFormation:'responsable formation',appRole:'rôle applicatif',p:'mot de passe',status:'situation',starts_on:'début',ends_on:'fin'};
+let _personnelAuditRequest=0;
+function personnelAuditValue(value){
+  if(value===null||value===undefined||value==='')return '—';
+  if(Array.isArray(value))return value.length?value.join(', '):'—';
+  if(typeof value==='boolean')return value?'oui':'non';
+  if(typeof value==='object')return 'détails enregistrés';
+  return String(value);
+}
+async function loadPersonnelAudit(){
+  const state=document.getElementById('admin-audit-state'),list=document.getElementById('admin-audit-list');
+  if(!state||!list||!canManageUsersNow())return;
+  const token=_agaiAuthAccessToken(),caserne=CURRENT_CASERNE_ID;
+  if(!token||!caserne){state.textContent='Historique indisponible : connexion serveur nécessaire.';list.innerHTML='';return;}
+  const request=++_personnelAuditRequest;
+  state.textContent='Chargement des actions confirmées par le serveur…';
+  try{
+    const url=SB_REST+'/agai_personnel_audit?caserne_id=eq.'+encodeURIComponent(caserne)
+      +'&select=occurred_at,actor_login,target_login,action,changes&order=occurred_at.desc,id.desc&limit=150';
+    const response=await _agaiAuthFetchWithTimeout(url,{headers:{apikey:SB_KEY,Authorization:'Bearer '+token}},10000);
+    if(!response.ok)throw new Error('HTTP '+response.status);
+    const entries=await response.json();
+    if(request!==_personnelAuditRequest||!canManageUsersNow()||CURRENT_CASERNE_ID!==caserne)return;
+    state.textContent=entries.length?entries.length+' action'+(entries.length>1?'s':'')+' récente'+(entries.length>1?'s':'')+' (maximum 150).':'Aucune action enregistrée depuis l’activation du journal.';
+    list.innerHTML=entries.map(function(entry){
+      const action={create:'Compte ajouté',update:'Fiche modifiée',delete:'Compte retiré',status:'Situation modifiée',admin_grant:'Pouvoir administrateur accordé',admin_revoke:'Pouvoir administrateur retiré'}[entry.action]||entry.action;
+      const changes=entry.changes&&typeof entry.changes==='object'?entry.changes:{};
+      const details=Object.entries(changes).map(function(pair){
+        const label=PERSONNEL_AUDIT_FIELDS[pair[0]]||pair[0],delta=pair[1];
+        if(pair[0]==='p')return 'mot de passe réinitialisé';
+        if(delta&&typeof delta==='object'&&Object.prototype.hasOwnProperty.call(delta,'avant'))
+          return label+' : '+personnelAuditValue(delta.avant)+' → '+personnelAuditValue(delta.apres);
+        return label;
+      }).join(' · ');
+      const date=new Date(entry.occurred_at);
+      const when=Number.isNaN(date.getTime())?'Date inconnue':new Intl.DateTimeFormat('fr-FR',{dateStyle:'short',timeStyle:'short',timeZone:'Europe/Paris'}).format(date);
+      return '<div class="admin-audit-entry"><strong>'+escHtml(action)+'</strong> — '+escHtml(entry.target_login||'—')
+        +'<div class="admin-audit-meta">'+escHtml(when)+' · par '+escHtml(entry.actor_login||'système')+'</div>'
+        +(details?'<div class="admin-audit-details">'+escHtml(details)+'</div>':'')+'</div>';
+    }).join('');
+  }catch(error){
+    if(request!==_personnelAuditRequest)return;
+    state.textContent='Historique indisponible pour le moment ; aucune action locale n’a été effacée.';
+    list.innerHTML='';
+  }
+}
 function rAdm(){
   // Reconstruire les selects grade/fonction seulement si le formulaire est fermé
   const addFormOpen = document.getElementById('admin-add')&&document.getElementById('admin-add').style.display!=='none';
