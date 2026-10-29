@@ -11,7 +11,7 @@
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0086';
+const APP_VERSION='V202610_0087';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -81,30 +81,41 @@ function _showVersionBanner(){
 }
 
 async function _fetchRemoteVersion(){
-  let manifestVersion=null,pageVersion=null;
-  // La version modulaire publie ce petit manifeste à côté d'index.html.
-  try{
-    const manifestUrl=new URL('version.json',document.baseURI);
-    manifestUrl.searchParams.set('_',Date.now());
-    const response=await fetch(manifestUrl.toString(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
-    if(response.ok){
-      const manifest=await response.json();
-      if(manifest&&typeof manifest.version==='string')manifestVersion=manifest.version.trim();
-    }
-  }catch(e){/* le contrôle du fichier HTML continue ci-dessous */}
+  // Les deux contrôles sont indépendants : les lancer ensemble évite deux
+  // allers-retours successifs sur un réseau mobile lent. Le HTML reste vérifié
+  // même si le manifeste est déjà à jour.
+  const manifestCheck=(async function(){
+    let manifestVersion=null;
+    try{
+      const manifestUrl=new URL('version.json',document.baseURI);
+      manifestUrl.searchParams.set('_',Date.now());
+      const response=await fetch(manifestUrl.toString(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
+      if(response.ok){
+        const manifest=await response.json();
+        if(manifest&&typeof manifest.version==='string')manifestVersion=manifest.version.trim();
+      }
+    }catch(e){/* le contrôle du fichier HTML continue ci-dessous */}
+    return manifestVersion;
+  })();
 
-  // Toujours contrôler aussi le fichier HTML autonome. Ainsi, un ancien
-  // version.json resté sur le serveur ne masque pas une nouvelle page chargée.
-  try{
-    const pageUrl=new URL(window.location.href);
-    pageUrl.searchParams.set('_versionCheck',Date.now());
-    const response=await fetch(pageUrl.toString(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
-    if(response.ok){
-      const source=await response.text();
-      const match=source.match(/const APP_VERSION='([^']+)'/);
-      if(match&&match[1])pageVersion=match[1].trim();
-    }
-  }catch(e){/* la version du manifeste reste utilisable */}
+  const pageCheck=(async function(){
+    let pageVersion=null;
+    try{
+      const pageUrl=new URL(window.location.href);
+      pageUrl.searchParams.set('_versionCheck',Date.now());
+      const response=await fetch(pageUrl.toString(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
+      if(response.ok){
+        const source=await response.text();
+        // La page modulaire porte la version dans ses URL d'assets ; l'ancien
+        // fichier autonome la porte dans sa constante APP_VERSION.
+        const match=source.match(/const APP_VERSION='([^']+)'/)
+          ||source.match(/(?:style\.css|modules\/00-preambule\.js)\?v=(V\d{6}_\d{4})/);
+        if(match&&match[1])pageVersion=match[1].trim();
+      }
+    }catch(e){/* la version du manifeste reste utilisable */}
+    return pageVersion;
+  })();
+  const [manifestVersion,pageVersion]=await Promise.all([manifestCheck,pageCheck]);
   if(!manifestVersion)return pageVersion;
   if(!pageVersion)return manifestVersion;
   const comparison=_compareVersions(manifestVersion,pageVersion);
