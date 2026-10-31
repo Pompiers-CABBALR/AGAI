@@ -1230,6 +1230,9 @@ function rI(){
   // volontaire, mais ne sont plus déclenchées en ouvrant Interventions.
   updateRenfortBadge();
   renderRainModeZone();
+  const retroZone=document.getElementById('retroactive-intervention-zone');
+  if(retroZone)retroZone.innerHTML=canAdministrativelyClosePastIntervention()
+    ?'<div style="margin:0 0 10px;"><button type="button" class="btn sm" onclick="showHistoricalSdisInterventionModal()">🛡️ Saisir une intervention SDIS passée</button></div>':'';
   // Afficher les renforts reçus en attente
   const renforts=getRenfortsEnAttente();
   const rz=document.getElementById('renfort-zone');
@@ -1576,7 +1579,7 @@ function oM(id){
           ?`<button class="btn sel-btn sm" disabled style="opacity:0.5;cursor:not-allowed;">⏳ Sélectionné par ${nomAutre}</button>`
           :`<button class="btn sel-btn sm" onclick="cS('${iv.id}','selectionne')">☑ Sélectionner</button>`
         }
-        ${canSuperAdminOperateForAnotherChief()?`<button class="btn gn sm" onclick="showSuperAdminDirectClosureModal('${iv.id}')">🛡️ Saisir et clôturer</button>`:''}
+        ${canAdministrativelyClosePastIntervention()?`<button class="btn gn sm" onclick="showSuperAdminDirectClosureModal('${iv.id}')">🛡️ Saisir et clôturer</button>`:''}
         ${!iv._isRenfort&&(chef||isAgres())?`<button class="btn sm" style="color:#E67E22;border-color:#E67E22;" onclick="transfererIV('${iv.id}')">&#x1F500; Transférer</button>`:''}
         ${!iv._isRenfort&&chef&&iv.n&&(iv.n.toLowerCase().includes('animal')||iv.n.toLowerCase().includes('animaux'))?`<button class="btn sm" style="color:#27AE60;border-color:#27AE60;" onclick="refugeAnimalier('${iv.id}')">&#x1F43E; Refuge animalier</button>`:''}
         ${!iv._isRenfort&&chef?`<button class="btn sm" style="color:#888;border-color:#ccc;" onclick="annulerIV('${iv.id}')">✕ Annuler</button>`:''}
@@ -1600,13 +1603,13 @@ function oM(id){
       ;
       actions=`<div class="brow">
         ${autreAgres?`<div style="padding:6px 8px;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;font-size:12px;color:#991B1B;">🔒 Sélectionnée par ${iv.agr}</div>`:
-        `${canStart
-          ?(canUseOperationalStartInterface()
-            ?(canSuperAdminOperateForAnotherChief()
-              ?`<button class="btn gn sm" onclick="showSuperAdminDirectClosureModal('${iv.id}')">🛡️ Saisir et clôturer</button>`
-              :`<button class="btn am sm" onclick="cS('${iv.id}','en-cours')"${blocage?' style="opacity:.4;pointer-events:none;" title="Cl&#244;turez d&#39;abord '+enCours.id+'"':''}>▶ En cours</button>`)
-            :`<button class="btn sm" disabled title="Le départ est réservé aux mobiles et tablettes" style="opacity:.65;">📱 En cours : mobile/tablette</button>`)
-          :`<button class="btn sm" disabled title="Demandez d’abord un renfort de personnel à une autre caserne" style="opacity:.65;">🔒 Renfort personnel requis</button>`}
+        `${canAdministrativelyClosePastIntervention()
+          ?`<button class="btn gn sm" onclick="showSuperAdminDirectClosureModal('${iv.id}')">🛡️ Saisir et clôturer</button>`
+          :canStart
+            ?(canUseOperationalStartInterface()
+              ?`<button class="btn am sm" onclick="cS('${iv.id}','en-cours')"${blocage?' style="opacity:.4;pointer-events:none;" title="Cl&#244;turez d&#39;abord '+enCours.id+'"':''}>▶ En cours</button>`
+              :`<button class="btn sm" disabled title="Le départ est réservé aux mobiles et tablettes" style="opacity:.65;">📱 En cours : mobile/tablette</button>`)
+            :`<button class="btn sm" disabled title="Demandez d’abord un renfort de personnel à une autre caserne" style="opacity:.65;">🔒 Renfort personnel requis</button>`}
         ${!iv._isRenfort&&canCurrentUserManageOperationalOptions(iv)?`<button class="btn sm" style="background:#7C3AED;color:#fff;border-color:#7C3AED;" onclick="showRenfortModal('${iv.id}',true)">&#x1F4E2; Renfort personnel</button>`:''}
         <button class="btn sm" onclick="cS('${iv.id}','en-attente')">↩ En attente</button>`}
       </div>
@@ -1717,6 +1720,7 @@ function oM(id){
     ${pilpReadOnly?'<div style="background:#EFF6FF;border:1px solid #93C5FD;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;color:#1D4ED8;margin-bottom:10px;">👁️ Consultation PILP en lecture seule</div>':''}
     ${iv._urgence?'<div style="background:#FEE2E2;border:2px solid #B91C1C;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:800;color:#991B1B;margin-bottom:10px;text-align:center;">PRIORITAIRE — ÉTABLISSEMENT RECEVANT DU PUBLIC (ERP)</div>':''}
     ${iv._sdis?'<div style="background:#DBEAFE;border:1px solid #93C5FD;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;color:#1D4ED8;margin-bottom:10px;text-align:center;">&#x1F691; INTERVENTION SDIS</div>':''}
+    ${iv._historicalEntry&&hasAdministrativeAccount()?'<div style="background:#FFF7ED;border:1px solid #FDBA74;border-radius:8px;padding:10px;margin-bottom:10px;font-size:11px;line-height:1.5;">Saisie historique le '+escHtml(iv._historicalEntry.createdAt||'')+' par '+escHtml(iv._historicalEntry.createdBy||'')+' · Motif : '+escHtml(iv._historicalEntry.reason||'')+'</div>':''}
     ${iv._avisPassage?'<div style="background:#F3EAF8;border:2px solid #9B59B6;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;color:#6C3483;margin-bottom:10px;text-align:center;">🟣 Un avis de passage a été laissé'+(getAvisPassageDateTimeLabel(iv)?' le '+escHtml(getAvisPassageDateTimeLabel(iv)):'')+(iv._avisPassageClasse?' — classé':'')+' pour cette intervention</div>':''}
     ${iv._echelleToiture?'<div style="background:#FEF3C7;border:2px solid #F59E0B;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:700;color:#92400E;margin-bottom:10px;text-align:center;">&#x26A0;&#xFE0F; INTERVENTION À FAIRE AVEC ÉCHELLE DE TOIT</div>':''}
     ${iv._epa?'<div style="background:#F3EAF8;border:2px solid #8E44AD;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:700;color:#6C3483;margin-bottom:10px;text-align:center;">&#x1F9F0; INTERVENTION À FAIRE AVEC EPA</div>':''}
@@ -2064,6 +2068,12 @@ function hasSuperAdminOperationalStartOverride(){
 }
 function canSuperAdminOperateForAnotherChief(){
   return hasSuperAdminOperationalStartOverride()&&isAdminModeActive();
+}
+function canAdministrativelyClosePastIntervention(){
+  if(canSuperAdminOperateForAnotherChief())return true;
+  const station=CASERNES.find(function(item){return item&&item.id===CURRENT_CASERNE_ID;});
+  return !!(station&&station.retroactiveInterventionsEnabled===true&&CU
+    &&CU.appRole==='administrateur_caserne'&&isAdminModeActive());
 }
 function canUseOperationalStartInterface(){
   return canUseOperationalStartDevice()||hasSuperAdminOperationalStartOverride();
@@ -2615,7 +2625,7 @@ function clot(id,options){
     return;
   }
   const opts=options||{};
-  if(opts.superAdminManual&&!canSuperAdminOperateForAnotherChief()){showToast('Le pouvoir superadmin n’est plus actif.','warn');return;}
+  if(opts.superAdminManual&&!canAdministrativelyClosePastIntervention()){showToast('La saisie administrative rétroactive n’est plus autorisée.','warn');return;}
   if(!opts.superAdminManual&&!canCurrentUserCloseIntervention(iv)){
     showToast('Seul le chef d’agrès affecté à cette intervention peut la clôturer.','warn');return;
   }
@@ -2673,7 +2683,7 @@ function clot(id,options){
   // qu'un pull déjà en cours ne puisse pas restaurer l'ancien statut.
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   iv.s='terminee';iv._hFin=endTime;
-  const closeWho=opts.superAdminManual?(iv.agr+agr2Lbl+' (clôture saisie par le superadmin '+CU.l+')'):(CU.l+agr2Lbl);
+  const closeWho=opts.superAdminManual?(iv.agr+agr2Lbl+' (clôture saisie par '+CU.l+')'):(CU.l+agr2Lbl);
   pushTL(iv,'terminee',closeWho,opts.superAdminManual?'Retour manuel à '+endTime:'',h);
   if(opts.superAdminManual)iv._dateFin=historyDateKey(h)||iv._dateDebut||'';
   if(opts.superAdminManual){
