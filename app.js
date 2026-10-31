@@ -12025,7 +12025,7 @@ function rAstrPlanning(){
 
   // Rôles à comptabiliser (selon fonction)
   const ROLE_KEYS=['INC2','CA1Eq','CE','Eq'];
-  const ROLE_LABELS={'INC2':'INC2','CA1Eq':'CA1Eq','CE':'CE','Eq':'\u00c9q'};
+  const ROLE_LABELS={'INC2':'CATE','CA1Eq':'CA1E','CE':'CE','Eq':'\u00c9q'};
   function fonctionToRole(f){
     if(!f)return 'Eq';
     if(f==='Chef de centre'||f==='Adjoint au chef de centre'){
@@ -18860,7 +18860,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0090';
+const APP_VERSION='V202610_0091';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
