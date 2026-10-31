@@ -3341,9 +3341,72 @@ function refreshSuperAdminDepartureCrew(){
     :'<div style="font-size:11px;color:var(--t2);">Choisissez d’abord le véhicule pour afficher toutes les places de l’équipage.</div>';
   refreshEquipageSelects();
 }
+const _historicalSdisCreationId='__historical_sdis__';
+let _historicalSdisCreationInFlight=false;
+function showHistoricalSdisInterventionModal(){
+  if(!canAdministrativelyClosePastIntervention()){showToast('Cette saisie n’est pas autorisée pour la caserne.','warn');return;}
+  const today=getDS(N()),date=today.slice(0,4)+'-'+today.slice(4,6)+'-'+today.slice(6,8);
+  document.getElementById('mt').textContent='Saisir une intervention SDIS passée';
+  document.getElementById('mi').textContent='La date réelle et la date de saisie resteront distinctes dans l’historique.';
+  document.getElementById('mb').innerHTML=
+    '<div style="background:#EFF6FF;border:1px solid #93C5FD;border-radius:8px;padding:10px;margin-bottom:12px;font-size:12px;">Réservé aux interventions effectivement réalisées. Vérifiez le numéro SDIS, les heures et l’équipage avant la clôture. Aucun départ en cours ne sera créé.</div>'
+    +'<div class="fg"><div class="fgl">Nature de l’intervention <span class="req">*</span></div><input class="fi" id="historical-sdis-nature" placeholder="Ex. Intervention PCA — tempête"/></div>'
+    +'<div class="fg"><div class="fgl">Numéro SDIS <span class="req">*</span></div><input class="fi" id="historical-sdis-number" placeholder="Numéro figurant sur l’ordre de mission"/></div>'
+    +'<div class="fg"><div class="fgl">Adresse / lieu réel <span class="req">*</span></div><input class="fi" id="historical-sdis-address"/></div>'
+    +'<div class="fg"><div class="fgl">Commune <span class="req">*</span></div><input class="fi" id="historical-sdis-commune"/></div>'
+    +'<div class="fg"><div class="fgl">Date et heure de l’appel SDIS <span class="req">*</span></div><div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;"><input class="fi" style="min-width:0;" type="date" id="historical-sdis-call-date" value="'+date+'"/><input class="fi" style="min-width:0;" type="time" id="historical-sdis-call-time"/></div></div>'
+    +'<div class="fg"><div class="fgl">Motif de la saisie tardive <span class="req">*</span></div><textarea class="fta" id="historical-sdis-reason" placeholder="Ex. Intervention gérée au PCA pendant la tempête"></textarea></div>'
+    +'<div class="fg"><div class="fgl">Chef d’agrès <span class="req">*</span></div><select class="fi" id="superadmin-depart-chief" onchange="refreshSuperAdminDepartureCrew()"><option value="">— Sélectionner le chef d’agrès —</option>'+superAdminChiefOptions('')+'</select></div>'
+    +'<div class="fg"><div class="fgl">Date de l’intervention <span class="req">*</span></div><input class="fi" type="date" id="superadmin-direct-date" value="'+date+'"/></div>'
+    +'<div class="fg"><div class="fgl">Heure de départ <span class="req">*</span></div><input class="fi" type="time" id="superadmin-depart-time"/></div>'
+    +'<div class="fg"><div class="fgl">Date de retour <span class="req">*</span></div><input class="fi" type="date" id="superadmin-direct-end-date" value="'+date+'"/></div>'
+    +'<div class="fg"><div class="fgl">Heure de retour <span class="req">*</span></div><input class="fi" type="time" id="superadmin-direct-end-time"/></div>'
+    +'<div class="fg"><div class="fgl">Véhicule <span class="req">*</span></div><select class="fi" id="superadmin-depart-vehicle" onchange="refreshSuperAdminDepartureCrew()">'+superAdminVehicleOptions('')+'</select></div>'
+    +'<div style="font-size:12px;font-weight:700;margin:12px 0 8px;">Équipage réel</div><div id="superadmin-depart-crew"></div>'
+    +'<div class="brow" style="margin-top:12px;"><button class="btn gn sm" onclick="confirmerClotureSuperAdminDirecte(\''+_historicalSdisCreationId+'\')">🛡️ Vérifier avant de créer et clôturer</button><button class="btn sm" onclick="cM()">Annuler</button></div>';
+  document.getElementById('mo').style.display='flex';
+  window._piqData={allowHistoricalBusy:true};
+  refreshSuperAdminDepartureCrew();
+}
+function historicalSdisInput(){
+  const read=function(id){return String(document.getElementById(id)?.value||'').trim();};
+  return {nature:read('historical-sdis-nature'),number:read('historical-sdis-number'),address:read('historical-sdis-address'),commune:read('historical-sdis-commune'),
+    callDate:read('historical-sdis-call-date').replace(/\D/g,'').slice(0,8),callTime:read('historical-sdis-call-time'),reason:read('historical-sdis-reason')};
+}
+function historicalSdisAlreadyExists(data){
+  const number=String(data&&data.number||'').trim().toLocaleLowerCase('fr');
+  const year=String(data&&data.callDate||'').slice(0,4);
+  return (IVS||[]).some(function(iv){return iv&&iv._sdis
+    &&String(iv._numSDIS||'').trim().toLocaleLowerCase('fr')===number
+    &&String(iv.h||iv._dateDebut||'').slice(0,4)===year;});
+}
+function historicalDayIsValid(value){
+  const text=String(value||'');if(!/^\d{8}$/.test(text))return false;
+  const year=Number(text.slice(0,4)),month=Number(text.slice(4,6)),day=Number(text.slice(6,8));
+  const parsed=new Date(year,month-1,day);
+  return parsed.getFullYear()===year&&parsed.getMonth()===month-1&&parsed.getDate()===day;
+}
+function capturedStationChanged(captured){
+  return !captured||captured.stationId!==CURRENT_CASERNE_ID||!CU||captured.actor!==CU.l
+    ||!canAdministrativelyClosePastIntervention();
+}
+function requestHistoricalSdisConfirmation(captured){
+  const title=document.getElementById('mt'),info=document.getElementById('mi'),body=document.getElementById('mb');
+  title.textContent='Confirmer la saisie historique';info.textContent='Création et clôture d’une intervention SDIS passée';
+  body.innerHTML='<div style="background:#F8FAFC;border:1px solid #CBD5E1;border-radius:8px;padding:12px;line-height:1.6;font-size:13px;">'
+    +escHtml(captured.call.nature)+' · SDIS '+escHtml(captured.call.number)+'<br>'+escHtml(captured.call.address)+', '+escHtml(captured.call.commune)
+    +'<br>Appel : '+escHtml(captured.call.callDate)+' '+escHtml(captured.call.callTime)
+    +'<br>Départ : '+escHtml(captured.operationalDate)+' '+escHtml(captured.time)+' · Retour : '+escHtml(captured.returnDate)+' '+escHtml(captured.endTime)
+    +'<br>Véhicule : '+escHtml(captured.vehicle)+' · Chef : '+escHtml(captured.chief)+'</div>'
+    +'<label style="display:flex;gap:8px;margin:14px 0;font-size:12px;"><input type="checkbox" id="historical-sdis-confirm-check">Je confirme que ces données correspondent à une intervention réellement effectuée.</label>'
+    +'<div class="brow"><button class="btn sm" onclick="cM()">Annuler</button><button class="btn gn sm" id="historical-sdis-confirm-button" disabled>Créer et clôturer</button></div>';
+  const check=document.getElementById('historical-sdis-confirm-check'),button=document.getElementById('historical-sdis-confirm-button');
+  check.onchange=function(){button.disabled=!check.checked;};
+  button.onclick=function(){if(button.disabled)return;button.disabled=true;cM();confirmerClotureSuperAdminDirecte(_historicalSdisCreationId,captured);};
+}
 function showSuperAdminDirectClosureModal(id){
   const iv=interventionById(id);if(!iv)return;
-  if(!canSuperAdminOperateForAnotherChief()){showToast('Activez le pouvoir superadmin pour utiliser cette commande.','warn');return;}
+  if(!canAdministrativelyClosePastIntervention()){showToast('Cette saisie administrative n’est pas autorisée pour la caserne.','warn');return;}
   const initialChief=iv.agr&&USERS.some(function(user){return user.l===iv.agr&&isChefAgresByGrade(user);})?iv.agr:'';
   const initialVehicle=iv._engin1||iv.eng||'';
   document.getElementById('mt').textContent='Saisir et clôturer l’intervention';
@@ -3421,10 +3484,19 @@ function findManualOperationalIntervalConflict(iv,startTime,endTime,vehicles,per
   }
   return null;
 }
-function confirmerClotureSuperAdminDirecte(id,validated){
-  const iv=interventionById(id);if(!iv)return;
-  if(operationalActionInProgress(iv,'cloture-directe')){showToast('Cette clôture est déjà en cours d’enregistrement.','warn');return;}
-  if(!canSuperAdminOperateForAnotherChief()){cM();showToast('Le pouvoir superadmin n’est plus actif.','warn');return;}
+async function confirmerClotureSuperAdminDirecte(id,validated){
+  const isNew=id===_historicalSdisCreationId;
+  const iv=isNew?{id:_historicalSdisCreationId,s:'en-attente'}:interventionById(id);if(!iv)return;
+  if(!isNew&&operationalActionInProgress(iv,'cloture-directe')){showToast('Cette clôture est déjà en cours d’enregistrement.','warn');return;}
+  if(!canAdministrativelyClosePastIntervention()){cM();showToast('La saisie administrative rétroactive n’est plus autorisée.','warn');return;}
+  const call=isNew?(validated?validated.call:historicalSdisInput()):null;
+  if(isNew){
+    if(!call.nature||!call.number||!call.address||!call.commune||!call.reason
+      ||!historicalDayIsValid(call.callDate)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(call.callTime)){
+      showToast('Renseignez la nature, le numéro SDIS, le lieu, la commune, l’heure de l’appel et le motif.','warn');return;
+    }
+    if(historicalSdisAlreadyExists(call)){showToast('Une intervention portant ce numéro SDIS existe déjà dans cette caserne.','warn');return;}
+  }
   const chief=validated?validated.chief:document.getElementById('superadmin-depart-chief')?.value||'';
   const operationalDate=validated?validated.operationalDate:String(document.getElementById('superadmin-direct-date')?.value||'').replace(/\D/g,'').slice(0,8);
   const returnDate=validated?validated.returnDate:String(document.getElementById('superadmin-direct-end-date')?.value||'').replace(/\D/g,'').slice(0,8);
@@ -3433,13 +3505,18 @@ function confirmerClotureSuperAdminDirecte(id,validated){
   const vehicle=validated?validated.vehicle:document.getElementById('superadmin-depart-vehicle')?.value||'';
   const chiefUser=USERS.find(function(user){return user.l===chief;});
   if(!chiefUser||!isChefAgresByGrade(chiefUser)){showToast('Sélectionnez obligatoirement un chef d’agrès qualifié.','warn');return;}
-  if(!/^\d{8}$/.test(operationalDate)){showToast('Sélectionnez obligatoirement la date réelle de l’intervention.','warn');return;}
-  if(!/^\d{8}$/.test(returnDate)){showToast('Sélectionnez obligatoirement la date réelle du retour.','warn');return;}
+  if(!historicalDayIsValid(operationalDate)){showToast('Sélectionnez obligatoirement la date réelle de l’intervention.','warn');return;}
+  if(!historicalDayIsValid(returnDate)){showToast('Sélectionnez obligatoirement la date réelle du retour.','warn');return;}
   if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)){showToast('Saisissez une heure de départ valide.','warn');return;}
   if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(endTime)){showToast('Saisissez une heure de retour valide.','warn');return;}
   const directStart=interventionCompactStampMillis(operationalDate+'_'+time.replace(':',''));
   const directEnd=interventionCompactStampMillis(returnDate+'_'+endTime.replace(':',''));
   if(!Number.isFinite(directStart)||!Number.isFinite(directEnd)||directEnd<=directStart){showToast('Le retour doit être postérieur au départ. Vérifiez les dates et les heures.','warn');return;}
+  if(isNew){
+    const callStamp=interventionCompactStampMillis(call.callDate+'_'+call.callTime.replace(':',''));
+    if(!Number.isFinite(callStamp)||callStamp>directStart){showToast('L’appel SDIS doit précéder le départ réel.','warn');return;}
+    if(directEnd>Date.now()){showToast('Une intervention passée ne peut pas avoir une heure de retour future.','warn');return;}
+  }
   if(!vehicle){showToast('Sélectionnez obligatoirement le véhicule.','warn');return;}
   const crew=validated?validated.crew:readDepartureCrewFields(vehicle,'saeq',chief);
   const driver=crew.find(function(member){return member&&interventionRoleKey(member.role)==='conducteur'&&member.login;});
@@ -3455,9 +3532,43 @@ function confirmerClotureSuperAdminDirecte(id,validated){
   const scheduleConflict=findPersonnelScheduleConflict(logins,directStart,directEnd);
   if(!validated){
     const captured={chief:chief,operationalDate:operationalDate,returnDate:returnDate,time:time,endTime:endTime,vehicle:vehicle,crew:JSON.parse(JSON.stringify(crew))};
-    requestOperationalCloseConfirmation(iv,'Saisie directe superadmin · Véhicule : '+vehicle+' · Chef d’agrès : '+chief+' · Départ : '+time+' · Retour : '+endTime
+    if(isNew){captured.call=call;captured.stationId=CURRENT_CASERNE_ID;captured.actor=CU.l;requestHistoricalSdisConfirmation(captured);}
+    else requestOperationalCloseConfirmation(iv,'Saisie administrative · Véhicule : '+vehicle+' · Chef d’agrès : '+chief+' · Départ : '+time+' · Retour : '+endTime
       +(scheduleConflict?' · ⚠ '+personnelScheduleConflictMessage(scheduleConflict):''),
       function(){confirmerClotureSuperAdminDirecte(id,captured);});
+    return;
+  }
+  if(isNew){
+    if(_historicalSdisCreationInFlight)return;
+    if(capturedStationChanged(validated)){showToast('La session ou la caserne a changé. Rouvrez la saisie historique.','warn');return;}
+    _historicalSdisCreationInFlight=true;
+    const context='historical-sdis:'+CURRENT_CASERNE_ID+':'+call.number;
+    let created=null;
+    try{
+      const allocation=await allocateNewApl('appel',context);
+      if(capturedStationChanged(validated)||historicalSdisAlreadyExists(call))throw new Error('La session a changé ou cette intervention SDIS existe déjà. Aucune fiche ajoutée.');
+      const callStamp=call.callDate+'_'+call.callTime.replace(':','');
+      const newIv={id:makeInterventionRecordId(allocation.apl),_numApl:allocation.apl,_aplReservationKey:allocation.actionKey,
+        n:call.nature,_natureAppelInitiale:call.nature,addr:call.address,_addrBase:call.address,com:call.commune,h:callStamp,op:CU.l,
+        s:'en-attente',det:call.reason,obs:'',eng:null,_sdis:true,_numSDIS:call.number,req:'SDIS',tel:'',tels:[],
+        agr:null,rappels:0,avisIds:[],tl:[mkTL('en-attente',callStamp,'SDIS — appel saisi rétroactivement par '+CU.l)],
+        _historicalEntry:{createdAt:getH(N()),createdBy:CU.l,caserneId:CURRENT_CASERNE_ID,reason:call.reason,source:'SDIS / PCA'}};
+      created=newIv;
+      IVS.unshift(newIv);if(CD())CD().ivs=IVS;
+      await confirmerClotureSuperAdminDirecte(newIv.id,validated);
+      if(newIv.s!=='terminee'){
+        throw new Error('La clôture n’a pas abouti. Aucune fiche historique ajoutée.');
+      }
+      clearAplCreationActionKey('appel',context);
+      showToast('Intervention SDIS passée créée et clôturée.','success');
+    }catch(error){
+      if(created&&created.s!=='terminee'){
+        const index=IVS.indexOf(created);if(index>=0)IVS.splice(index,1);
+        if(CD())CD().ivs=IVS;
+      }
+      showToast(error&&error.message||'La saisie historique n’a pas abouti.','warn');
+    }
+    finally{_historicalSdisCreationInFlight=false;}
     return;
   }
   if(!beginOperationalAction(iv,'cloture-directe',['en-attente','selectionne']))return;
@@ -3470,7 +3581,7 @@ function confirmerClotureSuperAdminDirecte(id,validated){
   iv._engin1RoleConfig=JSON.parse(JSON.stringify(getEnginRoles(vehicle)));
   iv._equipage2=null;iv._engin2=null;iv._engin2RoleConfig=null;
   delete iv._retourAttenteDepuis;delete iv._chainPreviousInterventionId;
-  const who=chief+' (départ saisi par le superadmin '+CU.l+')';
+  const who=chief+' (départ saisi par '+CU.l+')';
   pushTL(iv,'en-cours',who,'Départ manuel à '+time+' — '+vehicle,manualOperationalTimelineStamp(iv,time,false));
   if(scheduleConflict)recordPersonnelScheduleAlert(iv,scheduleConflict);
   iv._superAdminOperationalEdits=Array.isArray(iv._superAdminOperationalEdits)?iv._superAdminOperationalEdits:[];

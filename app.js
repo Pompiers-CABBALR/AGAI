@@ -3136,6 +3136,11 @@ function renderSuperAdmin(){
               ${[...(d.users||[])].filter(u=>!u._isSA).sort((a,b)=>(a.nom+' '+a.prenom).localeCompare(b.nom+' '+b.prenom,'fr')).map(u=>`<label style="display:flex;align-items:center;gap:6px;font-size:11px;padding:3px 0;cursor:pointer;"><input type="checkbox" ${adminLogins.has(u.l)?'checked':''} onchange="setCaserneAdmin('${c.id}','${u.l}',this.checked)"> ${u.nom} ${u.prenom}</label>`).join('')}
             </div>
             <div style="font-size:10px;color:#777;margin-top:4px;">Plusieurs administrateurs locaux peuvent être désignés. Le superadmin conserve toujours l'accès à toutes les casernes.</div>
+             <label style="display:flex;align-items:flex-start;gap:7px;margin-top:10px;padding:8px;background:#fff;border:1px solid ${c.couleur}33;border-radius:7px;font-size:11px;line-height:1.4;cursor:pointer;">
+               <input type="checkbox" ${c.retroactiveInterventionsEnabled===true?'checked':''} onchange="setCaserneRetroactiveInterventions('${c.id}',this.checked)">
+               <span>Autoriser les admins de cette caserne à saisir et clôturer des interventions passées. Désactivé par défaut.</span>
+             </label>
+             ${Array.isArray(c.retroactiveInterventionsAudit)&&c.retroactiveInterventionsAudit.length?'<div style="font-size:10px;color:#64748B;margin-top:5px;">Dernier réglage : '+escHtml(c.retroactiveInterventionsAudit[c.retroactiveInterventionsAudit.length-1].at||'')+' · '+escHtml(c.retroactiveInterventionsAudit[c.retroactiveInterventionsAudit.length-1].by||'')+'</div>':''}
             <div style="border-top:1px solid ${c.couleur}33;margin-top:10px;padding-top:9px;">
               <div style="font-size:10px;font-weight:700;color:#6D28D9;text-transform:uppercase;margin-bottom:5px;">🎓 Responsable formation</div>
               <select class="fi" style="font-size:11px;padding:4px 6px;width:100%;" onchange="setResponsableFormation('${c.id}',this.value)">
@@ -3348,11 +3353,21 @@ function renderSuperAdmin(){
     <section class="sa-section" data-sa-section="parametres">
     <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;border:1px solid #eee;">
       <div style="font-size:14px;font-weight:700;margin-bottom:4px;">📋 Dates de début des rappels de rapports</div>
-      <div style="font-size:12px;color:#666;margin-bottom:12px;">Le suivi des comptes rendus commence par défaut le 01/10/2026. Vous pouvez changer cette date. La date des originaux sera réglable dans la deuxième publication, après sécurisation de leur édition unique sur le serveur.</div>
+      <div style="font-size:12px;color:#666;margin-bottom:12px;">Le suivi des comptes rendus commence par défaut le 01/10/2026. L'édition officielle reste désactivée jusqu'à votre activation distincte.</div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
         <label style="font-size:12px;">Comptes rendus à finaliser <input class="fi" type="date" id="sa-report-finalize-start" value="${escHtml(CASERNE_DATA._global&&CASERNE_DATA._global.reportFinalizeReminderStartDate||'2026-10-01')}" style="max-width:190px;"/></label>
-        <label style="font-size:12px;">Originaux à éditer <input class="fi" type="date" id="sa-report-print-start" value="${escHtml(CASERNE_DATA._global&&CASERNE_DATA._global.reportPrintReminderStartDate||'')}" style="max-width:190px;" ${RAPPORT_EDITION_SUIVI_SECURISÉ?'':'disabled'}/></label>
         <button class="btn sm" onclick="saSaveReportReminderDates()">💾 Enregistrer</button>
+      </div>
+    </div>
+    <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;border:1px solid #eee;">
+      <div style="font-size:14px;font-weight:700;margin-bottom:4px;">🖨️ Édition officielle des rapports</div>
+      <div style="font-size:12px;color:#666;margin-bottom:10px;">Fonction préparée mais désactivée. Choisissez la date de début avant de l'activer. L'original n'est émis qu'une fois ; seuls les administrateurs aux pouvoirs activés peuvent demander un duplicata. Une impression physique ou un PDF déjà sauvegardé ne peut pas être techniquement retiré.</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <label style="font-size:12px;">Date de début <input class="fi" type="date" id="sa-report-edition-start" style="max-width:190px;"/></label>
+        <button class="btn sm" onclick="checkReportEditionSettings()">↻ Vérifier l'état</button>
+        <button class="btn sm" onclick="saveReportEditionSettings(false)">Laisser désactivée</button>
+        <button class="btn sm pr" onclick="saveReportEditionSettings(true)">Activer après confirmation</button>
+        <span id="sa-report-edition-state" style="font-size:12px;color:#666;">État serveur à vérifier</span>
       </div>
     </div>
     <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;border:1px solid #eee;">
@@ -3476,6 +3491,7 @@ function renderSuperAdmin(){
     </div>
     </section>`;
   applySuperAdminSection();
+  if(typeof renderReportEditionSettings==='function')renderReportEditionSettings();
   // Initialise la prévisualisation du logo
   const _lprev=document.getElementById('sa-logo-preview');
   if(_lprev){_lprev.src=_getLogoSrc();_lprev.style.display='block';}
@@ -3492,22 +3508,19 @@ function renderSuperAdmin(){
 function saSaveReportReminderDates(){
   if(!isSuperAdmin()){showToast('Réglage réservé au superadministrateur.','warn');return;}
   const finalize=String(document.getElementById('sa-report-finalize-start')?.value||'');
-  const print=String(document.getElementById('sa-report-print-start')?.value||'');
-  if(print&&!RAPPORT_EDITION_SUIVI_SECURISÉ){showToast('Le suivi des originaux sera activé après sécurisation du serveur.','warn');return;}
   const validDate=function(value){
     if(!/^\d{4}-\d{2}-\d{2}$/.test(value))return false;
     const chosen=new Date(value+'T12:00:00');
     return !Number.isNaN(chosen.getTime())&&chosen.getFullYear()+'-'+String(chosen.getMonth()+1).padStart(2,'0')+'-'+String(chosen.getDate()).padStart(2,'0')===value;
   };
-  if(!validDate(finalize)||(print&&!validDate(print))){
+  if(!validDate(finalize)){
     showToast('Date de début invalide.','warn');return;
   }
   if(!CASERNE_DATA._global||typeof CASERNE_DATA._global!=='object')CASERNE_DATA._global={};
   CASERNE_DATA._global.reportFinalizeReminderStartDate=finalize;
-  CASERNE_DATA._global.reportPrintReminderStartDate=print;
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);
-  showToast('Dates des rappels enregistrées.','success');
+  showToast('Date de finalisation enregistrée.','success');
 }
 function saSetOperationalStartGeolocation(caserneId,enabled){
   if(!isSuperAdmin()){showToast('Réglage réservé au superadmin.','warn');return;}
@@ -4126,6 +4139,18 @@ function setCaserneAdmin(caserneId,login,enabled){
   const globalView=document.getElementById('global-view');
   if(globalView&&globalView.style.display!=='none')renderSuperAdmin();else rAdm();
   showToast(selected&&shouldEnable?'Administrateur ajout\u00e9 : '+fullName(selected):'Administrateur retir\u00e9 : '+(selected?fullName(selected):login),'success');
+}
+function setCaserneRetroactiveInterventions(caserneId,enabled){
+  if(!isSuperAdmin()){showToast('Seul le superadmin peut modifier cette autorisation.','warn');return;}
+  const station=CASERNES.find(function(item){return item&&item.id===caserneId;});
+  if(!station){showToast('Caserne introuvable.','warn');return;}
+  if(station.retroactiveInterventionsEnabled===enabled)return;
+  station.retroactiveInterventionsAudit=Array.isArray(station.retroactiveInterventionsAudit)?station.retroactiveInterventionsAudit:[];
+  station.retroactiveInterventionsAudit.push({at:getH(N()),by:CU&&CU.l||'',enabled:enabled===true});
+  station.retroactiveInterventionsEnabled=enabled===true;
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);renderSuperAdmin();
+  showToast('Saisie rétroactive '+(enabled?'autorisée':'désactivée')+' pour '+station.nom+'.','success');
 }
 function setResponsableFormation(caserneId,login){
   if(!isSuperAdmin()){showToast('Seul le super-administrateur peut d\u00e9finir le responsable formation.','warn');return;}
@@ -5111,6 +5136,8 @@ async function _restoreSessionAfterLoad(){
 }
 
 function doLoginSuccess(){
+  dismissAppKeyboard();
+  const loginPassword=document.getElementById('lp');if(loginPassword)loginPassword.value='';
   // Synchroniser fonctionsFormateur sur CU depuis USERS (au cas où CU est une copie)
   if(CU){
     const u=USERS.find(x=>x.l===CU.l);
@@ -5171,6 +5198,7 @@ function doLogout(){
   ['prof-grade-sel','nu-grade'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML='';});
   rF();selEng=null;parcConfirmed.clear();
 }
+
 // === MODULE: ui.js + accueil.js ===
 // ────────────────── ACCUEIL ──────────────────
 function rAccueil(){
@@ -7250,17 +7278,34 @@ function isFollowingInterventionInSeries(iv){
   });
 }
 
+function interventionChainBoundaryDay(iv,isEnd){
+  const explicit=String(iv&&(isEnd?iv._dateFin:iv._dateDebut)||'').replace(/\D/g,'');
+  if(explicit.length===8)return explicit;
+  const stamp=interventionTimelineStamp(iv,isEnd?'terminee':'en-cours',isEnd);
+  const digits=String(stamp||'').replace(/\D/g,'');
+  // Sans date opérationnelle vérifiable, ne pas déduire un enchaînement
+  // de la seule égalité des heures ou du numéro de l'intervention.
+  return digits.length>=12?digits.slice(0,8):'';
+}
+
 function interventionChainedTimeNeighbors(iv){
   if(!iv||!iv._hDebut||!iv._hFin)return null;
-  const all=[].concat(IVS||[],PILP_IVS||[]).filter(function(item){return item&&item.id!==iv.id&&item.s==='terminee';});
+  const startDay=interventionChainBoundaryDay(iv,false);
+  const endDay=interventionChainBoundaryDay(iv,true);
+  const signature=interventionCrewSignature(iv);
+  if(!startDay||!endDay||!signature)return null;
+  const all=[].concat(IVS||[],PILP_IVS||[]).filter(function(item){
+    return item&&item.id!==iv.id&&item.s==='terminee'
+      &&interventionCrewSignature(item)===signature;
+  });
   const number=parseInt(iv._numCaserne,10)||0;
   const previous=all.find(function(item){
     if(number&&parseInt(item._numCaserne,10)!==number-1)return false;
-    return item._hFin===iv._hDebut;
+    return item._hFin===iv._hDebut&&interventionChainBoundaryDay(item,true)===startDay;
   });
   const next=all.find(function(item){
     if(number&&parseInt(item._numCaserne,10)!==number+1)return false;
-    return item._hDebut===iv._hFin;
+    return item._hDebut===iv._hFin&&interventionChainBoundaryDay(item,false)===endDay;
   });
   return previous&&next?{previous:previous,next:next}:null;
 }
@@ -8166,6 +8211,9 @@ function rI(){
   // volontaire, mais ne sont plus déclenchées en ouvrant Interventions.
   updateRenfortBadge();
   renderRainModeZone();
+  const retroZone=document.getElementById('retroactive-intervention-zone');
+  if(retroZone)retroZone.innerHTML=canAdministrativelyClosePastIntervention()
+    ?'<div style="margin:0 0 10px;"><button type="button" class="btn sm" onclick="showHistoricalSdisInterventionModal()">🛡️ Saisir une intervention SDIS passée</button></div>':'';
   // Afficher les renforts reçus en attente
   const renforts=getRenfortsEnAttente();
   const rz=document.getElementById('renfort-zone');
@@ -8451,6 +8499,7 @@ function interventionAppelDetailValue(iv,key,value){
   return isSingleAnimal?text.replace(/^\s*1\.\s*/,''):text;
 }
 function oM(id){
+  dismissAppKeyboard();
   const iv=interventionById(id);if(!iv)return;
   const pilpScope=isPilpIntervention(iv);
   const showMissingVehicle=pilpScope&&iv.s!=='en-attente';
@@ -8511,8 +8560,8 @@ function oM(id){
           ?`<button class="btn sel-btn sm" disabled style="opacity:0.5;cursor:not-allowed;">⏳ Sélectionné par ${nomAutre}</button>`
           :`<button class="btn sel-btn sm" onclick="cS('${iv.id}','selectionne')">☑ Sélectionner</button>`
         }
-        ${canSuperAdminOperateForAnotherChief()?`<button class="btn gn sm" onclick="showSuperAdminDirectClosureModal('${iv.id}')">🛡️ Saisir et clôturer</button>`:''}
-        ${!iv._isRenfort&&chef?`<button class="btn sm" style="color:#E67E22;border-color:#E67E22;" onclick="transfererIV('${iv.id}')">&#x1F500; Transférer</button>`:''}
+        ${canAdministrativelyClosePastIntervention()?`<button class="btn gn sm" onclick="showSuperAdminDirectClosureModal('${iv.id}')">🛡️ Saisir et clôturer</button>`:''}
+        ${!iv._isRenfort&&(chef||isAgres())?`<button class="btn sm" style="color:#E67E22;border-color:#E67E22;" onclick="transfererIV('${iv.id}')">&#x1F500; Transférer</button>`:''}
         ${!iv._isRenfort&&chef&&iv.n&&(iv.n.toLowerCase().includes('animal')||iv.n.toLowerCase().includes('animaux'))?`<button class="btn sm" style="color:#27AE60;border-color:#27AE60;" onclick="refugeAnimalier('${iv.id}')">&#x1F43E; Refuge animalier</button>`:''}
         ${!iv._isRenfort&&chef?`<button class="btn sm" style="color:#888;border-color:#ccc;" onclick="annulerIV('${iv.id}')">✕ Annuler</button>`:''}
       </div>`;
@@ -8535,13 +8584,13 @@ function oM(id){
       ;
       actions=`<div class="brow">
         ${autreAgres?`<div style="padding:6px 8px;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;font-size:12px;color:#991B1B;">🔒 Sélectionnée par ${iv.agr}</div>`:
-        `${canStart
-          ?(canUseOperationalStartInterface()
-            ?(canSuperAdminOperateForAnotherChief()
-              ?`<button class="btn gn sm" onclick="showSuperAdminDirectClosureModal('${iv.id}')">🛡️ Saisir et clôturer</button>`
-              :`<button class="btn am sm" onclick="cS('${iv.id}','en-cours')"${blocage?' style="opacity:.4;pointer-events:none;" title="Cl&#244;turez d&#39;abord '+enCours.id+'"':''}>▶ En cours</button>`)
-            :`<button class="btn sm" disabled title="Le départ est réservé aux mobiles et tablettes" style="opacity:.65;">📱 En cours : mobile/tablette</button>`)
-          :`<button class="btn sm" disabled title="Demandez d’abord un renfort de personnel à une autre caserne" style="opacity:.65;">🔒 Renfort personnel requis</button>`}
+        `${canAdministrativelyClosePastIntervention()
+          ?`<button class="btn gn sm" onclick="showSuperAdminDirectClosureModal('${iv.id}')">🛡️ Saisir et clôturer</button>`
+          :canStart
+            ?(canUseOperationalStartInterface()
+              ?`<button class="btn am sm" onclick="cS('${iv.id}','en-cours')"${blocage?' style="opacity:.4;pointer-events:none;" title="Cl&#244;turez d&#39;abord '+enCours.id+'"':''}>▶ En cours</button>`
+              :`<button class="btn sm" disabled title="Le départ est réservé aux mobiles et tablettes" style="opacity:.65;">📱 En cours : mobile/tablette</button>`)
+            :`<button class="btn sm" disabled title="Demandez d’abord un renfort de personnel à une autre caserne" style="opacity:.65;">🔒 Renfort personnel requis</button>`}
         ${!iv._isRenfort&&canCurrentUserManageOperationalOptions(iv)?`<button class="btn sm" style="background:#7C3AED;color:#fff;border-color:#7C3AED;" onclick="showRenfortModal('${iv.id}',true)">&#x1F4E2; Renfort personnel</button>`:''}
         <button class="btn sm" onclick="cS('${iv.id}','en-attente')">↩ En attente</button>`}
       </div>
@@ -8652,6 +8701,7 @@ function oM(id){
     ${pilpReadOnly?'<div style="background:#EFF6FF;border:1px solid #93C5FD;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;color:#1D4ED8;margin-bottom:10px;">👁️ Consultation PILP en lecture seule</div>':''}
     ${iv._urgence?'<div style="background:#FEE2E2;border:2px solid #B91C1C;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:800;color:#991B1B;margin-bottom:10px;text-align:center;">PRIORITAIRE — ÉTABLISSEMENT RECEVANT DU PUBLIC (ERP)</div>':''}
     ${iv._sdis?'<div style="background:#DBEAFE;border:1px solid #93C5FD;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;color:#1D4ED8;margin-bottom:10px;text-align:center;">&#x1F691; INTERVENTION SDIS</div>':''}
+    ${iv._historicalEntry&&hasAdministrativeAccount()?'<div style="background:#FFF7ED;border:1px solid #FDBA74;border-radius:8px;padding:10px;margin-bottom:10px;font-size:11px;line-height:1.5;">Saisie historique le '+escHtml(iv._historicalEntry.createdAt||'')+' par '+escHtml(iv._historicalEntry.createdBy||'')+' · Motif : '+escHtml(iv._historicalEntry.reason||'')+'</div>':''}
     ${iv._avisPassage?'<div style="background:#F3EAF8;border:2px solid #9B59B6;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;color:#6C3483;margin-bottom:10px;text-align:center;">🟣 Un avis de passage a été laissé'+(getAvisPassageDateTimeLabel(iv)?' le '+escHtml(getAvisPassageDateTimeLabel(iv)):'')+(iv._avisPassageClasse?' — classé':'')+' pour cette intervention</div>':''}
     ${iv._echelleToiture?'<div style="background:#FEF3C7;border:2px solid #F59E0B;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:700;color:#92400E;margin-bottom:10px;text-align:center;">&#x26A0;&#xFE0F; INTERVENTION À FAIRE AVEC ÉCHELLE DE TOIT</div>':''}
     ${iv._epa?'<div style="background:#F3EAF8;border:2px solid #8E44AD;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:700;color:#6C3483;margin-bottom:10px;text-align:center;">&#x1F9F0; INTERVENTION À FAIRE AVEC EPA</div>':''}
@@ -8804,11 +8854,13 @@ function setAgr2(ivId,login){
 let _modalLocked = false;
 function cM(){
   if(_modalLocked)return;
+  dismissAppKeyboard();
+  if(typeof closeLargeSignature==='function')closeLargeSignature();
   const mo=document.getElementById('mo'),panel=mo&&mo.querySelector('.mod');
   if(mo&&mo.classList.contains('cr-modal-overlay'))window._activeReportDraftIvId=null;
   deactivateMobileModalField();
   if(mo)mo.style.display='none';
-  if(mo)mo.classList.remove('cr-modal-overlay','pec-modal-overlay','pec-form-active');
+  if(mo)mo.classList.remove('cr-modal-overlay','pec-modal-overlay','pec-form-active','autorisation-modal-overlay');
   if(mo)mo.classList.remove('address-edit-modal');
   if(panel)panel.scrollTop=0;
 }
@@ -8865,6 +8917,20 @@ function registerMobileModalFields(root){
     field.addEventListener('input',keep,{passive:true});
   });
 }
+// Tous les formulaires du panneau partagé utilisent le viewport visible quand
+// le clavier mobile s'ouvre, même si leur écran n'a pas d'enregistrement dédié.
+let _mobileModalGeneratedField=0;
+document.addEventListener('focusin',function(event){
+  if(window.innerWidth>900)return;
+  const overlay=document.getElementById('mo');
+  const field=event.target;
+  if(!overlay||overlay.style.display==='none'||!overlay.contains(field)
+    ||!field.matches||!field.matches('input:not([type="checkbox"]):not([type="radio"]),textarea,select'))return;
+  if(!field.id)field.id='mobile-modal-field-'+(++_mobileModalGeneratedField);
+  window._activeMobileModalFieldId=field.id;
+  overlay.classList.add('keyboard-aware-modal');
+  setTimeout(keepMobileModalFieldVisible,80);
+});
 function prepareAnimalModal(formActive){
   const overlay=document.getElementById('mo');
   if(!overlay)return;
@@ -8983,6 +9049,12 @@ function hasSuperAdminOperationalStartOverride(){
 }
 function canSuperAdminOperateForAnotherChief(){
   return hasSuperAdminOperationalStartOverride()&&isAdminModeActive();
+}
+function canAdministrativelyClosePastIntervention(){
+  if(canSuperAdminOperateForAnotherChief())return true;
+  const station=CASERNES.find(function(item){return item&&item.id===CURRENT_CASERNE_ID;});
+  return !!(station&&station.retroactiveInterventionsEnabled===true&&CU
+    &&CU.appRole==='administrateur_caserne'&&isAdminModeActive());
 }
 function canUseOperationalStartInterface(){
   return canUseOperationalStartDevice()||hasSuperAdminOperationalStartOverride();
@@ -9491,12 +9563,14 @@ function verifierSuiteAdresseIntrouvable(id){
   const followup={motif,detail};
   if(isPilpIntervention(iv))clotPilp(id,{_followup:followup});else clot(id,{_followup:followup});
 }
-function creerSuiteApresCloture(iv,followup,h){
+function creerSuiteApresCloture(iv,followup,h,allocation){
   if(!followup||iv._followupNewId)return null;
-  const annee=new Date().getFullYear(),apl=nextAplNum(annee),pilp=isPilpIntervention(iv);
+  const apl=allocation?allocation.apl:nextAplNum(new Date().getFullYear());
+  const annee=Number(apl.slice(4,8)),pilp=isPilpIntervention(iv);
   const note='Suite de '+(interventionDisplayCallNumber(iv)||iv.id)+' — '+followup.motif+' : '+followup.detail;
   const tels=getInterventionPhones(iv);
   const base={id:pilp?nextPilpId(annee):makeInterventionRecordId(apl),_numApl:apl,
+    _aplReservationKey:allocation?allocation.actionKey:null,
     n:iv.n,_natureAppelInitiale:iv._natureAppelInitiale||iv.n,
     addr:iv.addr,_addrBase:interventionBaseAddressForDuplicate(iv),_addressCoordinates:Array.isArray(iv._addressCoordinates)?iv._addressCoordinates.slice():null,
     _gpsCoordinates:Array.isArray(iv._gpsCoordinates)?iv._gpsCoordinates.slice():null,com:iv.com,h,op:CU.l,s:'en-attente',
@@ -9524,6 +9598,7 @@ function creerSuiteApresCloture(iv,followup,h){
   markOperationalInterventionDirty(iv);markOperationalInterventionDirty(base);
   return base;
 }
+const _followupAplInFlight=new Set();
 function clot(id,options){
   const iv=interventionById(id);if(!iv)return;
   if(isPilpReadOnlyForCurrentUser(iv)){
@@ -9531,7 +9606,7 @@ function clot(id,options){
     return;
   }
   const opts=options||{};
-  if(opts.superAdminManual&&!canSuperAdminOperateForAnotherChief()){showToast('Le pouvoir superadmin n’est plus actif.','warn');return;}
+  if(opts.superAdminManual&&!canAdministrativelyClosePastIntervention()){showToast('La saisie administrative rétroactive n’est plus autorisée.','warn');return;}
   if(!opts.superAdminManual&&!canCurrentUserCloseIntervention(iv)){
     showToast('Seul le chef d’agrès affecté à cette intervention peut la clôturer.','warn');return;
   }
@@ -9557,6 +9632,18 @@ function clot(id,options){
     return;
   }
   if(!opts.directClosure&&opts._closeSnapshot!==operationalCloseSnapshot(iv)){showToast('La fiche a changé : rouvrez-la avant de clôturer.','warn');return;}
+  if(opts._followup&&SECURE_APL_ENABLED&&!opts._followupAllocation){
+    if(_followupAplInFlight.has(id))return;
+    _followupAplInFlight.add(id);
+    allocateNewApl('suite','suite:'+id).then(function(allocation){
+      _followupAplInFlight.delete(id);
+      clot(id,Object.assign({},opts,{_followupAllocation:allocation}));
+    }).catch(function(error){
+      _followupAplInFlight.delete(id);
+      showToast(error&&error.message||'Suite non créée : numéro APL indisponible.','warn');
+    });
+    return;
+  }
   if(!beginOperationalAction(iv,'cloture',['en-cours','avis-passage']))return;
   const endTime=opts.superAdminManual?opts.endTime:opts._closeTime||getHHMM(N());
   const h=opts.superAdminManual?manualOperationalTimelineStamp(iv,endTime,true):opts._closeStamp||getH(N());
@@ -9577,7 +9664,7 @@ function clot(id,options){
   // qu'un pull déjà en cours ne puisse pas restaurer l'ancien statut.
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   iv.s='terminee';iv._hFin=endTime;
-  const closeWho=opts.superAdminManual?(iv.agr+agr2Lbl+' (clôture saisie par le superadmin '+CU.l+')'):(CU.l+agr2Lbl);
+  const closeWho=opts.superAdminManual?(iv.agr+agr2Lbl+' (clôture saisie par '+CU.l+')'):(CU.l+agr2Lbl);
   pushTL(iv,'terminee',closeWho,opts.superAdminManual?'Retour manuel à '+endTime:'',h);
   if(opts.superAdminManual)iv._dateFin=historyDateKey(h)||iv._dateDebut||'';
   if(opts.superAdminManual){
@@ -9599,9 +9686,10 @@ function clot(id,options){
     iv._pdfAttestation=iv._pdfAttestations[0]||'';
   }
   if(!iv.eng&&selEng)iv.eng=selEng;
-  if(opts._followup)creerSuiteApresCloture(iv,opts._followup,h);
+  if(opts._followup)creerSuiteApresCloture(iv,opts._followup,h,opts._followupAllocation);
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);cM();refreshOperationalInterventionViews();rAccueil();rStatsHeader(); // push immédiat : clôture d'intervention
+  if(opts._followupAllocation)clearAplCreationActionKey('suite','suite:'+id);
   setTimeout(function(){showNextSelectedInterventionModal(iv);},80);
 }
 function clotAvis(id){
@@ -9635,6 +9723,7 @@ function reclasser(id){
   // Reopen modal with fresh data
   setTimeout(()=>oM(id),50);
 }
+
 // === MODULE: pilp.js ===
 // ────────────────── PILP FORM ──────────────────
 function linkedPilpForSource(iv){
@@ -12525,7 +12614,9 @@ function envoyerDispoRequest(wk,login){
   });
 
   if(!DISPO_REQUESTS[wk])DISPO_REQUESTS[wk]=[];
-  // Garder la trace des demandes remplacées sur les autres appareils.
+  // Garder la trace des demandes remplacées : chaque demande possède désormais
+  // sa propre ligne synchronisée, et une simple suppression locale la laisserait
+  // ouverte sur les autres appareils.
   DISPO_REQUESTS[wk].forEach(function(r){
     if(r.login===login&&r.statut==='en-attente')r.statut='annulee';
   });
@@ -15057,9 +15148,72 @@ function refreshSuperAdminDepartureCrew(){
     :'<div style="font-size:11px;color:var(--t2);">Choisissez d’abord le véhicule pour afficher toutes les places de l’équipage.</div>';
   refreshEquipageSelects();
 }
+const _historicalSdisCreationId='__historical_sdis__';
+let _historicalSdisCreationInFlight=false;
+function showHistoricalSdisInterventionModal(){
+  if(!canAdministrativelyClosePastIntervention()){showToast('Cette saisie n’est pas autorisée pour la caserne.','warn');return;}
+  const today=getDS(N()),date=today.slice(0,4)+'-'+today.slice(4,6)+'-'+today.slice(6,8);
+  document.getElementById('mt').textContent='Saisir une intervention SDIS passée';
+  document.getElementById('mi').textContent='La date réelle et la date de saisie resteront distinctes dans l’historique.';
+  document.getElementById('mb').innerHTML=
+    '<div style="background:#EFF6FF;border:1px solid #93C5FD;border-radius:8px;padding:10px;margin-bottom:12px;font-size:12px;">Réservé aux interventions effectivement réalisées. Vérifiez le numéro SDIS, les heures et l’équipage avant la clôture. Aucun départ en cours ne sera créé.</div>'
+    +'<div class="fg"><div class="fgl">Nature de l’intervention <span class="req">*</span></div><input class="fi" id="historical-sdis-nature" placeholder="Ex. Intervention PCA — tempête"/></div>'
+    +'<div class="fg"><div class="fgl">Numéro SDIS <span class="req">*</span></div><input class="fi" id="historical-sdis-number" placeholder="Numéro figurant sur l’ordre de mission"/></div>'
+    +'<div class="fg"><div class="fgl">Adresse / lieu réel <span class="req">*</span></div><input class="fi" id="historical-sdis-address"/></div>'
+    +'<div class="fg"><div class="fgl">Commune <span class="req">*</span></div><input class="fi" id="historical-sdis-commune"/></div>'
+    +'<div class="fg"><div class="fgl">Date et heure de l’appel SDIS <span class="req">*</span></div><div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;"><input class="fi" style="min-width:0;" type="date" id="historical-sdis-call-date" value="'+date+'"/><input class="fi" style="min-width:0;" type="time" id="historical-sdis-call-time"/></div></div>'
+    +'<div class="fg"><div class="fgl">Motif de la saisie tardive <span class="req">*</span></div><textarea class="fta" id="historical-sdis-reason" placeholder="Ex. Intervention gérée au PCA pendant la tempête"></textarea></div>'
+    +'<div class="fg"><div class="fgl">Chef d’agrès <span class="req">*</span></div><select class="fi" id="superadmin-depart-chief" onchange="refreshSuperAdminDepartureCrew()"><option value="">— Sélectionner le chef d’agrès —</option>'+superAdminChiefOptions('')+'</select></div>'
+    +'<div class="fg"><div class="fgl">Date de l’intervention <span class="req">*</span></div><input class="fi" type="date" id="superadmin-direct-date" value="'+date+'"/></div>'
+    +'<div class="fg"><div class="fgl">Heure de départ <span class="req">*</span></div><input class="fi" type="time" id="superadmin-depart-time"/></div>'
+    +'<div class="fg"><div class="fgl">Date de retour <span class="req">*</span></div><input class="fi" type="date" id="superadmin-direct-end-date" value="'+date+'"/></div>'
+    +'<div class="fg"><div class="fgl">Heure de retour <span class="req">*</span></div><input class="fi" type="time" id="superadmin-direct-end-time"/></div>'
+    +'<div class="fg"><div class="fgl">Véhicule <span class="req">*</span></div><select class="fi" id="superadmin-depart-vehicle" onchange="refreshSuperAdminDepartureCrew()">'+superAdminVehicleOptions('')+'</select></div>'
+    +'<div style="font-size:12px;font-weight:700;margin:12px 0 8px;">Équipage réel</div><div id="superadmin-depart-crew"></div>'
+    +'<div class="brow" style="margin-top:12px;"><button class="btn gn sm" onclick="confirmerClotureSuperAdminDirecte(\''+_historicalSdisCreationId+'\')">🛡️ Vérifier avant de créer et clôturer</button><button class="btn sm" onclick="cM()">Annuler</button></div>';
+  document.getElementById('mo').style.display='flex';
+  window._piqData={allowHistoricalBusy:true};
+  refreshSuperAdminDepartureCrew();
+}
+function historicalSdisInput(){
+  const read=function(id){return String(document.getElementById(id)?.value||'').trim();};
+  return {nature:read('historical-sdis-nature'),number:read('historical-sdis-number'),address:read('historical-sdis-address'),commune:read('historical-sdis-commune'),
+    callDate:read('historical-sdis-call-date').replace(/\D/g,'').slice(0,8),callTime:read('historical-sdis-call-time'),reason:read('historical-sdis-reason')};
+}
+function historicalSdisAlreadyExists(data){
+  const number=String(data&&data.number||'').trim().toLocaleLowerCase('fr');
+  const year=String(data&&data.callDate||'').slice(0,4);
+  return (IVS||[]).some(function(iv){return iv&&iv._sdis
+    &&String(iv._numSDIS||'').trim().toLocaleLowerCase('fr')===number
+    &&String(iv.h||iv._dateDebut||'').slice(0,4)===year;});
+}
+function historicalDayIsValid(value){
+  const text=String(value||'');if(!/^\d{8}$/.test(text))return false;
+  const year=Number(text.slice(0,4)),month=Number(text.slice(4,6)),day=Number(text.slice(6,8));
+  const parsed=new Date(year,month-1,day);
+  return parsed.getFullYear()===year&&parsed.getMonth()===month-1&&parsed.getDate()===day;
+}
+function capturedStationChanged(captured){
+  return !captured||captured.stationId!==CURRENT_CASERNE_ID||!CU||captured.actor!==CU.l
+    ||!canAdministrativelyClosePastIntervention();
+}
+function requestHistoricalSdisConfirmation(captured){
+  const title=document.getElementById('mt'),info=document.getElementById('mi'),body=document.getElementById('mb');
+  title.textContent='Confirmer la saisie historique';info.textContent='Création et clôture d’une intervention SDIS passée';
+  body.innerHTML='<div style="background:#F8FAFC;border:1px solid #CBD5E1;border-radius:8px;padding:12px;line-height:1.6;font-size:13px;">'
+    +escHtml(captured.call.nature)+' · SDIS '+escHtml(captured.call.number)+'<br>'+escHtml(captured.call.address)+', '+escHtml(captured.call.commune)
+    +'<br>Appel : '+escHtml(captured.call.callDate)+' '+escHtml(captured.call.callTime)
+    +'<br>Départ : '+escHtml(captured.operationalDate)+' '+escHtml(captured.time)+' · Retour : '+escHtml(captured.returnDate)+' '+escHtml(captured.endTime)
+    +'<br>Véhicule : '+escHtml(captured.vehicle)+' · Chef : '+escHtml(captured.chief)+'</div>'
+    +'<label style="display:flex;gap:8px;margin:14px 0;font-size:12px;"><input type="checkbox" id="historical-sdis-confirm-check">Je confirme que ces données correspondent à une intervention réellement effectuée.</label>'
+    +'<div class="brow"><button class="btn sm" onclick="cM()">Annuler</button><button class="btn gn sm" id="historical-sdis-confirm-button" disabled>Créer et clôturer</button></div>';
+  const check=document.getElementById('historical-sdis-confirm-check'),button=document.getElementById('historical-sdis-confirm-button');
+  check.onchange=function(){button.disabled=!check.checked;};
+  button.onclick=function(){if(button.disabled)return;button.disabled=true;cM();confirmerClotureSuperAdminDirecte(_historicalSdisCreationId,captured);};
+}
 function showSuperAdminDirectClosureModal(id){
   const iv=interventionById(id);if(!iv)return;
-  if(!canSuperAdminOperateForAnotherChief()){showToast('Activez le pouvoir superadmin pour utiliser cette commande.','warn');return;}
+  if(!canAdministrativelyClosePastIntervention()){showToast('Cette saisie administrative n’est pas autorisée pour la caserne.','warn');return;}
   const initialChief=iv.agr&&USERS.some(function(user){return user.l===iv.agr&&isChefAgresByGrade(user);})?iv.agr:'';
   const initialVehicle=iv._engin1||iv.eng||'';
   document.getElementById('mt').textContent='Saisir et clôturer l’intervention';
@@ -15137,10 +15291,19 @@ function findManualOperationalIntervalConflict(iv,startTime,endTime,vehicles,per
   }
   return null;
 }
-function confirmerClotureSuperAdminDirecte(id,validated){
-  const iv=interventionById(id);if(!iv)return;
-  if(operationalActionInProgress(iv,'cloture-directe')){showToast('Cette clôture est déjà en cours d’enregistrement.','warn');return;}
-  if(!canSuperAdminOperateForAnotherChief()){cM();showToast('Le pouvoir superadmin n’est plus actif.','warn');return;}
+async function confirmerClotureSuperAdminDirecte(id,validated){
+  const isNew=id===_historicalSdisCreationId;
+  const iv=isNew?{id:_historicalSdisCreationId,s:'en-attente'}:interventionById(id);if(!iv)return;
+  if(!isNew&&operationalActionInProgress(iv,'cloture-directe')){showToast('Cette clôture est déjà en cours d’enregistrement.','warn');return;}
+  if(!canAdministrativelyClosePastIntervention()){cM();showToast('La saisie administrative rétroactive n’est plus autorisée.','warn');return;}
+  const call=isNew?(validated?validated.call:historicalSdisInput()):null;
+  if(isNew){
+    if(!call.nature||!call.number||!call.address||!call.commune||!call.reason
+      ||!historicalDayIsValid(call.callDate)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(call.callTime)){
+      showToast('Renseignez la nature, le numéro SDIS, le lieu, la commune, l’heure de l’appel et le motif.','warn');return;
+    }
+    if(historicalSdisAlreadyExists(call)){showToast('Une intervention portant ce numéro SDIS existe déjà dans cette caserne.','warn');return;}
+  }
   const chief=validated?validated.chief:document.getElementById('superadmin-depart-chief')?.value||'';
   const operationalDate=validated?validated.operationalDate:String(document.getElementById('superadmin-direct-date')?.value||'').replace(/\D/g,'').slice(0,8);
   const returnDate=validated?validated.returnDate:String(document.getElementById('superadmin-direct-end-date')?.value||'').replace(/\D/g,'').slice(0,8);
@@ -15149,13 +15312,18 @@ function confirmerClotureSuperAdminDirecte(id,validated){
   const vehicle=validated?validated.vehicle:document.getElementById('superadmin-depart-vehicle')?.value||'';
   const chiefUser=USERS.find(function(user){return user.l===chief;});
   if(!chiefUser||!isChefAgresByGrade(chiefUser)){showToast('Sélectionnez obligatoirement un chef d’agrès qualifié.','warn');return;}
-  if(!/^\d{8}$/.test(operationalDate)){showToast('Sélectionnez obligatoirement la date réelle de l’intervention.','warn');return;}
-  if(!/^\d{8}$/.test(returnDate)){showToast('Sélectionnez obligatoirement la date réelle du retour.','warn');return;}
+  if(!historicalDayIsValid(operationalDate)){showToast('Sélectionnez obligatoirement la date réelle de l’intervention.','warn');return;}
+  if(!historicalDayIsValid(returnDate)){showToast('Sélectionnez obligatoirement la date réelle du retour.','warn');return;}
   if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)){showToast('Saisissez une heure de départ valide.','warn');return;}
   if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(endTime)){showToast('Saisissez une heure de retour valide.','warn');return;}
   const directStart=interventionCompactStampMillis(operationalDate+'_'+time.replace(':',''));
   const directEnd=interventionCompactStampMillis(returnDate+'_'+endTime.replace(':',''));
   if(!Number.isFinite(directStart)||!Number.isFinite(directEnd)||directEnd<=directStart){showToast('Le retour doit être postérieur au départ. Vérifiez les dates et les heures.','warn');return;}
+  if(isNew){
+    const callStamp=interventionCompactStampMillis(call.callDate+'_'+call.callTime.replace(':',''));
+    if(!Number.isFinite(callStamp)||callStamp>directStart){showToast('L’appel SDIS doit précéder le départ réel.','warn');return;}
+    if(directEnd>Date.now()){showToast('Une intervention passée ne peut pas avoir une heure de retour future.','warn');return;}
+  }
   if(!vehicle){showToast('Sélectionnez obligatoirement le véhicule.','warn');return;}
   const crew=validated?validated.crew:readDepartureCrewFields(vehicle,'saeq',chief);
   const driver=crew.find(function(member){return member&&interventionRoleKey(member.role)==='conducteur'&&member.login;});
@@ -15171,9 +15339,43 @@ function confirmerClotureSuperAdminDirecte(id,validated){
   const scheduleConflict=findPersonnelScheduleConflict(logins,directStart,directEnd);
   if(!validated){
     const captured={chief:chief,operationalDate:operationalDate,returnDate:returnDate,time:time,endTime:endTime,vehicle:vehicle,crew:JSON.parse(JSON.stringify(crew))};
-    requestOperationalCloseConfirmation(iv,'Saisie directe superadmin · Véhicule : '+vehicle+' · Chef d’agrès : '+chief+' · Départ : '+time+' · Retour : '+endTime
+    if(isNew){captured.call=call;captured.stationId=CURRENT_CASERNE_ID;captured.actor=CU.l;requestHistoricalSdisConfirmation(captured);}
+    else requestOperationalCloseConfirmation(iv,'Saisie administrative · Véhicule : '+vehicle+' · Chef d’agrès : '+chief+' · Départ : '+time+' · Retour : '+endTime
       +(scheduleConflict?' · ⚠ '+personnelScheduleConflictMessage(scheduleConflict):''),
       function(){confirmerClotureSuperAdminDirecte(id,captured);});
+    return;
+  }
+  if(isNew){
+    if(_historicalSdisCreationInFlight)return;
+    if(capturedStationChanged(validated)){showToast('La session ou la caserne a changé. Rouvrez la saisie historique.','warn');return;}
+    _historicalSdisCreationInFlight=true;
+    const context='historical-sdis:'+CURRENT_CASERNE_ID+':'+call.number;
+    let created=null;
+    try{
+      const allocation=await allocateNewApl('appel',context);
+      if(capturedStationChanged(validated)||historicalSdisAlreadyExists(call))throw new Error('La session a changé ou cette intervention SDIS existe déjà. Aucune fiche ajoutée.');
+      const callStamp=call.callDate+'_'+call.callTime.replace(':','');
+      const newIv={id:makeInterventionRecordId(allocation.apl),_numApl:allocation.apl,_aplReservationKey:allocation.actionKey,
+        n:call.nature,_natureAppelInitiale:call.nature,addr:call.address,_addrBase:call.address,com:call.commune,h:callStamp,op:CU.l,
+        s:'en-attente',det:call.reason,obs:'',eng:null,_sdis:true,_numSDIS:call.number,req:'SDIS',tel:'',tels:[],
+        agr:null,rappels:0,avisIds:[],tl:[mkTL('en-attente',callStamp,'SDIS — appel saisi rétroactivement par '+CU.l)],
+        _historicalEntry:{createdAt:getH(N()),createdBy:CU.l,caserneId:CURRENT_CASERNE_ID,reason:call.reason,source:'SDIS / PCA'}};
+      created=newIv;
+      IVS.unshift(newIv);if(CD())CD().ivs=IVS;
+      await confirmerClotureSuperAdminDirecte(newIv.id,validated);
+      if(newIv.s!=='terminee'){
+        throw new Error('La clôture n’a pas abouti. Aucune fiche historique ajoutée.');
+      }
+      clearAplCreationActionKey('appel',context);
+      showToast('Intervention SDIS passée créée et clôturée.','success');
+    }catch(error){
+      if(created&&created.s!=='terminee'){
+        const index=IVS.indexOf(created);if(index>=0)IVS.splice(index,1);
+        if(CD())CD().ivs=IVS;
+      }
+      showToast(error&&error.message||'La saisie historique n’a pas abouti.','warn');
+    }
+    finally{_historicalSdisCreationInFlight=false;}
     return;
   }
   if(!beginOperationalAction(iv,'cloture-directe',['en-attente','selectionne']))return;
@@ -15186,7 +15388,7 @@ function confirmerClotureSuperAdminDirecte(id,validated){
   iv._engin1RoleConfig=JSON.parse(JSON.stringify(getEnginRoles(vehicle)));
   iv._equipage2=null;iv._engin2=null;iv._engin2RoleConfig=null;
   delete iv._retourAttenteDepuis;delete iv._chainPreviousInterventionId;
-  const who=chief+' (départ saisi par le superadmin '+CU.l+')';
+  const who=chief+' (départ saisi par '+CU.l+')';
   pushTL(iv,'en-cours',who,'Départ manuel à '+time+' — '+vehicle,manualOperationalTimelineStamp(iv,time,false));
   if(scheduleConflict)recordPersonnelScheduleAlert(iv,scheduleConflict);
   iv._superAdminOperationalEdits=Array.isArray(iv._superAdminOperationalEdits)?iv._superAdminOperationalEdits:[];
@@ -18860,7 +19062,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0091';
+const APP_VERSION='V202610_0092';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;

@@ -447,6 +447,11 @@ function renderSuperAdmin(){
               ${[...(d.users||[])].filter(u=>!u._isSA).sort((a,b)=>(a.nom+' '+a.prenom).localeCompare(b.nom+' '+b.prenom,'fr')).map(u=>`<label style="display:flex;align-items:center;gap:6px;font-size:11px;padding:3px 0;cursor:pointer;"><input type="checkbox" ${adminLogins.has(u.l)?'checked':''} onchange="setCaserneAdmin('${c.id}','${u.l}',this.checked)"> ${u.nom} ${u.prenom}</label>`).join('')}
             </div>
             <div style="font-size:10px;color:#777;margin-top:4px;">Plusieurs administrateurs locaux peuvent être désignés. Le superadmin conserve toujours l'accès à toutes les casernes.</div>
+             <label style="display:flex;align-items:flex-start;gap:7px;margin-top:10px;padding:8px;background:#fff;border:1px solid ${c.couleur}33;border-radius:7px;font-size:11px;line-height:1.4;cursor:pointer;">
+               <input type="checkbox" ${c.retroactiveInterventionsEnabled===true?'checked':''} onchange="setCaserneRetroactiveInterventions('${c.id}',this.checked)">
+               <span>Autoriser les admins de cette caserne à saisir et clôturer des interventions passées. Désactivé par défaut.</span>
+             </label>
+             ${Array.isArray(c.retroactiveInterventionsAudit)&&c.retroactiveInterventionsAudit.length?'<div style="font-size:10px;color:#64748B;margin-top:5px;">Dernier réglage : '+escHtml(c.retroactiveInterventionsAudit[c.retroactiveInterventionsAudit.length-1].at||'')+' · '+escHtml(c.retroactiveInterventionsAudit[c.retroactiveInterventionsAudit.length-1].by||'')+'</div>':''}
             <div style="border-top:1px solid ${c.couleur}33;margin-top:10px;padding-top:9px;">
               <div style="font-size:10px;font-weight:700;color:#6D28D9;text-transform:uppercase;margin-bottom:5px;">🎓 Responsable formation</div>
               <select class="fi" style="font-size:11px;padding:4px 6px;width:100%;" onchange="setResponsableFormation('${c.id}',this.value)">
@@ -1445,6 +1450,18 @@ function setCaserneAdmin(caserneId,login,enabled){
   const globalView=document.getElementById('global-view');
   if(globalView&&globalView.style.display!=='none')renderSuperAdmin();else rAdm();
   showToast(selected&&shouldEnable?'Administrateur ajout\u00e9 : '+fullName(selected):'Administrateur retir\u00e9 : '+(selected?fullName(selected):login),'success');
+}
+function setCaserneRetroactiveInterventions(caserneId,enabled){
+  if(!isSuperAdmin()){showToast('Seul le superadmin peut modifier cette autorisation.','warn');return;}
+  const station=CASERNES.find(function(item){return item&&item.id===caserneId;});
+  if(!station){showToast('Caserne introuvable.','warn');return;}
+  if(station.retroactiveInterventionsEnabled===enabled)return;
+  station.retroactiveInterventionsAudit=Array.isArray(station.retroactiveInterventionsAudit)?station.retroactiveInterventionsAudit:[];
+  station.retroactiveInterventionsAudit.push({at:getH(N()),by:CU&&CU.l||'',enabled:enabled===true});
+  station.retroactiveInterventionsEnabled=enabled===true;
+  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+  saveData(true);renderSuperAdmin();
+  showToast('Saisie rétroactive '+(enabled?'autorisée':'désactivée')+' pour '+station.nom+'.','success');
 }
 function setResponsableFormation(caserneId,login){
   if(!isSuperAdmin()){showToast('Seul le super-administrateur peut d\u00e9finir le responsable formation.','warn');return;}
