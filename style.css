@@ -380,14 +380,16 @@ button.route-order-badge:hover{background:#DBEAFE;border-color:#60A5FA;}
 /* ── 18. Autocomplete commune / adresse ── */
 .cwrap{position:relative;}
 .cdd{position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--brd);border-radius:10px;max-height:150px;overflow-y:auto;z-index:100;box-shadow:0 4px 16px rgba(0,0,0,.12);display:none;}
-.co{padding:8px 12px;font-size:13px;cursor:pointer;color:var(--t);}
+.co{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px 8px;padding:8px 12px;font-size:13px;cursor:pointer;color:var(--t);}
+.commune-name{min-width:0;flex:1 1 150px;}
+.commune-sector-badge{display:inline-flex;align-items:center;padding:3px 8px;border:1px solid #93C5FD;border-radius:999px;background:#EFF6FF;color:#1D4ED8;font-size:11px;font-weight:800;line-height:1.3;white-space:normal;}
 .addr-opt{padding:9px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--brd);line-height:1.4;}
 .addr-opt:last-child{border-bottom:none;}
 .addr-opt:hover{background:var(--bg);}
 .addr-opt .addr-main{font-weight:500;color:var(--t);}
 .addr-opt .addr-sub{font-size:11px;color:var(--t2);margin-top:1px;}
 .co:hover{background:var(--rl);color:var(--rd);}
-.csel-disp{display:flex;align-items:center;gap:6px;padding:9px 12px;background:var(--gl);border:1px solid #92C353;border-radius:10px;font-size:13px;color:#3B6D11;font-weight:500;}
+.csel-disp{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:9px 12px;background:var(--gl);border:1px solid #92C353;border-radius:10px;font-size:13px;color:#3B6D11;font-weight:500;}
 .csel-disp button{margin-left:auto;background:none;border:none;cursor:pointer;color:var(--grn);font-size:16px;}
 /* ── 19. Formulaires ── */
 .fg{display:flex;flex-direction:column;gap:4px;margin-bottom:10px;}
@@ -466,6 +468,8 @@ select.fi{min-width:0;width:100%;max-width:100%;}
 .hist-report-badge.validated{background:#DCFCE7;border-color:#86EFAC;color:#166534;}
 .hist-report-badge.printed{background:#DBEAFE;border-color:#93C5FD;color:#1D4ED8;}
 .hist-report-badge.pending{background:#F3F4F6;border-color:#D1D5DB;color:#6B7280;font-weight:600;}
+.hist-transfer-badge{display:inline-flex;align-items:center;margin:4px 0 1px 7px;padding:3px 8px;border:1px solid #93C5FD;border-radius:7px;background:#EFF6FF;color:#1D4ED8;font-size:11px;font-weight:800;line-height:1.3;text-decoration:none;}
+.hist-transfer-count{border:1px solid #93C5FD;background:#EFF6FF;color:#1D4ED8;font-size:10px;white-space:nowrap;}
 .hist-num-ut,.hist-num-m{font-size:12px;font-weight:800;line-height:1.1;}
 .hist-tools{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fff;border:1px solid var(--brd);border-radius:12px;padding:12px 14px;margin-bottom:10px;color:var(--t);font-size:12px;}
 .hist-tools>div:first-child>div{font-size:10px;color:var(--t2);margin-top:2px;}
