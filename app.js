@@ -6305,14 +6305,24 @@ function filtC(q){
   if(!list.length){dd.style.display='none';return;}
   dd.innerHTML=list.slice(0,20).map(c=>{
     const nom=comNom(c);const sec=comSec(c);
-    let d=nom;
-    if(q.trim()&&nm(nom).startsWith(nq))d='<strong>'+nom.slice(0,q.length)+'</strong>'+nom.slice(q.length);
-    const safe=nom.replace(/'/g,"&apos;");
-    return '<div class="co" data-v="'+nom+'" onmousedown="sC(this.dataset.v,event)">'+d+(sec?'<span style="font-size:10px;color:var(--t2);margin-left:6px;">'+sec+'</span>':'')+'</div>';
+    let d=escHtml(nom);
+    if(q.trim()&&nm(nom).startsWith(nq))d='<strong>'+escHtml(nom.slice(0,q.length))+'</strong>'+escHtml(nom.slice(q.length));
+    return '<div class="co" data-v="'+escHtml(nom)+'" onmousedown="sC(this.dataset.v,event)"><span class="commune-name">'+d+'</span>'+(sec?'<span class="commune-sector-badge">Secteur : '+escHtml(sec)+'</span>':'')+'</div>';
   }).join('');
   dd.style.display='block';cddi=-1;chkR(q);
 }
-function sC(v,e){if(e)e.preventDefault();selC2=v;document.getElementById('ci').value=v;document.getElementById('cdd').style.display='none';document.getElementById('ciw').style.display='none';document.getElementById('cs').style.display='flex';document.getElementById('cst').textContent=v;ce('c');chkR(v);}
+function sC(v,e){
+  if(e)e.preventDefault();selC2=v;
+  document.getElementById('ci').value=v;
+  document.getElementById('cdd').style.display='none';
+  document.getElementById('ciw').style.display='none';
+  document.getElementById('cs').style.display='flex';
+  document.getElementById('cst').textContent=v;
+  const commune=COM.find(function(c){return nm(comNom(c))===nm(v);});
+  const sector=document.getElementById('csec');
+  if(sector){const value=commune?comSec(commune):'';sector.textContent=value?'Secteur : '+value:'';sector.style.display=value?'inline-flex':'none';}
+  ce('c');chkR(v);
+}
 function chkR(c){
   const exIv=IVS.filter(iv=>iv.s==='avis-passage'&&!iv._isPilip&&nm(iv.com)===nm(c));
   const exPilp=PILP_IVS.filter(iv=>iv.s==='avis-passage'&&nm(iv.com)===nm(c));
@@ -8522,12 +8532,13 @@ function oM(id){
     // Seul le numéro APL est affiché (numérotation INT désactivée)
   const dispApl=interventionDisplayCallNumber(iv);
   const dispTransfert=iv._transfertDe?` ↩ transféré de ${CASERNES.find(cas=>cas.id===iv._transfertDe)?.nom||iv._transfertDe}`:'';
+  const transferDestApl=String(iv._transfertDestId||'').match(/^APL_\d{4}_\d{6}/)?.[0]||'';
   const dispUt=iv._numberingScheme==='dual-v1'&&iv.s==='terminee'&&iv._numberFinalized!==true
     ?' · numéro définitif non confirmé'
     :iv._numCaserne?' · UT '+interventionDisplayUTNumber(iv)+(iv._numberingScheme==='dual-v1'&&iv.s==='en-cours'?' (provisoire)':''):'';
   document.getElementById('mi').textContent=dispApl+dispUt+dispTransfert;
-   const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis de passage'],'avis-rappel':['bp','Rappel de l’avis'],'avis-classe':['bp','Avis classé'],'avis-restaure':['binfo','Avis remis en attente'],'modif':['bgr','Modification'],'modif-adresse':['bgr','Adresse corrigée'],'modif-heure':['binfo','Horaire corrigé'],'modif-equipier':['binfo','Équipage corrigé'],'modif-engin':['binfo','Véhicule corrigé'],'reclasse':['bgr','Reclasé'],'releve':['binfo','Relève'],'info-compl':['binfo','ℹ️ Complément d\u2019info']};
-  const[bc,bt]=bm[iv.s]||['bgr','—'];
+   const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'annulee':['bgr','Annulée'],'avis-passage':['bp','Avis de passage'],'avis-rappel':['bp','Rappel de l’avis'],'avis-classe':['bp','Avis classé'],'avis-restaure':['binfo','Avis remis en attente'],'modif':['bgr','Modification'],'modif-adresse':['bgr','Adresse corrigée'],'modif-heure':['binfo','Horaire corrigé'],'modif-equipier':['binfo','Équipage corrigé'],'modif-engin':['binfo','Véhicule corrigé'],'reclasse':['bgr','Reclasé'],'releve':['binfo','Relève'],'info-compl':['binfo','ℹ️ Complément d\u2019info']};
+  const[bc,bt]=iv.s==='annulee'&&iv._transfertVers?['binfo','Transférée']:bm[iv.s]||['bgr','—'];
   const sdots={'en-attente':'#E24B4A','selectionne':'var(--sel)','en-cours':'var(--amb)','terminee':'var(--grn)','avis-passage':'var(--pur)','avis-rappel':'var(--pur)','avis-classe':'#6B21A8','avis-restaure':'#2563EB','modif':'#888','modif-adresse':'#888','modif-heure':'#C2410C','modif-equipier':'#2563EB','modif-engin':'#0F766E','reclasse':'#888','releve':'#0369A1','info-compl':'#0369A1'};
   const tlHtml=hasAdministrativeAccount()?(iv.tl||[]).map(t=>`<div class="tl-item"><div class="tl-dot" style="background:${sdots[t.s]||'#aaa'};"></div><div class="tl-info"><span class="tl-status">${bm[t.s]?bm[t.s][1]:t.s}${t.note?` — ${t.note}`:''}</span> <span class="tl-horo">&#x1F4C5; ${t.h}</span><div class="tl-who">${t.who}</div></div></div>`).join(''):'';
   const appelDetailEntries=iv._appelDetails&&typeof iv._appelDetails==='object'
@@ -8737,7 +8748,7 @@ function oM(id){
     ${(()=>{const compls=(iv.tl||[]).filter(t=>t.s==='info-compl');return compls.length?`<div class="mr"><div class="ml" style="color:#0369A1;">&#x2139;&#xFE0F; Compléments d'information</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:6px;">${compls.map(t=>`<div style="background:#EFF6FF;border-left:3px solid #0369A1;border-radius:6px;padding:6px 10px;font-size:13px;"><div>${escHtml(t.note||'')}</div><div style="font-size:10px;color:var(--t2);margin-top:2px;">&#x1F4C5; ${escHtml(t.h||'')} · ${escHtml(t.who||'')}</div></div>`).join('')}</div></div></div>`:'';})()}
     ${pilpScope?`<div class="mr"><div class="ml">Informations PILP</div><div class="mv2"><div style="display:flex;flex-direction:column;gap:4px;"><span>📏 Hauteur du nid : <strong>${escHtml(pilpHeightLabel(iv))}</strong></span><span>👤 ${escHtml(pilpReconnaissanceLabel(iv))}</span><strong>${pilpAxeEtat(iv)==='disponible'?'🎯':'⚠️'} ${escHtml(pilpAxeLabel(iv))}</strong><span>🗓️ ${escHtml(pilpPeriodeLabel(iv))}</span>${canEditPilpReconnaissance(iv)?`<button class="btn sm" style="margin-top:4px;align-self:flex-start;background:#4C1D95;color:#fff;border-color:#4C1D95;" onclick="showPilpPlanningModal('${iv.id}')">✏️ Modifier hauteur et reconnaissance${canOperatePilp()?' / programmation':''}</button>`:''}</div></div></div>`:''}
     ${iv._transfertDe?`<div class="mr"><div class="ml">Transfert reçu de</div><div class="mv2" style="color:var(--amb);font-weight:500;">&#x1F500; ${CASERNES.find(c=>c.id===iv._transfertDe)?.nom||iv._transfertDe}</div></div>`:''}
-    ${iv._transfertVers?`<div class="mr"><div class="ml">Transféré vers</div><div class="mv2" style="color:#888;">&#x1F500; ${CASERNES.find(c=>c.id===iv._transfertVers)?.nom||iv._transfertVers}</div></div>`:''}
+    ${iv._transfertVers?`<div class="mr"><div class="ml">Transférée vers</div><div class="mv2" style="color:#1D4ED8;font-weight:700;">↪ ${escHtml(CASERNES.find(c=>c.id===iv._transfertVers)?.nom||iv._transfertVers)}${transferDestApl?' · nouvel '+escHtml(transferDestApl):''}</div></div>`:''}
     ${iv._refugeAnimalier?`<div class="mr"><div class="ml">Refuge animalier</div><div class="mv2" style="color:var(--grn);">&#x1F43E; Transmis au refuge — ${iv._refugeAnimalier}</div></div>`:''}
 
     ${(iv.eng||detailStart||detailEnd||showMissingVehicle)?'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:8px;margin:6px 0;">'+(iv.eng?'<div style="background:var(--bg);border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Engin</div><span class="bdg bb">'+iv.eng+'</span></div>':showMissingVehicle?'<div style="background:var(--bg);border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Engin</div><span style="font-size:11px;color:var(--t2);">Non renseigné</span></div>':'')+(detailStart?'<div style="background:#FEF9EC;border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--amb);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">&#x23F1; Début</div><div style="font-weight:700;color:var(--amb);font-size:15px;">'+detailStart+'</div></div>':'')+(detailEnd?'<div style="background:#F0FAF0;border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--grn);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">&#x2705; Fin</div><div style="font-weight:700;color:var(--grn);font-size:15px;">'+detailEnd+'</div></div>':'')+(detailStart&&detailEnd?'<div style="background:#F0F4FF;border-radius:8px;padding:8px 10px;"><div style="font-size:10px;font-weight:600;color:var(--pur);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">&#x23F3; Durée</div><div style="font-weight:700;color:var(--pur);font-size:15px;">'+dureeHHMM(detailStart,detailEnd)+'</div></div>':'')+'</div>':''}
@@ -11023,8 +11034,19 @@ function historyDateKey(value){
   const digits=String(value||'').replace(/\D/g,'');
   return digits.length>=8?digits.slice(0,8):'';
 }
+function historyTransferInfo(iv){
+  if(!iv||iv.s!=='annulee'||!iv._transfertVers)return null;
+  const station=CASERNES.find(function(c){return c.id===iv._transfertVers;});
+  const destination=station&&station.nom||iv._transfertVers;
+  const number=String(iv._transfertDestId||'').match(/^APL_\d{4}_\d{6}/);
+  return {destination:destination,apl:number?number[0]:''};
+}
 function historyInterventionDayKey(iv){
   const timeline=Array.isArray(iv&&iv.tl)?iv.tl:[];
+  if(historyTransferInfo(iv)){
+    const transfers=timeline.filter(function(entry){return entry&&entry.s==='annulee'&&historyDateKey(entry.h);});
+    if(transfers.length)return historyDateKey(transfers[transfers.length-1].h);
+  }
   const starts=timeline.filter(function(entry){return entry&&entry.s==='en-cours'&&historyDateKey(entry.h);});
   if(starts.length)return historyDateKey(starts[starts.length-1].h);
   const ends=timeline.filter(function(entry){return interventionIsClosureTimelineEntry(entry)&&historyDateKey(entry.h);});
@@ -11073,9 +11095,11 @@ function historyIsoWeekInfo(dateKey){
 function historySearchBlob(iv){
   const crew=historyCrewMembers(iv).map(function(member){return member.name+' '+member.login;});
   const vehicles=interventionVehicleNames(iv);
+  const transfer=historyTransferInfo(iv);
   return historyNormalizeSearch([
     iv.id,iv.n,iv.addr,iv.com,iv.req,iv.tel,iv.s,iv._numCaserne,interventionDisplayUTNumber(iv),iv._numGlobal,iv._numMois,iv._numRenfort,iv._numSDIS,
-    iv._hDebut,iv._hFin,iv._crTexte,iv._compteRendu,vehicles.join(' '),crew.join(' ')
+    iv._hDebut,iv._hFin,iv._crTexte,iv._compteRendu,vehicles.join(' '),crew.join(' '),
+    transfer&&transfer.destination,transfer&&transfer.apl,transfer?'transferee transfert':''
   ].join(' '));
 }
 function historyReportOrder(iv){
@@ -11089,10 +11113,12 @@ function historyReportOrder(iv){
 function historyRowHTML(iv){
   const click=iv._isPilp?"oPilp('"+escHtml(iv.id)+"')":"oM('"+escHtml(iv.id)+"')";
   const crewLogins=historyCrewMembers(iv).map(function(member){return member.login;}).join('|');
+  const transfer=historyTransferInfo(iv);
   return `<div class="hm hist-entry${iv._crValide&&iv._impressions&&iv._impressions.length?' report-complete':''}" data-hsearch="${escHtml(historySearchBlob(iv))}" data-hdate="${historyInterventionDayKey(iv)}" data-hcrew="${escHtml(crewLogins)}" onclick="${click}">
   <span style="font-family:monospace;font-size:10px;color:var(--t3);">${iv._numberingScheme==='dual-v1'&&iv.s==='terminee'&&iv._numberFinalized!==true?'N° non confirmé':escHtml(interventionDisplayUTNumber(iv)||interventionDisplayCallNumber(iv))}</span>
-  <span style="flex:1;font-size:12px;color:var(--t);${iv.s==='annulee'?'text-decoration:line-through;color:#999;':''}">
+  <span style="flex:1;font-size:12px;color:var(--t);${iv.s==='annulee'&&!transfer?'text-decoration:line-through;color:#999;':''}">
     ${escHtml(iv.n||'Intervention')}
+    ${transfer?'<span class="hist-transfer-badge">↪ Transférée vers '+escHtml(transfer.destination)+(transfer.apl?' · nouvel '+escHtml(transfer.apl):'')+'</span>':''}
     ${iv._numberingScheme==='dual-v1'&&iv.s==='terminee'&&iv._numberFinalized!==true?' <span style="font-size:10px;color:#92400E;">Numérotation non confirmée</span>':iv._numGlobal||iv._numCaserne||iv._numMois||iv._numRenfort?`<span style="font-size:10px;font-weight:600;margin-left:6px;">
       ${iv._numGlobal?`<span style="color:#1A6B1A;">C:${escHtml(iv._numGlobal)}</span> `:''}
       ${iv._isRenfort?(iv._numRenfort?`<span style="color:#7C3AED;">Renfort:${escHtml(iv._numRenfort)}</span>`:''):(iv._numCaserne?`<span class="hist-num-ut" style="color:#6A0DAD;">UT:${escHtml(interventionDisplayUTNumber(iv))}</span> `:'')}
@@ -11103,7 +11129,7 @@ function historyRowHTML(iv){
     ${historyCrewHTML(iv)}
   </span>
   <span style="font-size:11px;color:var(--t2);text-align:right;">${iv.addr?escHtml(iv.addr)+', ':''}${escHtml(iv.com||'')}${(iv._hDebut||iv._hFin)?`<br><span style="font-size:10px;color:var(--t3);">${iv._hDebut?'\ud83d\udd50 '+escHtml(iv._hDebut):''}${iv._hDebut&&iv._hFin?' \u2192 ':''}${iv._hFin?escHtml(iv._hFin):''}</span>`:''}</span>
-  <span class="bdg ${iv.s==='terminee'?'bg2':iv.s==='avis-passage'?'bp':iv.s==='annulee'?'bgr':'ba'}" style="font-size:10px;">${iv.s==='terminee'?'\u2713':iv.s==='avis-passage'?'\ud83d\udfe3':iv.s==='annulee'?'\u2715':'\u21bb'}</span>
+  <span class="bdg ${iv.s==='terminee'?'bg2':iv.s==='avis-passage'?'bp':iv.s==='annulee'?'bgr':'ba'}" style="font-size:10px;" title="${transfer?'Intervention transférée':'Statut de l’intervention'}">${transfer?'↪':iv.s==='terminee'?'\u2713':iv.s==='avis-passage'?'\ud83d\udfe3':iv.s==='annulee'?'\u2715':'\u21bb'}</span>
   ${iv._mailsEnvoyes&&iv._mailsEnvoyes.length?'<span title="Envoy\u00e9 par mail ('+iv._mailsEnvoyes.length+'x)" style="font-size:11px;margin-left:3px;">\u2709\ufe0f</span>':''}
   <span class="hist-report-flags">
     ${(iv._heureDebutModifiee&&hasAdministrativeAccount()||iv._heureFinModifiee&&hasAdministrativeAccount())&&!iv._sdis?'<span class="hist-report-badge pending" style="background:#FFF7ED;color:#9A3412;border-color:#FDBA74;" title="Les heures r\u00e9elles sont conserv\u00e9es dans la tra\u00e7abilit\u00e9">\u23f1 Horaire corrig\u00e9</span>':''}
@@ -11145,6 +11171,8 @@ function rHist(){
   const pilpIvsH=canSeePILP()?(cA?PILP_IVS:PILP_IVS.filter(function(iv){return isTdy(iv);})) : [];
   const pilpMapped=pilpIvsH.map(function(p){return Object.assign({},p,{n:'[PILP] '+p.n,tl:p.tl,_isPilp:true});});
   const countedTotal=function(list){return list.filter(isInterventionComptabilisee).length;};
+  const transferTotal=function(list){return list.filter(function(iv){return !!historyTransferInfo(iv);}).length;};
+  const transferBadge=function(count){return count?'<span class="bdg hist-transfer-count" title="Transferts visibles dans l’historique">↪ '+count+' transfert'+(count>1?'s':'')+'</span>':'';};
   const dayKey=historyInterventionDayKey;
   const historyNow=new Date();
   const currentHistoryDay=String(historyNow.getFullYear())+String(historyNow.getMonth()+1).padStart(2,'0')+String(historyNow.getDate()).padStart(2,'0');
@@ -11182,24 +11210,27 @@ function rHist(){
   const yearHtml=years.map(function(year,yearIndex){
     const monthKeys=Object.keys(groups[year]).sort(function(a,b){return b-a;});
     const yearTotal=monthKeys.reduce(function(total,month){return total+Object.values(groups[year][month]).reduce(function(sum,week){return sum+Object.values(week.days).reduce(function(s,list){return s+countedTotal(list);},0);},0);},0);
+    const yearTransfers=monthKeys.reduce(function(total,month){return total+Object.values(groups[year][month]).reduce(function(sum,week){return sum+Object.values(week.days).reduce(function(s,list){return s+transferTotal(list);},0);},0);},0);
     const yearId='hist-year-'+year,yearOpen=historyGroupOpen(yearId,true);
-    return '<div class="hgrp hist-year-block"><div class="hgh" onclick="tg(\''+yearId+'\',\'arr-'+yearId+'\')">\ud83d\udcc5 '+year+'<span class="bdg bgr" style="margin-left:auto;">'+yearTotal+'</span><span id="arr-'+yearId+'">'+(yearOpen?'\u25bc':'\u25b6')+'</span></div><div id="'+yearId+'" class="hgb hist-group-content hist-year-content" style="display:'+(yearOpen?'':'none')+';">'
+    return '<div class="hgrp hist-year-block"><div class="hgh" onclick="tg(\''+yearId+'\',\'arr-'+yearId+'\')">\ud83d\udcc5 '+year+'<span class="bdg bgr" style="margin-left:auto;">'+yearTotal+'</span>'+transferBadge(yearTransfers)+'<span id="arr-'+yearId+'">'+(yearOpen?'\u25bc':'\u25b6')+'</span></div><div id="'+yearId+'" class="hgb hist-group-content hist-year-content" style="display:'+(yearOpen?'':'none')+';">'
       +monthKeys.map(function(month,monthIndex){
         const weeks=groups[year][month],weekKeys=Object.keys(weeks).sort().reverse();
         const monthTotal=weekKeys.reduce(function(total,key){return total+Object.values(weeks[key].days).reduce(function(s,list){return s+countedTotal(list);},0);},0);
+        const monthTransfers=weekKeys.reduce(function(total,key){return total+Object.values(weeks[key].days).reduce(function(s,list){return s+transferTotal(list);},0);},0);
         const monthId='hist-month-'+year+'-'+month,monthOpen=historyGroupOpen(monthId,true);
-        return '<div class="hist-month-block"><div class="hsub" onclick="tg(\''+monthId+'\',\'arr-'+monthId+'\')">'+months[Number(month)]+'<span class="bdg bgr">'+monthTotal+'</span><span id="arr-'+monthId+'" style="margin-left:auto;">'+(monthOpen?'\u25bc':'\u25b6')+'</span></div><div id="'+monthId+'" class="hist-group-content hist-month-content" style="display:'+(monthOpen?'':'none')+';">'
+        return '<div class="hist-month-block"><div class="hsub" onclick="tg(\''+monthId+'\',\'arr-'+monthId+'\')">'+months[Number(month)]+'<span class="bdg bgr">'+monthTotal+'</span>'+transferBadge(monthTransfers)+'<span id="arr-'+monthId+'" style="margin-left:auto;">'+(monthOpen?'\u25bc':'\u25b6')+'</span></div><div id="'+monthId+'" class="hist-group-content hist-month-content" style="display:'+(monthOpen?'':'none')+';">'
           +weekKeys.map(function(weekKey,weekIndex){
             const week=weeks[weekKey],days=Object.keys(week.days).sort().reverse();
             const weekTotal=days.reduce(function(sum,day){return sum+countedTotal(week.days[day]);},0);
+            const weekTransfers=days.reduce(function(sum,day){return sum+transferTotal(week.days[day]);},0);
             // Par défaut, seule la semaine civile en cours est développée.
             const weekId='hist-week-'+year+'-'+month+'-'+weekKey,open=weekKey===currentHistoryWeek&&historyGroupOpen(weekId,true);
-            return '<div class="hist-week-block"><div class="hist-week-header" onclick="tg(\''+weekId+'\',\'arr-'+weekId+'\')"><span>\ud83d\uddd3\ufe0f '+week.info.label+'</span><span class="bdg bgr">'+weekTotal+'</span><span id="arr-'+weekId+'" style="margin-left:auto;">'+(open?'\u25bc':'\u25b6')+'</span></div><div id="'+weekId+'" class="hist-group-content hist-week-content" style="display:'+(open?'':'none')+';">'
+            return '<div class="hist-week-block"><div class="hist-week-header" onclick="tg(\''+weekId+'\',\'arr-'+weekId+'\')"><span>\ud83d\uddd3\ufe0f '+week.info.label+'</span><span class="bdg bgr">'+weekTotal+'</span>'+transferBadge(weekTransfers)+'<span id="arr-'+weekId+'" style="margin-left:auto;">'+(open?'\u25bc':'\u25b6')+'</span></div><div id="'+weekId+'" class="hist-group-content hist-week-content" style="display:'+(open?'':'none')+';">'
               +days.map(function(day){
                 // Dans la semaine courante, seule la journée d'aujourd'hui est ouverte automatiquement.
                 const list=week.days[day],dayId='hist-day-'+day+'-'+weekKey,dayOpen=day===currentHistoryDay&&historyGroupOpen(dayId,true);
                 const dt=new Date(Number(day.slice(0,4)),Number(day.slice(4,6))-1,Number(day.slice(6,8))),dayName=dt.toLocaleDateString('fr-FR',{weekday:'long'});
-                return '<div class="hist-day-block"><div class="hist-day-header" onclick="tg(\''+dayId+'\',\'arr-'+dayId+'\')"><span>'+dayName.charAt(0).toUpperCase()+dayName.slice(1)+' '+day.slice(6,8)+'/'+day.slice(4,6)+'/'+day.slice(0,4)+'</span><span class="bdg bgr" title="Interventions comptabilisées">'+countedTotal(list)+'</span><span id="arr-'+dayId+'" style="margin-left:auto;">'+(dayOpen?'\u25bc':'\u25b6')+'</span></div><div id="'+dayId+'" class="hist-group-content hist-day-content" style="display:'+(dayOpen?'':'none')+';">'+list.map(historyRowHTML).join('')+'</div></div>';
+                return '<div class="hist-day-block"><div class="hist-day-header" onclick="tg(\''+dayId+'\',\'arr-'+dayId+'\')"><span>'+dayName.charAt(0).toUpperCase()+dayName.slice(1)+' '+day.slice(6,8)+'/'+day.slice(4,6)+'/'+day.slice(0,4)+'</span><span class="bdg bgr" title="Interventions comptabilisées">'+countedTotal(list)+'</span>'+transferBadge(transferTotal(list))+'<span id="arr-'+dayId+'" style="margin-left:auto;">'+(dayOpen?'\u25bc':'\u25b6')+'</span></div><div id="'+dayId+'" class="hist-group-content hist-day-content" style="display:'+(dayOpen?'':'none')+';">'+list.map(historyRowHTML).join('')+'</div></div>';
               }).join('')+'</div></div>';
           }).join('')+'</div></div>';
       }).join('')+'</div></div>';
@@ -19062,7 +19093,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0092';
+const APP_VERSION='V202610_0093';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;

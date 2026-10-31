@@ -499,14 +499,24 @@ function filtC(q){
   if(!list.length){dd.style.display='none';return;}
   dd.innerHTML=list.slice(0,20).map(c=>{
     const nom=comNom(c);const sec=comSec(c);
-    let d=nom;
-    if(q.trim()&&nm(nom).startsWith(nq))d='<strong>'+nom.slice(0,q.length)+'</strong>'+nom.slice(q.length);
-    const safe=nom.replace(/'/g,"&apos;");
-    return '<div class="co" data-v="'+nom+'" onmousedown="sC(this.dataset.v,event)">'+d+(sec?'<span style="font-size:10px;color:var(--t2);margin-left:6px;">'+sec+'</span>':'')+'</div>';
+    let d=escHtml(nom);
+    if(q.trim()&&nm(nom).startsWith(nq))d='<strong>'+escHtml(nom.slice(0,q.length))+'</strong>'+escHtml(nom.slice(q.length));
+    return '<div class="co" data-v="'+escHtml(nom)+'" onmousedown="sC(this.dataset.v,event)"><span class="commune-name">'+d+'</span>'+(sec?'<span class="commune-sector-badge">Secteur : '+escHtml(sec)+'</span>':'')+'</div>';
   }).join('');
   dd.style.display='block';cddi=-1;chkR(q);
 }
-function sC(v,e){if(e)e.preventDefault();selC2=v;document.getElementById('ci').value=v;document.getElementById('cdd').style.display='none';document.getElementById('ciw').style.display='none';document.getElementById('cs').style.display='flex';document.getElementById('cst').textContent=v;ce('c');chkR(v);}
+function sC(v,e){
+  if(e)e.preventDefault();selC2=v;
+  document.getElementById('ci').value=v;
+  document.getElementById('cdd').style.display='none';
+  document.getElementById('ciw').style.display='none';
+  document.getElementById('cs').style.display='flex';
+  document.getElementById('cst').textContent=v;
+  const commune=COM.find(function(c){return nm(comNom(c))===nm(v);});
+  const sector=document.getElementById('csec');
+  if(sector){const value=commune?comSec(commune):'';sector.textContent=value?'Secteur : '+value:'';sector.style.display=value?'inline-flex':'none';}
+  ce('c');chkR(v);
+}
 function chkR(c){
   const exIv=IVS.filter(iv=>iv.s==='avis-passage'&&!iv._isPilip&&nm(iv.com)===nm(c));
   const exPilp=PILP_IVS.filter(iv=>iv.s==='avis-passage'&&nm(iv.com)===nm(c));
