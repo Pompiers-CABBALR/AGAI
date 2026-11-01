@@ -1722,10 +1722,17 @@ function oM(id){
       +escHtml(String(startControl.distanceMetres??'—'))+' m · précision : '+escHtml(String(startControl.precisionMetres??'—'))+' m. Trace conservée dans l’historique.'
       +'</div>'
     :'';
+  const reportCredit=typeof reportWritingCreditWindow==='function'?reportWritingCreditWindow(iv):null;
+  const reportCreditInfo=reportCredit
+    ?'<div style="background:#F0FDFA;border:1px solid #99F6E4;border-radius:8px;padding:9px 12px;margin-bottom:10px;font-size:12px;color:#0F766E;">'
+      +'<strong>Temps de rédaction comptabilisé : '+reportCredit.minutes+' min</strong> pour l’équipage présent à la clôture. L’heure de clôture opérationnelle reste inchangée.'
+      +'</div>'
+    :'';
   document.getElementById('mb').innerHTML=`
     <div style="margin-bottom:8px;"><span class="bdg ${bc}">${bt}</span>${iv._departGeoControle&&iv._departGeoControle.degrade===true?' <span class="bdg" style="background:#FFF7ED;color:#92400E;">⚠️ Départ dégradé — position à contrôler</span>':''}${offsiteAdmin?' <span class="bdg" style="background:#FFF7ED;color:#92400E;">⚠️ Départ hors caserne</span>':''}${pilpScope?' <span class="bdg bpilp">PILP</span>':''}${iv.rappels?` <span class="bdg bp" style="${isAdminModeActive()?'cursor:pointer;':''}"${isAdminModeActive()?` title="Déjà intervenu ici ?" onclick="showInterventionsLiees('${iv.id}')"`:''}>${iv.rappels} rappel(s)</span>`:''}</div>
     ${offsiteInfo}
     ${legacyOffsiteInfo}
+    ${reportCreditInfo}
     ${pilpReadOnly?'<div style="background:#EFF6FF;border:1px solid #93C5FD;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;color:#1D4ED8;margin-bottom:10px;">👁️ Consultation PILP en lecture seule</div>':''}
     ${iv._urgence?'<div style="background:#FEE2E2;border:2px solid #B91C1C;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:800;color:#991B1B;margin-bottom:10px;text-align:center;">PRIORITAIRE — ÉTABLISSEMENT RECEVANT DU PUBLIC (ERP)</div>':''}
     ${iv._sdis?'<div style="background:#DBEAFE;border:1px solid #93C5FD;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;color:#1D4ED8;margin-bottom:10px;text-align:center;">&#x1F691; INTERVENTION SDIS</div>':''}
@@ -2661,12 +2668,12 @@ function clot(id,options){
   if(!['en-cours','avis-passage'].includes(iv.s)){showToast('Cette intervention n’est plus en cours.','warn');return;}
   if(opts._followup&&iv._followupNewId){showToast('Une suite existe déjà pour cette intervention.','warn');return;}
   if(!opts._closeConfirmed){
-    const capturedTime=getHHMM(N()),capturedStamp=getH(N());
+    const capturedAt=N(),capturedTime=getHHMM(capturedAt),capturedStamp=getH(capturedAt);
     requestOperationalCloseConfirmation(iv,
       'Véhicule : '+(iv.eng||iv._engin1||'non renseigné')+' · Chef d’agrès : '+(iv.agr||'non renseigné')
       +' · Retour : '+(opts.superAdminManual?opts.endTime:capturedTime)+(avis?' · Avis de passage à '+avisHeure:'')
       +(opts._followup?' · Clôture avec suite : '+opts._followup.motif+' — '+opts._followup.detail:''),
-      function(snapshot){clot(id,Object.assign({},opts,{_closeConfirmed:true,_closeSnapshot:snapshot,_closeAvis:avis,_closeAvisHeure:avisHeure,_closeTime:capturedTime,_closeStamp:capturedStamp}));});
+      function(snapshot){clot(id,Object.assign({},opts,{_closeConfirmed:true,_closeSnapshot:snapshot,_closeAvis:avis,_closeAvisHeure:avisHeure,_closeTime:capturedTime,_closeStamp:capturedStamp,_closeIso:capturedAt.toISOString()}));});
     return;
   }
   if(!opts.directClosure&&opts._closeSnapshot!==operationalCloseSnapshot(iv)){showToast('La fiche a changé : rouvrez-la avant de clôturer.','warn');return;}
@@ -2702,6 +2709,7 @@ function clot(id,options){
   // qu'un pull déjà en cours ne puisse pas restaurer l'ancien statut.
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   iv.s='terminee';iv._hFin=endTime;
+  if(!opts.superAdminManual)iv._closeClientAtIso=opts._closeIso||N().toISOString();
   const closeWho=opts.superAdminManual?(iv.agr+agr2Lbl+' (clôture saisie par '+CU.l+')'):(CU.l+agr2Lbl);
   pushTL(iv,'terminee',closeWho,opts.superAdminManual?'Retour manuel à '+endTime:'',h);
   if(opts.superAdminManual)iv._dateFin=historyDateKey(h)||iv._dateDebut||'';

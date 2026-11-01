@@ -2405,7 +2405,7 @@ function _rcOverlayPendingLocalRows(rows,durableRows){
 const RC_OPERATIONAL_STATUSES=['en-attente','selectionne','en-cours','terminee','annulee','avis-passage'];
 const RC_OPERATIONAL_PROTECTED_FIELDS=[
   's','agr','tireur','eng','_engin1','_engin2','_equipage1','_equipage2','_agr2',
-  '_hDebut','_hDebutReelle','_hDebutInitiale','_dateDebut','_hFin','_hFinReelle','_duree',
+  '_hDebut','_hDebutReelle','_hDebutInitiale','_dateDebut','_hFin','_hFinReelle','_closeClientAtIso','_duree',
   '_numGlobal','_numCaserne','_numMois','_numSDIS','_numRenfort','_numberingScheme','_numberFinalized',
   '_routeBatchId','_routeOrder','_routeConfirmedAt','_routeConfirmedBy',
   '_retourAttenteDepuis','_hDebutAvantRetourAttente','_dateDebutAvantRetourAttente','_retourAttenteAt','_retourAttentePar',
