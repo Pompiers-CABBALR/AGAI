@@ -5253,7 +5253,7 @@ function rAccueilDepartsHorsCaserne(){
     if(!iv||!iv.id||seen.has(iv.id))return false;
     seen.add(iv.id);
     const control=iv._departGeoControle||{};
-    return control.horsCaserne===true&&String(control.date||'')>=cutoff;
+    return operationalStartOffsiteConfirmed(control)&&String(control.date||'')>=cutoff;
   }).sort(function(a,b){return String(b._departGeoControle.date).localeCompare(String(a._departGeoControle.date));});
   if(!departures.length){el.style.display='none';el.innerHTML='';return;}
   el.style.display='block';
@@ -8109,7 +8109,7 @@ function renderInterventionRow(iv, ag, tireur) {
       ${interventionRouteBadgeHTML(iv)}
       <span class="bdg ${bc}">${bt}</span>
       ${iv._departGeoControle&&iv._departGeoControle.degrade===true?'<span class="bdg" style="background:#FFF7ED;color:#92400E;font-size:10px;">⚠️ Position à contrôler</span>':''}
-      ${hasAdministrativeAccount()&&iv._departGeoControle&&iv._departGeoControle.horsCaserne===true?'<span class="bdg" style="background:#FFF7ED;color:#92400E;font-size:10px;">⚠️ Départ hors caserne</span>':''}
+      ${hasAdministrativeAccount()&&operationalStartOffsiteConfirmed(iv._departGeoControle)?'<span class="bdg" style="background:#FFF7ED;color:#92400E;font-size:10px;">⚠️ Départ hors caserne</span>':''}
       ${isPilp ? '<span class="bdg bpilp" style="font-size:10px;">PILP</span>' : ''}
       ${isRenfortUT ? '<span class="bdg" style="background:#7C3AED;color:#fff;font-size:10px;">Renfort UT</span>' : isRenfortInternal ? '<span class="bdg" style="background:#047857;color:#fff;font-size:10px;">Renfort interne</span>' : ''}
       ${iv._urgence ? '<span class="bdg" style="background:#B91C1C;color:#fff;font-size:10px;font-weight:700;">PRIORITAIRE — ERP</span>' : ''}
@@ -8695,7 +8695,8 @@ function oM(id){
     }
   }
   const startControl=iv._departGeoControle||{};
-  const offsiteAdmin=hasAdministrativeAccount()&&startControl.horsCaserne===true;
+  const offsiteAdmin=hasAdministrativeAccount()&&operationalStartOffsiteConfirmed(startControl);
+  const legacyOffsiteSignal=hasAdministrativeAccount()&&startControl.horsCaserne===true&&!offsiteAdmin;
   const offsiteLat=Number(startControl.latitude),offsiteLon=Number(startControl.longitude);
   const offsiteCoords=offsiteAdmin&&Number.isFinite(offsiteLat)&&Number.isFinite(offsiteLon)
     &&Math.abs(offsiteLat)<=90&&Math.abs(offsiteLon)<=180;
@@ -8706,9 +8707,16 @@ function oM(id){
       +(offsiteCoords?' · <a target="_blank" rel="noopener noreferrer" href="https://www.google.com/maps/search/?api=1&amp;query='+offsiteLat+','+offsiteLon+'">Voir la position</a>':'')
       +'</div>'
     :'';
+  const legacyOffsiteInfo=legacyOffsiteSignal
+    ?'<div style="background:#EFF6FF;border:1px solid #93C5FD;border-radius:8px;padding:9px 12px;margin-bottom:10px;font-size:12px;color:#1D4ED8;">'
+      +'<strong>Ancien signalement hors caserne non confirmé avec le rayon de 2 km.</strong> Distance enregistrée : '
+      +escHtml(String(startControl.distanceMetres??'—'))+' m · précision : '+escHtml(String(startControl.precisionMetres??'—'))+' m. Trace conservée dans l’historique.'
+      +'</div>'
+    :'';
   document.getElementById('mb').innerHTML=`
     <div style="margin-bottom:8px;"><span class="bdg ${bc}">${bt}</span>${iv._departGeoControle&&iv._departGeoControle.degrade===true?' <span class="bdg" style="background:#FFF7ED;color:#92400E;">⚠️ Départ dégradé — position à contrôler</span>':''}${offsiteAdmin?' <span class="bdg" style="background:#FFF7ED;color:#92400E;">⚠️ Départ hors caserne</span>':''}${pilpScope?' <span class="bdg bpilp">PILP</span>':''}${iv.rappels?` <span class="bdg bp" style="${isAdminModeActive()?'cursor:pointer;':''}"${isAdminModeActive()?` title="Déjà intervenu ici ?" onclick="showInterventionsLiees('${iv.id}')"`:''}>${iv.rappels} rappel(s)</span>`:''}</div>
     ${offsiteInfo}
+    ${legacyOffsiteInfo}
     ${pilpReadOnly?'<div style="background:#EFF6FF;border:1px solid #93C5FD;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;color:#1D4ED8;margin-bottom:10px;">👁️ Consultation PILP en lecture seule</div>':''}
     ${iv._urgence?'<div style="background:#FEE2E2;border:2px solid #B91C1C;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:800;color:#991B1B;margin-bottom:10px;text-align:center;">PRIORITAIRE — ÉTABLISSEMENT RECEVANT DU PUBLIC (ERP)</div>':''}
     ${iv._sdis?'<div style="background:#DBEAFE;border:1px solid #93C5FD;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;color:#1D4ED8;margin-bottom:10px;text-align:center;">&#x1F691; INTERVENTION SDIS</div>':''}
@@ -9023,7 +9031,6 @@ const OPERATIONAL_START_RADIUS_METERS=2000;
 const OPERATIONAL_START_GRACE_MINUTES=15;
 const OPERATIONAL_START_MAX_GPS_UNCERTAINTY_METERS=500;
 const OPERATIONAL_START_OFFSITE_MAX_ACCURACY_METERS=250;
-const OPERATIONAL_START_STATION_PROXIMITY_METERS=500;
 const OPERATIONAL_START_DENIED_MESSAGE='Impossible de passer cette intervention « En cours ».';
 const _operationalStartAuthorizations={};
 const _operationalStartLocationPending=new Set();
@@ -9091,8 +9098,19 @@ function operationalStartOffsiteEvidence(position,distance,accuracy){
   return Number.isFinite(coords.latitude)&&Number.isFinite(coords.longitude)
     &&Number.isFinite(distance)&&Number.isFinite(accuracy)
     &&accuracy>0&&accuracy<=OPERATIONAL_START_OFFSITE_MAX_ACCURACY_METERS
-    &&distance>OPERATIONAL_START_STATION_PROXIMITY_METERS+accuracy
+    // La même limite de 2 km sert à autoriser ET à signaler le départ.
+    // Le point doit être au-delà du rayon même en tenant compte de sa précision.
+    &&distance>OPERATIONAL_START_RADIUS_METERS+accuracy
     &&measuredAt>0&&age>=0&&age<=30000;
+}
+function operationalStartOffsiteConfirmed(control){
+  if(!control||control.horsCaserne!==true)return false;
+  const distance=control.distanceMetres,accuracy=control.precisionMetres;
+  // Les anciennes traces sans mesure restent à contrôler, sans être masquées.
+  if(distance==null||accuracy==null)return true;
+  const measuredDistance=Number(distance),measuredAccuracy=Number(accuracy);
+  if(!Number.isFinite(measuredDistance)||!Number.isFinite(measuredAccuracy)||measuredAccuracy<0)return true;
+  return measuredDistance>OPERATIONAL_START_RADIUS_METERS+measuredAccuracy;
 }
 function operationalStartMeasurementScore(distance,accuracy){
   const measuredDistance=Math.max(0,Number(distance)||0),measuredAccuracy=Math.max(0,Number(accuracy)||0);
@@ -19093,7 +19111,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0093';
+const APP_VERSION='V202610_0094';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;

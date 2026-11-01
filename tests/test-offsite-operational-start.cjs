@@ -23,15 +23,28 @@ function sourceOf(source,name){
 test('la preuve GPS hors caserne exige une position précise et récente',()=>{
   const context={Date,Number,Math};
   vm.createContext(context);
-  vm.runInContext('const OPERATIONAL_START_STATION_PROXIMITY_METERS=500; const OPERATIONAL_START_OFFSITE_MAX_ACCURACY_METERS=250;',context);
+  vm.runInContext('const OPERATIONAL_START_RADIUS_METERS=2000; const OPERATIONAL_START_OFFSITE_MAX_ACCURACY_METERS=250;',context);
   vm.runInContext(sourceOf(moduleStart,'operationalStartOffsiteEvidence'),context);
   const fresh={timestamp:Date.now()-1000,coords:{latitude:50.5,longitude:2.5}};
   assert.equal(context.operationalStartOffsiteEvidence(fresh,5000,30),true);
   assert.equal(context.operationalStartOffsiteEvidence({...fresh,timestamp:Date.now()-60000},5000,30),false);
   assert.equal(context.operationalStartOffsiteEvidence(fresh,5000,800),false);
-  assert.equal(context.operationalStartOffsiteEvidence(fresh,1100,50),true,'un garage proche mais hors caserne est signalé');
-  assert.equal(context.operationalStartOffsiteEvidence(fresh,600,150),false);
+  assert.equal(context.operationalStartOffsiteEvidence(fresh,1100,50),false,'un départ dans le rayon autorisé ne doit pas être signalé');
+  assert.equal(context.operationalStartOffsiteEvidence(fresh,2050,50),false,'une mesure à la limite du rayon reste incertaine');
+  assert.equal(context.operationalStartOffsiteEvidence(fresh,2100,50),true,'une mesure fiable au-delà des 2 km est signalée');
   assert.equal(context.operationalStartOffsiteEvidence({...fresh,coords:{latitude:NaN,longitude:2.5}},5000,30),false);
+});
+
+test('un ancien signalement dans les 2 km ne s’affiche plus comme hors caserne sans effacer sa trace',()=>{
+  const context={Number};
+  vm.createContext(context);
+  vm.runInContext('const OPERATIONAL_START_RADIUS_METERS=2000;',context);
+  vm.runInContext(sourceOf(moduleStart,'operationalStartOffsiteConfirmed'),context);
+  assert.equal(context.operationalStartOffsiteConfirmed({horsCaserne:true,distanceMetres:1100,precisionMetres:50}),false);
+  assert.equal(context.operationalStartOffsiteConfirmed({horsCaserne:true,distanceMetres:2050,precisionMetres:50}),false);
+  assert.equal(context.operationalStartOffsiteConfirmed({horsCaserne:true,distanceMetres:2100,precisionMetres:50}),true);
+  assert.equal(context.operationalStartOffsiteConfirmed({horsCaserne:true}),true,'une ancienne trace sans mesure reste à contrôler');
+  assert.match(moduleStart,/Ancien signalement hors caserne non confirmé avec le rayon de 2 km/);
 });
 
 test('une précision kilométrique ne prouve plus une présence à la caserne',()=>{
@@ -54,7 +67,8 @@ test('seuls les comptes administratifs voient les départs hors caserne récents
     IVS:[{id:'iv1',n:'Départ garage',_departGeoControle:{horsCaserne:true,date:'999999999999',distanceMetres:4200}}],
     PILP_IVS:[],Set,Date,String,
     escHtml:value=>String(value).replaceAll('<','&lt;'),
-    interventionDisplayCallNumber:()=> 'APL_1'
+    interventionDisplayCallNumber:()=> 'APL_1',
+    operationalStartOffsiteConfirmed:control=>control.horsCaserne===true&&control.distanceMetres>2000+(control.precisionMetres||0)
   };
   vm.createContext(context);
   vm.runInContext(sourceOf(moduleHome,'rAccueilDepartsHorsCaserne'),context);
@@ -66,12 +80,15 @@ test('seuls les comptes administratifs voient les départs hors caserne récents
   assert.equal(element.style.display,'block');
   assert.match(element.innerHTML,/Départs pris hors caserne/);
   assert.match(element.innerHTML,/Départ garage/);
+  context.IVS[0]._departGeoControle.distanceMetres=1100;
+  context.rAccueilDepartsHorsCaserne();
+  assert.equal(element.style.display,'none','un ancien faux positif ne figure pas dans les alertes administratives');
 });
 
 test('les fonctions du départ hors caserne restent identiques dans les deux points d’entrée',()=>{
-  for(const name of ['operationalStartOffsiteEvidence','requestOperationalStartAuthorization','saveOperationalStartAuthorization','hasAdministrativeAccount']){
+  for(const name of ['operationalStartOffsiteEvidence','operationalStartOffsiteConfirmed','requestOperationalStartAuthorization','saveOperationalStartAuthorization','hasAdministrativeAccount']){
     assert.equal(sourceOf(moduleStart,name),sourceOf(bundle,name),name);
   }
   assert.equal(sourceOf(moduleHome,'rAccueilDepartsHorsCaserne'),sourceOf(bundle,'rAccueilDepartsHorsCaserne'));
-  assert.match(moduleStart,/hasAdministrativeAccount\(\)&&iv\._departGeoControle&&iv\._departGeoControle\.horsCaserne===true/);
+  assert.match(moduleStart,/hasAdministrativeAccount\(\)&&operationalStartOffsiteConfirmed\(iv\._departGeoControle\)/);
 });

@@ -54,7 +54,7 @@ function rAccueilDepartsHorsCaserne(){
     if(!iv||!iv.id||seen.has(iv.id))return false;
     seen.add(iv.id);
     const control=iv._departGeoControle||{};
-    return control.horsCaserne===true&&String(control.date||'')>=cutoff;
+    return operationalStartOffsiteConfirmed(control)&&String(control.date||'')>=cutoff;
   }).sort(function(a,b){return String(b._departGeoControle.date).localeCompare(String(a._departGeoControle.date));});
   if(!departures.length){el.style.display='none';el.innerHTML='';return;}
   el.style.display='block';
