@@ -61,7 +61,7 @@ for(const relativePath of ['modules/08-interventions-js.js','app.js']){
     window:{setTimeout:fn=>fn()}
   };
   vm.createContext(context);
-  vm.runInContext('const OPERATIONAL_START_STATION_PROXIMITY_METERS=500; const OPERATIONAL_START_OFFSITE_MAX_ACCURACY_METERS=250; const OPERATIONAL_START_MAX_GPS_UNCERTAINTY_METERS=500;',context);
+  vm.runInContext('const OPERATIONAL_START_RADIUS_METERS=2000; const OPERATIONAL_START_OFFSITE_MAX_ACCURACY_METERS=250; const OPERATIONAL_START_MAX_GPS_UNCERTAINTY_METERS=500;',context);
   vm.runInContext(functionSource(source,'operationalStartOffsiteEvidence'),context);
   vm.runInContext(functionSource(source,'requestOperationalStartAuthorization'),context);
   context.requestOperationalStartAuthorization({id:'iv-test'},()=>{approved++;});
@@ -85,8 +85,8 @@ for(const relativePath of ['modules/08-interventions-js.js','app.js']){
   assert.equal(notices.length,1,'an offsite departure does not display a new warning');
   distance=1100;
   context.requestOperationalStartAuthorization({id:'iv-garage'},()=>{approved++;});
-  assert.equal(approved,3,relativePath+' flags a garage less than two kilometres away');
-  assert.equal(context._operationalStartAuthorizations['iv-garage'].offsite,true);
+  assert.equal(approved,3,relativePath+' accepts a departure within two kilometres');
+  assert.equal(context._operationalStartAuthorizations['iv-garage'].offsite,undefined);
   chief=false;distance=4000;
   context.requestOperationalStartAuthorization({id:'iv-not-chief'},()=>{approved++;});
   assert.equal(approved,3,relativePath+' keeps the offsite exception restricted to a chief');
