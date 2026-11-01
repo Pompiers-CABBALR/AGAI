@@ -902,15 +902,16 @@ function validerCompteRendu(ivId) {
   if(!texte.trim()){showToast('Saisissez un compte rendu avant de valider','warn');return;}
   if(iv._sdis&&!_sdisValidateHeures(iv))return;
   confirmModal('Valider d\u00e9finitivement le compte rendu\u00a0? Il ne pourra plus \u00eatre modifi\u00e9.',function(){
-    const savedAt=Date.now();
+    const validatedAt=N(),savedAt=validatedAt.getTime();
     writeCompteRenduDraft(ivId,texte,savedAt);
     iv._crTexte          = texte;
     iv._compteRendu      = texte;
     iv._crLocalSavedAt   = savedAt;
     if(!iv._crAuteur)iv._crAuteur=CU.l;
-    iv._crDate           = getHHMM(N());
+    iv._crDate           = getHHMM(validatedAt);
     iv._crValide         = true;
-    iv._crDateValidation = getHHMM(N());
+    iv._crDateValidation = getHHMM(validatedAt);
+    iv._crClientValideAt = validatedAt.toISOString();
     if(iv._sdis) _sdisSaveFields(iv);
     if(_isFrelonIv(iv)) _frelonSaveFields(iv);
     if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();

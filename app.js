@@ -8713,10 +8713,17 @@ function oM(id){
       +escHtml(String(startControl.distanceMetres??'—'))+' m · précision : '+escHtml(String(startControl.precisionMetres??'—'))+' m. Trace conservée dans l’historique.'
       +'</div>'
     :'';
+  const reportCredit=typeof reportWritingCreditWindow==='function'?reportWritingCreditWindow(iv):null;
+  const reportCreditInfo=reportCredit
+    ?'<div style="background:#F0FDFA;border:1px solid #99F6E4;border-radius:8px;padding:9px 12px;margin-bottom:10px;font-size:12px;color:#0F766E;">'
+      +'<strong>Temps de rédaction comptabilisé : '+reportCredit.minutes+' min</strong> pour l’équipage présent à la clôture. L’heure de clôture opérationnelle reste inchangée.'
+      +'</div>'
+    :'';
   document.getElementById('mb').innerHTML=`
     <div style="margin-bottom:8px;"><span class="bdg ${bc}">${bt}</span>${iv._departGeoControle&&iv._departGeoControle.degrade===true?' <span class="bdg" style="background:#FFF7ED;color:#92400E;">⚠️ Départ dégradé — position à contrôler</span>':''}${offsiteAdmin?' <span class="bdg" style="background:#FFF7ED;color:#92400E;">⚠️ Départ hors caserne</span>':''}${pilpScope?' <span class="bdg bpilp">PILP</span>':''}${iv.rappels?` <span class="bdg bp" style="${isAdminModeActive()?'cursor:pointer;':''}"${isAdminModeActive()?` title="Déjà intervenu ici ?" onclick="showInterventionsLiees('${iv.id}')"`:''}>${iv.rappels} rappel(s)</span>`:''}</div>
     ${offsiteInfo}
     ${legacyOffsiteInfo}
+    ${reportCreditInfo}
     ${pilpReadOnly?'<div style="background:#EFF6FF;border:1px solid #93C5FD;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;color:#1D4ED8;margin-bottom:10px;">👁️ Consultation PILP en lecture seule</div>':''}
     ${iv._urgence?'<div style="background:#FEE2E2;border:2px solid #B91C1C;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:800;color:#991B1B;margin-bottom:10px;text-align:center;">PRIORITAIRE — ÉTABLISSEMENT RECEVANT DU PUBLIC (ERP)</div>':''}
     ${iv._sdis?'<div style="background:#DBEAFE;border:1px solid #93C5FD;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;color:#1D4ED8;margin-bottom:10px;text-align:center;">&#x1F691; INTERVENTION SDIS</div>':''}
@@ -9652,12 +9659,12 @@ function clot(id,options){
   if(!['en-cours','avis-passage'].includes(iv.s)){showToast('Cette intervention n’est plus en cours.','warn');return;}
   if(opts._followup&&iv._followupNewId){showToast('Une suite existe déjà pour cette intervention.','warn');return;}
   if(!opts._closeConfirmed){
-    const capturedTime=getHHMM(N()),capturedStamp=getH(N());
+    const capturedAt=N(),capturedTime=getHHMM(capturedAt),capturedStamp=getH(capturedAt);
     requestOperationalCloseConfirmation(iv,
       'Véhicule : '+(iv.eng||iv._engin1||'non renseigné')+' · Chef d’agrès : '+(iv.agr||'non renseigné')
       +' · Retour : '+(opts.superAdminManual?opts.endTime:capturedTime)+(avis?' · Avis de passage à '+avisHeure:'')
       +(opts._followup?' · Clôture avec suite : '+opts._followup.motif+' — '+opts._followup.detail:''),
-      function(snapshot){clot(id,Object.assign({},opts,{_closeConfirmed:true,_closeSnapshot:snapshot,_closeAvis:avis,_closeAvisHeure:avisHeure,_closeTime:capturedTime,_closeStamp:capturedStamp}));});
+      function(snapshot){clot(id,Object.assign({},opts,{_closeConfirmed:true,_closeSnapshot:snapshot,_closeAvis:avis,_closeAvisHeure:avisHeure,_closeTime:capturedTime,_closeStamp:capturedStamp,_closeIso:capturedAt.toISOString()}));});
     return;
   }
   if(!opts.directClosure&&opts._closeSnapshot!==operationalCloseSnapshot(iv)){showToast('La fiche a changé : rouvrez-la avant de clôturer.','warn');return;}
@@ -9693,6 +9700,7 @@ function clot(id,options){
   // qu'un pull déjà en cours ne puisse pas restaurer l'ancien statut.
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   iv.s='terminee';iv._hFin=endTime;
+  if(!opts.superAdminManual)iv._closeClientAtIso=opts._closeIso||N().toISOString();
   const closeWho=opts.superAdminManual?(iv.agr+agr2Lbl+' (clôture saisie par '+CU.l+')'):(CU.l+agr2Lbl);
   pushTL(iv,'terminee',closeWho,opts.superAdminManual?'Retour manuel à '+endTime:'',h);
   if(opts.superAdminManual)iv._dateFin=historyDateKey(h)||iv._dateDebut||'';
@@ -18170,6 +18178,49 @@ function getInterventionTauxConfigFor(currentDate,hour,reportType){
     return {categorie:'dimFerie',valeur:t[prefix+'DimFerie']};
   return {categorie:'jour',valeur:t[prefix+'Jour']};
 }
+// Début de publication V95 : les anciennes versions ne capturaient pas ces
+// horodatages, donc aucun rapport antérieur ne reçoit de minutes rétroactives.
+const REPORT_WRITING_CREDIT_START_AT='2026-11-01T20:48:13Z';
+const REPORT_WRITING_CREDIT_MAX_MINUTES=10;
+function reportWritingCreditIsoMs(value){
+  if(!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/.test(String(value||'')))return NaN;
+  return Date.parse(value);
+}
+function reportWritingCreditHasFollowingIntervention(iv,records){
+  // L'export d'un mois ne voit pas forcément la suite commencée le mois suivant.
+  return [].concat(records||[],IVS||[],PILP_IVS||[]).some(function(next){
+    return next&&next.id!==iv.id&&next._chainedFromInterventionId===iv.id
+      &&['en-cours','terminee','avis-passage'].includes(next.s);
+  });
+}
+function reportWritingCreditWindow(iv,records){
+  if(!iv||iv.s!=='terminee'||iv._sdis||iv._crValide!==true||iv._heureFinModifiee
+    ||!iv._crValidePar||!isInterventionReportChef(iv,iv._crValidePar)
+    ||reportWritingCreditHasFollowingIntervention(iv,records))return null;
+  const launch=reportWritingCreditIsoMs(REPORT_WRITING_CREDIT_START_AT);
+  const closed=reportWritingCreditIsoMs(iv._closeClientAtIso);
+  const validated=reportWritingCreditIsoMs(iv._crClientValideAt);
+  const received=reportWritingCreditIsoMs(iv._crValideAt);
+  if(![launch,closed,validated,received].every(Number.isFinite)
+    ||closed<launch||validated<closed||validated>closed+REPORT_WRITING_CREDIT_MAX_MINUTES*60000
+    ||validated>received+2*60000)return null;
+  // L'heure du téléphone doit correspondre à l'heure opérationnelle arrêtée
+  // à la clôture. Un horodatage isolé ou une horloge incohérente ne suffit pas.
+  if(getHHMM(new Date(closed))!==iv._hFin)return null;
+  const minutes=Math.floor((validated-closed)/60000);
+  return minutes>0?{start:closed,minutes:minutes,received:received}:null;
+}
+function reportWritingCreditPresentAtClose(iv,login){
+  return !!(login&&iv&&iv._hFin&&getAgentPresenceOnIV(iv,login).some(function(period){
+    return period.hFin===iv._hFin;
+  }));
+}
+function forEachReportWritingCreditMinute(iv,login,callback,records){
+  const credit=reportWritingCreditWindow(iv,records);
+  if(!credit||(login&&!reportWritingCreditPresentAtClose(iv,login)))return 0;
+  for(let minute=0;minute<credit.minutes;minute++)callback(new Date(credit.start+minute*60000));
+  return credit.minutes;
+}
 function calcTauxIntervention(iv){
   if(!iv._hDebut||!iv._hFin)return null;
   const dateStr=statsInterventionDateKey(iv);
@@ -18274,6 +18325,10 @@ function calcTauxAgentIV(iv,login){
       cur++;
     }
   });
+  forEachReportWritingCreditMinute(iv,login,function(date){
+    const category=getInterventionTauxConfigFor(date,date.getHours(),adminExportReportType(iv)).categorie;
+    if(category==='jour')t100++;else if(category==='dimFerie')t150++;else t200++;
+  });
   return {t100,t150,t200};
 }
 
@@ -18294,6 +18349,10 @@ function calcExportTauxAgentIV(iv,login){
     const category=getInterventionTauxConfigFor(currentDate,hour,adminExportReportType(iv)).categorie;
     if(category==='jour')totals.t100++;else if(category==='dimFerie')totals.t150++;else totals.t200++;
   }
+  forEachReportWritingCreditMinute(iv,login,function(date){
+    const category=getInterventionTauxConfigFor(date,date.getHours(),adminExportReportType(iv)).categorie;
+    if(category==='jour')totals.t100++;else if(category==='dimFerie')totals.t150++;else totals.t200++;
+  });
   const shouldRound=getStatsTaux().exportRoundQuarter!==false&&adminExportReportType(iv)!=='SDIS';
   return {
     t100:shouldRound?adminExportRoundMinutesQuarter(totals.t100):totals.t100,
@@ -18834,7 +18893,7 @@ function adminExportInterventionDurationBounds(iv){
   }
   return {start:iv._hDebut||'',end:iv._hFin||''};
 }
-function adminExportInterventionRates(iv){
+function adminExportInterventionRates(iv,records){
   const bounds=adminExportInterventionDurationBounds(iv);
   const fallbackDuration=adminExportDuration('',bounds.start,bounds.end);
   const fallback={taux1:'',heures1:adminExportRoundDurationQuarter(fallbackDuration,iv),taux2:'',heures2:''};
@@ -18844,10 +18903,6 @@ function adminExportInterventionRates(iv){
   const debut=String(bounds.start).split(':').map(Number),fin=String(bounds.end).split(':').map(Number);
   if([yr,mo,da,debut[0],debut[1],fin[0],fin[1]].some(function(n){return !Number.isFinite(n);}))return fallback;
   let startMin=debut[0]*60+debut[1],endMin=fin[0]*60+fin[1];
-  if(endMin===startMin){
-    const tauxZero=getInterventionTauxConfigFor(new Date(yr,mo,da),debut[0],adminExportReportType(iv)).valeur;
-    return {taux1:tauxZero+'%',heures1:'00:00',taux2:'',heures2:''};
-  }
   if(endMin<startMin)endMin+=1440;
   const totals={},ordre=[];
   for(let cur=startMin;cur<endMin;cur++){
@@ -18857,10 +18912,18 @@ function adminExportInterventionRates(iv){
     totals[taux]=(totals[taux]||0)+1;
     if(!ordre.includes(taux))ordre.push(taux);
   }
+  forEachReportWritingCreditMinute(iv,null,function(date){
+    const taux=getInterventionTauxConfigFor(date,date.getHours(),adminExportReportType(iv)).valeur;
+    totals[taux]=(totals[taux]||0)+1;
+    if(!ordre.includes(taux))ordre.push(taux);
+  },records);
   const parts=ordre.filter(function(taux){return totals[taux]>0;}).map(function(taux){
     return {taux:taux+'%',heures:adminExportFormatInterventionMinutes(totals[taux],iv)};
   });
-  if(!parts.length)return fallback;
+  if(!parts.length){
+    const tauxZero=getInterventionTauxConfigFor(new Date(yr,mo,da),debut[0],adminExportReportType(iv)).valeur;
+    return {taux1:tauxZero+'%',heures1:'00:00',taux2:'',heures2:''};
+  }
   if(parts.length===1)return {taux1:parts[0].taux,heures1:parts[0].heures,taux2:'',heures2:''};
   if(parts.length===2)return {taux1:parts[0].taux,heures1:parts[0].heures,taux2:parts[1].taux,heures2:parts[1].heures};
   return {
@@ -19038,7 +19101,7 @@ function exportAdminMonthlyExcel(){
       return aKey.localeCompare(bKey);
     }).map(function(iv){
       const veh=adminExportVehicles(iv);
-      const rates=adminExportInterventionRates(iv);
+      const rates=adminExportInterventionRates(iv,data.interventions);
       const rapportAuteur=adminExportInterventionChef(iv);
       const isSdis=adminExportReportType(iv)==='SDIS';
       return [
@@ -19111,7 +19174,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0094';
+const APP_VERSION='V202610_0095';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -20450,15 +20513,16 @@ function validerCompteRendu(ivId) {
   if(!texte.trim()){showToast('Saisissez un compte rendu avant de valider','warn');return;}
   if(iv._sdis&&!_sdisValidateHeures(iv))return;
   confirmModal('Valider d\u00e9finitivement le compte rendu\u00a0? Il ne pourra plus \u00eatre modifi\u00e9.',function(){
-    const savedAt=Date.now();
+    const validatedAt=N(),savedAt=validatedAt.getTime();
     writeCompteRenduDraft(ivId,texte,savedAt);
     iv._crTexte          = texte;
     iv._compteRendu      = texte;
     iv._crLocalSavedAt   = savedAt;
     iv._crAuteur         = CU.l;
-    iv._crDate           = getHHMM(N());
+    iv._crDate           = getHHMM(validatedAt);
     iv._crValide         = true;
-    iv._crDateValidation = getHHMM(N());
+    iv._crDateValidation = getHHMM(validatedAt);
+    iv._crClientValideAt = validatedAt.toISOString();
     if(iv._sdis) _sdisSaveFields(iv);
     if(_isFrelonIv(iv)) _frelonSaveFields(iv);
     if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
@@ -23221,7 +23285,7 @@ function _rcOverlayPendingLocalRows(rows,durableRows){
 const RC_OPERATIONAL_STATUSES=['en-attente','selectionne','en-cours','terminee','annulee','avis-passage'];
 const RC_OPERATIONAL_PROTECTED_FIELDS=[
   's','agr','tireur','eng','_engin1','_engin2','_equipage1','_equipage2','_agr2',
-  '_hDebut','_hDebutReelle','_hDebutInitiale','_dateDebut','_hFin','_hFinReelle','_duree',
+  '_hDebut','_hDebutReelle','_hDebutInitiale','_dateDebut','_hFin','_hFinReelle','_closeClientAtIso','_duree',
   '_numGlobal','_numCaserne','_numMois','_numSDIS','_numRenfort','_numberingScheme','_numberFinalized',
   '_routeBatchId','_routeOrder','_routeConfirmedAt','_routeConfirmedBy',
   '_retourAttenteDepuis','_hDebutAvantRetourAttente','_dateDebutAvantRetourAttente','_retourAttenteAt','_retourAttentePar',

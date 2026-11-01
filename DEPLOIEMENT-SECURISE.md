@@ -1,5 +1,30 @@
 # AGAI — déploiement sécurisé
 
+## V202610_0095 — temps de rédaction du compte rendu pour l'équipage
+
+La clôture opérationnelle reste inchangée. Pour une intervention hors SDIS
+clôturée après l'instant exact de publication, une validation par le chef
+d'agrès dans les dix minutes réelles peut ajouter les minutes écoulées aux
+heures indemnisables de l'équipage encore présent à la clôture et à l'export
+Excel. Sans validation dans ce délai, sans horodatage fiable ou si une autre
+intervention s'enchaîne, aucun complément n'est attribué à cette fiche ;
+seule la dernière intervention de la série peut en recevoir un. Les heures
+des agents relevés restent arrêtées à leur relève.
+
+L'heure de validation saisie sur le téléphone est conservée même si la
+synchronisation arrive plus tard ; l'heure de réception est horodatée par le
+serveur. Un contrôle serveur rend ces horodatages immuables et ignore une
+heure invalide sans bloquer la clôture ou le rapport. Déployer d'abord la
+migration `report_writing_credit_timestamps`, contrôler les déclencheurs et
+la synchronisation, puis seulement fixer l'heure de début dans le code et
+publier le client. L'heure de début est le 1er novembre 2026 à 20:48:13 UTC.
+Aucun rapport antérieur ne doit être recalculé.
+
+Ne pas publier sans absence d'intervention et de saisie en cours et sans
+« Sync OK » sur les appareils utilisés. Après publication, vérifier un
+rapport réel dans le cours normal du service ; ne pas créer d'intervention
+de test en production.
+
 ## V202610_0076 — disponibilités partielles et aperçu de reprise des piquets VTU
 
 Les propositions du matin, de l'après-midi, du soir et de la nuit sont
