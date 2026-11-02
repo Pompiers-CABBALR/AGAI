@@ -13643,9 +13643,10 @@ function rAstrPiquets(){
     html+='</div>';
   }
 
-  // Journal des modifications (semaine en cours, visible admin/resp)
-  if(astrPiquetWeek===0&&canAction){
-    const log=PIQUETS._log&&PIQUETS._log[wk]?PIQUETS._log[wk]:[];
+  // Seules les modifications faites après validation figurent au journal.
+  // Les anciennes lignes sans marqueur sont conservées, mais non affichées.
+  if(piquetsValidated&&(isAdmin||isResp)){
+    const log=piquetVisibleChangeLog(wk);
     if(log.length){
       html+='<details style="margin-top:12px;background:var(--bg);border-radius:10px;">'
         +'<summary style="padding:10px 12px;cursor:pointer;font-size:11px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;display:flex;align-items:center;justify-content:space-between;">'
@@ -13654,12 +13655,12 @@ function rAstrPiquets(){
         +'<div style="padding:0 12px 10px;">';
       log.slice().reverse().forEach(function(e){
         html+='<div style="padding:6px 0;border-bottom:1px solid var(--brd);font-size:11px;">'
-          +'<span style="font-weight:600;">'+e.auteur+'</span>'
-          +' <span style="color:var(--t2);">'+e.date+'</span>'
-          +' — <span style="text-transform:uppercase;font-size:10px;background:'+(e.action==='suppression'?'#FEE2E2':e.action==='ajout'?'#DCFCE7':'#FEF9C3')+';padding:1px 6px;border-radius:4px;">'+e.action+'</span>'
-          +' <span>'+e.piquet+'</span>'
-          +(e.membres&&e.membres!=='-'?'<br><span style="color:var(--t2);padding-left:8px;">Membres : '+e.membres+'</span>':'')
-          +(e.details?'<br><span style="color:var(--t2);padding-left:8px;">'+e.details+'</span>':'')
+          +'<span style="font-weight:600;">'+escHtml(String(e.auteur||''))+'</span>'
+          +' <span style="color:var(--t2);">'+escHtml(String(e.date||''))+'</span>'
+          +' — <span style="text-transform:uppercase;font-size:10px;background:'+(e.action==='suppression'?'#FEE2E2':e.action==='ajout'?'#DCFCE7':'#FEF9C3')+';padding:1px 6px;border-radius:4px;">'+escHtml(String(e.action||''))+'</span>'
+          +' <span>'+escHtml(String(e.piquet||''))+'</span>'
+          +(e.membres&&e.membres!=='-'?'<br><span style="color:var(--t2);padding-left:8px;">Membres : '+escHtml(String(e.membres))+'</span>':'')
+          +(e.details?'<br><span style="color:var(--t2);padding-left:8px;">'+escHtml(String(e.details))+'</span>':'')
           +'</div>';
       });
       html+='</div></details>';
@@ -13694,6 +13695,8 @@ document.addEventListener('drop',function(e){
   if(_piquetDragData.wk!==wk)return;
   const p=PIQUETS[wk][_piquetDragData.globalIdx];
   if(!p)return;
+  const original=JSON.stringify(p);
+  const previousSlot=piquetDepartureLabel(p.engin)+' '+p.jour+' '+p.debut+'-'+p.fin;
   // Changer de tranche applique les horaires de référence de cette période.
   const tranchesHoraires={m:['08:00','12:00'],a:['12:00','18:00'],s:['18:00','00:00'],n:['00:00','08:00']};
   const anciennesHeures=[p.debut,p.fin];
@@ -13722,6 +13725,7 @@ document.addEventListener('drop',function(e){
   p.jour=jour;
   if(newEngin&&newEngin!==p.engin)p.engin=newEngin;
   _piquetDragData=null;
+  if(JSON.stringify(p)!==original)logPiquetChange(wk,'modification',p,'Déplacé depuis '+previousSlot);
   saveData();rAstrPiquets();
 });
 
@@ -13748,6 +13752,7 @@ function editPiquet(wk,globalIdx){
 
 function confirmEditPiquet(wk,globalIdx){
   const p=PIQUETS[wk]?.[globalIdx];if(!p)return;
+  const original=JSON.stringify(p);
   const enginEl=document.getElementById('pq-engin');
   const jour=document.getElementById('pq-jour').value;
   const debut=document.getElementById('pq-debut').value;
@@ -13776,13 +13781,19 @@ function confirmEditPiquet(wk,globalIdx){
   p.chefAgres=ca?ca.login:'';p.conducteur=co?co.login:'';
   p.chefEquipe=ceq?ceq.login:'';p.stagiaire=eq?eq.login:'';
   delete p._tranche;
-  if(astrPiquetWeek===0) logPiquetChange(wk,'modification',p);
+  if(JSON.stringify(p)!==original)logPiquetChange(wk,'modification',p);
   saveData();cM();rAstrPiquets();
 }
 
 
 
+function piquetVisibleChangeLog(wk){
+  return (PIQUETS._log&&PIQUETS._log[wk]||[]).filter(function(entry){
+    return entry&&entry.apresValidation===true;
+  });
+}
 function logPiquetChange(wk, action, piquet, details) {
+  if(PIQUETS_VALIDATED[wk]!==true)return false;
   if(!PIQUETS._log) PIQUETS._log = {};
   if(!PIQUETS._log[wk]) PIQUETS._log[wk] = [];
   const membres = (piquet.membres||[]).map(function(m){
@@ -13790,6 +13801,7 @@ function logPiquetChange(wk, action, piquet, details) {
     return (u ? u.nom+' '+u.prenom : m.login) + ' ('+m.role+')';
   }).join(', ');
   PIQUETS._log[wk].push({
+    apresValidation: true,
     date: new Date().toLocaleString('fr-FR'),
     auteur: CU ? CU.nom+' '+CU.prenom : '?',
     action: action,
@@ -13798,6 +13810,7 @@ function logPiquetChange(wk, action, piquet, details) {
     details: details||''
   });
   if(CD()) CD().piquets = PIQUETS;
+  return true;
 }
 
 function delPiquet(wk,globalIdx){
@@ -13813,6 +13826,9 @@ function clearPiquetsSemaine(){
   const mon=getMondayOfWeek(astrPiquetWeek);
   const wk=weekKey(mon);
   confirmModal('Supprimer tous les créneaux de la semaine '+weekLabel(mon)+' ?',function(){
+    (PIQUETS[wk]||[]).forEach(function(p){
+      logPiquetChange(wk,'suppression',p,'Effacement de la semaine');
+    });
     PIQUETS[wk]=[];
     if(CD())CD().piquets=PIQUETS;
     saveData();rAstrPiquets();
@@ -19174,7 +19190,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202610_0095';
+const APP_VERSION='V202611_0001';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -26090,7 +26106,7 @@ function confirmAddPiquet(wk,engin){
     chefAgres:ca?ca.login:'',conducteur:co?co.login:'',
     chefEquipe:ceq?ceq.login:'',stagiaire:eq?eq.login:''};
   PIQUETS[wk].push(newP);
-  if(astrPiquetWeek===0) logPiquetChange(wk,'ajout',newP);
+  logPiquetChange(wk,'ajout',newP);
   saveData();cM();rAstrPiquets();
 }
 

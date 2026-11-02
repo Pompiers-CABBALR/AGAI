@@ -218,12 +218,15 @@ test('la proposition complète utilise uniquement chef et conducteur, avec prior
   assert.match(html,/Enregistrer en groupe les 28 créneaux proposés/);
   assert.doesNotMatch(html,/Équipier/);
 });
-test('la confirmation enregistre les 28 binômes en une seule sauvegarde sans valider la semaine',()=>{
+test('la confirmation enregistre les 28 binômes sans créer de journal avant validation',()=>{
   const {context}=contextFor([{l:'ca-f',chief:true},{l:'conducteur-f'}]);
-  const calls={confirm:null,saved:[],logs:0,closed:0,rendered:0};
+  const calls={confirm:null,saved:[],closed:0,rendered:0};
   context.confirmModal=(message,callback)=>{calls.confirm={message,callback};};
   context.saveData=immediate=>calls.saved.push(immediate);
-  context.logPiquetChange=()=>{calls.logs++;};
+  context.CU={nom:'Responsable',prenom:'Test'};
+  context.CD=()=>null;
+  vm.runInContext(functionSource(fs.readFileSync(path.join(__dirname,'../modules/12-astreintes-js.js'),'utf8'),
+    'logPiquetChange'),context);
   context.cM=()=>{calls.closed++;};
   context.rAstrPiquets=()=>{calls.rendered++;};
   preview(context);
@@ -234,7 +237,7 @@ test('la confirmation enregistre les 28 binômes en une seule sauvegarde sans va
   calls.confirm.callback();
   assert.equal(context.PIQUETS.week.length,28);
   assert.ok(context.PIQUETS.week.every(p=>p.membres.length===2&&p.chefAgres!==p.conducteur));
-  assert.equal(calls.logs,28);
+  assert.equal(context.PIQUETS._log,undefined,'aucune des 28 préparations ne figure au journal');
   assert.equal(JSON.stringify(calls.saved),JSON.stringify([true]));
   assert.equal(calls.closed,1);
   assert.equal(calls.rendered,1);
