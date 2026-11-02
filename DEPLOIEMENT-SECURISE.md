@@ -1,5 +1,18 @@
 # AGAI — déploiement sécurisé
 
+## V202611_0006 — chef de corps visible dans le personnel de l'État-major
+
+La liste « Gestion Utilisateur » de l'État-major affiche le chef de corps
+depuis son compte global, même lorsqu'elle est ouverte par le superadmin.
+La ligne comporte les mêmes colonnes que les autres personnels, mais les
+droits y sont en lecture seule. Seul le superadmin aux pouvoirs actifs peut
+ouvrir la modification du compte global. Aucune fiche utilisateur de l'État-
+major n'est créée, et le compte ne peut pas apparaître deux fois.
+
+Publication purement visuelle : attendre l'absence d'intervention et de
+saisie en cours ainsi que « Sync OK » avant de mettre en ligne. Le
+rechargement de la nouvelle version reste proposé manuellement.
+
 ## Protection serveur — attribution des droits administrateur
 
 Seul le superadministrateur peut ajouter ou retirer un administrateur de
