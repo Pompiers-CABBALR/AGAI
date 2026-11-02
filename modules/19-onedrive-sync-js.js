@@ -1043,7 +1043,7 @@ function confirmAddPiquet(wk,engin){
     chefAgres:ca?ca.login:'',conducteur:co?co.login:'',
     chefEquipe:ceq?ceq.login:'',stagiaire:eq?eq.login:''};
   PIQUETS[wk].push(newP);
-  if(astrPiquetWeek===0) logPiquetChange(wk,'ajout',newP);
+  logPiquetChange(wk,'ajout',newP);
   saveData();cM();rAstrPiquets();
 }
 

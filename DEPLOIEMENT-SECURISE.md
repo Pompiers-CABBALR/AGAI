@@ -1,5 +1,24 @@
 # AGAI — déploiement sécurisé
 
+## V202610_0096 — journal des piquets après validation uniquement
+
+Les ajouts, changements et suppressions effectués pendant la préparation
+d'une semaine ne créent plus de lignes dans le journal. Dès que les piquets
+sont validés, chaque ajout, modification, déplacement ou suppression est
+journalisé. L'effacement de toute une semaine validée trace chacun des
+créneaux retirés. Le journal reste consultable sur une semaine validée,
+y compris passée, pour les responsables d'équipe et les administrateurs.
+
+Les anciennes lignes, qui ne portaient pas de marque indiquant si elles
+étaient antérieures ou postérieures à la validation, restent conservées
+dans les données mais sont masquées dans ce journal afin de ne pas présenter
+des brouillons comme des changements validés. Aucun piquet existant n'est
+modifié par la publication.
+
+Avant publication, confirmer l'absence d'intervention ou de saisie en cours
+et « Sync OK » sur les appareils utilisés. Ne pas créer de piquet de test
+en production ; vérifier le journal lors d'une prochaine modification réelle.
+
 ## V202610_0095 — temps de rédaction du compte rendu pour l'équipage
 
 La clôture opérationnelle reste inchangée. Pour une intervention hors SDIS
