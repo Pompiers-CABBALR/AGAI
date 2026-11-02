@@ -11560,6 +11560,26 @@ async function loadPersonnelAudit(){
     list.innerHTML='';
   }
 }
+function renderChefCorpsPersonnelRow(cc,rights,editable){
+  const rightsCC=Array.isArray(cc.rightsCC)?cc.rightsCC:[];
+  const rightCells=rights.map(function(right){
+    return '<td style="text-align:center;"><input type="checkbox" '+(rightsCC.includes(right)?'checked ':'')+'disabled title="Droit du compte global — modification par le superadmin"></td>';
+  }).join('');
+  const trainer=(Array.isArray(cc.fonctionsFormateur)?cc.fonctionsFormateur:[]).join(', ')||'—';
+  return '<tr style="background:#EFF6FF;">'
+    +'<td style="font-size:12px;">'+escHtml(cc.matricule||'—')+'</td>'
+    +'<td style="font-size:12px;font-weight:500;">'+escHtml(cc.nom||'')+' <span style="font-size:10px;background:#DBEAFE;color:#1D4ED8;padding:2px 7px;border-radius:8px;font-weight:600;">Chef de corps · compte global</span></td>'
+    +'<td style="font-size:12px;">'+escHtml(cc.prenom||'')+'</td>'
+    +'<td style="font-size:12px;color:var(--t2);">'+escHtml(cc.grade||'')+'</td>'
+    +'<td style="font-size:12px;color:var(--t2);">'+escHtml(cc.fonction||'')+'</td>'
+    +'<td style="font-size:12px;color:var(--t2);">'+escHtml(cc.fonction2||'—')+'</td>'
+    +'<td style="font-family:monospace;font-size:11px;color:var(--t2);">'+escHtml(cc.l||'')+'</td>'
+    +'<td style="color:var(--t2);font-size:11px;">—</td>'
+    +rightCells
+    +'<td style="font-size:11px;color:var(--t2);">'+escHtml(trainer)+'</td>'
+    +'<td style="text-align:center;">'+(editable?'<button class="btn sm" onclick="ccEditMesInfos()">✏️ Modifier</button>':'—')+'</td>'
+    +'</tr>';
+}
 function rAdm(){
   // Reconstruire les selects grade/fonction seulement si le formulaire est fermé
   const addFormOpen = document.getElementById('admin-add')&&document.getElementById('admin-add').style.display!=='none';
@@ -11576,7 +11596,9 @@ function rAdm(){
   const tbody=document.getElementById('admin-tbody');if(!tbody)return;
   const RIGHTS_SHORT=['Prise d\'appel','Interventions','Historique complet','Chef d\'agrès','Tireur PILP','Administration','Formation'];
   // USERS contient déjà le superadmin via syncCaserneContext
-  const sorted=sortByName(PERSONNEL_ONLINE_GATE?USERS.filter(personnelIsOnActiveRoster):USERS);
+  const cc=CURRENT_CASERNE_ID==='EMAJ'?getChefCorpsAccount():null;
+  const sorted=sortByName((PERSONNEL_ONLINE_GATE?USERS.filter(personnelIsOnActiveRoster):USERS)
+    .filter(function(user){return !cc||user.l!==cc.l;}));
   const caserneAdminLogins=new Set(getCaserneAdmins(CURRENT_CASERNE_ID).map(function(admin){return admin.l;}));
   tbody.innerHTML=sorted.map(u=>{
     const isSA=u._isSA===true;
@@ -11633,30 +11655,11 @@ function rAdm(){
     const formateurCell=`<td style="padding:4px 6px;"><div class="admin-trainer-functions">${colsHtml}</div></td>`;
     return `<tr>${matriculeCell}${nomCell}${prenomCell}${gradeCell}${fonctionCell}${fonct2Cell}<td style="font-family:monospace;font-size:11px;color:var(--t2);">${u.l}</td>${pwdCell}${rightsCell}${formateurCell}${delCell}</tr>`;
   }).join('');
-  // Dans l'espace État-Major : afficher la ligne du chef de corps (compte global), modifiable via sa modale
-  if(CURRENT_CASERNE_ID==='EMAJ'&&GLOBAL_ROLE==='chef_corps'){
-    const cc=GLOBAL_ACCOUNTS.find(function(a){return a.role==='chef_corps';});
-    if(cc){
-      const ff=(cc.fonctionsFormateur||[]).join(', ')||'—';
-      const ccRow='<tr style="background:#EFF6FF;">'
-        +'<td style="font-size:12px;">'+escHtml(cc.matricule||'—')+'</td>'
-        +'<td style="font-size:12px;font-weight:500;">'+escHtml(cc.nom||'')+' <span style="font-size:10px;background:#DBEAFE;color:#1D4ED8;padding:2px 7px;border-radius:8px;font-weight:600;">Chef de Corps</span></td>'
-        +'<td style="font-size:12px;">'+escHtml(cc.prenom||'')+'</td>'
-        +'<td style="font-size:12px;color:var(--t2);">'+escHtml(cc.grade||'')+'</td>'
-        +'<td style="font-size:12px;color:var(--t2);">'+escHtml(cc.fonction||'')+'</td>'
-        +'<td style="color:var(--t2);font-size:11px;text-align:center;">—</td>'
-        +'<td style="font-family:monospace;font-size:11px;color:var(--t2);">'+escHtml(cc.l||'')+'</td>'
-        +'<td style="color:var(--t2);font-size:11px;">—</td>'
-        +'<td style="color:var(--t2);font-size:11px;text-align:center;">—</td>'
-        +'<td style="font-size:11px;color:var(--t2);">'+escHtml(ff)+'</td>'
-        +'<td style="text-align:center;"><button style="background:var(--bg);color:#1D4ED8;border:1px solid #1D4ED8;border-radius:5px;padding:3px 8px;font-size:11px;cursor:pointer;" onclick="ccEditMesInfos()">&#x270F;&#xFE0F; Modifier</button></td>'
-        +'</tr>';
-      tbody.innerHTML=ccRow+tbody.innerHTML;
-    }
-  }
+  // Compte global : visible dans l'État-major, sans créer une seconde fiche utilisateur.
+  if(cc)tbody.innerHTML=renderChefCorpsPersonnelRow(cc,RIGHTS_SHORT,isSuperAdmin())+tbody.innerHTML;
   const archiveBox=document.getElementById('admin-personnel-archives');
   if(archiveBox){
-    const archived=PERSONNEL_ONLINE_GATE?sortByName(USERS.filter(function(user){return user&&!personnelIsOnActiveRoster(user);})):[];
+    const archived=PERSONNEL_ONLINE_GATE?sortByName(USERS.filter(function(user){return user&&(!cc||user.l!==cc.l)&&!personnelIsOnActiveRoster(user);})):[];
     archiveBox.style.display=PERSONNEL_ONLINE_GATE?'':'none';
     archiveBox.innerHTML='<div style="font-size:13px;font-weight:700;margin-bottom:8px;">Historique du personnel sorti ('+archived.length+')</div>'
       +(archived.length?archived.map(function(user){
@@ -19318,7 +19321,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202611_0005';
+const APP_VERSION='V202611_0006';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
