@@ -1,5 +1,17 @@
 # AGAI — déploiement sécurisé
 
+## V202611_0004 — compteurs plus compacts sur smartphone
+
+Les cinq compteurs de l'accueil gardent deux lignes sur smartphone, avec
+des chiffres, libellés, espacements et marges intérieures réduits. Les
+informations restent complètes et la présentation sur ordinateur est
+inchangée. La carte PILP conserve sa ligne distincte. Aucun statut ni
+aucune donnée d'intervention n'est modifié.
+
+Avant publication, confirmer l'absence d'intervention ou de saisie en cours
+et « Sync OK » sur les appareils utilisés. Après publication, attendre que
+le téléphone propose la nouvelle version puis vérifier l'accueil.
+
 ## V202611_0003 — disposition des compteurs de l'accueil
 
 Les cinq compteurs sont alignés sur une seule ligne sur ordinateur. Sur

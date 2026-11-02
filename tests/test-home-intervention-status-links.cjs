@@ -117,6 +117,9 @@ test('les cinq compteurs occupent deux lignes sur téléphone et une sur ordinat
   assert.match(styles,/@media\(min-width:768px\)\{\s*\.accueil-stats\{grid-template-columns:repeat\(5,minmax\(0,1fr\)\);\}/);
   assert.match(styles,/\.acc-stat\.pilp\{grid-column:1\/-1;\}/);
   assert.equal((styles.match(/\.accueil-stats\{grid-template-columns:/g)||[]).length,1,'aucune règle ultérieure ne doit rétablir quatre colonnes');
+  assert.match(styles,/@media\(max-width:767px\)\{\s*\.accueil-stats\{gap:6px;\}/);
+  assert.match(styles,/\.accueil-stats \.acc-stat:not\(\.pilp\)\{padding:8px 5px;/);
+  assert.match(styles,/\.accueil-stats \.acc-stat-summary \.acc-stat-val\{font-size:clamp\(20px,6\.5vw,26px\);\}/);
 });
 
 test('les fonctions du module et du bundle restent identiques',()=>{
