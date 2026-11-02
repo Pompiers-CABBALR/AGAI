@@ -640,7 +640,8 @@ function sN(label,el){
   document.querySelectorAll('#nl [onclick]').forEach(i=>{i.style.background='';i.style.color='var(--t)';i.style.fontWeight='';});
   el.style.background='var(--rl)';el.style.color='var(--rd)';el.style.fontWeight='500';
   document.getElementById('bn').disabled=false;
-  document.getElementById('pilp-appel-chk').style.display='none'; // PILP direct désactivé
+  document.getElementById('pilp-appel-chk').style.display=label==='Nid de frelons asiatiques'?'':'none';
+  if(label!=='Nid de frelons asiatiques')document.getElementById('chk-pilp-direct').checked=false;
   // Deux clics ou deux appuis rapprochés : fonctionne aussi sur iPhone et Android.
   if(doubleTap){_natureLastTapLabel='';_natureLastTapAt=0;gS(2);}
 }
