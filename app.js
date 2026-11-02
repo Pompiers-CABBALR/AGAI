@@ -5826,7 +5826,8 @@ function sN(label,el){
   document.querySelectorAll('#nl [onclick]').forEach(i=>{i.style.background='';i.style.color='var(--t)';i.style.fontWeight='';});
   el.style.background='var(--rl)';el.style.color='var(--rd)';el.style.fontWeight='500';
   document.getElementById('bn').disabled=false;
-  document.getElementById('pilp-appel-chk').style.display='none'; // PILP direct désactivé
+  document.getElementById('pilp-appel-chk').style.display=label==='Nid de frelons asiatiques'?'':'none';
+  if(label!=='Nid de frelons asiatiques')document.getElementById('chk-pilp-direct').checked=false;
   // Deux clics ou deux appuis rapprochés : fonctionne aussi sur iPhone et Android.
   if(doubleTap){_natureLastTapLabel='';_natureLastTapAt=0;gS(2);}
 }
@@ -6890,6 +6891,12 @@ function enr(){
   const _adr=document.getElementById('fa')?document.getElementById('fa').value.trim():'';
   const nidsAppel=getAppelNids();
   const natureAppel=appelNaturePrioritaire(nidsAppel);
+  if(document.getElementById('chk-pilp-direct')?.checked&&natureAppel==='Nid de frelons asiatiques'){
+    const declaredHeight=pilpHeightNumber((nidsAppel[0]||{}).hauteur);
+    if(!Number.isFinite(declaredHeight)||declaredHeight<=0){
+      showToast('Indiquez la hauteur déclarée du nid avant de classer directement en PILP. La reconnaissance reste non réalisée.','warn');return;
+    }
+  }
   const activeDuplicate=findActiveDuplicateIntervention(natureAppel,addrBase,com);
   if(activeDuplicate){
     showActiveDuplicateCallModal(activeDuplicate);
@@ -6917,7 +6924,8 @@ function enr(){
       // Aucun numéro d'intervention tant que la PILP reste en attente.
       n:'Nid de frelons asiatiques — PILP',addr,_addrBase:addrBase,_addressCoordinates:addrSelectedCoords?addrSelectedCoords.slice():null,_gpsCoordinates:gps.coordinates,com,h,
       req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,_additionalRequesters:additionalRequesters,reqDispo,_nidsAppel:nidsAppel,_erp:erp,_urgence:erp,
-      localisation:primaryNid.localisation||null,hauteur:Number.isFinite(primaryHeight)?primaryHeight:null,reconnaissanceFaite:null,_pilpReconnaissanceChef:null,axeTir:null,_axeTirEtat:'a-verifier',_pilpPeriode:'a-determiner',_pilpPeriodePrecision:'',_pilpPlanningUpdatedAt:Date.now(),_pilpPlanningUpdatedBy:CU.l,obs:det,
+      op:CU.l,localisation:primaryNid.localisation||null,hauteur:Number.isFinite(primaryHeight)?primaryHeight:null,reconnaissanceFaite:false,_pilpReconnaissanceChef:null,axeTir:null,_axeTirEtat:'a-verifier',_pilpPeriode:'a-determiner',_pilpPeriodePrecision:'',_pilpPlanningUpdatedAt:Date.now(),_pilpPlanningUpdatedBy:CU.l,obs:det,
+      _appelDetails:Object.assign({},appelDetails||{},{'Hauteur déclarée':Number.isFinite(primaryHeight)?primaryHeight+' m':'Non renseignée','Reconnaissance':'Non réalisée'}),
       // Une PILP en attente reste libre : l'opérateur qui prend l'appel
       // n'est pas automatiquement le chef d'agrès ni le tireur.
       s:'en-attente',agr:null,tireur:null,rappels:exIv.length+exPilp.length,
@@ -8580,6 +8588,13 @@ function oM(id){
     <button class="btn sm" onclick="reclasser('${iv.id}')">✏️ Appliquer</button>
   </div>`:'';
   const linkedPilp=linkedPilpForSource(iv);
+  const requalPilpHtml=iv.s==='en-attente'&&!pilpScope&&!iv._isRenfort&&!iv._sdis&&!iv._lienPilp&&!iv._pilpId&&!iv._isPilip
+    &&iv.n==='Nid de frelons asiatiques'&&isAdminModeActive()
+    ?`<div style="background:var(--pilpl);border:1.5px solid var(--pilp);border-radius:10px;padding:10px 12px;margin-bottom:10px;">
+      <div style="font-size:12px;font-weight:700;color:var(--pilp);margin-bottom:6px;">🎯 Requalifier cet appel en PILP</div>
+      <div style="font-size:11px;color:var(--t2);margin-bottom:8px;">Conserve l’APL et l’historique. La hauteur reste déclarative ; reconnaissance non réalisée.</div>
+      <button class="btn pilp-btn sm" onclick="showPendingPilpRequalification('${iv.id}')">Requalifier en PILP</button>
+    </div>`:'';
   const retroPilpHtml=iv.s==='terminee'&&!pilpScope&&!iv._isRenfort&&iv.n==='Nid de frelons asiatiques'&&isAdminModeActive()
     ?`<div style="background:var(--pilpl);border:1.5px solid var(--pilp);border-radius:10px;padding:10px 12px;margin-bottom:10px;">
       <div style="font-size:12px;font-weight:700;color:var(--pilp);margin-bottom:6px;">🎯 Intervention PILP après clôture</div>
@@ -8878,7 +8893,7 @@ function oM(id){
       </summary>
       <div style="padding:0 12px 10px 12px;">${tlHtml||'<div style="font-size:12px;color:var(--t2);">Aucun historique.</div>'}</div>
     </details>`:''}
-    ${retroPilpHtml}${reclassHtml}${operationalScheduleWarningHTML(iv)}${actions}`;
+    ${requalPilpHtml}${retroPilpHtml}${reclassHtml}${operationalScheduleWarningHTML(iv)}${actions}`;
   document.getElementById('mo').style.display='flex';
 }
 function setAgr2(ivId,login){
@@ -9794,6 +9809,92 @@ function linkedPilpForSource(iv){
   if(!iv)return null;
   return (PILP_IVS||[]).find(function(pilp){return pilp&&(pilp.ivRef===iv.id||(iv._pilpId&&pilp.id===iv._pilpId));})||null;
 }
+const _pendingPilpRequalificationInFlight=new Set();
+function showPendingPilpRequalification(ivId){
+  const iv=IVS.find(function(item){return item&&item.id===ivId;});
+  if(!iv||iv.s!=='en-attente'||iv.n!=='Nid de frelons asiatiques'||iv._isRenfort||iv._sdis||iv._lienPilp||iv._pilpId||!isAdminModeActive())return;
+  const operator=String(iv.op||'').trim();
+  const person=USERS.find(function(user){return user&&user.l===operator;});
+  const operatorField=operator
+    ?'<strong>'+escHtml(person?fullName(person):operator)+'</strong> <span style="color:var(--t2);">('+escHtml(operator)+')</span>'
+    :'<select class="fi" id="pilp-requal-operator"><option value="">Choisir l’opérateur de l’appel</option>'
+      +USERS.filter(function(user){return user&&user.l;}).slice().sort(function(a,b){return fullName(a).localeCompare(fullName(b),'fr');})
+        .map(function(user){return '<option value="'+escHtml(user.l)+'">'+escHtml(fullName(user))+'</option>';}).join('')+'</select>';
+  document.getElementById('mt').textContent='Requalifier en PILP';
+  document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
+  document.getElementById('mb').innerHTML='<div style="font-size:12px;line-height:1.45;">'
+    +'<p style="margin-bottom:12px;">L’appel reste le même. L’intervention normale en attente sera archivée ; la fiche PILP reprendra son numéro, ses informations et son historique. Aucune reconnaissance sur place ne sera déclarée.</p>'
+    +'<div class="fg"><div class="fgl">Opérateur ayant pris l’appel *</div>'+operatorField+'</div>'
+    +'<div class="fg"><label class="fgl" for="pilp-requal-height">Hauteur annoncée du nid (m) *</label>'
+    +'<input class="fi" id="pilp-requal-height" type="number" min="0.1" max="100" step="0.1" inputmode="decimal" value="'+escHtml(pilpHeightInputValue(iv))+'"/></div>'
+    +'<div style="padding:8px 10px;background:#FEF3C7;border-radius:8px;color:#92400E;margin-bottom:12px;">Reconnaissance : non réalisée. La hauteur provient de l’appel.</div>'
+    +'<div class="brow"><button class="btn pilp-btn sm" id="pilp-requal-send" onclick="confirmPendingPilpRequalification(\''+escHtml(ivId)+'\')">Confirmer la requalification</button>'
+    +'<button class="btn sm" onclick="cM()">Annuler</button></div></div>';
+  document.getElementById('mo').style.display='flex';
+}
+async function confirmPendingPilpRequalification(ivId){
+  if(_pendingPilpRequalificationInFlight.has(ivId))return;
+  const iv=IVS.find(function(item){return item&&item.id===ivId;});
+  if(!iv||iv.s!=='en-attente'||iv.n!=='Nid de frelons asiatiques'||iv._isRenfort||iv._sdis||iv._lienPilp||iv._pilpId||!isAdminModeActive()){
+    showToast('Cette fiche ne peut plus être requalifiée.','warn');return;
+  }
+  const operator=String(iv.op||document.getElementById('pilp-requal-operator')?.value||'').trim();
+  const height=pilpHeightNumber(document.getElementById('pilp-requal-height')?.value);
+  if(!operator||!Number.isFinite(height)||height<=0||height>100){
+    showToast('Sélectionnez l’opérateur de l’appel et indiquez une hauteur positive (100 m maximum).','warn');return;
+  }
+  if(typeof USE_RECORDS==='undefined'||!USE_RECORDS||!_agaiAuthAccessToken()||navigator.onLine===false){
+    showToast('Connexion au serveur requise pour requalifier cet appel.','warn');return;
+  }
+  if(typeof _rcPendingCountInScope==='function'&&_rcPendingCountInScope()>0){
+    showToast('Des actions restent à synchroniser dans cette caserne. Conservez-les et réessayez après « Sync OK ».','warn');return;
+  }
+  const button=document.getElementById('pilp-requal-send');
+  if(button)button.disabled=true;
+  _pendingPilpRequalificationInFlight.add(ivId);
+  const station=CURRENT_CASERNE_ID,login=CU.l;
+  try{
+    const response=await _agaiAuthFetchWithTimeout(SB_URL+'/rest/v1/rpc/agai_requalify_pending_pilp',{
+      method:'POST',
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+_agaiAuthAccessToken(),'Content-Type':'application/json'},
+      body:JSON.stringify({
+        p_source_record_id:_rcId(station,'iv',ivId),
+        p_operator_login:operator,p_declared_height:height,
+        p_action_key:aplCreationActionKey('pilp-requal',ivId),
+        p_expected_record_revision:Number(iv._serverRevision)||0
+      })
+    },15000);
+    if(!response.ok){
+      let code='';try{code=(await response.json()).message||'';}catch(_error){}
+      const messages={
+        AGAI_PILP_REQUAL_ROLE_FORBIDDEN:'Requalification réservée aux administrateurs.',
+        AGAI_PILP_REQUAL_SOURCE_FORBIDDEN:'Cette intervention n’est plus requalifiable. Actualisez la liste.',
+        AGAI_PILP_REQUAL_STALE_SOURCE:'La fiche a changé. Actualisez-la avant de réessayer.',
+        AGAI_PILP_REQUAL_OPERATOR_MISMATCH:'L’opérateur ne correspond pas à celui enregistré sur l’appel.',
+        AGAI_PILP_REQUAL_OPERATOR_UNKNOWN:'Opérateur inconnu dans cette caserne.',
+        AGAI_PILP_REQUAL_ALREADY_PROCESSED:'Cet appel a déjà été requalifié.'
+      };
+      throw new Error(messages[code]||(response.status===404?'Requalification indisponible sur le serveur.':'Requalification non enregistrée (HTTP '+response.status+').'));
+    }
+    const result=await response.json();
+    if(!result||result.ok!==true||!result.pilpId)throw new Error('Réponse serveur incomplète. Actualisez avant de réessayer.');
+    clearAplCreationActionKey('pilp-requal',ivId);
+    if(CURRENT_CASERNE_ID!==station||!CU||CU.l!==login){
+      showToast('Requalification enregistrée, mais la session a changé. Reconnectez-vous pour la consulter.','warn');return;
+    }
+    const refreshed=await _rcPull(true,false,true);
+    if(!refreshed||!PILP_IVS.some(function(item){return item&&item.id===result.pilpId;})){
+      showToast('Requalification enregistrée sur le serveur. La fiche PILP apparaîtra après la prochaine synchronisation.','warn');return;
+    }
+    cM();openAccueilInterventionFilter('pilp','en-attente');
+    showToast('Appel requalifié en PILP — reconnaissance non réalisée.','success');
+  }catch(error){
+    showToast(error&&error.message||'Requalification non confirmée ; actualisez avant de réessayer.','warn');
+  }finally{
+    _pendingPilpRequalificationInFlight.delete(ivId);
+    if(button)button.disabled=false;
+  }
+}
 function pilpHeightNumber(value){
   const text=String(value??'').trim().replace(/\s*m$/i,'').replace(',','.');
   if(!text)return null;
@@ -9823,7 +9924,7 @@ function pilpReconnaissanceChefOptions(selected){
   chefs.sort(function(a,b){return fullName(a).localeCompare(fullName(b),'fr');});
   return '<option value="">Choisir le chef d’agrès</option>'+chefs.map(function(user){return '<option value="'+escHtml(user.l)+'"'+(user.l===selected?' selected':'')+'>'+escHtml(fullName(user))+'</option>';}).join('');
 }
-function pilpReconnaissanceAConfirmer(iv){return !!(iv&&iv.reconnaissanceFaite!==true&&!iv.ivRef);}
+function pilpReconnaissanceAConfirmer(iv){return !!(iv&&iv.reconnaissanceFaite==null&&!iv.ivRef);}
 function pilpReconnaissanceLabel(iv){
   if(iv&&iv.reconnaissanceFaite===true)return '✅ Reconnaissance réalisée — '+pilpReconnaissanceChefLabel(iv);
   return pilpReconnaissanceAConfirmer(iv)?'⚠️ Reconnaissance à confirmer':'❌ Reconnaissance non réalisée';
@@ -19217,7 +19318,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202611_0004';
+const APP_VERSION='V202611_0005';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;

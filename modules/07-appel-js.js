@@ -1065,6 +1065,12 @@ async function enr(){
   const _adr=document.getElementById('fa')?document.getElementById('fa').value.trim():'';
   const nidsAppel=getAppelNids();
   const natureAppel=appelNaturePrioritaire(nidsAppel);
+  if(document.getElementById('chk-pilp-direct')?.checked&&natureAppel==='Nid de frelons asiatiques'){
+    const declaredHeight=pilpHeightNumber((nidsAppel[0]||{}).hauteur);
+    if(!Number.isFinite(declaredHeight)||declaredHeight<=0){
+      showToast('Indiquez la hauteur déclarée du nid avant de classer directement en PILP. La reconnaissance reste non réalisée.','warn');return;
+    }
+  }
   const activeDuplicate=findActiveDuplicateIntervention(natureAppel,addrBase,com);
   if(activeDuplicate){
     showActiveDuplicateCallModal(activeDuplicate);
@@ -1105,7 +1111,8 @@ async function enr(){
       // Aucun numéro d'intervention tant que la PILP reste en attente.
       n:'Nid de frelons asiatiques — PILP',addr,_addrBase:addrBase,_addressCoordinates:addrSelectedCoords?addrSelectedCoords.slice():null,_gpsCoordinates:gps.coordinates,com,h,
       req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,_additionalRequesters:additionalRequesters,reqDispo,_nidsAppel:nidsAppel,_erp:erp,_urgence:erp,
-      localisation:primaryNid.localisation||null,hauteur:Number.isFinite(primaryHeight)?primaryHeight:null,reconnaissanceFaite:null,_pilpReconnaissanceChef:null,axeTir:null,_axeTirEtat:'a-verifier',_pilpPeriode:'a-determiner',_pilpPeriodePrecision:'',_pilpPlanningUpdatedAt:Date.now(),_pilpPlanningUpdatedBy:CU.l,obs:det,
+      op:CU.l,localisation:primaryNid.localisation||null,hauteur:Number.isFinite(primaryHeight)?primaryHeight:null,reconnaissanceFaite:false,_pilpReconnaissanceChef:null,axeTir:null,_axeTirEtat:'a-verifier',_pilpPeriode:'a-determiner',_pilpPeriodePrecision:'',_pilpPlanningUpdatedAt:Date.now(),_pilpPlanningUpdatedBy:CU.l,obs:det,
+      _appelDetails:Object.assign({},appelDetails||{},{'Hauteur déclarée':Number.isFinite(primaryHeight)?primaryHeight+' m':'Non renseignée','Reconnaissance':'Non réalisée'}),
       // Une PILP en attente reste libre : l'opérateur qui prend l'appel
       // n'est pas automatiquement le chef d'agrès ni le tireur.
       s:'en-attente',agr:null,tireur:null,rappels:exIv.length+exPilp.length,

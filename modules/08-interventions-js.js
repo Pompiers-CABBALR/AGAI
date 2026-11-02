@@ -1562,6 +1562,13 @@ function oM(id){
     <button class="btn sm" onclick="reclasser('${iv.id}')">✏️ Appliquer</button>
   </div>`:'';
   const linkedPilp=linkedPilpForSource(iv);
+  const requalPilpHtml=iv.s==='en-attente'&&!pilpScope&&!iv._isRenfort&&!iv._sdis&&!iv._lienPilp&&!iv._pilpId&&!iv._isPilip
+    &&iv.n==='Nid de frelons asiatiques'&&isAdminModeActive()
+    ?`<div style="background:var(--pilpl);border:1.5px solid var(--pilp);border-radius:10px;padding:10px 12px;margin-bottom:10px;">
+      <div style="font-size:12px;font-weight:700;color:var(--pilp);margin-bottom:6px;">🎯 Requalifier cet appel en PILP</div>
+      <div style="font-size:11px;color:var(--t2);margin-bottom:8px;">Conserve l’APL et l’historique. La hauteur reste déclarative ; reconnaissance non réalisée.</div>
+      <button class="btn pilp-btn sm" onclick="showPendingPilpRequalification('${iv.id}')">Requalifier en PILP</button>
+    </div>`:'';
   const retroPilpHtml=iv.s==='terminee'&&!pilpScope&&!iv._isRenfort&&iv.n==='Nid de frelons asiatiques'&&isAdminModeActive()
     ?`<div style="background:var(--pilpl);border:1.5px solid var(--pilp);border-radius:10px;padding:10px 12px;margin-bottom:10px;">
       <div style="font-size:12px;font-weight:700;color:var(--pilp);margin-bottom:6px;">🎯 Intervention PILP après clôture</div>
@@ -1860,7 +1867,7 @@ function oM(id){
       </summary>
       <div style="padding:0 12px 10px 12px;">${tlHtml||'<div style="font-size:12px;color:var(--t2);">Aucun historique.</div>'}</div>
     </details>`:''}
-    ${retroPilpHtml}${reclassHtml}${operationalScheduleWarningHTML(iv)}${actions}`;
+    ${requalPilpHtml}${retroPilpHtml}${reclassHtml}${operationalScheduleWarningHTML(iv)}${actions}`;
   document.getElementById('mo').style.display='flex';
 }
 function setAgr2(ivId,login){

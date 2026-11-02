@@ -1,5 +1,24 @@
 # AGAI — déploiement sécurisé
 
+## V202611_0005 — classement et requalification PILP avant départ
+
+À la prise d'appel d'un nid de frelons asiatiques, l'opérateur peut choisir
+directement la liste PILP après avoir renseigné la hauteur annoncée. Son nom
+est conservé ; la reconnaissance sur place reste « non réalisée ».
+
+Pour un appel normal encore en attente, un administrateur ou superadmin aux
+pouvoirs actifs peut demander une requalification en PILP. La hauteur annoncée
+et l'opérateur initial sont obligatoires. Le serveur crée la PILP avec le même
+numéro d'appel et son historique, puis archive la fiche normale dans une seule
+transaction. Aucun nouveau numéro d'appel ni reconnaissance fictive n'est créé.
+Une fiche sélectionnée, commencée ou clôturée ne peut pas suivre ce parcours.
+
+Installer d'abord la migration de requalification, puis vérifier ses droits.
+Ne publier la V202611_0005 qu'après confirmation qu'aucune intervention ou
+saisie n'est en cours et que les appareils utilisés affichent « Sync OK ».
+Vérifier avec une prochaine requalification réelle, sans appel de test en
+production. En cas d'échec serveur, la fiche normale reste inchangée.
+
 ## V202611_0004 — compteurs plus compacts sur smartphone
 
 Les cinq compteurs de l'accueil gardent deux lignes sur smartphone, avec
