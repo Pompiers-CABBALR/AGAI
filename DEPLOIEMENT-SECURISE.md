@@ -1,5 +1,19 @@
 # AGAI — déploiement sécurisé
 
+## V202611_0002 — accès direct aux interventions depuis l'accueil
+
+L'accueil affiche « En attente » et « En cours » pour les interventions
+ordinaires. Ces deux cartes ouvrent le sous-onglet Interventions avec le filtre
+correspondant ; les interventions actives restent visibles même si leur appel
+date d'un jour précédent. La carte « Interventions PILP en attente » ouvre
+directement le sous-onglet PILP, filtré sur les interventions en attente.
+Le clic ne modifie aucun statut ni aucune fiche. Les cartes restent en lecture
+seule quand le compte n'a pas accès au menu Interventions.
+
+Avant publication, confirmer l'absence d'intervention ou de saisie en cours
+et « Sync OK » sur les appareils utilisés. Après publication, vérifier les
+liens avec les interventions réelles sans changer leur état.
+
 ## V202611_0001 — journal des piquets après validation uniquement
 
 Les ajouts, changements et suppressions effectués pendant la préparation

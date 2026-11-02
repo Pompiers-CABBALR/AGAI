@@ -1,5 +1,29 @@
 // === MODULE: ui.js + accueil.js ===
 // ────────────────── ACCUEIL ──────────────────
+function accueilInterventionStatCard(count,label,scope,status){
+  const pilp=scope==='pilp';
+  const canOpen=hasRight('Interventions')&&(!pilp||canSeePILP());
+  const className='acc-stat'+(pilp?' pilp':'')+(canOpen?' acc-stat-link':'');
+  const content='<div class="acc-stat-val">'+count+'</div><div class="acc-stat-lbl">'+label+'</div>';
+  return canOpen
+    ?'<button type="button" class="'+className+'" onclick="openAccueilInterventionFilter(\''+scope+'\',\''+status+'\')" aria-label="Afficher : '+label+'">'+content+'</button>'
+    :'<div class="'+className+'">'+content+'</div>';
+}
+function openAccueilInterventionFilter(scope,status){
+  if(!CU||!hasRight('Interventions')||!['std','pilp'].includes(scope)
+    ||!['en-attente','en-cours'].includes(status)||scope==='pilp'&&!canSeePILP())return;
+  const pilp=scope==='pilp';
+  const filter=document.getElementById((pilp?'pilp-':'')+'fb-'+status);
+  const subtab=document.getElementById('subtab-btn-'+scope);
+  const nav=document.getElementById('nav-interv');
+  const row=document.getElementById(pilp?'pilp-filter-row':'intervention-filter-row');
+  if(!filter||!subtab||!nav||!row)return;
+  if(pilp)fltPilp=status;else flt=status;
+  row.querySelectorAll('.fb').forEach(function(button){button.classList.remove('active');});
+  filter.classList.add('active');
+  showSubtab(scope,subtab,true);
+  showT('interv',nav);
+}
 function rAccueil(){
   if(!CU)return;
   const h=N().getHours();
@@ -23,14 +47,16 @@ function rAccueil(){
   const nbMois=ivStats.filter(iv=>statsInterventionInPeriod(iv,moisStr)).length+pilpStats.filter(iv=>statsInterventionInPeriod(iv,moisStr)).length;
   const nbJour=ivStats.filter(iv=>statsInterventionInPeriod(iv,jourStr)).length+pilpStats.filter(iv=>statsInterventionInPeriod(iv,jourStr)).length;
   const nbAttente=IVS.filter(iv=>!iv._isPilip&&iv.s==='en-attente').length;
+  const nbEnCours=IVS.filter(iv=>!iv._isPilip&&iv.s==='en-cours').length;
   const nbPilpAtt=PILP_IVS.filter(iv=>iv.s==='en-attente').length;
   let statsHtml=`
-    <div class="acc-stat"><div class="acc-stat-val">${nbAttente}</div><div class="acc-stat-lbl">En attente</div></div>
+    ${accueilInterventionStatCard(nbAttente,'En attente','std','en-attente')}
+    ${accueilInterventionStatCard(nbEnCours,'En cours','std','en-cours')}
+    <div class="acc-stat"><div class="acc-stat-val" style="color:var(--blu);">${nbJour}</div><div class="acc-stat-lbl">Interventions aujourd'hui</div></div>
     <div class="acc-stat"><div class="acc-stat-val">${nbMois}</div><div class="acc-stat-lbl">Ce mois de ${['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'][d.getMonth()]}</div></div>
-    <div class="acc-stat"><div class="acc-stat-val">${nbAnnee}</div><div class="acc-stat-lbl">Depuis le début de l'année ${annee}</div></div>
-    <div class="acc-stat"><div class="acc-stat-val" style="color:var(--blu);">${nbJour}</div><div class="acc-stat-lbl">Interventions aujourd'hui</div></div>`;
+    <div class="acc-stat"><div class="acc-stat-val">${nbAnnee}</div><div class="acc-stat-lbl">Depuis le début de l'année ${annee}</div></div>`;
   if(canSeePILP()){
-    statsHtml+=`<div class="acc-stat pilp" style="grid-column:1/-1;"><div class="acc-stat-val">${nbPilpAtt}</div><div class="acc-stat-lbl">Interventions PILP en attente</div></div>`;
+    statsHtml+=accueilInterventionStatCard(nbPilpAtt,'Interventions PILP en attente','pilp','en-attente');
   }
   document.getElementById('acc-stats').innerHTML=statsHtml;
   // ── Messages astreinte ──
