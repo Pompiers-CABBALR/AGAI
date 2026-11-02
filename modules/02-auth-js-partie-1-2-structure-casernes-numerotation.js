@@ -1257,12 +1257,13 @@ function applyNavRights(){
     }
   }
 }
-function showSubtab(sub,btn){
+function showSubtab(sub,btn,deferRender){
   document.querySelectorAll('#interv-subtabs .subtab-btn').forEach(b=>b.classList.remove('active'));
   if(btn)btn.classList.add('active');
   document.getElementById('subtab-std').style.display=sub==='std'?'':'none';
   document.getElementById('subtab-pilp').style.display=sub==='pilp'?'':'none';
   document.getElementById('subtab-hist').style.display=sub==='hist'?'':'none';
+  if(deferRender)return;
   if(sub==='pilp'){rPilp();}
   else if(sub==='hist'){rHist();}
   else{rI();}

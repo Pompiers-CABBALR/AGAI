@@ -52,7 +52,7 @@ test('les écrans différés sont rendus à leur ouverture', () => {
   const loginSuccess = read('modules/05-admin-js-partie-1-2-vues-globales-superadmin.js');
   assert.match(loginSuccess, /function doLoginSuccess\(\)[\s\S]*?rAccueil\(\)/);
   assert.match(navigation, /if\(id==='interv'\)[\s\S]*?rPilp\(\);else if\(sub==='hist'\)rHist\(\);else rI\(\)/);
-  assert.match(subtabs, /function showSubtab\(sub,btn\)[\s\S]*?if\(sub==='pilp'\)\{rPilp\(\);\}/);
+  assert.match(subtabs, /function showSubtab\(sub,btn,deferRender\)[\s\S]*?if\(deferRender\)return;[\s\S]*?if\(sub==='pilp'\)\{rPilp\(\);\}/);
   assert.match(astreintes, /function showAstrTab\(sub,btn\)[\s\S]*?if\(sub==='dispo'\)rAstrDispo\(\)/);
   assert.match(astreintes, /function showAstrTab\(sub,btn\)[\s\S]*?if\(sub==='equipes'\)rAstrEquipes\(\)/);
 });
