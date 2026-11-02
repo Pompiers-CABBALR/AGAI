@@ -1,6 +1,6 @@
 # AGAI — déploiement sécurisé
 
-## V202610_0096 — journal des piquets après validation uniquement
+## V202611_0001 — journal des piquets après validation uniquement
 
 Les ajouts, changements et suppressions effectués pendant la préparation
 d'une semaine ne créent plus de lignes dans le journal. Dès que les piquets
