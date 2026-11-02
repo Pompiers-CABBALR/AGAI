@@ -1,5 +1,20 @@
 # AGAI — déploiement sécurisé
 
+## Protection serveur — attribution des droits administrateur
+
+Seul le superadministrateur peut ajouter ou retirer un administrateur de
+caserne. L'interface et le service de gestion des comptes appliquent déjà
+cette règle. Le serveur préserve désormais aussi les affectations
+administrateur enregistrées lorsqu'un administrateur de caserne synchronise
+une fiche utilisateur ou les paramètres de sa caserne. Les autres champs de
+la fiche continuent à être synchronisés normalement. Aucune affectation
+existante n'est modifiée par la migration.
+
+La migration est indépendante de la version de l'interface : il n'est pas
+nécessaire de recharger les appareils. Vérifier après installation que les
+champs protégés restent identiques avec des données fictives, et que les
+droits effectifs ainsi que le journal des affectations existantes sont intacts.
+
 ## V202611_0005 — classement et requalification PILP avant départ
 
 À la prise d'appel d'un nid de frelons asiatiques, l'opérateur peut choisir
