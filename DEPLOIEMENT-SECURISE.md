@@ -1,5 +1,16 @@
 # AGAI — déploiement sécurisé
 
+## V202611_0003 — disposition des compteurs de l'accueil
+
+Les cinq compteurs sont alignés sur une seule ligne sur ordinateur. Sur
+smartphone, les deux états d'intervention sont sur la première ligne et les
+trois récapitulatifs sur la seconde. La carte PILP reste séparée en dessous.
+Seul l'affichage change : aucun compteur, filtre ou statut n'est modifié.
+
+Avant publication, confirmer l'absence d'intervention ou de saisie en cours
+et « Sync OK » sur les appareils utilisés. Après publication, vérifier
+l'accueil sur ordinateur et smartphone sans changer de fiche.
+
 ## V202611_0002 — accès direct aux interventions depuis l'accueil
 
 L'accueil affiche « En attente » et « En cours » pour les interventions
