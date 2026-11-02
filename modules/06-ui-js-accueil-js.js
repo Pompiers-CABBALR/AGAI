@@ -3,7 +3,7 @@
 function accueilInterventionStatCard(count,label,scope,status){
   const pilp=scope==='pilp';
   const canOpen=hasRight('Interventions')&&(!pilp||canSeePILP());
-  const className='acc-stat'+(pilp?' pilp':'')+(canOpen?' acc-stat-link':'');
+  const className='acc-stat'+(pilp?' pilp':' acc-stat-status')+(canOpen?' acc-stat-link':'');
   const content='<div class="acc-stat-val">'+count+'</div><div class="acc-stat-lbl">'+label+'</div>';
   return canOpen
     ?'<button type="button" class="'+className+'" onclick="openAccueilInterventionFilter(\''+scope+'\',\''+status+'\')" aria-label="Afficher : '+label+'">'+content+'</button>'
@@ -52,9 +52,9 @@ function rAccueil(){
   let statsHtml=`
     ${accueilInterventionStatCard(nbAttente,'En attente','std','en-attente')}
     ${accueilInterventionStatCard(nbEnCours,'En cours','std','en-cours')}
-    <div class="acc-stat"><div class="acc-stat-val" style="color:var(--blu);">${nbJour}</div><div class="acc-stat-lbl">Interventions aujourd'hui</div></div>
-    <div class="acc-stat"><div class="acc-stat-val">${nbMois}</div><div class="acc-stat-lbl">Ce mois de ${['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'][d.getMonth()]}</div></div>
-    <div class="acc-stat"><div class="acc-stat-val">${nbAnnee}</div><div class="acc-stat-lbl">Depuis le début de l'année ${annee}</div></div>`;
+    <div class="acc-stat acc-stat-summary"><div class="acc-stat-val" style="color:var(--blu);">${nbJour}</div><div class="acc-stat-lbl">Interventions aujourd'hui</div></div>
+    <div class="acc-stat acc-stat-summary"><div class="acc-stat-val">${nbMois}</div><div class="acc-stat-lbl">Ce mois de ${['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'][d.getMonth()]}</div></div>
+    <div class="acc-stat acc-stat-summary"><div class="acc-stat-val">${nbAnnee}</div><div class="acc-stat-lbl">Depuis le début de l'année ${annee}</div></div>`;
   if(canSeePILP()){
     statsHtml+=accueilInterventionStatCard(nbPilpAtt,'Interventions PILP en attente','pilp','en-attente');
   }

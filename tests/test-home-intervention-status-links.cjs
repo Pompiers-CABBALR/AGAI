@@ -8,6 +8,7 @@ const root=path.join(__dirname,'..');
 const moduleSource=fs.readFileSync(path.join(root,'modules/06-ui-js-accueil-js.js'),'utf8');
 const bundle=fs.readFileSync(path.join(root,'app.js'),'utf8');
 const markup=fs.readFileSync(path.join(root,'index.html'),'utf8');
+const styles=fs.readFileSync(path.join(root,'style.css'),'utf8');
 function sourceOf(source,name){
   const start=source.indexOf('function '+name+'(');
   assert.ok(start>=0,name+' absent');
@@ -93,6 +94,29 @@ test('l’accueil compte les statuts actifs, même commencés avant aujourd’hu
   assert.match(nodes['acc-stats'].innerHTML,/<div class="acc-stat-val">1<\/div><div class="acc-stat-lbl">En attente<\/div>/);
   assert.match(nodes['acc-stats'].innerHTML,/<div class="acc-stat-val">1<\/div><div class="acc-stat-lbl">En cours<\/div>/);
   assert.match(nodes['acc-stats'].innerHTML,/Interventions PILP en attente/);
+});
+
+test('les cinq compteurs occupent deux lignes sur téléphone et une sur ordinateur',()=>{
+  const {context}=contextForNavigation();
+  const nodes={'acc-bonjour':{},'acc-date':{},'acc-stats':{}};
+  context.document.getElementById=id=>nodes[id]||null;
+  context.N=()=>new Date(2026,10,2,12,0);
+  context.IVS=[];context.PILP_IVS=[];
+  context.isInterventionComptabilisee=()=>true;
+  context.statsInterventionInPeriod=()=>false;
+  context.rStatsHeader=()=>{};
+  vm.runInContext(sourceOf(moduleSource,'rAccueil'),context);
+  context.rAccueil();
+  const html=nodes['acc-stats'].innerHTML;
+  assert.equal((html.match(/acc-stat-status/g)||[]).length,2);
+  assert.equal((html.match(/acc-stat-summary/g)||[]).length,3);
+  assert.match(html,/acc-stat pilp/);
+  assert.match(styles,/\.accueil-stats\{display:grid;grid-template-columns:repeat\(6,minmax\(0,1fr\)\);gap:10px;\}/);
+  assert.match(styles,/\.accueil-stats \.acc-stat-status\{grid-column:span 3;\}/);
+  assert.match(styles,/\.accueil-stats \.acc-stat-summary\{grid-column:span 2;\}/);
+  assert.match(styles,/@media\(min-width:768px\)\{\s*\.accueil-stats\{grid-template-columns:repeat\(5,minmax\(0,1fr\)\);\}/);
+  assert.match(styles,/\.acc-stat\.pilp\{grid-column:1\/-1;\}/);
+  assert.equal((styles.match(/\.accueil-stats\{grid-template-columns:/g)||[]).length,1,'aucune règle ultérieure ne doit rétablir quatre colonnes');
 });
 
 test('les fonctions du module et du bundle restent identiques',()=>{
