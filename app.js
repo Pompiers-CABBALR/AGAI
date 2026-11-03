@@ -7112,6 +7112,84 @@ function hasAdministrativeAccount(){
     (Array.isArray(CU.rights)&&CU.rights.includes('Administration'));
 }
 
+const _pendingSdisClassificationInFlight=new Set();
+function canClassifyPendingInterventionSdis(iv){
+  return !!(iv&&iv.s==='en-attente'&&!iv._isRenfort&&!iv._isPilip
+    &&!iv._lienPilp&&!iv._pilpId&&isAdminModeActive());
+}
+function showPendingSdisClassification(ivId){
+  const iv=interventionById(ivId);
+  if(!canClassifyPendingInterventionSdis(iv))return;
+  const target=!iv._sdis;
+  document.getElementById('mt').textContent='Modifier SDIS / non SDIS';
+  document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
+  document.getElementById('mb').innerHTML=`<div style="font-size:13px;line-height:1.5;">
+    <p>Cette intervention est actuellement <strong>${iv._sdis?'SDIS':'non SDIS'}</strong>.</p>
+    <p>La passer en <strong>${target?'SDIS':'non SDIS'}</strong> conserve la même fiche, son numéro, sa date et son historique. La correction et votre nom seront tracés.</p>
+    <div class="brow" style="margin-top:14px;">
+      <button class="btn sm" id="pending-sdis-classification-send" style="background:#1D4ED8;color:#fff;border-color:#1D4ED8;" onclick="confirmPendingSdisClassification('${iv.id}',${target})">Confirmer : ${target?'SDIS':'non SDIS'}</button>
+      <button class="btn sm" onclick="oM('${iv.id}')">Annuler</button>
+    </div></div>`;
+  document.getElementById('mo').style.display='flex';
+}
+async function confirmPendingSdisClassification(ivId,target){
+  if(_pendingSdisClassificationInFlight.has(ivId))return;
+  const iv=interventionById(ivId);
+  if(!canClassifyPendingInterventionSdis(iv)||typeof target!=='boolean'||!!iv._sdis===target){
+    showToast('Cette intervention ne peut plus être modifiée. Actualisez la fiche.','warn');return;
+  }
+  if(typeof USE_RECORDS==='undefined'||!USE_RECORDS||!_agaiAuthAccessToken()||navigator.onLine===false){
+    showToast('Connexion au serveur requise pour modifier cette intervention.','warn');return;
+  }
+  if(typeof _rcPendingCountInScope==='function'&&_rcPendingCountInScope()>0){
+    showToast('Des actions restent à synchroniser dans cette caserne. Conservez-les et réessayez après « Sync OK ».','warn');return;
+  }
+  const button=document.getElementById('pending-sdis-classification-send');
+  if(button)button.disabled=true;
+  _pendingSdisClassificationInFlight.add(ivId);
+  const station=CURRENT_CASERNE_ID,login=CU.l;
+  try{
+    const response=await _agaiAuthFetchWithTimeout(SB_URL+'/rest/v1/rpc/agai_toggle_pending_intervention_sdis',{
+      method:'POST',
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+_agaiAuthAccessToken(),'Content-Type':'application/json'},
+      body:JSON.stringify({
+        p_record_id:_rcId(station,'iv',ivId),p_sdis:target,
+        p_action_key:aplCreationActionKey('pending-sdis-classification',ivId),
+        p_expected_record_revision:Number(iv._serverRevision)||0
+      })
+    },15000);
+    if(!response.ok){
+      let code='';try{code=(await response.json()).message||'';}catch(_error){}
+      const messages={
+        AGAI_SDIS_CLASSIFICATION_ROLE_FORBIDDEN:'Correction réservée aux admins et superadmins.',
+        AGAI_SDIS_CLASSIFICATION_SOURCE_FORBIDDEN:'Cette intervention n’est plus en attente ou n’est pas modifiable.',
+        AGAI_SDIS_CLASSIFICATION_STALE_SOURCE:'La fiche a changé. Actualisez-la avant de réessayer.',
+        AGAI_SDIS_CLASSIFICATION_ALREADY_SET:'Cette catégorie est déjà enregistrée. Actualisez la fiche.'
+      };
+      throw new Error(messages[code]||(response.status===404?'Correction indisponible sur le serveur.':'Correction non enregistrée (HTTP '+response.status+').'));
+    }
+    const result=await response.json();
+    if(!result||result.ok!==true||result.recordId!==_rcId(station,'iv',ivId)||result.sdis!==target)
+      throw new Error('Réponse serveur incomplète. Actualisez avant de réessayer.');
+    clearAplCreationActionKey('pending-sdis-classification',ivId);
+    if(CURRENT_CASERNE_ID!==station||!CU||CU.l!==login){
+      showToast('Correction enregistrée, mais la session a changé. Reconnectez-vous pour la consulter.','warn');return;
+    }
+    const refreshed=await _rcPull(true,false,true);
+    const current=interventionById(ivId);
+    if(!refreshed||!current||!!current._sdis!==target){
+      showToast('Correction enregistrée sur le serveur. Elle apparaîtra après la prochaine synchronisation.','warn');return;
+    }
+    oM(ivId);
+    showToast('Intervention classée '+(target?'SDIS':'non SDIS')+' sans nouveau numéro.','success');
+  }catch(error){
+    showToast(error&&error.message||'Correction non confirmée ; actualisez avant de réessayer.','warn');
+  }finally{
+    _pendingSdisClassificationInFlight.delete(ivId);
+    if(button)button.disabled=false;
+  }
+}
+
 const _routeConfirmationMemory=new Map();
 const _routeConfirmationMemoryOnly=new Set();
 let _routeOrderEditingKey='';
@@ -8595,6 +8673,12 @@ function oM(id){
       <div style="font-size:11px;color:var(--t2);margin-bottom:8px;">Conserve l’APL et l’historique. La hauteur reste déclarative ; reconnaissance non réalisée.</div>
       <button class="btn pilp-btn sm" onclick="showPendingPilpRequalification('${iv.id}')">Requalifier en PILP</button>
     </div>`:'';
+  const pendingSdisClassificationHtml=!pilpScope&&canClassifyPendingInterventionSdis(iv)
+    ?`<div style="background:#EFF6FF;border:1px solid #93C5FD;border-radius:10px;padding:10px 12px;margin-bottom:10px;">
+      <div style="font-size:12px;font-weight:700;color:#1D4ED8;margin-bottom:6px;">🚑 Catégorie de l'intervention : ${iv._sdis?'SDIS':'non SDIS'}</div>
+      <div style="font-size:11px;color:var(--t2);margin-bottom:8px;">Corriger avant le départ, sans créer une nouvelle intervention.</div>
+      <button class="btn sm" onclick="showPendingSdisClassification('${iv.id}')">Passer en ${iv._sdis?'non SDIS':'SDIS'}</button>
+    </div>`:'';
   const retroPilpHtml=iv.s==='terminee'&&!pilpScope&&!iv._isRenfort&&iv.n==='Nid de frelons asiatiques'&&isAdminModeActive()
     ?`<div style="background:var(--pilpl);border:1.5px solid var(--pilp);border-radius:10px;padding:10px 12px;margin-bottom:10px;">
       <div style="font-size:12px;font-weight:700;color:var(--pilp);margin-bottom:6px;">🎯 Intervention PILP après clôture</div>
@@ -8893,7 +8977,7 @@ function oM(id){
       </summary>
       <div style="padding:0 12px 10px 12px;">${tlHtml||'<div style="font-size:12px;color:var(--t2);">Aucun historique.</div>'}</div>
     </details>`:''}
-    ${requalPilpHtml}${retroPilpHtml}${reclassHtml}${operationalScheduleWarningHTML(iv)}${actions}`;
+    ${pendingSdisClassificationHtml}${requalPilpHtml}${retroPilpHtml}${reclassHtml}${operationalScheduleWarningHTML(iv)}${actions}`;
   document.getElementById('mo').style.display='flex';
 }
 function setAgr2(ivId,login){
@@ -19321,7 +19405,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202611_0006';
+const APP_VERSION='V202611_0007';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
