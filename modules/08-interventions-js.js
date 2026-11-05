@@ -1388,12 +1388,13 @@ function rI(){
   if(avis.length){
     as.style.display='block';
     const avExpanded=as.dataset.expanded==='1';
+    const avisToggle=document.getElementById('av-toggle');
+    if(avisToggle){
+      avisToggle.textContent=avExpanded?'▲ Réduire':'▼ Voir tous';
+      avisToggle.setAttribute('aria-expanded',String(avExpanded));
+    }
     document.getElementById('avl').innerHTML=`
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 4px;">
-        <span style="font-size:12px;color:var(--pur);font-weight:500;">&#x1F7E3; ${avis.length} avis de passage — cliquer pour développer</span>
-        <button class="btn sm" style="font-size:11px;padding:3px 10px;" onclick="toggleAvisIVS(this)">${avExpanded?'▲ Réduire':'▼ Voir tous'}</button>
-      </div>
-      <div id="av-detail" style="display:${avExpanded?'block':'none'};">
+      <div id="av-detail" class="avsec-detail" style="display:${avExpanded?'block':'none'};">
         ${avis.map(iv=>`<div class="ivr avis-passage" onclick="oM('${iv.id}')">
           <div class="ivrl"><div class="ivrh">&#x1F4C5; ${escHtml(getAvisPassageDateTimeLabel(iv)||'Date non renseignée')}</div><div class="ivrn">${escHtml(iv.n)}</div><div class="ivrc">&#x1F4CD; ${escHtml(interventionAddressLabel(iv))}${iv.rappels?' · '+Number(iv.rappels)+' rappel(s)':''}</div></div>
           <div class="ivrr"><span class="bdg bp">Avis passage</span>${hasRight('Prise d\'appel')?`<button class="btn sm" style="font-size:10px;padding:3px 8px;background:#1D4ED8;color:#fff;border-color:#1D4ED8;" onclick="event.stopPropagation();reprendreAvisPassage('${iv.id}')">Reprendre cet avis</button>`:''}${isAdminModeActive()?`<button class="btn sm" style="font-size:10px;padding:3px 8px;background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="event.stopPropagation();classerAvisPassage('${iv.id}','standard')">&#x1F5C3;&#xFE0F; Classer</button>`:''}</div></div>`).join('')}
@@ -1483,6 +1484,7 @@ function toggleAvisIVS(btn){
   const detail=document.getElementById('av-detail');
   if(detail)detail.style.display=expanded?'none':'block';
   btn.textContent=expanded?'▼ Voir tous':'▲ Réduire';
+  btn.setAttribute('aria-expanded',String(!expanded));
 }
 function toggleAvisPILP(btn){
   const pas=document.getElementById('pilp-avsec');
@@ -1491,6 +1493,7 @@ function toggleAvisPILP(btn){
   const detail=document.getElementById('pilp-av-detail');
   if(detail)detail.style.display=expanded?'none':'block';
   btn.textContent=expanded?'▼ Voir tous':'▲ Réduire';
+  btn.setAttribute('aria-expanded',String(!expanded));
 }
 
 function toggleAvisPassageHour(checkbox,timeId,wrapId){

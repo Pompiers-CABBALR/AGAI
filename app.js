@@ -8414,12 +8414,13 @@ function rI(){
   if(avis.length){
     as.style.display='block';
     const avExpanded=as.dataset.expanded==='1';
+    const avisToggle=document.getElementById('av-toggle');
+    if(avisToggle){
+      avisToggle.textContent=avExpanded?'▲ Réduire':'▼ Voir tous';
+      avisToggle.setAttribute('aria-expanded',String(avExpanded));
+    }
     document.getElementById('avl').innerHTML=`
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 4px;">
-        <span style="font-size:12px;color:var(--pur);font-weight:500;">&#x1F7E3; ${avis.length} avis de passage — cliquer pour développer</span>
-        <button class="btn sm" style="font-size:11px;padding:3px 10px;" onclick="toggleAvisIVS(this)">${avExpanded?'▲ Réduire':'▼ Voir tous'}</button>
-      </div>
-      <div id="av-detail" style="display:${avExpanded?'block':'none'};">
+      <div id="av-detail" class="avsec-detail" style="display:${avExpanded?'block':'none'};">
         ${avis.map(iv=>`<div class="ivr avis-passage" onclick="oM('${iv.id}')">
           <div class="ivrl"><div class="ivrh">&#x1F4C5; ${escHtml(getAvisPassageDateTimeLabel(iv)||'Date non renseignée')}</div><div class="ivrn">${escHtml(iv.n)}</div><div class="ivrc">&#x1F4CD; ${escHtml(interventionAddressLabel(iv))}${iv.rappels?' · '+Number(iv.rappels)+' rappel(s)':''}</div></div>
           <div class="ivrr"><span class="bdg bp">Avis passage</span>${hasRight('Prise d\'appel')?`<button class="btn sm" style="font-size:10px;padding:3px 8px;background:#1D4ED8;color:#fff;border-color:#1D4ED8;" onclick="event.stopPropagation();reprendreAvisPassage('${iv.id}')">Reprendre cet avis</button>`:''}${isAdminModeActive()?`<button class="btn sm" style="font-size:10px;padding:3px 8px;background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="event.stopPropagation();classerAvisPassage('${iv.id}','standard')">&#x1F5C3;&#xFE0F; Classer</button>`:''}</div></div>`).join('')}
@@ -8509,6 +8510,7 @@ function toggleAvisIVS(btn){
   const detail=document.getElementById('av-detail');
   if(detail)detail.style.display=expanded?'none':'block';
   btn.textContent=expanded?'▼ Voir tous':'▲ Réduire';
+  btn.setAttribute('aria-expanded',String(!expanded));
 }
 function toggleAvisPILP(btn){
   const pas=document.getElementById('pilp-avsec');
@@ -8517,6 +8519,7 @@ function toggleAvisPILP(btn){
   const detail=document.getElementById('pilp-av-detail');
   if(detail)detail.style.display=expanded?'none':'block';
   btn.textContent=expanded?'▼ Voir tous':'▲ Réduire';
+  btn.setAttribute('aria-expanded',String(!expanded));
 }
 
 function toggleAvisPassageHour(checkbox,timeId,wrapId){
@@ -10405,12 +10408,13 @@ function rPilp(){
   if(avisP.length){
     pas.style.display='block';
     const apExpanded=pas.dataset.expanded==='1';
+    const avisToggle=document.getElementById('pilp-av-toggle');
+    if(avisToggle){
+      avisToggle.textContent=apExpanded?'▲ Réduire':'▼ Voir tous';
+      avisToggle.setAttribute('aria-expanded',String(apExpanded));
+    }
     document.getElementById('pilp-avl').innerHTML=`
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 4px;">
-        <span style="font-size:12px;color:var(--pur);font-weight:500;">&#x1F7E3; ${avisP.length} avis de passage PILP</span>
-        <button class="btn sm" style="font-size:11px;padding:3px 10px;" onclick="toggleAvisPILP(this)">${apExpanded?'▲ Réduire':'▼ Voir tous'}</button>
-      </div>
-      <div id="pilp-av-detail" style="display:${apExpanded?'block':'none'};">
+      <div id="pilp-av-detail" class="avsec-detail" style="display:${apExpanded?'block':'none'};">
         ${avisP.map(iv=>`<div class="ivr avis-passage" style="cursor:pointer;" onclick="oPilp('${iv.id}')">
           <div class="ivrl"><div class="ivrh">&#x1F4C5; ${escHtml(getAvisPassageDateTimeLabel(iv)||'Date non renseignée')}${iv._numCaserne?' · UT '+escHtml(interventionDisplayUTNumber(iv)):''}</div><div class="ivrn">&#x1F3AF; ${escHtml(iv.n)}</div><div class="ivrc">&#x1F4CD; ${escHtml(interventionAddressLabel(iv))}${iv.rappels?' · '+Number(iv.rappels)+' rappel(s)':''}</div></div>
           <div class="ivrr"><span class="bdg bp">${iv.s==='terminee'?'Avis PILP · terminée':'Avis PILP'}</span>${hasRight('Prise d\'appel')?`<button class="btn sm" style="font-size:10px;padding:3px 8px;background:#1D4ED8;color:#fff;border-color:#1D4ED8;" onclick="event.stopPropagation();reprendreAvisPassage('${iv.id}')">Reprendre cet avis</button>`:''}${isAdminModeActive()?`<button class="btn sm" style="font-size:10px;padding:3px 8px;background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="event.stopPropagation();classerAvisPassage('${iv.id}','pilp')">&#x1F5C3;&#xFE0F; Classer</button>`:''}</div></div>`).join('')}
@@ -19490,7 +19494,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202611_0008';
+const APP_VERSION='V202611_0009';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
