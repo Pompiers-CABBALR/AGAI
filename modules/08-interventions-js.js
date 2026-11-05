@@ -166,7 +166,7 @@ async function confirmPendingSdisClassification(ivId,target){
 
 const _routeConfirmationMemory=new Map();
 const _routeConfirmationMemoryOnly=new Set();
-let _routeOrderEditingKey='';
+let _routeOrderEditingKey='',_routeSelectionReviewKey='';
 function routeConfirmationScope(iv){return isPilpIntervention(iv)?'pilp':'standard';}
 function routeConfirmationOwnerKey(scope){
   if(!CU||!CU.l)return '';
@@ -220,6 +220,39 @@ function rememberRouteConfirmation(selected){
 function routeOrderIsEditing(scope){
   const key=routeConfirmationOwnerKey(scope);return !!key&&_routeOrderEditingKey===key;
 }
+
+function routeSelectionReviewIsOpen(scope){
+  const key=routeConfirmationOwnerKey(scope);
+  return !!key&&(_routeSelectionReviewKey===key||routeOrderIsEditing(scope));
+}
+function openRouteSelectionReview(scope){
+  if(!CU||!isSessionValid()||(scope==='pilp'&&!canOperatePilp()))return;
+  _routeSelectionReviewKey=routeConfirmationOwnerKey(scope);
+  if(scope==='pilp')rPilp();else rI();
+  requestAnimationFrame(function(){
+    const panel=document.getElementById(scope==='pilp'?'pilp-pap':'pap');
+    if(panel)panel.scrollIntoView({behavior:'smooth',block:'start'});
+  });
+}
+function continueRouteSelection(scope){
+  _routeSelectionReviewKey='';_routeOrderEditingKey='';
+  if(scope==='pilp')rPilp();else rI();
+  const filters=document.getElementById(scope==='pilp'?'pilp-filter-row':'intervention-filter-row');
+  if(filters)filters.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function renderRouteSelectionControls(scope,selected){
+  const zone=document.getElementById(scope==='pilp'?'pilp-route-selection-zone':'route-selection-zone');
+  if(!zone)return;
+  const allowed=!!CU&&(scope==='pilp'?canOperatePilp():(isAgres()||hasRight('Interventions')||isAdminModeActive()));
+  zone.style.display=allowed?'block':'none';if(!allowed){zone.innerHTML='';return;}
+  const count=(selected||[]).length,reviewing=routeSelectionReviewIsOpen(scope);
+  zone.innerHTML='<div style="padding:10px 12px;margin:8px 0;border:1px solid var(--sel);border-radius:10px;background:#fff;font-size:12px;">'
+    +'<strong>'+count+' intervention(s) à confirmer.</strong> '
+    +(reviewing?'Vérifiez l’ordre avant de confirmer.':'Cochez toutes vos interventions, puis organisez la tournée.')
+    +'<button type="button" class="btn sel-btn sm" style="margin-top:8px;width:100%;" '+(count?'':'disabled ')+'onclick="'+(reviewing?'continueRouteSelection':'openRouteSelectionReview')+'(\''+scope+'\')">'+(reviewing?'← Ajouter d’autres interventions':'Organiser et confirmer la tournée')+'</button>'
+    +'</div>';
+}
+
 function interventionRouteSelectionKey(iv,index){
   if(iv&&Number.isFinite(Number(iv._routeSelectedAt)))return Number(iv._routeSelectedAt);
   const entries=(iv&&iv.tl||[]).filter(function(entry){return entry&&entry.s==='selectionne';});
@@ -1390,8 +1423,9 @@ function rI(){
   // création ne doit jamais empêcher le chef d'agrès d'en choisir l'ordre.
   const selNonConf=getSelMixte();
   const pp=document.getElementById('pap');
-  if(ag&&selNonConf.length>0){pp.style.display='block';document.getElementById('pagl').textContent=interventionRouteChefName({agr:CU.l});document.getElementById('pac').textContent=selNonConf.length;rPL(selNonConf);}
+  if((ag||hasRight('Interventions')||isAdminModeActive())&&selNonConf.length>0&&routeSelectionReviewIsOpen('standard')){pp.style.display='block';document.getElementById('pagl').textContent=interventionRouteChefName({agr:CU.l});document.getElementById('pac').textContent=selNonConf.length;rPL(selNonConf);}
   else{pp.style.display='none';rEgrid();}
+  renderRouteSelectionControls('standard',selNonConf);
   const routeReopen=document.getElementById('route-reopen-zone');
   const selectedMine=IVS.filter(function(iv){return iv.s==='selectionne'&&iv.agr===CU.l&&!iv._isPilip;});
   if(routeReopen&&ag&&selectedMine.length&&selNonConf.length===0){
@@ -1434,22 +1468,13 @@ function rI(){
 }
 
 function toggleChk(id,el,rainConfirmed){
-  const iv=IVS.find(v=>v.id===id);if(!iv)return;
-  if(el.checked){
-    iv.s='selectionne';iv.agr=CU.l;
-    parcConfirmed.delete(iv.id);
-    assignInterventionRoute(iv,CU.l);
-    pushTL(iv,'selectionne',CU.l,'Ordre de tournée : '+iv._routeOrder);
-  }
-  else{
-    iv.s='en-attente';iv.agr=null;
-    parcConfirmed.delete(iv.id);
-    delete iv._routeBatchId;delete iv._routeOrder;
-    pushTL(iv,'en-attente',CU.l);
-  }
-  syncInternalReinforcementSource(iv);
-  if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
-  saveData(true);rI(); // push immédiat : changement de statut partagé, sinon la sélection est écrasée au prochain pull
+  const iv=interventionById(id);if(!iv||!el)return;
+  const status=el.checked?'selectionne':'en-attente';
+  if(iv.s===status)return;
+  const x=window.scrollX||0,y=window.scrollY||0;
+  cS(id,status);
+  el.checked=iv.s==='selectionne'&&CU&&iv.agr===CU.l;
+  requestAnimationFrame(function(){window.scrollTo(x,y);});
 }
 function toggleAvisIVS(btn){
   const as=document.getElementById('avsec');
@@ -1492,6 +1517,63 @@ function toggleAvisClassesPilp(btn){
   const detail=document.getElementById('pilp-avc-detail');if(detail)detail.style.display=expanded?'none':'block';
   if(btn)btn.textContent=expanded?'▼ Voir':'▲ Réduire';
 }
+
+function avisPassageCancellationTarget(id,scope){
+  const source=(scope==='pilp'?PILP_IVS:scope==='standard'?IVS:[].concat(IVS,PILP_IVS)).find(function(iv){return iv&&iv.id===id;});
+  if(source&&source._lienPilpSourceId)return PILP_IVS.find(function(iv){return iv&&iv.id===source._lienPilpSourceId;})||source;
+  return source;
+}
+function canCancelAvisPassage(iv){
+  return !!(CU&&isSessionValid()&&isAdminModeActive()&&iv&&['terminee','avis-passage'].includes(iv.s)
+    &&(iv._avisPassage||iv._avisEnAttente||iv._avisPassageClasse||iv.s==='avis-passage'));
+}
+function avisPassageCancellationFingerprint(iv){
+  return JSON.stringify([iv.id,iv.s,iv._avisPassage,iv._avisEnAttente,iv._avisPassageClasse,iv._avisPassageAt,iv._avisPassageHeure,iv._avisPassageDate,iv.tl||[]]);
+}
+function avisPassageCancellationButtonHTML(iv,scope){
+  if(!canCancelAvisPassage(iv))return '';
+  return '<button type="button" class="btn sm danger" data-cancel-avis-id="'+escHtml(iv.id)+'" data-cancel-avis-scope="'+scope+'" onclick="annulerAvisPassage(this.dataset.cancelAvisId,this.dataset.cancelAvisScope)">Annuler l’avis saisi par erreur</button>';
+}
+function annulerAvisPassage(id,scope){
+  const iv=avisPassageCancellationTarget(id,scope);
+  if(!canCancelAvisPassage(iv)){showToast('L’annulation d’un avis est réservée aux administrateurs et au superadmin avec leurs pouvoirs activés.','warn');return;}
+  const actor=CU.l,station=CURRENT_CASERNE_ID,fingerprint=avisPassageCancellationFingerprint(iv);
+  confirmModal('Annuler cet avis de passage saisi par erreur ? L’intervention restera clôturée. L’avis ne sera plus proposé au rappel ni affiché dans les documents ; la correction restera dans l’historique.',function(){
+    const current=avisPassageCancellationTarget(id,scope);
+    if(!CU||CU.l!==actor||CURRENT_CASERNE_ID!==station||!canCancelAvisPassage(current)||avisPassageCancellationFingerprint(current)!==fingerprint){
+      showToast('La session ou l’avis a changé. Actualisez la fiche avant de recommencer.','warn');return;
+    }
+    if(!beginOperationalAction(current,'annulation-avis',[current.s]))return;
+    const h=getH(N()),notice=getAvisPassageTimelineEntry(current);
+    const closedAt=current._avisPassageAt||(notice&&notice.h)||'';
+    const hour=getAvisPassageHour(current);
+    const audit={at:h,by:actor,avisAt:closedAt,avisDate:current._avisPassageDate||'',avisHeure:hour,ancienStatut:current.s};
+    const targets=[current].concat(IVS.filter(function(item){return item&&item._lienPilpSourceId===current.id;}));
+    targets.forEach(function(item){
+      if(!Array.isArray(item._avisPassageAnnulations))item._avisPassageAnnulations=[];
+      item._avisPassageAnnulations.push(Object.assign({},audit));
+      item._avisPassage=false;item._avisEnAttente=false;item._avisPassageClasse=false;
+      item._avisPassageAnnuleAt=h;item._avisPassageAnnulePar=actor;
+      if(item.s==='avis-passage'){
+        item.s='terminee';
+        if(!item._hFin&&hour)item._hFin=hour;
+        if(/^\d{8}_\d{4}/.test(closedAt))pushTL(item,'terminee',notice&&notice.who||item.agr||actor,'Clôture initiale conservée ; avis annulé le '+h,closedAt);
+      }
+      item.avisIds=(item.avisIds||[]).filter(function(avisId){return avisId!==item.id&&avisId!==current.id;});
+      pushTL(item,'avis-annule',actor,'Avis de passage saisi par erreur annulé ; intervention conservée clôturée',h);
+      if(typeof USE_RECORDS!=='undefined'&&USE_RECORDS&&typeof _rcPendingDirty!=='undefined'&&typeof _rcId==='function'&&CURRENT_CASERNE_ID){
+        _rcPendingDirty.add(_rcId(CURRENT_CASERNE_ID,PILP_IVS.includes(item)?'pilp':'iv',item.id));
+        if(typeof _rcDirtyGeneration!=='undefined')_rcDirtyGeneration++;
+      }
+    });
+    if(typeof _rcPersistPendingDirty==='function')_rcPersistPendingDirty();
+    if(CD()){CD().ivs=IVS;CD().pilpIvs=PILP_IVS;}
+    if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
+    saveData(true);cM();refreshOperationalInterventionViews();rAccueil();rStatsHeader();
+    showToast('Avis de passage annulé. L’intervention reste clôturée.','success');
+  });
+}
+
 function restaurerAvisPassage(id,scope){
   if(!isAdminModeActive()){
     showToast('Activez vos pouvoirs administrateur pour remettre un avis en attente.','warn');
@@ -1624,9 +1706,9 @@ function oM(id){
     ?' · numéro définitif non confirmé'
     :iv._numCaserne?' · UT '+interventionDisplayUTNumber(iv)+(iv._numberingScheme==='dual-v1'&&iv.s==='en-cours'?' (provisoire)':''):'';
   document.getElementById('mi').textContent=dispApl+dispUt+dispTransfert;
-   const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'annulee':['bgr','Annulée'],'avis-passage':['bp','Avis de passage'],'avis-rappel':['bp','Rappel de l’avis'],'avis-classe':['bp','Avis classé'],'avis-restaure':['binfo','Avis remis en attente'],'modif':['bgr','Modification'],'modif-adresse':['bgr','Adresse corrigée'],'modif-heure':['binfo','Horaire corrigé'],'modif-equipier':['binfo','Équipage corrigé'],'modif-engin':['binfo','Véhicule corrigé'],'reclasse':['bgr','Reclasé'],'releve':['binfo','Relève'],'info-compl':['binfo','ℹ️ Complément d\u2019info']};
+   const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'annulee':['bgr','Annulée'],'avis-passage':['bp','Avis de passage'],'avis-rappel':['bp','Rappel de l’avis'],'avis-classe':['bp','Avis classé'],'avis-restaure':['binfo','Avis remis en attente'],'avis-annule':['binfo','Avis annulé par un administrateur'],'modif':['bgr','Modification'],'modif-adresse':['bgr','Adresse corrigée'],'modif-heure':['binfo','Horaire corrigé'],'modif-equipier':['binfo','Équipage corrigé'],'modif-engin':['binfo','Véhicule corrigé'],'reclasse':['bgr','Reclasé'],'releve':['binfo','Relève'],'info-compl':['binfo','ℹ️ Complément d\u2019info']};
   const[bc,bt]=iv.s==='annulee'&&iv._transfertVers?['binfo','Transférée']:bm[iv.s]||['bgr','—'];
-  const sdots={'en-attente':'#E24B4A','selectionne':'var(--sel)','en-cours':'var(--amb)','terminee':'var(--grn)','avis-passage':'var(--pur)','avis-rappel':'var(--pur)','avis-classe':'#6B21A8','avis-restaure':'#2563EB','modif':'#888','modif-adresse':'#888','modif-heure':'#C2410C','modif-equipier':'#2563EB','modif-engin':'#0F766E','reclasse':'#888','releve':'#0369A1','info-compl':'#0369A1'};
+  const sdots={'en-attente':'#E24B4A','selectionne':'var(--sel)','en-cours':'var(--amb)','terminee':'var(--grn)','avis-passage':'var(--pur)','avis-rappel':'var(--pur)','avis-classe':'#6B21A8','avis-restaure':'#2563EB','avis-annule':'#C2410C','modif':'#888','modif-adresse':'#888','modif-heure':'#C2410C','modif-equipier':'#2563EB','modif-engin':'#0F766E','reclasse':'#888','releve':'#0369A1','info-compl':'#0369A1'};
   const tlHtml=hasAdministrativeAccount()?(iv.tl||[]).map(t=>`<div class="tl-item"><div class="tl-dot" style="background:${sdots[t.s]||'#aaa'};"></div><div class="tl-info"><span class="tl-status">${bm[t.s]?bm[t.s][1]:t.s}${t.note?` — ${t.note}`:''}</span> <span class="tl-horo">&#x1F4C5; ${t.h}</span><div class="tl-who">${t.who}</div></div></div>`).join(''):'';
   const appelDetailEntries=iv._appelDetails&&typeof iv._appelDetails==='object'
     ?Object.entries(iv._appelDetails).filter(([key])=>(key!=='Nids à traiter'||!Array.isArray(iv._nidsAppel)||iv._nidsAppel.length!==1)&&key!=='Disponibilité du requérant')
@@ -1944,6 +2026,7 @@ function oM(id){
       <div style="font-size:11px;font-weight:700;color:#6B21A8;margin-bottom:8px;">&#x1F4EC; Avis de passage${getAvisPassageDateTimeLabel(iv)?' — déposé le '+escHtml(getAvisPassageDateTimeLabel(iv)):''}${iv._avisPassageClasse?' — classé':''}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;">${canOpenInterventionPdfOnThisDevice()?`<button class="btn sm" style="background:#7E22CE;color:#fff;border-color:#7E22CE;" onclick="viewAvisPassageDocument('${iv.id}')">&#x1F4CB; Voir l'avis de passage</button>`:desktopOnlyInterventionPdfMessageHTML()}${pilpScope&&iv._avisEnAttente&&hasRight('Prise d\'appel')?`<button class="btn sm" style="background:#1D4ED8;color:#fff;border-color:#1D4ED8;" onclick="cM();reprendreAvisPassage('${iv.id}')">Reprendre cet avis</button>`:''}${isAdminModeActive()&&iv._avisEnAttente?`<button class="btn sm" style="background:#6B21A8;color:#fff;border-color:#6B21A8;" onclick="classerAvisPassage('${iv.id}','${pilpScope?'pilp':'standard'}')">&#x1F5C3;&#xFE0F; Classer</button>`:''}${isAdminModeActive()&&iv._avisPassageClasse===true&&!iv._avisEnAttente?`<button class="btn sm" style="background:#fff;color:#6B21A8;border-color:#A855F7;" onclick="restaurerAvisPassage('${iv.id}','${pilpScope?'pilp':'standard'}')">↩ Remettre en attente</button>`:''}</div>
     </div>`:''}
+    ${avisPassageCancellationButtonHTML(iv,pilpScope?'pilp':'standard')}
     ${(!pilpReadOnly&&['en-attente','selectionne','en-cours'].includes(iv.s)&&(hasRight('Interventions')||isAgres()||isChef()||isAdminModeActive()))?`<button class="btn sm" style="width:100%;margin-bottom:8px;background:#0369A1;color:#fff;border-color:#0369A1;" onclick="showComplementModal('${iv.id}')">&#x2139;&#xFE0F; Compléter : ERP, information, téléphone ou disponibilité</button>`:''}
     ${hasAdministrativeAccount()?`<details style="background:var(--bg);border-radius:10px;margin-bottom:8px;" id="tl-details-${iv.id}">
       <summary style="font-size:11px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.04em;padding:10px 12px;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;">
@@ -2540,6 +2623,7 @@ function cS(id,s,confirmed){
     return;
   }
   const previousStatus=iv.s;
+  if(s===previousStatus)return;
   if(s==='selectionne'&&!canCurrentUserSelectIntervention(iv)){
     showToast('Vous n’êtes pas autorisé à sélectionner cette intervention.','warn');
     return;
@@ -2580,6 +2664,7 @@ function cS(id,s,confirmed){
   if(s==='en-cours'&&canCurrentUserStartIntervention(iv))iv.agr=CU.l;
   if(isPilpIntervention(iv)&&(s==='selectionne'||s==='en-cours'))iv.tireur=CU.l;
   if(s==='selectionne'){
+    _routeSelectionReviewKey='';_routeOrderEditingKey='';
     parcConfirmed.delete(iv.id);
     assignInterventionRoute(iv,iv.agr||CU.l);
   }
