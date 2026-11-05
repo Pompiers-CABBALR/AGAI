@@ -461,12 +461,13 @@ function rPilp(){
   }else if(pacs){pacs.style.display='none';if(pacl)pacl.innerHTML='';}
   const pilpSelection=canOperatePilp()?getSelPilp():[];
   const pilpPanel=document.getElementById('pilp-pap');
-  if(pilpPanel&&pilpSelection.length){
+  if(pilpPanel&&pilpSelection.length&&routeSelectionReviewIsOpen('pilp')){
     pilpPanel.style.display='block';
     document.getElementById('pilp-pagl').textContent=interventionRouteChefName({agr:CU.l});
     document.getElementById('pilp-pac').textContent=pilpSelection.length;
     rPLPilp(pilpSelection);
   }else if(pilpPanel){pilpPanel.style.display='none';}
+  renderRouteSelectionControls('pilp',pilpSelection);
   let list;
   if(fltPilp==='all') list=pilpJour.filter(iv=>iv.s!=='avis-passage');
   else if(fltPilp==='mes-sel') list=pilpJour.filter(iv=>(iv.s==='selectionne'||iv.s==='en-cours')&&iv.agr===CU.l);
@@ -477,9 +478,7 @@ function rPilp(){
   const ag=isAgres(),chef=isChef()||hasRight('Administration');
   cont.innerHTML=sortedIVS(list.slice()).map(function(iv){return renderInterventionRow(iv,ag||chef,canOperatePilp());}).join('');
 }
-function toggleChkPilp(id,el){
-  cS(id,el.checked?'selectionne':'en-attente');
-}
+function toggleChkPilp(id,el){toggleChk(id,el);}
 
 function oPilp(id){
   // La fiche PILP utilise exactement la même interface et les mêmes actions
@@ -492,7 +491,7 @@ function oPilp(id){
   const pApl=iv._numApl||'';
   const pilpUt=iv._numCaserne?' · UT '+interventionDisplayUTNumber(iv):'';
   document.getElementById('mi').textContent=(iv.s==='terminee'?(pApl||iv.id):iv.id)+pilpUt;
-  const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis passage'],'avis-classe':['bp','Avis classé'],'avis-restaure':['binfo','Avis remis en attente']};
+  const bm={'en-attente':['br','En attente'],'selectionne':['bsel','Sélectionné'],'en-cours':['ba','En cours'],'terminee':['bg2','Terminée'],'avis-passage':['bp','Avis passage'],'avis-classe':['bp','Avis classé'],'avis-restaure':['binfo','Avis remis en attente'],'avis-annule':['binfo','Avis annulé par un administrateur']};
   const[bc,bt]=bm[iv.s]||['bgr','—'];
   let actions='';
   if((ag||tireur||chef)){
@@ -530,7 +529,7 @@ function oPilp(id){
       }
     }
   }
-  const sdots={'en-attente':'#E24B4A','en-cours':'var(--amb)','terminee':'var(--grn)','avis-passage':'var(--pur)','avis-classe':'#6B21A8','avis-restaure':'#2563EB'};
+  const sdots={'en-attente':'#E24B4A','en-cours':'var(--amb)','terminee':'var(--grn)','avis-passage':'var(--pur)','avis-classe':'#6B21A8','avis-restaure':'#2563EB','avis-annule':'#C2410C'};
   const tlHtml=hasAdministrativeAccount()?(iv.tl||[]).map(t=>`<div class="tl-item"><div class="tl-dot" style="background:${sdots[t.s]||'#aaa'};"></div><div class="tl-info"><span class="tl-status">${bm[t.s]?bm[t.s][1]:t.s}</span> <span class="tl-horo">&#x1F4C5; ${t.h}</span><div class="tl-who">${t.who}</div></div></div>`).join(''):'';
   document.getElementById('mb').innerHTML=`
     <div style="margin-bottom:10px;"><span class="bdg ${bc}">${bt}</span> <span class="bdg bpilp">PILP</span>${iv.rappels?` <span class="bdg bp" style="${isAdminModeActive()?'cursor:pointer;':''}"${isAdminModeActive()?` title="Déjà intervenu ici ?" onclick="showInterventionsLiees('${iv.id}')"`:''}>${iv.rappels} rappel(s)</span>`:''}</div>
@@ -1015,10 +1014,9 @@ function rPL(sel,position){
 }
 function getSelMixte(){
   reconcileRouteConfirmation();
-  const editing=routeOrderIsEditing('standard');
-  const norm=IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l&&(editing||!parcConfirmed.has(iv.id))&&!iv._isPilip);
-  const pilp=isTireurPILP()?PILP_IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l&&(editing||!parcConfirmed.has(iv.id))):[];
-  return sortRouteSelection([...norm,...pilp]);
+  if(!CU)return [];
+  const selected=[].concat(routeConfirmationSelection('standard'),isTireurPILP()?routeConfirmationSelection('pilp'):[]);
+  return routeOrderIsEditing('standard')||selected.some(function(iv){return !parcConfirmed.has(iv.id);})?sortRouteSelection(selected):[];
 }
 
 function persistRouteOrder(ordered,position){
@@ -1084,11 +1082,12 @@ function pilpRouteDrop(event,targetId){
   const moved=selected.splice(from,1)[0];selected.splice(to,0,moved);persistPilpRouteOrder(selected);
 }
 function confirmerSelPilp(){
+  if(!CU||!isSessionValid())return;
   if(!canOperatePilp()){showToast('La sélection PILP est réservée aux tireurs PILP, aux administrateurs actifs et au superadmin.','warn');return;}
   const selected=getSelPilp();if(!selected.length)return;
-  if(selected.every(function(iv){return parcConfirmed.has(iv.id);})){_routeOrderEditingKey='';rPilp();return;}
+  if(selected.every(function(iv){return parcConfirmed.has(iv.id);})){_routeOrderEditingKey='';_routeSelectionReviewKey='';rPilp();return;}
   persistPilpRouteOrder(selected);const durable=rememberRouteConfirmation(selected);if(durable===null)return;
-  _routeOrderEditingKey='';rPilp();
+  _routeOrderEditingKey='';_routeSelectionReviewKey='';rPilp();
   if(!durable){showToast('Tournée confirmée pour cet onglet ; le navigateur n’a pas pu mémoriser la validation.','warn');return;}
   showToast('Tournée PILP confirmée : l’ordre reste visible sur chaque intervention.','success');
 }
@@ -1276,12 +1275,13 @@ async function opt(){
   persistRouteOrder(optimizeInterventionRoute(s),captureRouteViewPosition());
 }
 function confirmerSel(){
+  if(!CU||!isSessionValid())return;
   const selected=getSelMixte();
   if(!selected.length)return;
-  if(selected.every(function(iv){return parcConfirmed.has(iv.id);})){_routeOrderEditingKey='';rI();return;}
+  if(selected.every(function(iv){return parcConfirmed.has(iv.id);})){_routeOrderEditingKey='';_routeSelectionReviewKey='';rI();return;}
   persistRouteOrder(selected,captureRouteViewPosition());
   const durable=rememberRouteConfirmation(selected);if(durable===null)return;
-  _routeOrderEditingKey='';
+  _routeOrderEditingKey='';_routeSelectionReviewKey='';
   rI();
   if(!durable){showToast('Tournée confirmée pour cet onglet ; le navigateur n’a pas pu mémoriser la validation.','warn');return;}
   showToast('Tourn\u00e9e confirm\u00e9e : l\u2019ordre reste visible sur chaque intervention.','success');

@@ -1,0 +1,43 @@
+name: Intervention regression tests
+on:
+  pull_request:
+    paths:
+      - 'modules/08-interventions-js.js'
+      - 'modules/09-pilp-js.js'
+      - 'modules/15-storage-js.js'
+      - 'app.js'
+      - 'index.html'
+      - 'version.json'
+      - 'tests/test-route-confirmation-persistence.cjs'
+      - 'tests/test-version-consistency.cjs'
+      - '.github/workflows/intervention-regressions.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'modules/08-interventions-js.js'
+      - 'modules/09-pilp-js.js'
+      - 'app.js'
+      - 'tests/test-route-confirmation-persistence.cjs'
+      - '.github/workflows/intervention-regressions.yml'
+permissions:
+  contents: read
+jobs:
+  interventions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check published JavaScript syntax
+        run: |
+          node --check modules/08-interventions-js.js
+          node --check modules/09-pilp-js.js
+          node --check app.js
+      - name: Test modules and release versions
+        run: node --test tests/test-route-confirmation-persistence.cjs tests/test-version-consistency.cjs
+      - name: Test published bundle
+        run: node --test tests/test-route-confirmation-persistence.cjs
+        env:
+          AGAI_TEST_BUNDLE: '1'
