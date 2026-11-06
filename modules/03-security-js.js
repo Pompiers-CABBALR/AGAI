@@ -519,6 +519,8 @@ async function _agaiOnlinePrepareLogin(login,password,onVerified){
       prenom:profile.firstName||'',nom:profile.lastName||''};
   GLOBAL_ROLE=profile.appRole==='superadmin'?'superadmin':profile.appRole==='chef_corps'?'chef_corps':null;
   CURRENT_CASERNE_ID=profile.appRole==='chef_corps'?null:profile.caserneId;
+  if(typeof agaiApplyAdminStationHeader==='function')agaiApplyAdminStationHeader();
+  _agaiAdminStationOptions=null;_agaiAdminStationOptionsAt=0;
   _agaiStoreAuthSession(signed.session);
   try{
     // La page de connexion n'a pas besoin de construire les onglets masqués.
@@ -528,6 +530,7 @@ async function _agaiOnlinePrepareLogin(login,password,onVerified){
   _agaiLoginFailureReason='data';
   _agaiStoreAuthSession(null);
   CU=previous.user;GLOBAL_ROLE=previous.role;CURRENT_CASERNE_ID=previous.station;
+  if(typeof agaiApplyAdminStationHeader==='function')agaiApplyAdminStationHeader();
   return null;
 }
 function _agaiOnlineDiscardPreparedLogin(){
@@ -606,12 +609,122 @@ async function _agaiSetPersonnelStatusServer(login,status,startsOn,endsOn){
   if(!token)return null;
   try{
     const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{
-      method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+      method:'POST',headers:_agaiAdminStationEdgeHeaders({'apikey':SB_KEY,'Authorization':'Bearer '+token,'Content-Type':'application/json'}),
       body:JSON.stringify({mode:'admin_personnel_status',login:login,status:status,startsOn:startsOn||null,endsOn:endsOn||null})
     },8000);
     const result=await response.json().catch(function(){return{};});
     return response.ok&&result.status==='updated'&&result.login===login?result:null;
   }catch(error){console.warn('[AGAI][PERSONNEL] Changement de statut différé :',error);return null;}
+}
+let _agaiAdminStationOptions=null;
+let _agaiAdminStationOptionsLogin='';
+let _agaiAdminStationOptionsAt=0;
+let _agaiAdminStationOptionsLoading=false;
+let _agaiAdminStationSwitching=false;
+function _agaiAdminStationEdgeHeaders(headers){
+  const scoped=Object.assign({},headers);
+  if(CU&&CU.appRole==='administrateur_caserne'&&CURRENT_CASERNE_ID&&CURRENT_CASERNE_ID!==CU.caserneId)
+    scoped['x-agai-admin-caserne']=CURRENT_CASERNE_ID;
+  return scoped;
+}
+function _agaiDrawAdminStationPicker(){
+  const select=document.getElementById('admin-station-switch');
+  if(!select)return;
+  const allowed=!!(CU&&CU.appRole==='administrateur_caserne'&&isAdminModeActive()
+    &&_agaiAdminStationOptionsLogin===CU.l&&Array.isArray(_agaiAdminStationOptions)
+    &&_agaiAdminStationOptions.length>1);
+  select.hidden=!allowed;
+  select.parentElement?.classList.toggle('admin-multistation',allowed);
+  if(!allowed)return;
+  select.replaceChildren();
+  _agaiAdminStationOptions.forEach(function(cid){
+    const station=CASERNES.find(function(item){return item.id===cid;});
+    if(!station)return;
+    const option=document.createElement('option');
+    option.value=cid;
+    option.textContent=station.nom;
+    select.appendChild(option);
+  });
+  select.value=CURRENT_CASERNE_ID;
+}
+async function agaiRefreshAdminStationPicker(force){
+  const select=document.getElementById('admin-station-switch');
+  if(!select)return;
+  if(!CU||CU.appRole!=='administrateur_caserne'||!isAdminModeActive()){
+    select.hidden=true;select.parentElement?.classList.remove('admin-multistation');return;
+  }
+  const token=_agaiAuthAccessToken();
+  if(!token){select.hidden=true;select.parentElement?.classList.remove('admin-multistation');return;}
+  const requestedLogin=CU.l;
+  if(!force&&_agaiAdminStationOptionsLogin===CU.l&&Date.now()-_agaiAdminStationOptionsAt<60000){
+    _agaiDrawAdminStationPicker();return;
+  }
+  if(_agaiAdminStationOptionsLoading)return;
+  _agaiAdminStationOptionsLoading=true;
+  try{
+    const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{method:'POST',
+      headers:{apikey:SB_KEY,Authorization:'Bearer '+token,'Content-Type':'application/json'},
+      body:JSON.stringify({mode:'my_admin_stations'})},10000);
+    if(!response.ok)throw new Error('stations_unavailable');
+    const result=await response.json();
+    if(!CU||CU.l!==requestedLogin)return;
+    if(result.homeStation!==CU.caserneId||!Array.isArray(result.stations))throw new Error('invalid_stations');
+    _agaiAdminStationOptions=Array.from(new Set(result.stations.filter(function(cid){return CASERNES.some(function(station){return station.id===cid;});})));
+    _agaiAdminStationOptionsLogin=CU.l;
+    _agaiAdminStationOptionsAt=Date.now();
+    _agaiDrawAdminStationPicker();
+    if(CURRENT_CASERNE_ID!==CU.caserneId&&!_agaiAdminStationOptions.includes(CURRENT_CASERNE_ID)
+      &&!_agaiAdminStationSwitching&&!_rcPulling&&!_rcSaving){
+      CURRENT_CASERNE_ID=CU.caserneId;
+      agaiApplyAdminStationHeader();syncCaserneContext();
+      _rcRefreshRealtimeScope();_reloadActiveView();
+      showToast('Le droit sur cette caserne a été retiré : retour à votre caserne.','warn');
+    }
+  }catch(error){select.hidden=true;select.parentElement?.classList.remove('admin-multistation');_agaiAdminStationOptionsAt=Date.now();}
+  finally{_agaiAdminStationOptionsLoading=false;}
+}
+async function agaiSwitchAdminStation(target){
+  const select=document.getElementById('admin-station-switch');
+  const previous=CURRENT_CASERNE_ID;
+  if(select)select.value=previous;
+  if(!CU||CU.appRole!=='administrateur_caserne'||!isAdminModeActive()
+    ||!Array.isArray(_agaiAdminStationOptions)||!_agaiAdminStationOptions.includes(target)
+    ||_agaiAdminStationOptionsLogin!==CU.l||_agaiAdminStationSwitching)return;
+  if(target===previous)return;
+  const ownerLogin=CU.l;
+  const sessionToken=SESSION_TOKEN;
+  if(_rcSaving||_rcPulling||_rcHasActivePending()||document.getElementById('mo')?.style.display==='flex'){
+    showToast('Attendez la fin de la synchronisation et fermez la fiche ouverte avant de changer de caserne.','warn');return;
+  }
+  _agaiAdminStationSwitching=true;
+  document.getElementById('mt').textContent='Changement de caserne';
+  document.getElementById('mi').textContent='';
+  document.getElementById('mb').textContent='Chargement de la caserne sélectionnée…';
+  document.getElementById('mo').style.display='flex';
+  try{
+    CURRENT_CASERNE_ID=target;
+    agaiApplyAdminStationHeader();
+    const pulled=await _rcPull(true,false,true);
+    if(!CU||CU.l!==ownerLogin||SESSION_TOKEN!==sessionToken)throw new Error('session_changed');
+    if(!pulled||!CASERNE_DATA[target])throw new Error('station_pull_failed');
+    syncCaserneContext();
+    _rcRefreshRealtimeScope();
+    const station=CASERNES.find(function(item){return item.id===target;});
+    document.getElementById('t2u').textContent=CU.l+(station?' — '+station.nom:'');
+    _agaiDrawAdminStationPicker();
+    _reloadActiveView();
+    showToast('Caserne chargée.','success');
+  }catch(error){
+    if(CU&&CU.l===ownerLogin&&SESSION_TOKEN===sessionToken){
+      CURRENT_CASERNE_ID=previous;
+      agaiApplyAdminStationHeader();syncCaserneContext();
+      _agaiDrawAdminStationPicker();
+      showToast('Changement impossible : votre caserne précédente reste active.','error');
+    }
+  }finally{
+    _agaiAdminStationSwitching=false;
+    cM();
+  }
 }
 document.addEventListener('visibilitychange',function(){
   if(PERSONNEL_ONLINE_GATE&&CU&&!document.hidden)_agaiOnlineCheckCurrent();
@@ -761,7 +874,7 @@ async function _agaiLinkedPasswordChange(mode,login,newPassword){
   const token=_agaiAuthAccessToken();
   if(!token)return false;
   try{
-    const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+token,'Content-Type':'application/json','x-device-id':agaiDeviceId()},body:JSON.stringify({mode:mode,login:login,newPassword:newPassword})},6000);
+    const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{method:'POST',headers:_agaiAdminStationEdgeHeaders({'apikey':SB_KEY,'Authorization':'Bearer '+token,'Content-Type':'application/json','x-device-id':agaiDeviceId()}),body:JSON.stringify({mode:mode,login:login,newPassword:newPassword})},6000);
     if(!response.ok){const detail=await response.json().catch(function(){return{};});throw new Error(detail.error||('HTTP '+response.status));}
     return true;
   }catch(error){console.warn('[AGAI][AUTH] Mot de passe non synchronisé :',error);return false;}
@@ -771,7 +884,7 @@ async function _agaiProvisionLinkedAccount(account,password){
   if(!_agaiAuthLinkEligible(account))return true;
   const token=_agaiAuthAccessToken();if(!token)return false;
   try{
-    const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+token,'Content-Type':'application/json','x-device-id':agaiDeviceId()},body:JSON.stringify({mode:'admin_provision',login:account.l,newPassword:password,caserneId:account.caserneId,appRole:account.appRole||deriveAccountRole(account),firstName:account.prenom||'',lastName:account.nom||''})},6000);
+    const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{method:'POST',headers:_agaiAdminStationEdgeHeaders({'apikey':SB_KEY,'Authorization':'Bearer '+token,'Content-Type':'application/json','x-device-id':agaiDeviceId()}),body:JSON.stringify({mode:'admin_provision',login:account.l,newPassword:password,caserneId:account.caserneId,appRole:account.appRole||deriveAccountRole(account),firstName:account.prenom||'',lastName:account.nom||''})},6000);
     if(!response.ok){const detail=await response.json().catch(function(){return{};});throw new Error(detail.error||('HTTP '+response.status));}
     return true;
   }catch(error){console.warn('[AGAI][AUTH] Création du compte lié impossible :',error);return false;}
@@ -781,7 +894,7 @@ async function _agaiSyncLinkedAccount(account){
   if(!_agaiAuthLinkEligible(account))return true;
   const token=_agaiAuthAccessToken();if(!token)return false;
   try{
-    const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+token,'Content-Type':'application/json','x-device-id':agaiDeviceId()},body:JSON.stringify({mode:'admin_sync',login:account.l,caserneId:account.caserneId||CURRENT_CASERNE_ID,appRole:account.appRole||deriveAccountRole(account),firstName:account.prenom||'',lastName:account.nom||''})},6000);
+    const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{method:'POST',headers:_agaiAdminStationEdgeHeaders({'apikey':SB_KEY,'Authorization':'Bearer '+token,'Content-Type':'application/json','x-device-id':agaiDeviceId()}),body:JSON.stringify({mode:'admin_sync',login:account.l,caserneId:account.caserneId||CURRENT_CASERNE_ID,appRole:account.appRole||deriveAccountRole(account),firstName:account.prenom||'',lastName:account.nom||''})},6000);
     if(!response.ok)throw new Error('HTTP '+response.status);
     return true;
   }catch(error){console.warn('[AGAI][AUTH] Métadonnées du compte à resynchroniser :',error);return false;}
@@ -791,7 +904,7 @@ async function _agaiDeactivateLinkedAccount(login){
   if(!_agaiAuthLinkLoginEligible(login))return true;
   const token=_agaiAuthAccessToken();if(!token)return false;
   try{
-    const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({mode:'admin_deactivate',login:login})},6000);
+    const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{method:'POST',headers:_agaiAdminStationEdgeHeaders({'apikey':SB_KEY,'Authorization':'Bearer '+token,'Content-Type':'application/json'}),body:JSON.stringify({mode:'admin_deactivate',login:login})},6000);
     return response.ok;
   }catch(error){return false;}
 }

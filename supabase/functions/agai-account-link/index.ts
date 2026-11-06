@@ -2,7 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-device-id',
+  'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-device-id, x-agai-admin-caserne',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 }
 
@@ -216,6 +216,31 @@ Deno.serve(async (req) => {
     if (callerAllowed.data !== true) return json({ error: 'account_unavailable' }, 403)
   }
 
+  if (mode === 'my_admin_stations') {
+    if (callerRole !== 'administrateur_caserne') return json({ error: 'forbidden' }, 403)
+    const { data: link, error: linkError } = await admin.from('agai_auth_links')
+      .select('auth_user_id,caserne_id,app_role').eq('login', callerLogin).maybeSingle()
+    if (linkError || !link || link.auth_user_id !== caller.data.user.id
+      || link.caserne_id !== callerStation || link.app_role !== callerRole)
+      return json({ error: 'identity_link_invalid' }, 403)
+    const grants = await admin.from('agai_admin_station_grants')
+      .select('caserne_id').eq('login', callerLogin).eq('active', true)
+    if (grants.error) return json({ error: 'admin_station_service_unavailable' }, 503)
+    return json({ homeStation: callerStation,
+      stations: [callerStation, ...(grants.data ?? []).map(grant => grant.caserne_id)] })
+  }
+
+  let effectiveStation = callerStation
+  const requestedStation = String(req.headers.get('x-agai-admin-caserne') ?? '').trim()
+  if (requestedStation && requestedStation !== callerStation) {
+    if (callerRole !== 'administrateur_caserne') return json({ error: 'forbidden' }, 403)
+    const granted = await admin.from('agai_admin_station_grants')
+      .select('caserne_id').eq('login', callerLogin).eq('caserne_id', requestedStation)
+      .eq('active', true).maybeSingle()
+    if (granted.error || !granted.data) return json({ error: 'admin_station_not_allowed' }, 403)
+    effectiveStation = requestedStation
+  }
+
   // Inventaire réservé au superadmin : aucune empreinte de mot de passe,
   // aucun jeton ni identifiant Auth n'est transmis au navigateur.
   if (mode === 'admin_access_audit') {
@@ -229,6 +254,14 @@ Deno.serve(async (req) => {
       ? await admin.from('agai_auth_links').select('login,caserne_id,app_role,auth_user_id').in('login', logins)
       : { data: [], error: null }
     if (links.error) return json({ error: 'access_audit_unavailable' }, 503)
+    const grants = await admin.from('agai_admin_station_grants')
+      .select('login,caserne_id,active').eq('active', true)
+    const grantsAvailable = !grants.error
+    const grantsByLogin = new Map<string, string[]>()
+    if (grantsAvailable) for (const grant of grants.data ?? []) {
+      const key = normalizeLogin(grant.login)
+      grantsByLogin.set(key, [...(grantsByLogin.get(key) ?? []), grant.caserne_id])
+    }
     const byLogin = new Map((links.data ?? []).map(link => [normalizeLogin(link.login), link]))
     const accounts = (credentials.data ?? []).map(account => {
       const link = byLogin.get(normalizeLogin(account.login))
@@ -238,11 +271,50 @@ Deno.serve(async (req) => {
         appRole: account.app_role,
         firstName: account.first_name,
         lastName: account.last_name,
+        adminStations: grantsByLogin.get(normalizeLogin(account.login)) ?? [],
         linkStatus: !link || !link.auth_user_id ? 'missing'
           : link.caserne_id !== account.caserne_id || link.app_role !== account.app_role ? 'mismatch' : 'linked',
       }
     })
-    return json({ accounts })
+    return json({ accounts, grantsAvailable })
+  }
+
+  if (mode === 'admin_station_grant' || mode === 'admin_station_grant_history') {
+    if (callerRole !== 'superadmin') return json({ error: 'forbidden' }, 403)
+    const { data: callerLink, error: callerLinkError } = await admin.from('agai_auth_links')
+      .select('auth_user_id,caserne_id,app_role').eq('login', callerLogin).maybeSingle()
+    if (callerLinkError || !callerLink || callerLink.auth_user_id !== caller.data.user.id
+      || callerLink.caserne_id !== callerStation || callerLink.app_role !== callerRole)
+      return json({ error: 'identity_link_invalid' }, 403)
+    const targetLogin = normalizeLogin(payload.login)
+    if (!targetLogin) return json({ error: 'invalid_target' }, 400)
+    if (mode === 'admin_station_grant_history') {
+      const history = await admin.from('agai_admin_station_grant_audit')
+        .select('caserne_id,old_active,new_active,changed_by,changed_at')
+        .eq('login', targetLogin).order('changed_at', { ascending: false }).limit(100)
+      if (history.error) return json({ error: 'admin_station_history_unavailable' }, 503)
+      return json({ history: history.data ?? [] })
+    }
+    const targetStation = String(payload.caserneId ?? '').trim()
+    const enabled = payload.enabled === true
+    if (!/^CIS[0-9]{2,}$/.test(targetStation)) return json({ error: 'invalid_station' }, 400)
+    const { data: target, error: targetError } = await admin.from('agai_identity_credentials')
+      .select('login,caserne_id,app_role,active').eq('login', targetLogin).maybeSingle()
+    if (targetError || !target?.active || target.app_role !== 'administrateur_caserne'
+      || target.caserne_id === targetStation) return json({ error: 'invalid_admin_target' }, 400)
+    const { data: targetLink, error: targetLinkError } = await admin.from('agai_auth_links')
+      .select('caserne_id,app_role,auth_user_id').eq('login', targetLogin).maybeSingle()
+    if (targetLinkError || !targetLink?.auth_user_id || targetLink.caserne_id !== target.caserne_id
+      || targetLink.app_role !== target.app_role) return json({ error: 'target_link_invalid' }, 409)
+    const { data: currentGrant, error: grantReadError } = await admin.from('agai_admin_station_grants')
+      .select('active').eq('login', targetLogin).eq('caserne_id', targetStation).maybeSingle()
+    if (grantReadError) return json({ error: 'admin_station_service_unavailable' }, 503)
+    if (currentGrant?.active === enabled || (!currentGrant && !enabled)) return json({ status: 'unchanged' })
+    const changed = await admin.from('agai_admin_station_grants').upsert({
+      login: targetLogin, caserne_id: targetStation, active: enabled, changed_by: callerLogin,
+    }, { onConflict: 'login,caserne_id' })
+    if (changed.error) return json({ error: 'admin_station_change_failed' }, 409)
+    return json({ status: enabled ? 'granted' : 'revoked' })
   }
 
   if (mode === 'admin_personnel_status') {
@@ -257,7 +329,7 @@ Deno.serve(async (req) => {
       .select('login,caserne_id,app_role').eq('login', targetLogin).maybeSingle()
     if (targetError || !target) return json({ error: 'unknown_account' }, 404)
     if (callerRole !== 'superadmin' &&
-      (target.caserne_id !== callerStation ||
+      (target.caserne_id !== effectiveStation ||
        ['superadmin','chef_corps','administrateur_caserne'].includes(target.app_role)))
       return json({ error: 'forbidden' }, 403)
     const { data: currentStatus, error: currentStatusError } = await admin.from('agai_personnel_access')
@@ -280,7 +352,7 @@ Deno.serve(async (req) => {
     const targetRole = String(payload.appRole ?? 'agent')
     const newPassword = String(payload.newPassword ?? '')
     if (!targetLogin || !targetStation || newPassword.length < 12) return json({ error: 'invalid_account' }, 400)
-    if (callerRole !== 'superadmin' && (targetStation !== callerStation || targetRole !== 'agent')) return json({ error: 'forbidden' }, 403)
+    if (callerRole !== 'superadmin' && (targetStation !== effectiveStation || targetRole !== 'agent')) return json({ error: 'forbidden' }, 403)
     const hash = await hashLegacyPassword(newPassword)
     // La creation ne doit jamais reprendre un login deja attribue a une
     // autre caserne. Une mutation suit une procedure distincte et approuvee.
@@ -304,12 +376,12 @@ Deno.serve(async (req) => {
     const targetStation = String(payload.caserneId ?? '').trim()
     const targetRole = String(payload.appRole ?? 'agent')
     if (!targetLogin || !targetStation) return json({ error: 'invalid_account' }, 400)
-    if (callerRole !== 'superadmin' && (targetStation !== callerStation || targetRole !== 'agent')) return json({ error: 'forbidden' }, 403)
+    if (callerRole !== 'superadmin' && (targetStation !== effectiveStation || targetRole !== 'agent')) return json({ error: 'forbidden' }, 403)
     const { data: currentTarget, error: currentTargetError } = await admin.from('agai_identity_credentials')
       .select('caserne_id,app_role').eq('login', targetLogin).maybeSingle()
     if (currentTargetError || !currentTarget) return json({ error: 'unknown_account' }, 404)
     if (currentTarget.caserne_id !== targetStation) return json({ error: 'transfer_approval_required' }, 403)
-    if (callerRole !== 'superadmin' && (currentTarget.caserne_id !== callerStation || currentTarget.app_role !== 'agent')) return json({ error: 'forbidden' }, 403)
+    if (callerRole !== 'superadmin' && (currentTarget.caserne_id !== effectiveStation || currentTarget.app_role !== 'agent')) return json({ error: 'forbidden' }, 403)
     const updatedCredential = await admin.from('agai_identity_credentials').update({
       caserne_id: targetStation,
       app_role: targetRole,
@@ -333,7 +405,7 @@ Deno.serve(async (req) => {
     const targetLogin = normalizeLogin(payload.login)
     const { data: target } = await admin.from('agai_identity_credentials').select('*').eq('login', targetLogin).maybeSingle()
     if (!target || targetLogin === callerLogin || (callerRole !== 'superadmin' &&
-      (target.caserne_id !== callerStation || ['superadmin','chef_corps','administrateur_caserne'].includes(target.app_role))))
+      (target.caserne_id !== effectiveStation || ['superadmin','chef_corps','administrateur_caserne'].includes(target.app_role))))
       return json({ error: 'forbidden' }, 403)
     const deactivated = await admin.from('agai_identity_credentials').update({ active: false, source_updated_at: new Date().toISOString() }).eq('login', targetLogin)
     if (deactivated.error) return json({ error: 'credential_update_failed' }, 503)
@@ -362,7 +434,7 @@ Deno.serve(async (req) => {
     const newPassword = String(payload.newPassword ?? '')
     const { data: target } = await admin.from('agai_identity_credentials').select('*').eq('login', targetLogin).maybeSingle()
     if (!target || targetLogin === callerLogin || (callerRole !== 'superadmin' &&
-      (target.caserne_id !== callerStation || ['superadmin','chef_corps','administrateur_caserne'].includes(target.app_role))))
+      (target.caserne_id !== effectiveStation || ['superadmin','chef_corps','administrateur_caserne'].includes(target.app_role))))
       return json({ error: 'forbidden' }, 403)
     if (newPassword.length < 12) return json({ error: 'password_policy' }, 400)
     const hash = await hashLegacyPassword(newPassword)

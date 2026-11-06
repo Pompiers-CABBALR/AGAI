@@ -24,7 +24,7 @@ function harness(){
     _rcSplitAll:data=>data.rows||[],_buildDataObject:()=>({rows:[]}),
     _rcOutboxPutRows:async rows=>{const db=context.RC_OUTBOX_DB_NAME;if(!stores.has(db))stores.set(db,new Map());for(const row of rows)stores.get(db).set(row.id,structuredClone(row));return true;},
     _rcOutboxGetRows:async()=>Array.from(stores.get(context.RC_OUTBOX_DB_NAME)?.values()||[]),
-    _agaiStoreAuthSession:session=>events.push(['session',session&&session.access_token]),syncCaserneContext:()=>{},
+    _agaiStoreAuthSession:session=>events.push(['session',session&&session.access_token]),syncCaserneContext:()=>{},agaiApplyAdminStationHeader:()=>{},
     _rcPull:async(...args)=>{events.push(['pull',context.CU.l,...args]);return true;},
     _agaiOnlineBootstrapLogin:async login=>({profile:{login,caserneId:'CIS05',appRole:'agent'},session:{access_token:'verified'}}),
     Set,Date,JSON,encodeURIComponent,console,

@@ -17,7 +17,7 @@ test('l’inventaire superadmin regroupe les administrateurs par compte, sans ch
     getCaserneAdmins:id=>[{l:'test.admin',prenom:'Test',nom:'Admin',caserneId:'CIS01'}],
     LOGIN_HISTORY:[],APP_VERSION:'V202611_0011',
     escHtml:value=>String(value).replaceAll('<','&lt;').replaceAll('>','&gt;'),
-    Map,Set,Date,Intl,
+    Map,Set,Date,Intl,SUPERADMIN_ACCESS_AUDIT:null,
   };
   vm.runInNewContext(block,ctx);
   const rows=ctx.superAdminAdminOverview();
@@ -33,7 +33,7 @@ test('les versions restent propres à chaque appareil et à la dernière activit
       {login:'agent',deviceId:'phone',appVersion:'V1',lastSeenAt:'2026-11-01T10:00:00Z'},
       {login:'agent',deviceId:'phone',appVersion:'V2',lastSeenAt:'2026-11-02T10:00:00Z'},
       {login:'agent',deviceId:'pc',appVersion:'V1',lastSeenAt:'2026-11-03T10:00:00Z'},
-    ],APP_VERSION:'V2',escHtml:String,Map,Set,Date,Intl};
+    ],APP_VERSION:'V2',escHtml:String,Map,Set,Date,Intl,SUPERADMIN_ACCESS_AUDIT:null};
   vm.runInNewContext(block,ctx);
   const rows=ctx.superAdminLatestDeviceVersions();
   assert.equal(rows.length,2);
@@ -46,7 +46,7 @@ test('les fiches locales sans compte actif et les casernes divergentes ressorten
   const ctx={CASERNES:[{id:'CIS01'},{id:'CIS02'}],
     CASERNE_DATA:{CIS01:{users:[{l:'agent.1',prenom:'Agent',nom:'Un'},{l:'agent.2'}]},CIS02:{users:[]}},
     OP_CASERNES:()=>ctx.CASERNES,getCaserneAdmins:()=>[],LOGIN_HISTORY:[],APP_VERSION:'V1',
-    escHtml:String,Map,Set,Date,Intl};
+    escHtml:String,Map,Set,Date,Intl,SUPERADMIN_ACCESS_AUDIT:null};
   vm.runInNewContext(block,ctx);
   const issues=ctx.superAdminLocalAccountIssues([{login:'agent.1',caserneId:'CIS02'}]);
   assert.equal(issues.length,2);
