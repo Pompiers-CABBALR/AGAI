@@ -385,7 +385,7 @@ function applySuperAdminSection(){
 function setSuperAdminSection(section){
   rememberSuperAdminSection(section);
   applySuperAdminSection();
-  if(section==='acces')loadSuperAdminAccessAudit();
+  if(section==='acces'||section==='casernes')loadSuperAdminAccessAudit();
   const body=document.getElementById('gv-body');
   if(body)body.scrollIntoView({block:'start',behavior:'smooth'});
 }
@@ -413,6 +413,26 @@ function superAdminAdminOverview(){
     });
   }
   return [...byLogin.values()].sort(function(a,b){return a.name.localeCompare(b.name,'fr');});
+}
+function renderSuperAdminStationAdmins(caserneId){
+  const admins=superAdminAdminOverview().filter(function(row){return row.stations.includes(caserneId);});
+  const content=admins.length?admins.map(function(row){
+    const home=CASERNES.find(function(station){return station.id===row.home;});
+    const origin=row.home===caserneId?'Admin de la caserne':'Depuis '+(home?home.nom:row.home);
+    return '<div style="padding:4px 0;border-top:1px solid #F1F5F9;font-size:11px;">'
+      +'<strong>'+escHtml(row.name||row.login)+'</strong> <span style="color:#64748B;">· '+escHtml(origin)+'</span>'
+      +(row.linkStatus&&row.linkStatus!=='linked'?'<span style="color:#B45309;"> · liaison à vérifier</span>':'')+'</div>';
+  }).join(''):'<div style="font-size:11px;color:#92400E;">Aucun administrateur désigné'+(SUPERADMIN_ACCESS_AUDIT?'':' · vérification des accès en cours')+'</div>';
+  return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:5px;">'
+    +'<strong style="font-size:11px;color:#334155;">ADMINISTRATEURS</strong>'
+    +'<button type="button" class="btn sm" style="font-size:10px;" onclick="setSuperAdminSection(\'acces\')">Gérer les accès</button></div>'
+    +content;
+}
+function refreshSuperAdminStationAdmins(){
+  OP_CASERNES().forEach(function(station){
+    const target=document.getElementById('sa-station-admin-'+station.id);
+    if(target)target.innerHTML=renderSuperAdminStationAdmins(station.id);
+  });
 }
 function renderSuperAdminAdminOverview(){
   const rows=superAdminAdminOverview();
@@ -524,6 +544,7 @@ async function loadSuperAdminAccessAudit(){
     SUPERADMIN_ACCESS_AUDIT=result;
     const adminPanel=document.getElementById('sa-admin-overview');
     if(adminPanel)adminPanel.innerHTML=renderSuperAdminAdminOverview();
+    refreshSuperAdminStationAdmins();
     const known=new Set(CASERNES.map(function(station){return station.id;}));
     const anomalies=result.accounts.filter(function(account){return account.linkStatus!=='linked'||!known.has(account.caserneId);});
     const localIssues=superAdminLocalAccountIssues(result.accounts);
@@ -642,6 +663,7 @@ function renderSuperAdmin(){
           <div style="color:#666;">Équipes</div>
         </div>
       </div>
+      <div id="sa-station-admin-${c.id}" style="margin-top:10px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:8px;">${renderSuperAdminStationAdmins(c.id)}</div>
       <div style="margin-top:10px;">
         <div style="font-size:11px;font-weight:600;color:#666;margin-bottom:6px;">AGENTS</div>
         ${[...(d.users||[])].sort((a,b)=>(a.nom+' '+a.prenom).localeCompare(b.nom+' '+b.prenom,'fr')).slice(0,5).map(u=>`<div style="font-size:11px;padding:3px 0;border-bottom:1px solid #f0f0f0;display:flex;gap:8px;"><span style="font-weight:500;">${u.nom} ${u.prenom}</span><span style="color:#999;">${u.grade||''}</span></div>`).join('')}
@@ -955,7 +977,7 @@ function renderSuperAdmin(){
     </div>
     </section>`;
   applySuperAdminSection();
-  if(superAdminActiveSection==='acces')loadSuperAdminAccessAudit();
+  if(superAdminActiveSection==='acces'||superAdminActiveSection==='casernes')loadSuperAdminAccessAudit();
   if(typeof renderReportEditionSettings==='function')renderReportEditionSettings();
   // Initialise la prévisualisation du logo
   const _lprev=document.getElementById('sa-logo-preview');
@@ -2302,6 +2324,7 @@ async function confirmAddSuperAdmin(){
 }
 // Gestion casernes (superadmin)
 function addCaserne(){
+  if(!isSuperAdmin())return;
   const colors=['#C0392B','#2980B9','#1ABC9C','#8E44AD','#E67E22','#16A085','#D35400','#2C3E50'];
   const mb=document.getElementById('mb'),mt=document.getElementById('mt'),mo=document.getElementById('mo');
   mt.textContent='Nouvelle caserne';
@@ -2321,31 +2344,35 @@ function addCaserne(){
     </div>
     <div class="fg"><div class="fgl">Adresse trouvée ou saisie manuellement</div><input class="fi" type="text" id="nc-adresse" placeholder="Numéro, rue, code postal et commune"/></div>
     <div class="fg"><div class="fgl">Couleur</div><div style="display:flex;gap:8px;flex-wrap:wrap;">${colors.map(col=>`<div onclick="this.parentElement.querySelectorAll('div').forEach(d=>d.style.outline='none');this.style.outline='3px solid #333';document.getElementById('nc-color').value='${col}';" style="width:28px;height:28px;border-radius:50%;background:${col};cursor:pointer;"></div>`).join('')}<input type="hidden" id="nc-color" value="${colors[0]}"/></div></div>
-    <div class="fg"><div class="fgl">Mot de passe admin caserne</div><input class="fi" type="password" id="nc-pwd" placeholder="Mot de passe"/></div>
+    <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;padding:9px;margin-bottom:10px;font-size:11px;color:#166534;">Aucun administrateur n’est nécessaire pour créer la caserne. Le superadmin pourra ensuite désigner un administrateur local ou autoriser un administrateur d’une autre caserne, sans créer de second compte.</div>
     <div id="nc-err" style="font-size:12px;color:#E24B4A;display:none;margin-bottom:8px;"></div>
     <div class="brow"><button class="btn pr sm" onclick="confirmAddCaserne()">Créer</button><button class="btn sm" onclick="cM()">Annuler</button></div>
   </div>`;
   mo.style.display='flex';
 }
 async function confirmAddCaserne(){
+  if(!isSuperAdmin())return;
   const nom=document.getElementById('nc-nom').value.trim();
   const code=document.getElementById('nc-code').value.trim().toUpperCase();
   const couleur=document.getElementById('nc-color').value;
   const astreintePhone=formatCaserneAstreintePhone((document.getElementById('nc-astreinte-phone')||{}).value||'');
   const adresse=((document.getElementById('nc-adresse')||{}).value||'').trim();
-  const pwd=document.getElementById('nc-pwd').value.trim();
   const err=document.getElementById('nc-err');
-  if(!nom||!code||!pwd){err.style.display='block';err.textContent='Le nom, le code et le mot de passe sont obligatoires.';return;}
+  if(!nom||!code){err.style.display='block';err.textContent='Le nom et le code sont obligatoires.';return;}
+  if(!/^[A-Z]{3}$/.test(code)||CASERNES.some(function(station){return station.code===code;})){
+    err.style.display='block';err.textContent='Utilisez un code unique de trois lettres.';return;
+  }
   let position;
   try{position=await resolveCaserneLocation('nc',adresse);}catch(error){err.style.display='block';err.textContent=error.message||'Impossible de localiser la caserne.';return;}
-  const id='CIS'+String(CASERNES.length+1).padStart(2,'0');
+  let number=1;
+  while(CASERNES.some(function(station){return station.id==='CIS'+String(number).padStart(2,'0');}))number++;
+  const id='CIS'+String(number).padStart(2,'0');
   CASERNES.push({id,nom,code,couleur,email:'',astreintePhone,adresse:position.label||adresse,latitude:position.latitude,longitude:position.longitude});
   initCaserneData(id);
   setCaserneStationLocation(id,position);
-  // Certaines installations ne créent plus de compte administrateur implicite.
-  // Le mot de passe est appliqué uniquement si ce compte historique existe.
-  if(CASERNE_DATA[id].users[0])CASERNE_DATA[id].users[0].p=pwd;
-  saveData();cM();renderSuperAdmin();
+  // Une caserne neuve n'attribue aucun compte ni aucun droit automatiquement.
+  saveData(true);cM();renderSuperAdmin();
+  showToast('Caserne ajoutée. Attendez « Sync OK » avant de désigner un administrateur.','success');
 }
 function editCaserne(id){
   const c=CASERNES.find(x=>x.id===id);if(!c)return;
