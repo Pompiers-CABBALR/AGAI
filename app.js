@@ -3193,8 +3193,15 @@ function setSuperAdminSection(section){
   const body=document.getElementById('gv-body');
   if(body)body.scrollIntoView({block:'start',behavior:'smooth'});
 }
+function saOpenChefCorpsManagement(){
+  if(!isSuperAdmin())return;
+  setSuperAdminSection('acces');
+  const select=document.getElementById('sa-chef-corps-select');
+  if(select)select.scrollIntoView({block:'center',behavior:'smooth'});
+}
 
 let SUPERADMIN_ACCESS_AUDIT=null;
+let SUPERADMIN_ALL_STATIONS_LOADED=false;
 function superAdminAdminOverview(){
   const byLogin=new Map();
   OP_CASERNES().forEach(function(caserne){
@@ -3236,6 +3243,44 @@ function refreshSuperAdminStationAdmins(){
   OP_CASERNES().forEach(function(station){
     const target=document.getElementById('sa-station-admin-'+station.id);
     if(target)target.innerHTML=renderSuperAdminStationAdmins(station.id);
+  });
+}
+function renderSuperAdminStationRoster(station){
+  if(!SUPERADMIN_ALL_STATIONS_LOADED)return '<div style="font-size:11px;color:#64748B;">Chargement des effectifs et des interventions…</div>';
+  const data=CASERNE_DATA[station.id]||{users:[],ivs:[],equipes:[]};
+  const users=Array.isArray(data.users)?data.users:[];
+  const counted=(data.ivs||[]).filter(isInterventionComptabilisee).length;
+  return '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:12px;">'
+    +'<div style="background:#f5f5f5;border-radius:8px;padding:8px;text-align:center;"><div style="font-size:22px;font-weight:700;color:'+station.couleur+';">'+users.length+'</div><div style="color:#666;">Pompiers</div></div>'
+    +'<div style="background:#f5f5f5;border-radius:8px;padding:8px;text-align:center;"><div style="font-size:22px;font-weight:700;">'+counted+'</div><div style="color:#666;">Interventions</div></div>'
+    +'<div style="background:#f5f5f5;border-radius:8px;padding:8px;text-align:center;"><div style="font-size:22px;font-weight:700;">'+(data.equipes||[]).length+'</div><div style="color:#666;">Équipes</div></div></div>'
+    +'<div style="margin-top:10px;"><div style="font-size:11px;font-weight:600;color:#666;margin-bottom:6px;">AGENTS</div>'
+    +users.slice().sort(function(a,b){return String(a.nom||'').localeCompare(String(b.nom||''),'fr');}).slice(0,5).map(function(user){return '<div style="font-size:11px;padding:3px 0;border-bottom:1px solid #f0f0f0;display:flex;gap:8px;"><span style="font-weight:500;">'+escHtml((user.nom||'')+' '+(user.prenom||''))+'</span><span style="color:#999;">'+escHtml(user.grade||'')+'</span></div>';}).join('')
+    +(users.length>5?'<div style="font-size:11px;color:#999;margin-top:4px;">+ '+(users.length-5)+' autres</div>':'')
+    +(!users.length?'<div style="font-size:11px;color:#64748B;">Aucune fiche de personnel dans cette caserne.</div>':'')
+    +'<div style="font-size:10px;color:#64748B;margin-top:5px;">Un admin d’une autre caserne n’est pas compté dans cet effectif.</div></div>';
+}
+function refreshSuperAdminStationRoster(){
+  const firstLoad=!SUPERADMIN_ALL_STATIONS_LOADED;
+  SUPERADMIN_ALL_STATIONS_LOADED=true;
+  const body=document.getElementById('gv-body');
+  const modal=document.getElementById('mo');
+  const editing=body&&body.contains(document.activeElement)&&/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName);
+  if(firstLoad&&!editing&&(!modal||modal.style.display!=='flex')){
+    renderSuperAdmin();
+    return;
+  }
+  OP_CASERNES().forEach(function(station){
+    const target=document.getElementById('sa-station-roster-'+station.id);
+    if(target)target.innerHTML=renderSuperAdminStationRoster(station);
+  });
+  refreshSuperAdminStationAdmins();
+}
+function superAdminStationRosterLoadFailed(){
+  if(SUPERADMIN_ALL_STATIONS_LOADED)return;
+  OP_CASERNES().forEach(function(station){
+    const target=document.getElementById('sa-station-roster-'+station.id);
+    if(target)target.innerHTML='<div style="font-size:11px;color:#B45309;">Effectifs non chargés. Vérifiez la synchronisation.</div>';
   });
 }
 function renderSuperAdminAdminOverview(){
@@ -3397,7 +3442,7 @@ function renderSuperAdmin(){
            <div style="font-size:13px;font-weight:600;">${cc.prenom} ${cc.nom}</div>
            <div style="font-size:11px;color:#666;font-family:monospace;margin:3px 0;">${cc.l}</div>
            <div style="font-size:11px;color:#999;">Espace : État-Major · Statistiques consolidées</div>
-           <select class="fi" style="font-size:11px;padding:4px 6px;width:100%;margin-top:7px;" onchange="setChefCorpsAccount(this.value)">
+           <select class="fi" id="sa-chef-corps-select" style="font-size:11px;padding:4px 6px;width:100%;margin-top:7px;" onchange="setChefCorpsAccount(this.value)">
              <option value="">— Désigner le chef de corps —</option>
              ${chefCorpsCandidates.map(u=>`<option value="${escHtml(u.l)}"${cc&&cc.l===u.l?' selected':''}>${escHtml((u.nom||'')+' '+(u.prenom||''))} · ${escHtml(u._sourceCaserneNom||'État-Major')}</option>`).join('')}
            </select>
@@ -3443,8 +3488,6 @@ function renderSuperAdmin(){
     const d=CASERNE_DATA[c.id]||{users:[],ivs:[],pilpIvs:[]};
     const stationLocation=getCaserneStationLocation(c.id);
     const stationConfigured=validCaserneCoordinates(stationLocation.latitude,stationLocation.longitude);
-    const nbUsers=d.users?.length||0;
-    const nbIv=(d.ivs||[]).filter(isInterventionComptabilisee).length;
     return `<div style="background:#fff;border-radius:14px;padding:16px;border-left:4px solid ${c.couleur};">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
         <span style="background:${c.couleur};color:#fff;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;">${c.code}</span>
@@ -3453,26 +3496,8 @@ function renderSuperAdmin(){
         <button class="btn pr sm" style="font-size:11px;" onclick="editCaserne('${c.id}')">✏️</button>
         <button class="btn sm" style="font-size:11px;color:#E24B4A;" onclick="delCaserne('${c.id}')">✕</button>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:12px;">
-        <div style="background:#f5f5f5;border-radius:8px;padding:8px;text-align:center;">
-          <div style="font-size:22px;font-weight:700;color:${c.couleur};">${nbUsers}</div>
-          <div style="color:#666;">Pompiers</div>
-        </div>
-        <div style="background:#f5f5f5;border-radius:8px;padding:8px;text-align:center;">
-          <div style="font-size:22px;font-weight:700;">${nbIv}</div>
-          <div style="color:#666;">Interventions</div>
-        </div>
-        <div style="background:#f5f5f5;border-radius:8px;padding:8px;text-align:center;">
-          <div style="font-size:22px;font-weight:700;">${(d.equipes||[]).length}</div>
-          <div style="color:#666;">Équipes</div>
-        </div>
-      </div>
+      <div id="sa-station-roster-${c.id}">${renderSuperAdminStationRoster(c)}</div>
       <div id="sa-station-admin-${c.id}" style="margin-top:10px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:8px;">${renderSuperAdminStationAdmins(c.id)}</div>
-      <div style="margin-top:10px;">
-        <div style="font-size:11px;font-weight:600;color:#666;margin-bottom:6px;">AGENTS</div>
-        ${[...(d.users||[])].sort((a,b)=>(a.nom+' '+a.prenom).localeCompare(b.nom+' '+b.prenom,'fr')).slice(0,5).map(u=>`<div style="font-size:11px;padding:3px 0;border-bottom:1px solid #f0f0f0;display:flex;gap:8px;"><span style="font-weight:500;">${u.nom} ${u.prenom}</span><span style="color:#999;">${u.grade||''}</span></div>`).join('')}
-        ${nbUsers>5?`<div style="font-size:11px;color:#999;margin-top:4px;">+ ${nbUsers-5} autres</div>`:''}
-      </div>
       <div style="margin-top:10px;border-top:1px solid #f0f0f0;padding-top:10px;">
         <div style="font-size:11px;font-weight:600;color:#666;margin-bottom:6px;">&#x2709;&#xFE0F; E-MAIL GÉNÉRIQUE</div>
         <div style="display:flex;gap:6px;align-items:center;">
@@ -3529,6 +3554,7 @@ function renderSuperAdmin(){
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
       <span style="background:${etatMajor.couleur};color:#fff;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;">ÉTAT-MAJOR</span>
       <span style="font-size:15px;font-weight:700;">Espace du chef de corps</span>
+      <button type="button" class="btn sm" style="font-size:11px;" onclick="saOpenChefCorpsManagement()">Gérer le chef de corps</button>
       <button class="btn sm" style="margin-left:auto;font-size:11px;background:${etatMajor.couleur};color:#fff;border-color:${etatMajor.couleur};" onclick="saAccederEtatMajor()">▶ Accéder à l'espace</button>
     </div>
     <div style="background:#fff;border:1px solid #DBEAFE;border-radius:10px;padding:10px;margin-bottom:10px;">
@@ -19807,7 +19833,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202611_0014';
+const APP_VERSION='V202611_0015';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -25087,6 +25113,7 @@ async function _rcPull(silent,deferViewsUntilLogin,skipPendingPush){
     await _rcPush(false);
   }
   _rcPulling=true;
+  let requestedScope=null;
   try {
     _rcRequestPersistentStorage();
     // Restaurer la file complète avant la réception. Un envoi bloqué ne doit
@@ -25096,7 +25123,7 @@ async function _rcPull(silent,deferViewsUntilLogin,skipPendingPush){
     durableRows.forEach(function(row){if(row&&row.id)_rcPendingDirty.add(row.id);});
     _rcPersistPendingDirty();
     if(!silent) _jbSetStatus('loading');
-    const requestedScope=_rcPullScopeFilter();
+    requestedScope=_rcPullScopeFilter();
     if(deferViewsUntilLogin)_agaiLoginTimingFetchBegin();
     const rows = await _rcFetchAllActiveRows(requestedScope,!!deferViewsUntilLogin);
     if(deferViewsUntilLogin)_agaiLoginTimingFetchEnd();
@@ -25273,6 +25300,9 @@ async function _rcPull(silent,deferViewsUntilLogin,skipPendingPush){
     }
     _postLoadInit();
     if(activeCid) syncCaserneContext();
+    if(requestedScope===''&&GLOBAL_ROLE==='superadmin'
+      &&document.getElementById('global-view')?.style.display!=='none'
+      &&typeof refreshSuperAdminStationRoster==='function')refreshSuperAdminStationRoster();
     _writeLocalCache(data);
     _rcRenderViewsAfterPull(deferViewsUntilLogin);
     if(_rcPendingDirty.size&&!skipPendingPush)_rcScheduleRetry(0);
@@ -25282,6 +25312,9 @@ async function _rcPull(silent,deferViewsUntilLogin,skipPendingPush){
     _jbSetStatus(_rcHasActivePending()?'pending':'ok'); return true;
   } catch(e){
     console.warn('[AGAI][RC] Pull error:', e);
+    if(requestedScope===''&&GLOBAL_ROLE==='superadmin'
+      &&document.getElementById('global-view')?.style.display!=='none'
+      &&typeof superAdminStationRosterLoadFailed==='function')superAdminStationRosterLoadFailed();
     if(_isLocalStorageQuotaError(e)){
       // Une limite propre au téléphone ne doit jamais annuler une réception
       // distante ni afficher Sync KO. Supabase reste la source de vérité.
