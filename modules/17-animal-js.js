@@ -3575,6 +3575,7 @@ async function _rcPull(silent,deferViewsUntilLogin,skipPendingPush){
     await _rcPush(false);
   }
   _rcPulling=true;
+  let requestedScope=null;
   try {
     _rcRequestPersistentStorage();
     // Restaurer la file complète avant la réception. Un envoi bloqué ne doit
@@ -3584,7 +3585,7 @@ async function _rcPull(silent,deferViewsUntilLogin,skipPendingPush){
     durableRows.forEach(function(row){if(row&&row.id)_rcPendingDirty.add(row.id);});
     _rcPersistPendingDirty();
     if(!silent) _jbSetStatus('loading');
-    const requestedScope=_rcPullScopeFilter();
+    requestedScope=_rcPullScopeFilter();
     if(deferViewsUntilLogin)_agaiLoginTimingFetchBegin();
     const rows = await _rcFetchAllActiveRows(requestedScope,!!deferViewsUntilLogin);
     if(deferViewsUntilLogin)_agaiLoginTimingFetchEnd();
@@ -3761,6 +3762,9 @@ async function _rcPull(silent,deferViewsUntilLogin,skipPendingPush){
     }
     _postLoadInit();
     if(activeCid) syncCaserneContext();
+    if(requestedScope===''&&GLOBAL_ROLE==='superadmin'
+      &&document.getElementById('global-view')?.style.display!=='none'
+      &&typeof refreshSuperAdminStationRoster==='function')refreshSuperAdminStationRoster();
     _writeLocalCache(data);
     _rcRenderViewsAfterPull(deferViewsUntilLogin);
     if(_rcPendingDirty.size&&!skipPendingPush)_rcScheduleRetry(0);
@@ -3770,6 +3774,9 @@ async function _rcPull(silent,deferViewsUntilLogin,skipPendingPush){
     _jbSetStatus(_rcHasActivePending()?'pending':'ok'); return true;
   } catch(e){
     console.warn('[AGAI][RC] Pull error:', e);
+    if(requestedScope===''&&GLOBAL_ROLE==='superadmin'
+      &&document.getElementById('global-view')?.style.display!=='none'
+      &&typeof superAdminStationRosterLoadFailed==='function')superAdminStationRosterLoadFailed();
     if(_isLocalStorageQuotaError(e)){
       // Une limite propre au téléphone ne doit jamais annuler une réception
       // distante ni afficher Sync KO. Supabase reste la source de vérité.
