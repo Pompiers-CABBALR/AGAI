@@ -242,6 +242,7 @@ function rAccueilAstreinte(){
     msgs.push({
       type:'warn',
       scope:'dispo',
+      summary:'Aucune saisie cette semaine',
       text:'Vous n\u2019avez pas mis de disponibilit\u00e9 pour la semaine en cours.'
     });
   }
@@ -365,18 +366,29 @@ function rAccueilAstreinte(){
 
     const debutStr=formatDateHeure(dtDebut,hDebut);
     const finStr=memeJour&&!memeHeure?'\u00e0 '+hFin:formatDateHeure(dtFin,hFin);
+    const jourCourt=function(dt){
+      return ['dim.','lun.','mar.','mer.','jeu.','ven.','sam.'][dt.getDay()]
+        +' '+dt.getDate()+'/'+(dt.getMonth()+1);
+    };
 
     if(prefixe==='actuel'){
-      return 'Votre disponibilit\u00e9 en cours a commenc\u00e9 le '+debutStr+' et se termine le '+finStr+'.';
+      return {
+        summary:'En cours · jusqu’à '+(dtFin.toDateString()===now.toDateString()?'':jourCourt(dtFin)+' ')+hFin,
+        text:'Votre disponibilit\u00e9 en cours a commenc\u00e9 le '+debutStr+' et se termine le '+finStr+'.'
+      };
     } else {
-      return 'Votre prochaine disponibilit\u00e9 commence le '+debutStr+' et se termine le '+finStr+'.';
+      return {
+        summary:'Prochaine · '+jourCourt(dtDebut)+' '+hDebut
+          +(memeJour?'–'+hFin:' → '+jourCourt(dtFin)+' '+hFin),
+        text:'Votre prochaine disponibilit\u00e9 commence le '+debutStr+' et se termine le '+finStr+'.'
+      };
     }
   }
 
   if(blocActuel){
-    msgs.push({type:'info',scope:'dispo',text:formatBlocMsg(blocActuel,'actuel')});
+    msgs.push({type:'info',scope:'dispo',...formatBlocMsg(blocActuel,'actuel')});
   } else if(blocProchain&&aNDispos){
-    msgs.push({type:'info',scope:'dispo',text:formatBlocMsg(blocProchain,'prochain')});
+    msgs.push({type:'info',scope:'dispo',...formatBlocMsg(blocProchain,'prochain')});
   }
 
   // ── 2. PIQUETS ─────────────────────────────────────────────
@@ -421,10 +433,12 @@ function rAccueilAstreinte(){
   piquetsActuels.forEach(function(p){
     const m=agentDansPiquet(p,CU.l);
     const overnight=timeToMin(m.hFin)<=timeToMin(m.hDebut);
+    const depart=piquetDepartureLabel(p.engin);
     msgs.push({
       type:'success',
       scope:'piquet',
-      text:'Piquet en cours : '+p.engin+' ('+m.role+')'
+      summary:depart+' · en cours jusqu’à '+(overnight?'demain ':'')+m.hFin,
+      text:'Piquet en cours : '+depart+' ('+m.role+')'
         +' de '+m.hDebut+' jusqu\u2019\u00e0 '+(overnight?'demain \u00e0 ':'')+m.hFin+'.'
     });
   });
@@ -450,6 +464,7 @@ function rAccueilAstreinte(){
   piquetsProchains.forEach(function(p){
     const m=agentDansPiquet(p,CU.l);
     const overnight=timeToMin(m.hFin)<=timeToMin(m.hDebut);
+    const depart=piquetDepartureLabel(p.engin);
     const jourIdx=JOURS_FULL.indexOf(p.jour);
     const startH=(ASTR_CONFIG.weekStartHour??8)*60;
     const effectifJour=JOURS_FULL[(jourIdx+(timeToMin(m.hDebut)<startH?1:0))%7];
@@ -458,7 +473,9 @@ function rAccueilAstreinte(){
     msgs.push({
       type:'next',
       scope:'piquet',
-      text:'Prochain piquet : '+p.engin+' ('+m.role+')'
+      summary:depart+' · '+effectifJour.toLowerCase()+' '+m.hDebut
+        +(overnight?' → '+finJourLabel.replace(' à ',' ')+m.hFin:'–'+m.hFin),
+      text:'Prochain piquet : '+depart+' ('+m.role+')'
         +' le '+effectifJour.toLowerCase()+' \u00e0 '+m.hDebut
         +' jusqu\u2019\u00e0 '+finJourLabel+m.hFin+'.'
     });
@@ -466,10 +483,21 @@ function rAccueilAstreinte(){
 
   // ── 3. PORTABLE D'ASTREINTE ───────────────────────────────
   const telephoneDuty=astrTelActiveDuty(now);
+  function shortAgendaDateTime(value){
+    const date=new Date(value);
+    if(!Number.isFinite(date.getTime()))return'—';
+    const jour=['dim.','lun.','mar.','mer.','jeu.','ven.','sam.'][date.getDay()];
+    return jour+' '+date.getDate()+'/'+(date.getMonth()+1)+' '
+      +pad(date.getHours())+'h'+(date.getMinutes()?pad(date.getMinutes()):'');
+  }
+  const telephoneOwner=telephoneDuty?astrTelDutyOwnerName(telephoneDuty):'';
   msgs.push({
     type:telephoneDuty?(telephoneDuty.mode==='forward'?'forward':telephoneDuty.login===CU.l?'success':'info'):'warn',
     scope:'telephone',
-    text:astrTelDutyLabel(telephoneDuty)
+    summary:telephoneDuty?telephoneOwner+' · '+shortAgendaDateTime(telephoneDuty.start)
+      +' → '+shortAgendaDateTime(telephoneDuty.end):'Aucune astreinte en cours',
+    text:telephoneDuty?telephoneOwner+' : du '+astrTelDutyDateLabel(telephoneDuty.start)
+      +' au '+astrTelDutyDateLabel(telephoneDuty.end)+'.':astrTelDutyLabel(telephoneDuty)
   });
 
   // ── Rendu compact : une carte Disponibilité + une carte Piquet.
@@ -484,13 +512,14 @@ function rAccueilAstreinte(){
   };
   function renderAgendaCard(scope,title,emptyText,defaultType){
     const items=msgs.filter(function(m){return m.scope===scope;});
-    const first=items[0]||{type:defaultType,text:emptyText};
+    const first=items[0]||{type:defaultType,text:emptyText,
+      summary:scope==='dispo'?'Aucune prochaine disponibilité':scope==='piquet'?'Aucun piquet sous 48 h':emptyText};
     const c=colors[first.type]||colors[defaultType]||colors.info;
     const details=items.length?items:[first];
     return '<details class="acc-agenda-card" style="--agenda-bg:'+c.bg+';--agenda-color:'+c.border+';--agenda-text:'+c.color+';">'
       +'<summary title="'+escHtml(first.text)+'"><span class="acc-agenda-icon">'+c.icon+'</span>'
       +'<span class="acc-agenda-main"><div class="acc-agenda-title">'+title+'</div>'
-      +'<div class="acc-agenda-summary">'+escHtml(first.text)+'</div></span>'
+      +'<div class="acc-agenda-summary">'+escHtml(first.summary||first.text)+'</div></span>'
       +'<span class="acc-agenda-more">▼</span></summary>'
       +'<div class="acc-agenda-details">'+details.map(function(m){
         const mc=colors[m.type]||c;
