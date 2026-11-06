@@ -48,6 +48,7 @@ test('le chargement de reprise lit le serveur sous la bonne identité sans envoy
       return true;
     },
     syncCaserneContext: () => events.push(['reset']),
+    agaiApplyAdminStationHeader: () => {},
     Set,
   };
   vm.runInNewContext(source + '\nglobalThis.loadSaved=_agaiLoadSavedSessionData;', context);

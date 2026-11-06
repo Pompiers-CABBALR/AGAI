@@ -711,6 +711,11 @@ body{min-height:var(--app-height);}
   padding-left:max(16px,var(--safe-left));
   min-width:0;
 }
+#admin-station-switch:not([hidden]){flex:0 1 auto;min-width:120px;}
+@media(max-width:600px){
+  .tb2.admin-multistation{flex-wrap:wrap;}
+  .tb2.admin-multistation #admin-station-switch{width:100%;max-width:none!important;margin-left:0!important;}
+}
 .nav{
   padding-right:var(--safe-right);
   padding-left:var(--safe-left);

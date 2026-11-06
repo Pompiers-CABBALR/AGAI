@@ -390,6 +390,7 @@ function setSuperAdminSection(section){
   if(body)body.scrollIntoView({block:'start',behavior:'smooth'});
 }
 
+let SUPERADMIN_ACCESS_AUDIT=null;
 function superAdminAdminOverview(){
   const byLogin=new Map();
   OP_CASERNES().forEach(function(caserne){
@@ -402,18 +403,75 @@ function superAdminAdminOverview(){
       if(!row.stations.includes(caserne.id))row.stations.push(caserne.id);
     });
   });
+  if(SUPERADMIN_ACCESS_AUDIT&&Array.isArray(SUPERADMIN_ACCESS_AUDIT.accounts)){
+    SUPERADMIN_ACCESS_AUDIT.accounts.filter(function(account){return account.appRole==='administrateur_caserne';}).forEach(function(account){
+      const key=String(account.login).toLowerCase();
+      const existing=byLogin.get(key);
+      byLogin.set(key,{login:account.login,name:[account.firstName,account.lastName].filter(Boolean).join(' ')||existing&&existing.name||account.login,
+        home:account.caserneId,stations:[account.caserneId].concat((account.adminStations||[]).filter(function(id){return id!==account.caserneId;})),
+        linkStatus:account.linkStatus});
+    });
+  }
   return [...byLogin.values()].sort(function(a,b){return a.name.localeCompare(b.name,'fr');});
 }
 function renderSuperAdminAdminOverview(){
   const rows=superAdminAdminOverview();
   const stationName=function(id){const station=CASERNES.find(function(item){return item.id===id;});return station?station.nom:id;};
+  const manageable=!!(SUPERADMIN_ACCESS_AUDIT&&SUPERADMIN_ACCESS_AUDIT.grantsAvailable);
   return '<div style="background:#fff;border:1px solid #E2E8F0;border-radius:14px;padding:16px;margin-bottom:16px;">'
     +'<h3 style="font-size:15px;margin:0 0 5px;">Administrateurs · vue globale</h3>'
     +'<p style="font-size:12px;color:#64748B;margin:0 0 12px;">Un compte par personne. La caserne d’appartenance reste distincte des casernes administrées.</p>'
     +(rows.length?'<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:#F8FAFC;text-align:left;"><th style="padding:8px;">Compte</th><th style="padding:8px;">Appartenance</th><th style="padding:8px;">Administration actuelle</th><th style="padding:8px;">Gestion</th></tr></thead><tbody>'
-      +rows.map(function(row){return '<tr style="border-top:1px solid #E2E8F0;"><td style="padding:8px;"><strong>'+escHtml(row.name||row.login)+'</strong><br><span style="color:#64748B;">'+escHtml(row.login)+'</span></td><td style="padding:8px;">'+escHtml(stationName(row.home))+'</td><td style="padding:8px;">'+row.stations.map(function(id){return '<span style="display:inline-block;background:#EFF6FF;color:#1D4ED8;border-radius:12px;padding:3px 8px;margin:2px;">'+escHtml(stationName(id))+'</span>';}).join('')+'</td><td style="padding:8px;"><a class="btn sm" href="#sa-admin-'+encodeURIComponent(row.stations[0])+'">Gérer</a></td></tr>';}).join('')+'</tbody></table></div>'
+      +rows.map(function(row){
+        const login=escHtml(row.login);
+        const choices=CASERNES.filter(function(station){return station.id!==row.home&&/^CIS[0-9]{2,}$/.test(station.id);});
+        return '<tr style="border-top:1px solid #E2E8F0;"><td style="padding:8px;"><strong>'+escHtml(row.name||row.login)+'</strong><br><span style="color:#64748B;">'+login+'</span>'+(row.linkStatus&&row.linkStatus!=='linked'?'<br><span style="color:#B45309;">Liaison à vérifier</span>':'')+'</td><td style="padding:8px;">'+escHtml(stationName(row.home))+'</td><td style="padding:8px;">'+row.stations.map(function(id){return '<span style="display:inline-block;background:#EFF6FF;color:#1D4ED8;border-radius:12px;padding:3px 8px;margin:2px;">'+escHtml(stationName(id))+'</span>';}).join('')+'</td><td style="padding:8px;">'
+          +(manageable&&row.linkStatus==='linked'?'<select aria-label="Casernes administrées par '+login+'" data-sa-grant-login="'+login+'" onchange="saRequestAdminStationGrant(this)"><option value="">Choisir une caserne…</option>'+choices.map(function(station){return '<option value="'+escHtml(station.id)+'">'+(row.stations.includes(station.id)?'✓ Retirer · ':'+ Ajouter · ')+escHtml(station.nom)+'</option>';}).join('')+'</select> <button class="btn sm" data-sa-history-login="'+login+'" onclick="saShowAdminStationHistory(this.dataset.saHistoryLogin)">Historique</button>':'<span style="color:#64748B;">Lecture seule</span>')+'</td></tr>';
+      }).join('')+'</tbody></table></div>'
       :'<div style="font-size:12px;color:#64748B;">Aucun administrateur de caserne défini.</div>')
-    +'<p style="font-size:11px;color:#92400E;margin:12px 0 0;">Les droits multi-casernes ne sont pas encore activés : leur attribution nécessite le contrôle serveur. Les cases par caserne ci-dessous ne concernent pour l’instant que ses propres comptes.</p></div>';
+    +(manageable?'<p style="font-size:11px;color:#64748B;margin:12px 0 0;">Les changements sont confirmés puis enregistrés et historisés côté serveur. La caserne d’appartenance ne change pas.</p>':'<p style="font-size:11px;color:#92400E;margin:12px 0 0;">Gestion multi-casernes indisponible tant que le contrôle serveur n’est pas actif.</p>')+'</div>';
+}
+function saRequestAdminStationGrant(select){
+  if(!isSuperAdmin()||!select)return;
+  const login=select.dataset.saGrantLogin;
+  const stationId=select.value;
+  select.value='';
+  const row=superAdminAdminOverview().find(function(item){return item.login===login;});
+  const station=CASERNES.find(function(item){return item.id===stationId;});
+  if(!row||!station||row.home===stationId||row.linkStatus!=='linked'||!SUPERADMIN_ACCESS_AUDIT?.grantsAvailable)return;
+  const enabled=!row.stations.includes(stationId);
+  const verb=enabled?'Ajouter':'Retirer';
+  confirmModal(verb+' <strong>'+escHtml(row.name||row.login)+'</strong> '+(enabled?'à':'de')+' la gestion de <strong>'+escHtml(station.nom)+'</strong> ?',function(){saSetAdminStationGrant(login,stationId,enabled);});
+}
+async function saSetAdminStationGrant(login,stationId,enabled){
+  if(!isSuperAdmin()||!SUPERADMIN_ACCESS_AUDIT?.grantsAvailable)return;
+  const token=typeof _agaiAuthAccessToken==='function'?_agaiAuthAccessToken():'';
+  if(!token){showToast('Session non vérifiée : droit inchangé.','warn');return;}
+  try{
+    const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{method:'POST',headers:{apikey:SB_KEY,Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({mode:'admin_station_grant',login:login,caserneId:stationId,enabled:enabled})},10000);
+    if(!response.ok)throw new Error('grant_failed');
+    showToast(enabled?'Caserne ajoutée.':'Caserne retirée.','success');
+    await loadSuperAdminAccessAudit();
+  }catch(error){showToast('Changement non enregistré. Aucun droit n’a été modifié.','error');}
+}
+async function saShowAdminStationHistory(login){
+  if(!isSuperAdmin()||!login)return;
+  const token=typeof _agaiAuthAccessToken==='function'?_agaiAuthAccessToken():'';
+  if(!token){showToast('Session non vérifiée.','warn');return;}
+  try{
+    const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{method:'POST',headers:{apikey:SB_KEY,Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({mode:'admin_station_grant_history',login:login})},10000);
+    if(!response.ok)throw new Error('history_failed');
+    const result=await response.json();
+    const entries=Array.isArray(result.history)?result.history:[];
+    document.getElementById('mt').textContent='Historique des casernes · '+login;
+    document.getElementById('mi').textContent='';
+    document.getElementById('mb').innerHTML='<div style="max-height:60vh;overflow:auto;">'+(entries.length?entries.map(function(entry){
+      const date=new Date(entry.changed_at);
+      const when=Number.isNaN(date.getTime())?entry.changed_at:date.toLocaleString('fr-FR');
+      return '<div style="padding:7px 0;border-bottom:1px solid #E2E8F0;">'+escHtml(when)+' · '+escHtml(entry.changed_by)+' · '+escHtml(entry.new_active?'ajout':'retrait')+' · '+escHtml(entry.caserne_id)+'</div>';
+    }).join(''):'Aucun changement enregistré.')+'</div><button class="btn sm" onclick="cM()">Fermer</button>';
+    document.getElementById('mo').style.display='flex';
+  }catch(error){showToast('Historique indisponible.','warn');}
 }
 function superAdminLatestDeviceVersions(){
   const byDevice=new Map();
@@ -463,6 +521,9 @@ async function loadSuperAdminAccessAudit(){
     if(!response.ok)throw new Error('service_unavailable');
     const result=await response.json();
     if(!Array.isArray(result.accounts))throw new Error('invalid_response');
+    SUPERADMIN_ACCESS_AUDIT=result;
+    const adminPanel=document.getElementById('sa-admin-overview');
+    if(adminPanel)adminPanel.innerHTML=renderSuperAdminAdminOverview();
     const known=new Set(CASERNES.map(function(station){return station.id;}));
     const anomalies=result.accounts.filter(function(account){return account.linkStatus!=='linked'||!known.has(account.caserneId);});
     const localIssues=superAdminLocalAccountIssues(result.accounts);
@@ -666,7 +727,7 @@ function renderSuperAdmin(){
   body.innerHTML=`
     ${renderSuperAdminSubnav()}
     <section class="sa-section" data-sa-section="acces">
-      ${renderSuperAdminAdminOverview()}
+      <div id="sa-admin-overview">${renderSuperAdminAdminOverview()}</div>
       <div style="background:#fff;border:1px solid #E2E8F0;border-radius:14px;padding:16px;margin-bottom:16px;"><h3 style="font-size:15px;margin:0 0 6px;">Comptes à vérifier</h3><div style="font-size:11px;color:#64748B;margin-bottom:8px;">Lecture seule du serveur. Aucun compte n’est corrigé ou effacé automatiquement.</div><div id="sa-access-audit" style="font-size:12px;">Ouvrir cette rubrique pour vérifier les rattachements.</div></div>
       <div id="sa-version-overview">${renderSuperAdminDeviceVersions()}</div>
       ${comptesHtml}
@@ -2590,7 +2651,10 @@ function doLogout(){
     saveData(true); // push immédiat : l'historique de connexion est partagé
   }
   _clearSession(); // P2 : invalider la session
-  CU=null;GLOBAL_ROLE=null;CURRENT_CASERNE_ID=null;syncCaserneContext();
+  CU=null;GLOBAL_ROLE=null;CURRENT_CASERNE_ID=null;
+  if(typeof agaiApplyAdminStationHeader==='function')agaiApplyAdminStationHeader();
+  if(typeof _agaiAdminStationOptions!=='undefined'){_agaiAdminStationOptions=null;_agaiAdminStationOptionsAt=0;}
+  syncCaserneContext();
   if(typeof _rcStopRealtime==='function')_rcStopRealtime();
   // Masquer la vue globale si visible
   const gv=document.getElementById('global-view');if(gv)gv.style.display='none';

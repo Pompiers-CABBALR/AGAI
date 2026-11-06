@@ -1260,6 +1260,9 @@ function toggleSuperAdminRole(){
 }
 
 function toggleAdminRole(){
+  if(CU&&CU.appRole==='administrateur_caserne'&&!window._adminRoleDisabled&&CURRENT_CASERNE_ID!==CU.caserneId){
+    showToast('Revenez à votre caserne avant de désactiver vos pouvoirs administrateur.','warn');return;
+  }
   window._adminRoleDisabled=!window._adminRoleDisabled;
   const isNow=!window._adminRoleDisabled;
   const btn=document.getElementById('nav-role-toggle');

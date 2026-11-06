@@ -1200,6 +1200,7 @@ function canManageUsersNow(){
   return isAdminModeActive();
 }
 function applyNavRights(){
+  if(typeof agaiRefreshAdminStationPicker==='function')agaiRefreshAdminStationPicker();
   document.getElementById('nav-appel').classList.toggle('hidden',!hasRight('Prise d\'appel'));
   document.getElementById('nav-interv').classList.toggle('hidden',!hasRight('Interventions'));
   const pilpTab=document.getElementById('subtab-btn-pilp');

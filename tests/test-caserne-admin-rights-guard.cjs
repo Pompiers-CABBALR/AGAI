@@ -16,8 +16,9 @@ test('la case Administration et sa fonction restent réservées au superadmin',(
 });
 
 test('le service de comptes refuse qu’un admin promeuve un autre compte',()=>{
-  assert.match(edge,/mode === 'admin_provision'[\s\S]*?callerRole !== 'superadmin' && \(targetStation !== callerStation \|\| targetRole !== 'agent'\)/);
-  assert.match(edge,/mode === 'admin_sync'[\s\S]*?callerRole !== 'superadmin' && \(targetStation !== callerStation \|\| targetRole !== 'agent'\)/);
+  assert.match(edge,/mode === 'admin_provision'[\s\S]*?callerRole !== 'superadmin' && \(targetStation !== effectiveStation \|\| targetRole !== 'agent'\)/);
+  assert.match(edge,/mode === 'admin_sync'[\s\S]*?callerRole !== 'superadmin' && \(targetStation !== effectiveStation \|\| targetRole !== 'agent'\)/);
+  assert.match(edge,/requestedStation[\s\S]*?callerRole !== 'administrateur_caserne'[\s\S]*?agai_admin_station_grants[\s\S]*?\.eq\('active', true\)/);
   assert.match(edge,/currentTarget\.app_role !== 'agent'/);
 });
 

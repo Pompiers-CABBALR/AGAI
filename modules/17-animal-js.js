@@ -1331,6 +1331,7 @@ async function _agaiLoadSavedSessionData(stored){
     appRole:stored.globalRole==='chef_corps'?'chef_corps':stored.globalRole==='superadmin'?'superadmin':'agent'};
   GLOBAL_ROLE=stored.globalRole||null;
   CURRENT_CASERNE_ID=stored.globalRole==='chef_corps'?null:stored.caserneId;
+  agaiApplyAdminStationHeader();
   try{
     const durableRows=await _rcOutboxGetRows();
     // Une ancienne trace de connexion d'un autre titulaire ne doit jamais
@@ -1343,6 +1344,7 @@ async function _agaiLoadSavedSessionData(stored){
     return await _rcPull(false,true,true);
   }finally{
     CU=previous.user;GLOBAL_ROLE=previous.role;CURRENT_CASERNE_ID=previous.station;
+    agaiApplyAdminStationHeader();
     syncCaserneContext();
   }
 }
@@ -1558,6 +1560,11 @@ const _sbHeaders = {
   get Authorization(){return 'Bearer '+(_agaiDataAccessToken()||'session-indisponible');},
   'Content-Type': 'application/json'
 };
+function agaiApplyAdminStationHeader(){
+  if(CU&&CU.appRole==='administrateur_caserne'&&CURRENT_CASERNE_ID&&CURRENT_CASERNE_ID!==CU.caserneId)
+    _sbHeaders['x-agai-admin-caserne']=CURRENT_CASERNE_ID;
+  else delete _sbHeaders['x-agai-admin-caserne'];
+}
 
 // ── Découpe l'objet global en lignes par caserne + 1 ligne _GLOBAL ──
 function _sbSplitRows(data){
@@ -2208,7 +2215,8 @@ function _rcRowWritableHere(row){
   const scopedCaserne=_rcSyncScopeCaserne();
   if(PERSONNEL_ONLINE_GATE&&row.type==='login'){
     return !!(CU&&row.data&&row.data.login===CU.l
-      &&(row.caserne===CU.caserneId||row.caserne==='_GLOBAL'));
+      &&(row.caserne===scopedCaserne
+        ||row.caserne==='_GLOBAL'&&CU.appRole==='superadmin'));
   }
   if(typeof isSuperAdmin==='function'&&isSuperAdmin()){
     return !scopedCaserne||row.caserne===scopedCaserne||row.caserne==='_GLOBAL';
@@ -3742,6 +3750,11 @@ async function _rcPull(silent,deferViewsUntilLogin,skipPendingPush){
         _rcPendingDirty.add(_rcId(activeCid,'config','main'));
       }
     }
+    // Le changement de caserne ne doit jamais effacer la copie et la file
+    // locale d'une autre caserne qui n'était pas incluse dans ce pull ciblé.
+    if(CU&&CU.appRole==='administrateur_caserne')Object.keys(CASERNE_DATA||{}).forEach(function(cid){
+      if(!Object.prototype.hasOwnProperty.call(data.CASERNE_DATA,cid))data.CASERNE_DATA[cid]=CASERNE_DATA[cid];
+    });
     _applyDataObject(data);
     if(loginRetention.removed.length&&GLOBAL_ROLE==='superadmin'&&!PERSONNEL_ONLINE_GATE){
       window.setTimeout(function(){if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();saveData(true);},0);
