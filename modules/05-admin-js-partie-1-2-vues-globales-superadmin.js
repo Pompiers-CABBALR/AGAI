@@ -385,8 +385,97 @@ function applySuperAdminSection(){
 function setSuperAdminSection(section){
   rememberSuperAdminSection(section);
   applySuperAdminSection();
+  if(section==='acces')loadSuperAdminAccessAudit();
   const body=document.getElementById('gv-body');
   if(body)body.scrollIntoView({block:'start',behavior:'smooth'});
+}
+
+function superAdminAdminOverview(){
+  const byLogin=new Map();
+  OP_CASERNES().forEach(function(caserne){
+    const users=((CASERNE_DATA[caserne.id]||{}).users||[]);
+    getCaserneAdmins(caserne.id).forEach(function(admin){
+      if(!admin||!admin.l)return;
+      const key=String(admin.l).toLowerCase();
+      if(!byLogin.has(key))byLogin.set(key,{login:admin.l,name:[admin.prenom,admin.nom].filter(Boolean).join(' '),home:admin.caserneId||caserne.id,stations:[]});
+      const row=byLogin.get(key);
+      if(!row.stations.includes(caserne.id))row.stations.push(caserne.id);
+    });
+  });
+  return [...byLogin.values()].sort(function(a,b){return a.name.localeCompare(b.name,'fr');});
+}
+function renderSuperAdminAdminOverview(){
+  const rows=superAdminAdminOverview();
+  const stationName=function(id){const station=CASERNES.find(function(item){return item.id===id;});return station?station.nom:id;};
+  return '<div style="background:#fff;border:1px solid #E2E8F0;border-radius:14px;padding:16px;margin-bottom:16px;">'
+    +'<h3 style="font-size:15px;margin:0 0 5px;">Administrateurs · vue globale</h3>'
+    +'<p style="font-size:12px;color:#64748B;margin:0 0 12px;">Un compte par personne. La caserne d’appartenance reste distincte des casernes administrées.</p>'
+    +(rows.length?'<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:#F8FAFC;text-align:left;"><th style="padding:8px;">Compte</th><th style="padding:8px;">Appartenance</th><th style="padding:8px;">Administration actuelle</th><th style="padding:8px;">Gestion</th></tr></thead><tbody>'
+      +rows.map(function(row){return '<tr style="border-top:1px solid #E2E8F0;"><td style="padding:8px;"><strong>'+escHtml(row.name||row.login)+'</strong><br><span style="color:#64748B;">'+escHtml(row.login)+'</span></td><td style="padding:8px;">'+escHtml(stationName(row.home))+'</td><td style="padding:8px;">'+row.stations.map(function(id){return '<span style="display:inline-block;background:#EFF6FF;color:#1D4ED8;border-radius:12px;padding:3px 8px;margin:2px;">'+escHtml(stationName(id))+'</span>';}).join('')+'</td><td style="padding:8px;"><a class="btn sm" href="#sa-admin-'+encodeURIComponent(row.stations[0])+'">Gérer</a></td></tr>';}).join('')+'</tbody></table></div>'
+      :'<div style="font-size:12px;color:#64748B;">Aucun administrateur de caserne défini.</div>')
+    +'<p style="font-size:11px;color:#92400E;margin:12px 0 0;">Les droits multi-casernes ne sont pas encore activés : leur attribution nécessite le contrôle serveur. Les cases par caserne ci-dessous ne concernent pour l’instant que ses propres comptes.</p></div>';
+}
+function superAdminLatestDeviceVersions(){
+  const byDevice=new Map();
+  (LOGIN_HISTORY||[]).forEach(function(entry){
+    if(!entry||!entry.login)return;
+    const key=String(entry.login).toLowerCase()+'|'+String(entry.deviceId||entry.id||entry.hConnexion||'');
+    const seen=String(entry.lastSeenAt||entry.hConnexion||'');
+    const previous=byDevice.get(key);
+    if(!previous||seen>String(previous.lastSeenAt||previous.hConnexion||''))byDevice.set(key,entry);
+  });
+  return [...byDevice.values()].sort(function(a,b){return String(b.lastSeenAt||b.hConnexion||'').localeCompare(String(a.lastSeenAt||a.hConnexion||''));});
+}
+function renderSuperAdminDeviceVersions(accounts){
+  const rows=superAdminLatestDeviceVersions();
+  const observed=new Set(rows.map(function(entry){return String(entry.login||'').toLowerCase();}));
+  const unobserved=(accounts||[]).filter(function(account){return account&&account.login&&!observed.has(String(account.login).toLowerCase());});
+  const fmt=function(value){const date=new Date(value||0);return Number.isNaN(date.getTime())?'—':date.toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'short'});};
+  return '<div style="background:#fff;border:1px solid #E2E8F0;border-radius:14px;padding:16px;margin-bottom:16px;">'
+    +'<h3 style="font-size:15px;margin:0 0 5px;">Versions par appareil</h3>'
+    +'<p style="font-size:11px;color:#64748B;margin:0 0 10px;">Dernière version observée pour chaque appareil dans l’historique conservé ; une ancienne connexion ne signifie pas que l’appareil est actuellement en ligne. Version actuelle : '+escHtml(APP_VERSION)+'.</p>'
+    +(rows.length||unobserved.length?'<div style="overflow:auto;max-height:320px;"><table style="width:100%;border-collapse:collapse;font-size:11px;"><thead><tr style="background:#F8FAFC;text-align:left;"><th style="padding:7px;">Compte</th><th style="padding:7px;">Support</th><th style="padding:7px;">Version observée</th><th style="padding:7px;">Dernière activité</th></tr></thead><tbody>'
+      +rows.map(function(entry){const version=entry.appVersion||'';const state=version?(version===APP_VERSION?'À jour':'Ancienne version observée'):'Inconnue';return '<tr style="border-top:1px solid #E2E8F0;"><td style="padding:7px;">'+escHtml(entry.login)+'</td><td style="padding:7px;">'+escHtml([entry.support,entry.navigateur].filter(Boolean).join(' · ')||'Non renseigné')+'</td><td style="padding:7px;color:'+(state==='À jour'?'#047857':'#B45309')+';">'+escHtml(version||'Non transmise')+' · '+state+'</td><td style="padding:7px;">'+escHtml(fmt(entry.lastSeenAt||entry.hConnexion))+'</td></tr>';}).join('')
+      +unobserved.map(function(account){return '<tr style="border-top:1px solid #E2E8F0;"><td style="padding:7px;">'+escHtml(account.login)+'</td><td style="padding:7px;">—</td><td style="padding:7px;color:#B45309;">Version inconnue</td><td style="padding:7px;">Aucune connexion conservée</td></tr>';}).join('')+'</tbody></table></div>'
+      :'<div style="font-size:12px;color:#64748B;">Aucune version observée dans l’historique conservé.</div>')+'</div>';
+}
+function superAdminLocalAccountIssues(serverAccounts){
+  const server=new Map((serverAccounts||[]).map(function(account){return [String(account.login||'').toLowerCase(),account];}));
+  const issues=[];
+  OP_CASERNES().forEach(function(station){
+    ((CASERNE_DATA[station.id]||{}).users||[]).forEach(function(user){
+      if(!user||!user.l||user._isSA||user._personnelTransferredOut)return;
+      const account=server.get(String(user.l).toLowerCase());
+      if(!account)issues.push({login:user.l,name:[user.prenom,user.nom].filter(Boolean).join(' '),issue:'aucun compte serveur actif'});
+      else if(account.caserneId!==station.id)issues.push({login:user.l,name:[user.prenom,user.nom].filter(Boolean).join(' '),issue:'caserne locale différente du compte serveur'});
+    });
+  });
+  return issues;
+}
+async function loadSuperAdminAccessAudit(){
+  const target=document.getElementById('sa-access-audit');
+  if(!target||!isSuperAdmin())return;
+  const token=typeof _agaiAuthAccessToken==='function'?_agaiAuthAccessToken():'';
+  if(!token){target.textContent='Contrôle serveur indisponible : session non vérifiée.';return;}
+  target.textContent='Vérification des rattachements…';
+  try{
+    const response=await _agaiAuthFetchWithTimeout(AUTH_LINK_ENDPOINT,{method:'POST',headers:{apikey:SB_KEY,Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({mode:'admin_access_audit'})},10000);
+    if(!response.ok)throw new Error('service_unavailable');
+    const result=await response.json();
+    if(!Array.isArray(result.accounts))throw new Error('invalid_response');
+    const known=new Set(CASERNES.map(function(station){return station.id;}));
+    const anomalies=result.accounts.filter(function(account){return account.linkStatus!=='linked'||!known.has(account.caserneId);});
+    const localIssues=superAdminLocalAccountIssues(result.accounts);
+    const versionPanel=document.getElementById('sa-version-overview');
+    if(versionPanel)versionPanel.innerHTML=renderSuperAdminDeviceVersions(result.accounts);
+    target.innerHTML=anomalies.length||localIssues.length?'<strong>'+anomalies.length+' compte(s) serveur et '+localIssues.length+' fiche(s) locale(s) à vérifier</strong><div style="margin-top:7px;">'+anomalies.map(function(account){
+      const issues=[];
+      if(!known.has(account.caserneId))issues.push('caserne absente ou inconnue');
+      if(account.linkStatus==='missing')issues.push('liaison de connexion absente');
+      else if(account.linkStatus==='mismatch')issues.push('liaison de connexion incohérente');
+      return '<div style="border-top:1px solid #E2E8F0;padding:7px 0;">'+escHtml([account.firstName,account.lastName].filter(Boolean).join(' ')||account.login)+' · '+escHtml(account.login)+' — '+escHtml(issues.join(', '))+'</div>';
+    }).join('')+localIssues.map(function(item){return '<div style="border-top:1px solid #E2E8F0;padding:7px 0;">'+escHtml(item.name||item.login)+' · '+escHtml(item.login)+' — '+escHtml(item.issue)+'</div>';}).join('')+'</div>':'<strong>Aucun rattachement anormal détecté parmi les '+result.accounts.length+' comptes actifs.</strong>';
+  }catch(error){target.textContent='Contrôle serveur indisponible. Aucun compte ni droit n’a été modifié.';}
 }
 
 function renderSuperAdmin(){
@@ -437,7 +526,7 @@ function renderSuperAdmin(){
           const admins=getCaserneAdmins(c.id);
           const adminLogins=new Set(admins.map(a=>a.l));
           const responsableFormation=d.users?.find(u=>u.responsableFormation===true);
-          return `<div style="background:${c.couleur}11;border-radius:10px;padding:12px;border:1px solid ${c.couleur}33;">
+          return `<div id="sa-admin-${encodeURIComponent(c.id)}" style="background:${c.couleur}11;border-radius:10px;padding:12px;border:1px solid ${c.couleur}33;">
             <div style="font-size:11px;font-weight:700;color:${c.couleur};margin-bottom:6px;text-transform:uppercase;">&#x1F6E1;️ Admins ${c.nom}</div>
             ${admins.length?admins.map(admin=>`<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:4px 0;border-bottom:1px solid ${c.couleur}22;">
               <div><div style="font-size:12px;font-weight:600;">${admin.prenom} ${admin.nom}</div><div style="font-size:10px;color:#666;font-family:monospace;">${admin.l}</div></div>
@@ -577,6 +666,9 @@ function renderSuperAdmin(){
   body.innerHTML=`
     ${renderSuperAdminSubnav()}
     <section class="sa-section" data-sa-section="acces">
+      ${renderSuperAdminAdminOverview()}
+      <div style="background:#fff;border:1px solid #E2E8F0;border-radius:14px;padding:16px;margin-bottom:16px;"><h3 style="font-size:15px;margin:0 0 6px;">Comptes à vérifier</h3><div style="font-size:11px;color:#64748B;margin-bottom:8px;">Lecture seule du serveur. Aucun compte n’est corrigé ou effacé automatiquement.</div><div id="sa-access-audit" style="font-size:12px;">Ouvrir cette rubrique pour vérifier les rattachements.</div></div>
+      <div id="sa-version-overview">${renderSuperAdminDeviceVersions()}</div>
       ${comptesHtml}
       <div style="display:flex;justify-content:flex-end;margin:-6px 0 16px;">
         <button class="btn pr" onclick="addSuperAdmin()">+ Super Admin</button>
@@ -802,6 +894,7 @@ function renderSuperAdmin(){
     </div>
     </section>`;
   applySuperAdminSection();
+  if(superAdminActiveSection==='acces')loadSuperAdminAccessAudit();
   if(typeof renderReportEditionSettings==='function')renderReportEditionSettings();
   // Initialise la prévisualisation du logo
   const _lprev=document.getElementById('sa-logo-preview');

@@ -216,6 +216,35 @@ Deno.serve(async (req) => {
     if (callerAllowed.data !== true) return json({ error: 'account_unavailable' }, 403)
   }
 
+  // Inventaire réservé au superadmin : aucune empreinte de mot de passe,
+  // aucun jeton ni identifiant Auth n'est transmis au navigateur.
+  if (mode === 'admin_access_audit') {
+    if (callerRole !== 'superadmin') return json({ error: 'forbidden' }, 403)
+    const credentials = await admin.from('agai_identity_credentials')
+      .select('login,caserne_id,app_role,active,first_name,last_name')
+      .eq('active', true).order('login')
+    if (credentials.error) return json({ error: 'access_audit_unavailable' }, 503)
+    const logins = (credentials.data ?? []).map(account => account.login)
+    const links = logins.length
+      ? await admin.from('agai_auth_links').select('login,caserne_id,app_role,auth_user_id').in('login', logins)
+      : { data: [], error: null }
+    if (links.error) return json({ error: 'access_audit_unavailable' }, 503)
+    const byLogin = new Map((links.data ?? []).map(link => [normalizeLogin(link.login), link]))
+    const accounts = (credentials.data ?? []).map(account => {
+      const link = byLogin.get(normalizeLogin(account.login))
+      return {
+        login: account.login,
+        caserneId: account.caserne_id,
+        appRole: account.app_role,
+        firstName: account.first_name,
+        lastName: account.last_name,
+        linkStatus: !link || !link.auth_user_id ? 'missing'
+          : link.caserne_id !== account.caserne_id || link.app_role !== account.app_role ? 'mismatch' : 'linked',
+      }
+    })
+    return json({ accounts })
+  }
+
   if (mode === 'admin_personnel_status') {
     if (!personnelEnforcement) return json({ error: 'personnel_enforcement_disabled' }, 503)
     if (!['superadmin', 'administrateur_caserne'].includes(callerRole)) return json({ error: 'forbidden' }, 403)
