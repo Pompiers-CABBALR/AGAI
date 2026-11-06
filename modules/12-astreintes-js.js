@@ -2379,7 +2379,7 @@ function requireSecureCrossStationWorkflow(){
 function transfererIV(id){
   if(!requireSecureCrossStationWorkflow())return;
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
-  const casOptions=CASERNES.filter(c=>c.id!==CURRENT_CASERNE_ID)
+  const casOptions=sortedCasernesForDisplay(CASERNES.filter(c=>c.id!==CURRENT_CASERNE_ID))
     .map(c=>`<option value="${c.id}">${c.nom}</option>`).join('');
   document.getElementById('mt').textContent='Transférer l’intervention';
   document.getElementById('mi').textContent=id;

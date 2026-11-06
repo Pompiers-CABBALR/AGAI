@@ -21,6 +21,7 @@ function setup(options={}){
     window:{},navigator:{onLine:true},crypto:{randomUUID:()=> '00000000-0000-4000-8000-000000000001'},
     CU:{l:options.login||'alice'},CURRENT_CASERNE_ID:'CIS05',
     CASERNES:[{id:'CIS05',nom:'CIS 05'}],CASERNE_DATA:{CIS05:{ivs:[record],pilpIvs:[],activites:[],fmpas:[]}},
+    sortedCasernesForDisplay(stations){return stations.slice().sort((a,b)=>a.nom.localeCompare(b.nom,'fr'));},
     USERS:[],rapportsFinalisationDebut:()=> '20261001',
     IVS:[record],PILP_IVS:[],_rcId:(c,t,id)=>[c,t,id].join('|'),
     _agaiAuthAccessToken:()=> 'token',_agaiAuthFetchWithTimeout:async(url,req)=>{

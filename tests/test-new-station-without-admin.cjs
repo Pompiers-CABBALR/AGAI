@@ -6,6 +6,7 @@ const vm=require('node:vm');
 
 const root=path.join(__dirname,'..');
 const admin=fs.readFileSync(path.join(root,'modules/05-admin-js-partie-1-2-vues-globales-superadmin.js'),'utf8');
+const auth=fs.readFileSync(path.join(root,'modules/02-auth-js-partie-1-2-structure-casernes-numerotation.js'),'utf8');
 const migration=fs.readFileSync(path.join(root,'supabase/migrations/20261106230000_admin_station_grant_current_global_v202611_0014.sql'),'utf8');
 const between=(start,end)=>admin.slice(admin.indexOf(start),admin.indexOf(end,admin.indexOf(start)));
 
@@ -83,11 +84,34 @@ test('la création serveur verrouille le catalogue et évite de réutiliser un i
 test('les casernes sont triées par nom dans la vue superadmin',()=>{
   const source=between('function superAdminSortedCasernes(){','function renderSuperAdmin(){');
   const stations=[{nom:'UT Lapugnoy'},{nom:'UT Divion'},{nom:'UT Isbergues'}];
+  const sort=auth.slice(auth.indexOf('function sortedCasernesForDisplay('),auth.indexOf('let CURRENT_CASERNE_ID=',auth.indexOf('function sortedCasernesForDisplay(')));
   const ctx={OP_CASERNES:()=>stations};
-  vm.runInNewContext(source+'\nglobalThis.sorted=superAdminSortedCasernes;',ctx);
+  vm.runInNewContext(sort+source+'\nglobalThis.sorted=superAdminSortedCasernes;',ctx);
   assert.deepEqual(Array.from(ctx.sorted(),item=>item.nom),['UT Divion','UT Isbergues','UT Lapugnoy']);
   assert.equal(stations[0].nom,'UT Lapugnoy','le catalogue original reste intact');
   assert.match(admin,/const casHtml=superAdminSortedCasernes\(\)\.map/);
+});
+
+test('tous les choix de casernes sont alphabétiques et l’État-Major reste en premier',()=>{
+  const sort=auth.slice(auth.indexOf('function sortedCasernesForDisplay('),auth.indexOf('let CURRENT_CASERNE_ID=',auth.indexOf('function sortedCasernesForDisplay(')));
+  const ctx={};
+  vm.runInNewContext(sort+'\nglobalThis.sorted=sortedCasernesForDisplay;',ctx);
+  const stations=[{id:'CIS05',nom:'UT Lapugnoy'},{id:'CIS03',nom:'UT Divion'},
+    {id:'EMAJ',nom:'État-Major'},{id:'CIS09',nom:'UT Isbergues'}];
+  assert.deepEqual(Array.from(ctx.sorted(stations),item=>item.id),['EMAJ','CIS03','CIS09','CIS05']);
+  assert.equal(stations[0].id,'CIS05');
+  const files=[
+    ['modules/03-security-js.js',/sortedCasernesForDisplay\(_agaiAdminStationOptions\.map/],
+    ['modules/05-admin-js-partie-1-2-vues-globales-superadmin.js',/const choices=sortedCasernesForDisplay/],
+    ['modules/12-astreintes-js.js',/const casOptions=sortedCasernesForDisplay/],
+    ['modules/21-astreinte-tel-js.js',/const stations=sortedCasernesForDisplay/],
+    ['modules/24-secure-transfers-js.js',/const casOptions=sortedCasernesForDisplay/],
+    ['modules/25-report-editions-js.js',/sortedCasernesForDisplay\(CASERNES\.filter/],
+  ];
+  for(const [file,pattern] of files){
+    const source=fs.readFileSync(path.join(root,file),'utf8');
+    assert.match(source,pattern,file);
+  }
 });
 
 test('la carte de caserne montre les admins locaux et délégués, sans créer de fiche',()=>{

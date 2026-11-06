@@ -448,7 +448,7 @@ function renderReportAdminMonitor(scope){
   const stations=scope==='superadmin'?'<label style="display:block;margin:9px 0;font-size:12px;">Caserne '
     +'<select class="fi" onchange="setReportAdminStationFilter(this.value)">'
     +'<option value="">Toutes les casernes</option>'
-    +CASERNES.filter(function(c){return c&&c.id&&c.id!=='EMAJ';}).map(function(c){return '<option value="'+escHtml(c.id)+'"'
+    +sortedCasernesForDisplay(CASERNES.filter(function(c){return c&&c.id&&c.id!=='EMAJ';})).map(function(c){return '<option value="'+escHtml(c.id)+'"'
       +(station===c.id?' selected':'')+'>'+escHtml(c.nom||c.id)+'</option>';}).join('')
     +'</select></label>':'';
   el.innerHTML='<div style="font-size:12px;margin-bottom:8px;">'

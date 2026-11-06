@@ -473,6 +473,15 @@ function initCaserneData(cid){
 CASERNES.forEach(c=>initCaserneData(c.id));
 // Casernes opérationnelles (exclut l'État-Major, qui est l'espace de saisie du chef de corps)
 function OP_CASERNES(){return CASERNES.filter(c=>c.id!=='EMAJ');}
+// Trier uniquement les choix affichés, sans réordonner le catalogue synchronisé.
+// L'État-Major reste en tête lorsqu'il figure dans la liste.
+function sortedCasernesForDisplay(stations){
+  return (stations||[]).slice().sort(function(a,b){
+    if(a.id==='EMAJ')return b.id==='EMAJ'?0:-1;
+    if(b.id==='EMAJ')return 1;
+    return String(a.nom||'').localeCompare(String(b.nom||''),'fr',{sensitivity:'base'});
+  });
+}
 let CURRENT_CASERNE_ID=null;
 // Configuration globale des types d'engins (nombre de places + rôles), partagée entre casernes.
 // Chaque rôle : {role:'...', n:nombre}. Modifiable par le superadmin.
@@ -2020,11 +2029,11 @@ function _agaiDrawAdminStationPicker(){
   select.parentElement?.classList.toggle('admin-multistation',allowed);
   if(!allowed)return;
   select.replaceChildren();
-  _agaiAdminStationOptions.forEach(function(cid){
-    const station=CASERNES.find(function(item){return item.id===cid;});
-    if(!station)return;
+  sortedCasernesForDisplay(_agaiAdminStationOptions.map(function(cid){
+    return CASERNES.find(function(item){return item.id===cid;});
+  }).filter(Boolean)).forEach(function(station){
     const option=document.createElement('option');
-    option.value=cid;
+    option.value=station.id;
     option.textContent=station.nom;
     select.appendChild(option);
   });
@@ -3293,7 +3302,7 @@ function renderSuperAdminAdminOverview(){
     +(rows.length?'<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:#F8FAFC;text-align:left;"><th style="padding:8px;">Compte</th><th style="padding:8px;">Appartenance</th><th style="padding:8px;">Administration actuelle</th><th style="padding:8px;">Gestion</th></tr></thead><tbody>'
       +rows.map(function(row){
         const login=escHtml(row.login);
-        const choices=CASERNES.filter(function(station){return station.id!==row.home&&/^CIS[0-9]{2,}$/.test(station.id);});
+        const choices=sortedCasernesForDisplay(CASERNES.filter(function(station){return station.id!==row.home&&/^CIS[0-9]{2,}$/.test(station.id);}));
         return '<tr style="border-top:1px solid #E2E8F0;"><td style="padding:8px;"><strong>'+escHtml(row.name||row.login)+'</strong><br><span style="color:#64748B;">'+login+'</span>'+(row.linkStatus&&row.linkStatus!=='linked'?'<br><span style="color:#B45309;">Liaison à vérifier</span>':'')+'</td><td style="padding:8px;">'+escHtml(stationName(row.home))+'</td><td style="padding:8px;">'+row.stations.map(function(id){return '<span style="display:inline-block;background:#EFF6FF;color:#1D4ED8;border-radius:12px;padding:3px 8px;margin:2px;">'+escHtml(stationName(id))+'</span>';}).join('')+'</td><td style="padding:8px;">'
           +(manageable&&row.linkStatus==='linked'?'<select aria-label="Casernes administrées par '+login+'" data-sa-grant-login="'+login+'" onchange="saRequestAdminStationGrant(this)"><option value="">Choisir une caserne…</option>'+choices.map(function(station){return '<option value="'+escHtml(station.id)+'">'+(row.stations.includes(station.id)?'✓ Retirer · ':'+ Ajouter · ')+escHtml(station.nom)+'</option>';}).join('')+'</select> <button class="btn sm" data-sa-history-login="'+login+'" onclick="saShowAdminStationHistory(this.dataset.saHistoryLogin)">Historique</button>':'<span style="color:#64748B;">Lecture seule</span>')+'</td></tr>';
       }).join('')+'</tbody></table></div>'
@@ -3410,9 +3419,7 @@ async function loadSuperAdminAccessAudit(){
 }
 
 function superAdminSortedCasernes(){
-  return OP_CASERNES().slice().sort(function(a,b){
-    return String(a.nom||'').localeCompare(String(b.nom||''),'fr',{sensitivity:'base'});
-  });
+  return sortedCasernesForDisplay(OP_CASERNES());
 }
 function renderSuperAdmin(){
   // Lecture seule : ouvrir la superadministration ne déclenche aucune
@@ -3437,7 +3444,7 @@ function renderSuperAdmin(){
           <div style="display:flex;gap:6px;margin-top:8px;">
             <button class="btn sm" style="font-size:11px;" onclick="editCompteSpecial('superadmin')">✏️ Modifier</button>
             <select class="fi" style="font-size:11px;padding:3px 6px;flex:1;" onchange="changeSACaserne(this.value)">
-              ${CASERNES.map(c=>`<option value="${c.id}"${c.id===sa.caserneId?' selected':''}>${c.nom}</option>`).join('')}
+              ${sortedCasernesForDisplay(CASERNES).map(c=>`<option value="${c.id}"${c.id===sa.caserneId?' selected':''}>${c.nom}</option>`).join('')}
             </select>
           </div>
         </div>
@@ -4294,7 +4301,7 @@ function renderChefCorpsBody(){
     const moisOpts='<option value="0">Toute l\u2019ann\u00e9e</option>'+MOIS_NOMS.map(function(m,i){
       return '<option value="'+(i+1)+'"'+(ccMois===i+1?' selected':'')+'>'+m+'</option>';
     }).join('');
-    const casOpts='<option value="all">Toutes les casernes</option>'+OP_CASERNES().map(function(c){
+    const casOpts='<option value="all">Toutes les casernes</option>'+sortedCasernesForDisplay(OP_CASERNES()).map(function(c){
       return '<option value="'+c.id+'"'+(ccCaserne===c.id?' selected':'')+'>'+c.nom+'</option>';
     }).join('');
     nav.innerHTML='<div style="background:#fff;border-radius:12px;padding:10px 14px;border:1px solid #ddd;margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
@@ -4876,14 +4883,14 @@ function renderRefCommunes(){
   const secs=['Tous',...new Set(coms.map(c=>c.secteur).filter(Boolean))].sort((a,b)=>a==='Tous'?-1:a.localeCompare(b,'fr'));
   const fs=window._rfcf||'Tous';
   const vis=fs==='Tous'?coms:coms.filter(c=>c.secteur===fs);
-  function secSel(ri,cur){return '<select style="width:100%;padding:3px 7px;border:1px solid var(--brd);border-radius:5px;font-size:12px;" onchange="updateComSecteur('+ri+',this.value)"><option value="">— Secteur —</option>'+CASERNES.map(c=>{const v='UT '+c.nom.replace('UT ','');return '<option value="'+v+'"'+(v===cur?' selected':'')+'>'+c.nom+'</option>';}).join('')+'</select>';}
+  function secSel(ri,cur){return '<select style="width:100%;padding:3px 7px;border:1px solid var(--brd);border-radius:5px;font-size:12px;" onchange="updateComSecteur('+ri+',this.value)"><option value="">— Secteur —</option>'+sortedCasernesForDisplay(CASERNES).map(c=>{const v='UT '+c.nom.replace('UT ','');return '<option value="'+v+'"'+(v===cur?' selected':'')+'>'+c.nom+'</option>';}).join('')+'</select>';}
   const rows=vis.map(c=>{const ri=coms.indexOf(c);return `<tr style="border-bottom:1px solid #f0f0f0;">
     <td style="padding:5px 8px;"><input type="text" value="${c.nom.replace(/"/g,'&quot;')}" style="width:100%;padding:3px 7px;border:1px solid var(--brd);border-radius:5px;font-size:12px;font-weight:500;" onchange="updateComNom(${ri},this.value)"/></td>
     <td style="padding:5px 8px;">${secSel(ri,c.secteur||'')} </td>
     <td style="padding:5px 6px;text-align:center;"><button class="btn sm" style="font-size:10px;color:#E24B4A;" onclick="delCommune(${ri})">&#x2715;</button></td>
   </tr>`;}).join('');
   const sOpts=secs.map(s=>`<option value="${s}"${s===fs?' selected':''}>  ${s==='Tous'?'Tous les secteurs':s}</option>`).join('');
-  const newSecOpts='<option value="">— Secteur —</option>'+CASERNES.map(c=>{const v='UT '+c.nom.replace('UT ','');return `<option value="${v}">${c.nom}</option>`;}).join('');
+  const newSecOpts='<option value="">— Secteur —</option>'+sortedCasernesForDisplay(CASERNES).map(c=>{const v='UT '+c.nom.replace('UT ','');return `<option value="${v}">${c.nom}</option>`;}).join('');
   document.getElementById('ref-body').innerHTML=`
     <div style="background:#fff;border-radius:12px;padding:16px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
@@ -5124,7 +5131,7 @@ function addSuperAdmin(){
       <select class="fi" id="nsa-grade">${GRADES.map(g=>`<option>${g}</option>`).join('')}</select>
     </div>
     <div class="fg"><div class="fgl">Caserne de rattachement</div>
-      <select class="fi" id="nsa-caserne">${CASERNES.map(c=>`<option value="${c.id}">${c.nom}</option>`).join('')}</select>
+      <select class="fi" id="nsa-caserne">${sortedCasernesForDisplay(CASERNES).map(c=>`<option value="${c.id}">${c.nom}</option>`).join('')}</select>
     </div>
     <div class="fg"><div class="fgl">Identifiant (auto)</div>
       <input class="fi" type="text" id="nsa-login" style="font-family:monospace;font-size:12px;"/>
@@ -14910,7 +14917,7 @@ function requireSecureCrossStationWorkflow(){
 function transfererIV(id){
   if(!requireSecureCrossStationWorkflow())return;
   const iv=IVS.find(v=>v.id===id);if(!iv)return;
-  const casOptions=CASERNES.filter(c=>c.id!==CURRENT_CASERNE_ID)
+  const casOptions=sortedCasernesForDisplay(CASERNES.filter(c=>c.id!==CURRENT_CASERNE_ID))
     .map(c=>`<option value="${c.id}">${c.nom}</option>`).join('');
   document.getElementById('mt').textContent='Transférer l’intervention';
   document.getElementById('mi').textContent=id;
@@ -19857,7 +19864,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202611_0016';
+const APP_VERSION='V202611_0017';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -28589,7 +28596,7 @@ function astrTelRenderDutyAdmin(){
   const active=astrTelActiveDuty(new Date()),canManage=hasAdministrativeAccount();
   const activeText=astrTelDutyLabel(active),activeColor=active?(active.mode==='forward'?'#7C3AED':'#047857'):'#9A3412';
   const users=[...(USERS||[])].sort(function(a,b){return fullNameAff(a).localeCompare(fullNameAff(b),'fr');});
-  const stations=OP_CASERNES().filter(function(station){return station.id!==CURRENT_CASERNE_ID;});
+  const stations=sortedCasernesForDisplay(OP_CASERNES().filter(function(station){return station.id!==CURRENT_CASERNE_ID;}));
   const periods=astrTelGetDuties().filter(function(duty){return duty&&!duty._deleted;}).slice().sort(function(a,b){return astrTelDutyTime(b.start)-astrTelDutyTime(a.start);});
   const reliefCount=periods.filter(function(duty){return!!astrTelReliefHistory(duty,periods);}).length;
   let html='<div class="panel" style="border-left:4px solid '+activeColor+';"><div class="panel-title" style="margin-bottom:6px;">📞 Portable d’astreinte</div>'

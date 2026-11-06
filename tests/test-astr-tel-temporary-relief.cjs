@@ -32,6 +32,7 @@ function harness(source=moduleSource){
     USERS:[{l:'nicolas',nom:'Lhernout',prenom:'Nicolas'},{l:'valery',nom:'Leriche',prenom:'Valéry'},{l:'other',nom:'Autre',prenom:'Agent'}],
     CU:{l:'admin'},USE_RECORDS:false,
     OP_CASERNES(){return[];},
+    sortedCasernesForDisplay(stations){return stations.slice();},
     initCaserneData(){},hasAdministrativeAccount(){return true;},
     CD(){return context.CASERNE_DATA.CIS05;},
     document:{getElementById(id){return elements[id]||null;}},
