@@ -365,7 +365,7 @@ function astrTelRenderDutyAdmin(){
   const active=astrTelActiveDuty(new Date()),canManage=hasAdministrativeAccount();
   const activeText=astrTelDutyLabel(active),activeColor=active?(active.mode==='forward'?'#7C3AED':'#047857'):'#9A3412';
   const users=[...(USERS||[])].sort(function(a,b){return fullNameAff(a).localeCompare(fullNameAff(b),'fr');});
-  const stations=OP_CASERNES().filter(function(station){return station.id!==CURRENT_CASERNE_ID;});
+  const stations=sortedCasernesForDisplay(OP_CASERNES().filter(function(station){return station.id!==CURRENT_CASERNE_ID;}));
   const periods=astrTelGetDuties().filter(function(duty){return duty&&!duty._deleted;}).slice().sort(function(a,b){return astrTelDutyTime(b.start)-astrTelDutyTime(a.start);});
   const reliefCount=periods.filter(function(duty){return!!astrTelReliefHistory(duty,periods);}).length;
   let html='<div class="panel" style="border-left:4px solid '+activeColor+';"><div class="panel-title" style="margin-bottom:6px;">📞 Portable d’astreinte</div>'

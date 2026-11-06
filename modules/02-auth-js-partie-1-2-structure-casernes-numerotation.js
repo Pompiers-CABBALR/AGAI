@@ -319,6 +319,15 @@ function initCaserneData(cid){
 CASERNES.forEach(c=>initCaserneData(c.id));
 // Casernes opérationnelles (exclut l'État-Major, qui est l'espace de saisie du chef de corps)
 function OP_CASERNES(){return CASERNES.filter(c=>c.id!=='EMAJ');}
+// Trier uniquement les choix affichés, sans réordonner le catalogue synchronisé.
+// L'État-Major reste en tête lorsqu'il figure dans la liste.
+function sortedCasernesForDisplay(stations){
+  return (stations||[]).slice().sort(function(a,b){
+    if(a.id==='EMAJ')return b.id==='EMAJ'?0:-1;
+    if(b.id==='EMAJ')return 1;
+    return String(a.nom||'').localeCompare(String(b.nom||''),'fr',{sensitivity:'base'});
+  });
+}
 let CURRENT_CASERNE_ID=null;
 // Configuration globale des types d'engins (nombre de places + rôles), partagée entre casernes.
 // Chaque rôle : {role:'...', n:nombre}. Modifiable par le superadmin.

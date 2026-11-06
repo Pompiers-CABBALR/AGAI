@@ -637,11 +637,11 @@ function _agaiDrawAdminStationPicker(){
   select.parentElement?.classList.toggle('admin-multistation',allowed);
   if(!allowed)return;
   select.replaceChildren();
-  _agaiAdminStationOptions.forEach(function(cid){
-    const station=CASERNES.find(function(item){return item.id===cid;});
-    if(!station)return;
+  sortedCasernesForDisplay(_agaiAdminStationOptions.map(function(cid){
+    return CASERNES.find(function(item){return item.id===cid;});
+  }).filter(Boolean)).forEach(function(station){
     const option=document.createElement('option');
-    option.value=cid;
+    option.value=station.id;
     option.textContent=station.nom;
     select.appendChild(option);
   });

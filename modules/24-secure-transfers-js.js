@@ -47,7 +47,7 @@ globalThis.transfererIV=function(id){
   if(!CU||!(isAgres()||isChef()||hasRight('Administration'))){
     showToast('Le transfert est réservé aux chefs d’agrès et aux administrateurs.','warn');return;
   }
-  const casOptions=CASERNES.filter(function(c){return c.id!==CURRENT_CASERNE_ID;})
+  const casOptions=sortedCasernesForDisplay(CASERNES.filter(function(c){return c.id!==CURRENT_CASERNE_ID;}))
     .map(function(c){return '<option value="'+escHtml(c.id)+'">'+escHtml(c.nom)+'</option>';}).join('');
   document.getElementById('mt').textContent='Transférer l’intervention';
   document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
