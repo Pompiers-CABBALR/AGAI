@@ -14,15 +14,23 @@ test('une caserne est créée sans mot de passe ni administrateur implicite',asy
   const fields={
     'nc-nom':{value:'UT Nouvelle'},'nc-code':{value:'NOU'},'nc-color':{value:'#2980B9'},
     'nc-astreinte-phone':{value:''},'nc-adresse':{value:'Adresse'},
-    'nc-err':{style:{display:'none'},textContent:''},mb:{innerHTML:''},mt:{textContent:''},
+    'nc-err':{style:{display:'none'},textContent:''},'nc-create':{disabled:false},mb:{innerHTML:''},mt:{textContent:''},
     mi:{textContent:''},mo:{style:{display:'none'}},
   };
   const stations=[{id:'CIS01',code:'CUI'},{id:'CIS02',code:'DIV'}];
   const data={};
   const events=[];
+  const station={id:'CIS03',nom:'UT Nouvelle',code:'NOU',couleur:'#2980B9',adresse:'Adresse',latitude:50,longitude:2};
   const ctx={document:{getElementById:id=>fields[id]},CASERNES:stations,CASERNE_DATA:data,
     isSuperAdmin:()=>true,formatCaserneAstreintePhone:value=>value,
     resolveCaserneLocation:async()=>({label:'Adresse',latitude:50,longitude:2}),
+    _agaiAuthAccessToken:()=> 'token',
+    _agaiAuthFetchWithTimeout:async(url,options)=>{
+      events.push(['rpc',url,JSON.parse(options.body)]);
+      assert.equal(stations.length,2,'aucune création locale avant confirmation serveur');
+      return {ok:true,json:async()=>({id:'CIS03',station})};
+    },
+    SB_URL:'https://example.supabase.co',SB_KEY:'public-key',
     initCaserneData:id=>{data[id]={users:[],adminLogins:[],adminLogin:''};},
     setCaserneStationLocation:()=>{},saveData:immediate=>events.push(['save',immediate]),
     cM:()=>{},renderSuperAdmin:()=>{},showToast:message=>events.push(message)};
@@ -34,7 +42,52 @@ test('une caserne est créée sans mot de passe ni administrateur implicite',asy
   assert.equal(stations[2].id,'CIS03');
   assert.deepEqual(Array.from(data.CIS03.users),[]);
   assert.deepEqual(Array.from(data.CIS03.adminLogins),[]);
-  assert.deepEqual(events[0],['save',true]);
+  assert.match(events[0][1],/\/rest\/v1\/rpc\/agai_create_station$/);
+  assert.equal(events[0][2].p_code,'NOU');
+  assert.deepEqual(events[1],['save',true]);
+});
+
+test('un refus serveur ne crée ni caserne locale ni succès trompeur',async()=>{
+  const source=between('function addCaserne(){','function editCaserne(id){');
+  const fields={
+    'nc-nom':{value:'UT Nouvelle'},'nc-code':{value:'NOU'},'nc-color':{value:'#2980B9'},
+    'nc-astreinte-phone':{value:''},'nc-adresse':{value:'Adresse'},
+    'nc-err':{style:{display:'none'},textContent:''},'nc-create':{disabled:false},
+  };
+  const stations=[{id:'CIS01',code:'CUI'}];
+  let saved=false;
+  const ctx={document:{getElementById:id=>fields[id]},CASERNES:stations,
+    isSuperAdmin:()=>true,formatCaserneAstreintePhone:value=>value,
+    resolveCaserneLocation:async()=>({label:'Adresse',latitude:50,longitude:2}),
+    _agaiAuthAccessToken:()=> 'token',_agaiAuthFetchWithTimeout:async()=>({ok:false,text:async()=> 'AGAI_STATION_CODE_EXISTS'}),
+    SB_URL:'https://example.supabase.co',SB_KEY:'public-key',
+    saveData:()=>{saved=true;},showToast:()=>assert.fail('pas de succès avant le serveur')};
+  vm.runInNewContext(source+'\nglobalThis.confirm=confirmAddCaserne;',ctx);
+  await ctx.confirm();
+  assert.equal(stations.length,1);
+  assert.equal(saved,false);
+  assert.match(fields['nc-err'].textContent,/existe déjà/);
+  assert.equal(fields['nc-create'].disabled,false);
+});
+
+test('la création serveur verrouille le catalogue et évite de réutiliser un identifiant orphelin',()=>{
+  const sql=fs.readFileSync(path.join(root,'supabase/migrations/20261106232500_create_station_rpc_v202611_0016.sql'),'utf8');
+  assert.match(sql,/security invoker/);
+  assert.match(sql,/actor\.app_role <> 'superadmin'/);
+  assert.match(sql,/for update/);
+  assert.match(sql,/select caserne as id from public\.records/);
+  assert.match(sql,/catalog->'CASERNES'\|\|jsonb_build_array\(station\)/);
+  assert.doesNotMatch(sql,/insert into public\.agai_identity_credentials/);
+});
+
+test('les casernes sont triées par nom dans la vue superadmin',()=>{
+  const source=between('function superAdminSortedCasernes(){','function renderSuperAdmin(){');
+  const stations=[{nom:'UT Lapugnoy'},{nom:'UT Divion'},{nom:'UT Isbergues'}];
+  const ctx={OP_CASERNES:()=>stations};
+  vm.runInNewContext(source+'\nglobalThis.sorted=superAdminSortedCasernes;',ctx);
+  assert.deepEqual(Array.from(ctx.sorted(),item=>item.nom),['UT Divion','UT Isbergues','UT Lapugnoy']);
+  assert.equal(stations[0].nom,'UT Lapugnoy','le catalogue original reste intact');
+  assert.match(admin,/const casHtml=superAdminSortedCasernes\(\)\.map/);
 });
 
 test('la carte de caserne montre les admins locaux et délégués, sans créer de fiche',()=>{
