@@ -43,11 +43,14 @@ function summaries(html){
 }
 
 test('l’astreinte téléphonique affiche le titulaire et les deux bornes',()=>{
-  const [phone]=summaries(render('2026-11-09T10:00:00'));
+  const html=render('2026-11-09T10:00:00');
+  const [phone]=summaries(html);
   assert.match(phone,/Leriche Valéry/);
   assert.match(phone,/lun\. 9\/11 09h/);
   assert.match(phone,/mar\. 10\/11 18h/);
   assert.doesNotMatch(phone,/Astreinte téléphonique :|jusqu’au/);
+  assert.match(html,/--agenda-color:#0F766E/);
+  assert.match(html,/--agenda-color:#3B82F6/);
 });
 
 test('disponibilité et piquet sont courts, avec le rang du départ sans le rôle',()=>{
@@ -59,13 +62,14 @@ test('disponibilité et piquet sont courts, avec le rang du départ sans le rôl
   assert.match(second,/2e départ/);
 });
 
-test('le volet développé conserve les explications complètes',()=>{
+test('le volet développé garde les horaires utiles sans longue phrase ni rôle',()=>{
   const html=render('2026-11-09T12:30:00');
   const [,dispo,piquet]=summaries(html);
   assert.equal(dispo,'En cours · jusqu’à 14h');
   assert.match(piquet,/VTU — 1er départ · en cours jusqu’à 18:00/);
-  assert.match(html,/Votre disponibilité en cours a commencé/);
-  assert.match(html,/Piquet en cours : VTU — 1er départ \(Chef d'agrès\)/);
+  assert.match(html,/acc-agenda-detail.*?<\/span>En cours · lun\. 9\/11 12h–14h/);
+  assert.match(html,/acc-agenda-detail.*?<\/span>VTU — 1er départ · lundi 12:00–18:00/);
+  assert.doesNotMatch(html,/Votre disponibilité en cours a commencé|Piquet en cours :|Chef d'agrès/);
   assert.match(html,/Leriche Valéry : du/);
 });
 

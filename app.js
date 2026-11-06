@@ -5430,7 +5430,7 @@ function rAccueilAstreinte(){
       type:'warn',
       scope:'dispo',
       summary:'Aucune saisie cette semaine',
-      text:'Vous n\u2019avez pas mis de disponibilit\u00e9 pour la semaine en cours.'
+      text:'Aucune disponibilité saisie cette semaine.'
     });
   }
 
@@ -5499,8 +5499,6 @@ function rAccueilAstreinte(){
 
   function formatBlocMsg(b,prefixe){
     const startHour=ASTR_CONFIG.weekStartHour||0;
-    const startDay=ASTR_CONFIG.weekStartDay||1;
-    const mon=getMondayOfWeek(0); // date du début de semaine
 
     // Heure du début d'un slot
     function slotHeure(s){
@@ -5522,16 +5520,6 @@ function rAccueilAstreinte(){
       return totalMin>1440?dayIdx+1:dayIdx;
     }
 
-    const MOIS_FR=['janvier','f\u00e9vrier','mars','avril','mai','juin','juillet','ao\u00fbt','septembre','octobre','novembre','d\u00e9cembre'];
-    const JOURS_FR=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
-
-    function formatDate(dt){
-      return JOURS_FR[dt.getDay()]+' '+dt.getDate()+' '+MOIS_FR[dt.getMonth()]+' '+dt.getFullYear();
-    }
-    function formatDateHeure(dt,heure){
-      return formatDate(dt)+' \u00e0 '+heure;
-    }
-
     // Date réelle du jour de début (en tenant compte du weekStartDay)
     function jourDate(dayIdx){
       const mon=getMondayOfWeek(0);
@@ -5547,12 +5535,7 @@ function rAccueilAstreinte(){
     const finDayIdx=dateFinIdx(b.fin.d,b.fin.s);
     const dtFin=jourDate(finDayIdx);
 
-    // Cas semaine complète : même heure début et fin, jours différents
-    const memeHeure=hDebut===hFin;
     const memeJour=dtDebut.toDateString()===dtFin.toDateString();
-
-    const debutStr=formatDateHeure(dtDebut,hDebut);
-    const finStr=memeJour&&!memeHeure?'\u00e0 '+hFin:formatDateHeure(dtFin,hFin);
     const jourCourt=function(dt){
       return ['dim.','lun.','mar.','mer.','jeu.','ven.','sam.'][dt.getDay()]
         +' '+dt.getDate()+'/'+(dt.getMonth()+1);
@@ -5561,13 +5544,15 @@ function rAccueilAstreinte(){
     if(prefixe==='actuel'){
       return {
         summary:'En cours · jusqu’à '+(dtFin.toDateString()===now.toDateString()?'':jourCourt(dtFin)+' ')+hFin,
-        text:'Votre disponibilit\u00e9 en cours a commenc\u00e9 le '+debutStr+' et se termine le '+finStr+'.'
+        text:'En cours · '+jourCourt(dtDebut)+' '+hDebut
+          +(memeJour?'–'+hFin:' → '+jourCourt(dtFin)+' '+hFin)
       };
     } else {
       return {
         summary:'Prochaine · '+jourCourt(dtDebut)+' '+hDebut
           +(memeJour?'–'+hFin:' → '+jourCourt(dtFin)+' '+hFin),
-        text:'Votre prochaine disponibilit\u00e9 commence le '+debutStr+' et se termine le '+finStr+'.'
+        text:'À venir · '+jourCourt(dtDebut)+' '+hDebut
+          +(memeJour?'–'+hFin:' → '+jourCourt(dtFin)+' '+hFin)
       };
     }
   }
@@ -5594,6 +5579,16 @@ function rAccueilAstreinte(){
     if(p.chefEquipe===login)return {role:"Chef d'\u00e9quipe",hDebut:p.debut,hFin:p.fin};
     if(p.stagiaire===login)return {role:'\u00c9quipier',hDebut:p.debut,hFin:p.fin};
     return null;
+  }
+  function piquetAgendaRange(p,m){
+    const jourIdx=JOURS_FULL.indexOf(p.jour);
+    const debut=timeToMin(m.hDebut),fin=timeToMin(m.hFin);
+    const startHour=(ASTR_CONFIG.weekStartHour??8)*60;
+    const effectifIdx=(jourIdx+(debut<startHour?1:0))%7;
+    const finIdx=(effectifIdx+(fin<=debut?1:0))%7;
+    const jourDebut=JOURS_FULL[effectifIdx].toLowerCase();
+    return jourDebut+' '+m.hDebut
+      +(fin<=debut?' → '+JOURS_FULL[finIdx].toLowerCase()+' '+m.hFin:'–'+m.hFin);
   }
 
   const piquetsAgent=piquetsSemaine.filter(function(p){return agentDansPiquet(p,CU.l)!==null;});
@@ -5625,8 +5620,7 @@ function rAccueilAstreinte(){
       type:'success',
       scope:'piquet',
       summary:depart+' · en cours jusqu’à '+(overnight?'demain ':'')+m.hFin,
-      text:'Piquet en cours : '+depart+' ('+m.role+')'
-        +' de '+m.hDebut+' jusqu\u2019\u00e0 '+(overnight?'demain \u00e0 ':'')+m.hFin+'.'
+      text:depart+' · '+piquetAgendaRange(p,m)
     });
   });
 
@@ -5650,21 +5644,12 @@ function rAccueilAstreinte(){
 
   piquetsProchains.forEach(function(p){
     const m=agentDansPiquet(p,CU.l);
-    const overnight=timeToMin(m.hFin)<=timeToMin(m.hDebut);
     const depart=piquetDepartureLabel(p.engin);
-    const jourIdx=JOURS_FULL.indexOf(p.jour);
-    const startH=(ASTR_CONFIG.weekStartHour??8)*60;
-    const effectifJour=JOURS_FULL[(jourIdx+(timeToMin(m.hDebut)<startH?1:0))%7];
-    // Calcul du jour de fin
-    const finJourLabel=overnight?JOURS_FULL[(jourIdx+1+(timeToMin(m.hDebut)<startH?1:0))%7].toLowerCase()+' \u00e0 ':'';
     msgs.push({
       type:'next',
       scope:'piquet',
-      summary:depart+' · '+effectifJour.toLowerCase()+' '+m.hDebut
-        +(overnight?' → '+finJourLabel.replace(' à ',' ')+m.hFin:'–'+m.hFin),
-      text:'Prochain piquet : '+depart+' ('+m.role+')'
-        +' le '+effectifJour.toLowerCase()+' \u00e0 '+m.hDebut
-        +' jusqu\u2019\u00e0 '+finJourLabel+m.hFin+'.'
+      summary:depart+' · '+piquetAgendaRange(p,m),
+      text:depart+' · '+piquetAgendaRange(p,m)
     });
   });
 
@@ -5679,7 +5664,7 @@ function rAccueilAstreinte(){
   }
   const telephoneOwner=telephoneDuty?astrTelDutyOwnerName(telephoneDuty):'';
   msgs.push({
-    type:telephoneDuty?(telephoneDuty.mode==='forward'?'forward':telephoneDuty.login===CU.l?'success':'info'):'warn',
+    type:telephoneDuty?(telephoneDuty.mode==='forward'?'forward':'telephone'):'warn',
     scope:'telephone',
     summary:telephoneDuty?telephoneOwner+' · '+shortAgendaDateTime(telephoneDuty.start)
       +' → '+shortAgendaDateTime(telephoneDuty.end):'Aucune astreinte en cours',
@@ -5693,6 +5678,7 @@ function rAccueilAstreinte(){
   const colors={
     warn:{bg:'#FEF9C3',border:'#F59E0B',icon:'&#x26A0;&#xFE0F;',color:'#713F12'},
     info:{bg:'#EFF6FF',border:'#3B82F6',icon:'&#x1F4C5;',color:'#1E3A5F'},
+    telephone:{bg:'#F0FDFA',border:'#0F766E',icon:'&#x260E;&#xFE0F;',color:'#115E59'},
     success:{bg:'#F0FDF4',border:'#22C55E',icon:'&#x2705;',color:'#14532D'},
     next:{bg:'#F3EAF8',border:'#A855F7',icon:'&#x1F51C;',color:'#4A1D6D'},
     forward:{bg:'#FAF5FF',border:'#7C3AED',icon:'&#x21AA;&#xFE0F;',color:'#581C87'},
@@ -5716,7 +5702,7 @@ function rAccueilAstreinte(){
   el.innerHTML='<div style="margin-bottom:8px;">'+renderAgendaCard('telephone','Astreinte téléphonique','Aucune astreinte téléphonique renseignée.','warn')+'</div>'
     +'<div class="acc-agenda-grid">'
     +renderAgendaCard('dispo','Disponibilité','Aucune prochaine disponibilité renseignée.','warn')
-    +renderAgendaCard('piquet','Piquet','Aucun piquet prévu dans les prochaines 48 heures.','next')
+    +renderAgendaCard('piquet','Piquet','Aucun piquet sous 48 h.','next')
     +'</div>';
 }
 
@@ -19523,7 +19509,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202611_0010';
+const APP_VERSION='V202611_0011';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
