@@ -605,6 +605,11 @@ async function loadSuperAdminAccessAudit(){
   }catch(error){target.textContent='Contrôle serveur indisponible. Aucun compte ni droit n’a été modifié.';}
 }
 
+function superAdminSortedCasernes(){
+  return OP_CASERNES().slice().sort(function(a,b){
+    return String(a.nom||'').localeCompare(String(b.nom||''),'fr',{sensitivity:'base'});
+  });
+}
 function renderSuperAdmin(){
   // Lecture seule : ouvrir la superadministration ne déclenche aucune
   // réparation ni écriture automatique vers Supabase.
@@ -648,7 +653,7 @@ function renderSuperAdmin(){
            <div style="font-size:10px;color:#777;margin-top:4px;">Désignation unique, modifiable uniquement par le superadmin. Les identifiants actuels sont conservés.</div>
          </div>
         <!-- Admins casernes -->
-        ${OP_CASERNES().map(c=>{
+        ${superAdminSortedCasernes().map(c=>{
           const d=CASERNE_DATA[c.id]||{users:[]};
           const admins=getCaserneAdmins(c.id);
           const adminLogins=new Set(admins.map(a=>a.l));
@@ -680,7 +685,7 @@ function renderSuperAdmin(){
         }).join('')}
       </div>
     </div>`;
-  const casHtml=OP_CASERNES().map(c=>{
+  const casHtml=superAdminSortedCasernes().map(c=>{
     const d=CASERNE_DATA[c.id]||{users:[],ivs:[],pilpIvs:[]};
     const stationLocation=getCaserneStationLocation(c.id);
     const stationConfigured=validCaserneCoordinates(stationLocation.latitude,stationLocation.longitude);
@@ -2372,7 +2377,7 @@ function addCaserne(){
     <div class="fg"><div class="fgl">Couleur</div><div style="display:flex;gap:8px;flex-wrap:wrap;">${colors.map(col=>`<div onclick="this.parentElement.querySelectorAll('div').forEach(d=>d.style.outline='none');this.style.outline='3px solid #333';document.getElementById('nc-color').value='${col}';" style="width:28px;height:28px;border-radius:50%;background:${col};cursor:pointer;"></div>`).join('')}<input type="hidden" id="nc-color" value="${colors[0]}"/></div></div>
     <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;padding:9px;margin-bottom:10px;font-size:11px;color:#166534;">Aucun administrateur n’est nécessaire pour créer la caserne. Le superadmin pourra ensuite désigner un administrateur local ou autoriser un administrateur d’une autre caserne, sans créer de second compte.</div>
     <div id="nc-err" style="font-size:12px;color:#E24B4A;display:none;margin-bottom:8px;"></div>
-    <div class="brow"><button class="btn pr sm" onclick="confirmAddCaserne()">Créer</button><button class="btn sm" onclick="cM()">Annuler</button></div>
+    <div class="brow"><button class="btn pr sm" id="nc-create" onclick="confirmAddCaserne()">Créer</button><button class="btn sm" onclick="cM()">Annuler</button></div>
   </div>`;
   mo.style.display='flex';
 }
@@ -2388,17 +2393,36 @@ async function confirmAddCaserne(){
   if(!/^[A-Z]{3}$/.test(code)||CASERNES.some(function(station){return station.code===code;})){
     err.style.display='block';err.textContent='Utilisez un code unique de trois lettres.';return;
   }
-  let position;
-  try{position=await resolveCaserneLocation('nc',adresse);}catch(error){err.style.display='block';err.textContent=error.message||'Impossible de localiser la caserne.';return;}
-  let number=1;
-  while(CASERNES.some(function(station){return station.id==='CIS'+String(number).padStart(2,'0');}))number++;
-  const id='CIS'+String(number).padStart(2,'0');
-  CASERNES.push({id,nom,code,couleur,email:'',astreintePhone,adresse:position.label||adresse,latitude:position.latitude,longitude:position.longitude});
-  initCaserneData(id);
-  setCaserneStationLocation(id,position);
-  // Une caserne neuve n'attribue aucun compte ni aucun droit automatiquement.
-  saveData(true);cM();renderSuperAdmin();
-  showToast('Caserne ajoutée. Attendez « Sync OK » avant de désigner un administrateur.','success');
+  const button=document.getElementById('nc-create');
+  if(button&&button.disabled)return;
+  if(button)button.disabled=true;
+  err.style.display='none';
+  try{
+    const position=await resolveCaserneLocation('nc',adresse);
+    const token=typeof _agaiAuthAccessToken==='function'?_agaiAuthAccessToken():'';
+    if(!token)throw new Error('Connexion superadmin requise. Aucune caserne créée.');
+    const response=await _agaiAuthFetchWithTimeout(SB_URL.replace(/\/$/,'')+'/rest/v1/rpc/agai_create_station',{
+      method:'POST',headers:{apikey:SB_KEY,Authorization:'Bearer '+token,'Content-Type':'application/json'},
+      body:JSON.stringify({p_nom:nom,p_code:code,p_couleur:couleur,p_astreinte_phone:astreintePhone,
+        p_adresse:position.label||adresse,p_latitude:position.latitude,p_longitude:position.longitude})
+    },15000);
+    if(!response.ok){
+      const detail=await response.text().catch(function(){return '';});
+      if(/AGAI_STATION_(CODE|NAME)_EXISTS/.test(detail))throw new Error('Cette caserne ou ce code existe déjà.');
+      throw new Error('Création non confirmée par le serveur. Aucune caserne annoncée comme créée.');
+    }
+    const result=await response.json();
+    if(!result||!result.id||!result.station||result.station.id!==result.id)throw new Error('Réponse du serveur incomplète. Vérifiez la liste avant de réessayer.');
+    if(!CASERNES.some(function(station){return station.id===result.id;}))CASERNES.push(result.station);
+    initCaserneData(result.id);
+    setCaserneStationLocation(result.id,position);
+    // Le catalogue est déjà confirmé côté serveur ; seule la configuration
+    // locale de cette caserne reste à synchroniser. Aucun admin n'est créé.
+    saveData(true);cM();renderSuperAdmin();
+    showToast('Caserne enregistrée sur le serveur.','success');
+  }catch(error){
+    err.style.display='block';err.textContent=error&&error.message||'Création non confirmée.';
+  }finally{if(button)button.disabled=false;}
 }
 function editCaserne(id){
   const c=CASERNES.find(x=>x.id===id);if(!c)return;
