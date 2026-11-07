@@ -2,7 +2,7 @@
 // ────────────────── HISTORIQUE ──────────────────
 function rHistLegacy(){
   const cA=isChef()||hasRight('Administration');
-  const normalIvs=cA?IVS.filter(iv=>!['en-attente','selectionne','en-cours'].includes(iv.s)&&!iv._isPilip):IVS.filter(iv=>(isTdy(iv)||iv.s==='annulee')&&!iv._isPilip);
+  const normalIvs=cA?IVS.filter(iv=>!['en-attente','selectionne','en-cours'].includes(iv.s)&&!iv._isPilip&&!iv._isSdisPersonnelRenfort):IVS.filter(iv=>(isTdy(iv)||iv.s==='annulee')&&!iv._isPilip&&!iv._isSdisPersonnelRenfort);
   const pilpIvsH=canSeePILP()?(cA?PILP_IVS:PILP_IVS.filter(iv=>isTdy(iv))):[];
   const pilpMapped=pilpIvsH.map(p=>({...p,n:'[PILP] '+p.n,tl:p.tl,_isPilp:true}));
   // Tri décroissant par jour puis par heure de DÉBUT d'intervention affichée.
@@ -229,7 +229,7 @@ function rHist(){
   // Lecture seule : ouvrir ou filtrer l'historique ne renumérote plus aucune
   // intervention et n'ajoute plus d'action à la file de synchronisation.
   const cA=isChef()||hasRight('Administration');
-  const normalIvs=cA?IVS.filter(function(iv){return !['en-attente','selectionne','en-cours'].includes(iv.s)&&!iv._isPilip;}):IVS.filter(function(iv){return (isTdy(iv)||iv.s==='annulee')&&!iv._isPilip;});
+  const normalIvs=cA?IVS.filter(function(iv){return !['en-attente','selectionne','en-cours'].includes(iv.s)&&!iv._isPilip&&!iv._isSdisPersonnelRenfort;}):IVS.filter(function(iv){return (isTdy(iv)||iv.s==='annulee')&&!iv._isPilip&&!iv._isSdisPersonnelRenfort;});
   const pilpIvsH=canSeePILP()?(cA?PILP_IVS:PILP_IVS.filter(function(iv){return isTdy(iv);})) : [];
   const pilpMapped=pilpIvsH.map(function(p){return Object.assign({},p,{n:'[PILP] '+p.n,tl:p.tl,_isPilp:true});});
   const countedTotal=function(list){return list.filter(isInterventionComptabilisee).length;};
