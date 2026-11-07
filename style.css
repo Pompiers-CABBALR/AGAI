@@ -421,6 +421,16 @@ button.route-order-badge:hover{background:#DBEAFE;border-color:#60A5FA;}
 .fg-horaires{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;}
 .fg-horaires>.fg{min-width:0;}
 .fg-horaires .fi{width:100%;min-width:0;box-sizing:border-box;}
+/* Compte rendu SDIS : numéro d'abord, puis six heures dans l'ordre opérationnel. */
+.sdis-number-field{max-width:280px;}
+.sdis-hours-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;align-items:end;margin-bottom:4px;}
+.sdis-hours-grid>.fg{min-width:0;margin:0;}
+.sdis-hours-grid .fi{width:100%;min-width:0;box-sizing:border-box;}
+.sdis-hours-grid .fgl{overflow-wrap:anywhere;}
+.sdis-hour-hint{font-size:10px;color:var(--t2);font-weight:400;white-space:nowrap;}
+.sdis-operation-note{font-size:10px;color:var(--t2);margin-bottom:8px;}
+@media(max-width:900px),(pointer:coarse){.sdis-hours-grid{grid-template-columns:repeat(3,minmax(0,1fr));}}
+@media(max-width:540px){.sdis-hours-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
 /* Grille de 2 champs (ex. Date + Type) : passe en 1 colonne si trop étroit. */
 .fg-duo{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;}
 .fg-duo>.fg{min-width:0;}
