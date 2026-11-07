@@ -8586,6 +8586,7 @@ function renderInterventionRow(iv, ag, tireur) {
   const isPilp = isPilpIntervention(iv);
   const isRenfortInternal = iv._isRenfortInterneMission === true;
   const isRenfortUT = iv._isRenfort === true && !isRenfortInternal;
+  const writingCredit=reportWritingCreditWindow(iv);
   const chkShow = canCurrentUserSelectIntervention(iv) && !isRenfortUT && (iv.s === 'en-attente' || (iv.s === 'selectionne' && iv.agr === CU.l));
   const checked = iv.s === 'selectionne' && iv.agr === CU.l;
   const onchg = isPilp ? `toggleChkPilp('${iv.id}',this)` : `toggleChk('${iv.id}',this)`;
@@ -8630,6 +8631,7 @@ function renderInterventionRow(iv, ag, tireur) {
       ${isRenfortUT ? '<span class="bdg" style="background:#7C3AED;color:#fff;font-size:10px;">Renfort UT</span>' : isRenfortInternal ? '<span class="bdg" style="background:#047857;color:#fff;font-size:10px;">Renfort interne</span>' : ''}
       ${iv._urgence ? '<span class="bdg" style="background:#B91C1C;color:#fff;font-size:10px;font-weight:700;">PRIORITAIRE — ERP</span>' : ''}
       ${iv._sdis ? '<span class="bdg" style="background:#1D4ED8;color:#fff;font-size:10px;font-weight:700;">SDIS</span>' : ''}
+      ${writingCredit ? '<span class="bdg" style="background:#F0FDFA;color:#0F766E;font-size:10px;" title="Clôture opérationnelle '+escHtml(iv._hFin)+' conservée">⏱ Fin après rapport '+escHtml(writingCredit.endTime)+'</span>' : ''}
       ${(iv._heureDebutModifiee&&hasAdministrativeAccount()||iv._heureFinModifiee&&hasAdministrativeAccount())&&!iv._sdis ? '<span class="bdg" title="Horaire corrigé — consulter la traçabilité" style="background:#FFF7ED;color:#9A3412;border:1px solid #FDBA74;font-size:10px;font-weight:700;">&#x23F1; Horaire corrigé</span>' : ''}
       ${iv._echelleToiture ? '<span class="bdg" style="background:#F59E0B;color:#fff;font-size:10px;">Echelle de toit</span>' : ''}
       ${iv._epa ? '<span class="bdg" style="background:#8E44AD;color:#fff;font-size:10px;">EPA</span>' : ''}
@@ -9087,7 +9089,7 @@ function oM(id){
   // présence et se termine à l'opération terminée. Les heures de départ et
   // de retour de l'engin restent conservées séparément pour le rapport.
   const detailStart=iv._sdis?(iv._hAcquis||iv._hDebut||''):(iv._hDebut||'');
-  const detailEnd=iv._sdis?(iv._hOpTerminee||iv._hFin||''):(iv._hFin||'');
+  const detailEnd=iv._sdis?(iv._hOpTerminee||iv._hFin||''):interventionDisplayEndHHMM(iv);
   const ag=isAgres(),chef=isChef()||hasRight('Administration');
   const canSelect=canCurrentUserSelectIntervention(iv);
   const canStart=canCurrentUserStartIntervention(iv);
@@ -9297,7 +9299,8 @@ function oM(id){
   const reportCredit=typeof reportWritingCreditWindow==='function'?reportWritingCreditWindow(iv):null;
   const reportCreditInfo=reportCredit
     ?'<div style="background:#F0FDFA;border:1px solid #99F6E4;border-radius:8px;padding:9px 12px;margin-bottom:10px;font-size:12px;color:#0F766E;">'
-      +'<strong>Temps de rédaction comptabilisé : '+reportCredit.minutes+' min</strong> pour l’équipage présent à la clôture. L’heure de clôture opérationnelle reste inchangée.'
+      +'<strong>Fin corrigée après rédaction : '+escHtml(iv._hFin)+' → '+escHtml(reportCredit.endTime)+'</strong>. '
+      +reportCredit.minutes+' min comptabilisées pour l’équipage présent à la clôture. Heure initiale conservée dans la trace.'
       +'</div>'
     :'';
   document.getElementById('mb').innerHTML=`
@@ -11702,10 +11705,11 @@ function rHistLegacy(){
       ${iv._numSDIS?`<span style="color:#003399;"> S:${iv._numSDIS}</span>`:''}
     </span>`:''}
   </span>
-  <span style="font-size:11px;color:var(--t2);text-align:right;">${iv.addr?escHtml(iv.addr)+', ':''}${escHtml(iv.com||'')}${(iv._hDebut||iv._hFin)?`<br><span style="font-size:10px;color:var(--t3);">${iv._hDebut?'🕐 '+escHtml(iv._hDebut):''}${iv._hDebut&&iv._hFin?' → ':''}${iv._hFin?escHtml(iv._hFin):''}</span>`:''}</span>
+  <span style="font-size:11px;color:var(--t2);text-align:right;">${iv.addr?escHtml(iv.addr)+', ':''}${escHtml(iv.com||'')}${(iv._hDebut||iv._hFin)?`<br><span style="font-size:10px;color:var(--t3);">${iv._hDebut?'🕐 '+escHtml(iv._hDebut):''}${iv._hDebut&&iv._hFin?' → ':''}${iv._hFin?escHtml(interventionDisplayEndHHMM(iv)):''}</span>`:''}</span>
   <span class="bdg ${iv.s==='terminee'?'bg2':iv.s==='avis-passage'?'bp':iv.s==='annulee'?'bgr':'ba'}" style="font-size:10px;">${iv.s==='terminee'?'✓':iv.s==='avis-passage'?'&#x1F7E3;':iv.s==='annulee'?'✕':'↻'}</span>
   ${iv._mailsEnvoyes&&iv._mailsEnvoyes.length?'<span title="Envoyé par mail ('+iv._mailsEnvoyes.length+'x)" style="font-size:11px;margin-left:3px;">✉️</span>':''}
   <span class="hist-report-flags">
+    ${reportWritingCreditWindow(iv)?'<span class="hist-report-badge validated" title="Clôture initiale '+escHtml(iv._hFin)+' conservée">⏱ Fin après rapport '+escHtml(interventionDisplayEndHHMM(iv))+'</span>':''}
     ${(iv._heureDebutModifiee&&hasAdministrativeAccount()||iv._heureFinModifiee&&hasAdministrativeAccount())&&!iv._sdis?'<span class="hist-report-badge pending" style="background:#FFF7ED;color:#9A3412;border-color:#FDBA74;" title="Les heures réelles sont conservées dans la traçabilité">&#x23F1; Horaire corrigé</span>':''}
     ${iv.s==='terminee'&&iv._crValide?'<span class="hist-report-badge validated" title="Le compte rendu est validé">✅ Rapport validé</span>':iv.s==='terminee'&&(iv._crTexte||iv._compteRendu)?'<span class="hist-report-badge pending" title="Compte rendu en attente de validation">📋 Non validé</span>':''}
     ${iv._impressions&&iv._impressions.length?'<span class="hist-report-badge printed" title="Rapport imprimé '+iv._impressions.length+' fois">🖨️ Rapport imprimé'+(iv._impressions.length>1?' ×'+iv._impressions.length:'')+'</span>':''}
@@ -11825,10 +11829,11 @@ function historyRowHTML(iv){
     ${historyVehicleHTML(iv)}
     ${historyCrewHTML(iv)}
   </span>
-  <span style="font-size:11px;color:var(--t2);text-align:right;">${iv.addr?escHtml(iv.addr)+', ':''}${escHtml(iv.com||'')}${(iv._hDebut||iv._hFin)?`<br><span style="font-size:10px;color:var(--t3);">${iv._hDebut?'\ud83d\udd50 '+escHtml(iv._hDebut):''}${iv._hDebut&&iv._hFin?' \u2192 ':''}${iv._hFin?escHtml(iv._hFin):''}</span>`:''}</span>
+  <span style="font-size:11px;color:var(--t2);text-align:right;">${iv.addr?escHtml(iv.addr)+', ':''}${escHtml(iv.com||'')}${(iv._hDebut||iv._hFin)?`<br><span style="font-size:10px;color:var(--t3);">${iv._hDebut?'\ud83d\udd50 '+escHtml(iv._hDebut):''}${iv._hDebut&&iv._hFin?' \u2192 ':''}${iv._hFin?escHtml(interventionDisplayEndHHMM(iv)):''}</span>`:''}</span>
   <span class="bdg ${iv.s==='terminee'?'bg2':iv.s==='avis-passage'?'bp':iv.s==='annulee'?'bgr':'ba'}" style="font-size:10px;" title="${transfer?'Intervention transférée':'Statut de l’intervention'}">${transfer?'↪':iv.s==='terminee'?'\u2713':iv.s==='avis-passage'?'\ud83d\udfe3':iv.s==='annulee'?'\u2715':'\u21bb'}</span>
   ${iv._mailsEnvoyes&&iv._mailsEnvoyes.length?'<span title="Envoy\u00e9 par mail ('+iv._mailsEnvoyes.length+'x)" style="font-size:11px;margin-left:3px;">\u2709\ufe0f</span>':''}
   <span class="hist-report-flags">
+    ${reportWritingCreditWindow(iv)?'<span class="hist-report-badge validated" title="Clôture initiale '+escHtml(iv._hFin)+' conservée">⏱ Fin après rapport '+escHtml(interventionDisplayEndHHMM(iv))+'</span>':''}
     ${(iv._heureDebutModifiee&&hasAdministrativeAccount()||iv._heureFinModifiee&&hasAdministrativeAccount())&&!iv._sdis?'<span class="hist-report-badge pending" style="background:#FFF7ED;color:#9A3412;border-color:#FDBA74;" title="Les heures r\u00e9elles sont conserv\u00e9es dans la tra\u00e7abilit\u00e9">\u23f1 Horaire corrig\u00e9</span>':''}
     ${iv.s==='terminee'&&iv._crValide?'<span class="hist-report-badge validated" title="Le compte rendu est valid\u00e9">\u2705 Rapport valid\u00e9</span>':iv.s==='terminee'&&(iv._crTexte||iv._compteRendu)?'<span class="hist-report-badge pending" title="Compte rendu en attente de validation">\ud83d\udccb Non valid\u00e9</span>':''}
     ${iv._impressions&&iv._impressions.length?'<span class="hist-report-badge printed" title="Rapport imprim\u00e9 '+iv._impressions.length+' fois">\ud83d\udda8\ufe0f Rapport imprim\u00e9'+(iv._impressions.length>1?' \u00d7'+iv._impressions.length:'')+'</span>':''}
@@ -12011,6 +12016,7 @@ async function saveProfil(){
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);rProfil();showToast('Mot de passe enregistré !','success'); // push immédiat
 }
+
 // === MODULE: admin.js (partie 2/2 — gestion utilisateurs) ===
 // ────────────────── ADMIN ──────────────────
 function showResetPwd(login){
@@ -18897,8 +18903,19 @@ function reportWritingCreditWindow(iv,records){
   // L'heure du téléphone doit correspondre à l'heure opérationnelle arrêtée
   // à la clôture. Un horodatage isolé ou une horloge incohérente ne suffit pas.
   if(getHHMM(new Date(closed))!==iv._hFin)return null;
-  const minutes=Math.floor((validated-closed)/60000);
-  return minutes>0?{start:closed,minutes:minutes,received:received}:null;
+  // Les heures visibles sont à la minute : 03:09:27 → 03:10:56 s'affiche
+  // 03:09 → 03:11. Le plafond reste contrôlé sur les secondes réelles.
+  if(validated-closed<60000)return null;
+  const startMinute=Math.floor(closed/60000)*60000;
+  const minutes=Math.min(REPORT_WRITING_CREDIT_MAX_MINUTES,
+    Math.round((validated-startMinute)/60000));
+  const endMinute=startMinute+minutes*60000;
+  return minutes>0?{start:startMinute,minutes:minutes,received:received,
+    endTime:getHHMM(new Date(endMinute))}:null;
+}
+function interventionDisplayEndHHMM(iv,records){
+  const credit=reportWritingCreditWindow(iv,records);
+  return credit?credit.endTime:String(iv&&iv._hFin||'');
 }
 function reportWritingCreditPresentAtClose(iv,login){
   return !!(login&&iv&&iv._hFin&&getAgentPresenceOnIV(iv,login).some(function(period){
@@ -19864,7 +19881,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202611_0017';
+const APP_VERSION='V202611_0018';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -21269,6 +21286,7 @@ function genRapportInterventionHTML(ivId) {
   const engin=interventionVehicleNames(iv).join(' + ');
   const hDebut=iv._hDebut||'';
   const hFin=iv._hFin||'';
+  const reportCredit=typeof reportWritingCreditWindow==='function'?reportWritingCreditWindow(iv):null;
   const avisPassageHeure=getAvisPassageHour(iv);
   const cr=iv._crTexte||iv._compteRendu||'';
 
@@ -21304,6 +21322,7 @@ function genRapportInterventionHTML(ivId) {
     if(iv.req||iv.tel)rows_data.push(['',(iv.req?'Nom du requ\u00e9rant\u00a0: '+iv.req:'')+(iv.req&&iv.tel?' \u2014 ':'')+(iv.tel?'T\u00e9l\u00a0: '+iv.tel:'')]);
     if(hDebut)rows_data.push([hDebut,'D\u00e9but']);
     if(hFin)rows_data.push([hFin,'Fin']);
+    if(reportCredit)rows_data.push([reportCredit.endTime,'Fin retenue après rédaction du compte rendu']);
     rows_data.push(['','<div style="text-align:center;"><u><b>Compte rendu de mission</b></u></div>']);
     if(_isFrelonIv(iv)&&iv._frelonData){
       const frelLine=_frelonSummaryLine(iv);
@@ -21328,6 +21347,7 @@ function genRapportInterventionHTML(ivId) {
     if(iv._hDispo)rows_data.push([iv._hDispo,(engin||'') + ' dispo']);
   }
   const idxRetour=hFin?rows_data.length:-1;if(hFin)rows_data.push([hFin,'Retour '+(engin||'')]);
+  if(reportCredit)rows_data.push([reportCredit.endTime,'Fin retenue après rédaction du compte rendu']);
   if(iv._avisPassage&&avisPassageHeure)rows_data.push([avisPassageHeure,'Avis de passage déposé dans la boîte aux lettres']);
   if(iv._sdis){
     rows_data.push(['','Mat\u00e9riel(s) utilis\u00e9(s)\u00a0: '+(iv._materiels||'-')]);

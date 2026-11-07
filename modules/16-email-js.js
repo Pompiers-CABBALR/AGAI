@@ -973,6 +973,7 @@ function genRapportInterventionHTML(ivId) {
   const engin=interventionVehicleNames(iv).join(' + ');
   const hDebut=iv._hDebut||'';
   const hFin=iv._hFin||'';
+  const reportCredit=typeof reportWritingCreditWindow==='function'?reportWritingCreditWindow(iv):null;
   const avisPassageHeure=getAvisPassageHour(iv);
   const cr=iv._crTexte||iv._compteRendu||'';
 
@@ -1008,6 +1009,7 @@ function genRapportInterventionHTML(ivId) {
     if(iv.req||iv.tel)rows_data.push(['',(iv.req?'Nom du requ\u00e9rant\u00a0: '+iv.req:'')+(iv.req&&iv.tel?' \u2014 ':'')+(iv.tel?'T\u00e9l\u00a0: '+iv.tel:'')]);
     if(hDebut)rows_data.push([hDebut,'D\u00e9but']);
     if(hFin)rows_data.push([hFin,'Fin']);
+    if(reportCredit)rows_data.push([reportCredit.endTime,'Fin retenue après rédaction du compte rendu']);
     rows_data.push(['','<div style="text-align:center;"><u><b>Compte rendu de mission</b></u></div>']);
     if(_isFrelonIv(iv)&&iv._frelonData){
       const frelLine=_frelonSummaryLine(iv);
@@ -1032,6 +1034,7 @@ function genRapportInterventionHTML(ivId) {
     if(iv._hDispo)rows_data.push([iv._hDispo,(engin||'') + ' dispo']);
   }
   const idxRetour=hFin?rows_data.length:-1;if(hFin)rows_data.push([hFin,'Retour '+(engin||'')]);
+  if(reportCredit)rows_data.push([reportCredit.endTime,'Fin retenue après rédaction du compte rendu']);
   if(iv._avisPassage&&avisPassageHeure)rows_data.push([avisPassageHeure,'Avis de passage déposé dans la boîte aux lettres']);
   if(iv._sdis){
     rows_data.push(['','Mat\u00e9riel(s) utilis\u00e9(s)\u00a0: '+(iv._materiels||'-')]);

@@ -19,7 +19,7 @@ function sourceOf(source,name){
 }
 const functions=[
   'reportWritingCreditIsoMs','reportWritingCreditHasFollowingIntervention',
-  'reportWritingCreditWindow','reportWritingCreditPresentAtClose',
+  'reportWritingCreditWindow','interventionDisplayEndHHMM','reportWritingCreditPresentAtClose',
   'forEachReportWritingCreditMinute','getAgentPresenceOnIV',
   'calcTauxAgentIV','calcExportTauxAgentIV','adminExportInterventionRates'
 ];
@@ -66,7 +66,25 @@ test('sept minutes de rédaction vont au chef et aux équipiers encore présents
   assert.equal(context.calcExportTauxAgentIV(iv,'chef').t100,67);
   assert.equal(context.calcExportTauxAgentIV(iv,'releve').t100,60,'un agent relevé ne reçoit pas le supplément');
   assert.equal(context.adminExportInterventionRates(iv,[iv]).heures1,'01:07');
-  assert.equal(iv._hFin,'18:00','la clôture officielle ne change pas');
+  assert.equal(iv._hFin,'18:00','la clôture opérationnelle reste traçable');
+  assert.equal(context.interventionDisplayEndHHMM(iv),'18:07');
+});
+
+test('la clôture 03:09:27 et la validation 03:10:56 donnent 03:11 et deux minutes',()=>{
+  const {context,iv}=harness();
+  Object.assign(iv,{_hFin:'03:09',_closeClientAtIso:'2026-11-07T02:09:27.986Z',
+    _crClientValideAt:'2026-11-07T02:10:56.173Z',
+    _crValideAt:'2026-11-07T02:10:56.457865+00:00'});
+  iv._hDebut='02:00';
+  context.statsInterventionDateKey=()=> '20261107';
+  context.adminExportInterventionStartDate=()=> '20261107';
+  const credit=context.reportWritingCreditWindow(iv);
+  assert.equal(credit.minutes,2);
+  assert.equal(credit.endTime,'03:11');
+  assert.equal(context.interventionDisplayEndHHMM(iv),'03:11');
+  assert.equal(iv._hFin,'03:09');
+  assert.equal(context.calcTauxAgentIV(iv,'chef').t100,71);
+  assert.equal(context.adminExportInterventionRates(iv,[iv]).heures1,'01:11');
 });
 
 test('validation tardive, absente, administrative, SDIS ou antérieure au lancement : aucun supplément',()=>{
@@ -83,6 +101,7 @@ test('validation tardive, absente, administrative, SDIS ou antérieure au lancem
   ]){
     const copy={...iv,...changed};
     assert.equal(context.reportWritingCreditWindow(copy),null,JSON.stringify(changed));
+    assert.equal(context.interventionDisplayEndHHMM(copy),copy._hFin);
   }
 });
 
@@ -115,4 +134,7 @@ test('le module, le bundle et les captures d’horodatage restent cohérents',()
   ])assert.match(fs.readFileSync(path.join(root,file),'utf8'),pattern);
   assert.match(moduleSource,/REPORT_WRITING_CREDIT_START_AT='2026-11-01T20:48:13Z'/,
     'le calcul commence à la publication, sans rétroactivité');
+  assert.match(fs.readFileSync(path.join(root,'modules/08-interventions-js.js'),'utf8'),/const detailEnd=.*interventionDisplayEndHHMM\(iv\)/);
+  assert.match(fs.readFileSync(path.join(root,'modules/10-historique-js.js'),'utf8'),/Fin après rapport/);
+  assert.match(fs.readFileSync(path.join(root,'modules/16-email-js.js'),'utf8'),/Fin retenue après rédaction du compte rendu/);
 });

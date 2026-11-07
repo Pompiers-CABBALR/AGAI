@@ -65,10 +65,11 @@ function rHistLegacy(){
       ${iv._numSDIS?`<span style="color:#003399;"> S:${iv._numSDIS}</span>`:''}
     </span>`:''}
   </span>
-  <span style="font-size:11px;color:var(--t2);text-align:right;">${iv.addr?escHtml(iv.addr)+', ':''}${escHtml(iv.com||'')}${(iv._hDebut||iv._hFin)?`<br><span style="font-size:10px;color:var(--t3);">${iv._hDebut?'🕐 '+escHtml(iv._hDebut):''}${iv._hDebut&&iv._hFin?' → ':''}${iv._hFin?escHtml(iv._hFin):''}</span>`:''}</span>
+  <span style="font-size:11px;color:var(--t2);text-align:right;">${iv.addr?escHtml(iv.addr)+', ':''}${escHtml(iv.com||'')}${(iv._hDebut||iv._hFin)?`<br><span style="font-size:10px;color:var(--t3);">${iv._hDebut?'🕐 '+escHtml(iv._hDebut):''}${iv._hDebut&&iv._hFin?' → ':''}${iv._hFin?escHtml(interventionDisplayEndHHMM(iv)):''}</span>`:''}</span>
   <span class="bdg ${iv.s==='terminee'?'bg2':iv.s==='avis-passage'?'bp':iv.s==='annulee'?'bgr':'ba'}" style="font-size:10px;">${iv.s==='terminee'?'✓':iv.s==='avis-passage'?'&#x1F7E3;':iv.s==='annulee'?'✕':'↻'}</span>
   ${iv._mailsEnvoyes&&iv._mailsEnvoyes.length?'<span title="Envoyé par mail ('+iv._mailsEnvoyes.length+'x)" style="font-size:11px;margin-left:3px;">✉️</span>':''}
   <span class="hist-report-flags">
+    ${reportWritingCreditWindow(iv)?'<span class="hist-report-badge validated" title="Clôture initiale '+escHtml(iv._hFin)+' conservée">⏱ Fin après rapport '+escHtml(interventionDisplayEndHHMM(iv))+'</span>':''}
     ${(iv._heureDebutModifiee&&hasAdministrativeAccount()||iv._heureFinModifiee&&hasAdministrativeAccount())&&!iv._sdis?'<span class="hist-report-badge pending" style="background:#FFF7ED;color:#9A3412;border-color:#FDBA74;" title="Les heures réelles sont conservées dans la traçabilité">&#x23F1; Horaire corrigé</span>':''}
     ${iv.s==='terminee'&&iv._crValide?'<span class="hist-report-badge validated" title="Le compte rendu est validé">✅ Rapport validé</span>':iv.s==='terminee'&&(iv._crTexte||iv._compteRendu)?'<span class="hist-report-badge pending" title="Compte rendu en attente de validation">📋 Non validé</span>':''}
     ${iv._impressions&&iv._impressions.length?'<span class="hist-report-badge printed" title="Rapport imprimé '+iv._impressions.length+' fois">🖨️ Rapport imprimé'+(iv._impressions.length>1?' ×'+iv._impressions.length:'')+'</span>':''}
@@ -188,10 +189,11 @@ function historyRowHTML(iv){
     ${historyVehicleHTML(iv)}
     ${historyCrewHTML(iv)}
   </span>
-  <span style="font-size:11px;color:var(--t2);text-align:right;">${iv.addr?escHtml(iv.addr)+', ':''}${escHtml(iv.com||'')}${(iv._hDebut||iv._hFin)?`<br><span style="font-size:10px;color:var(--t3);">${iv._hDebut?'\ud83d\udd50 '+escHtml(iv._hDebut):''}${iv._hDebut&&iv._hFin?' \u2192 ':''}${iv._hFin?escHtml(iv._hFin):''}</span>`:''}</span>
+  <span style="font-size:11px;color:var(--t2);text-align:right;">${iv.addr?escHtml(iv.addr)+', ':''}${escHtml(iv.com||'')}${(iv._hDebut||iv._hFin)?`<br><span style="font-size:10px;color:var(--t3);">${iv._hDebut?'\ud83d\udd50 '+escHtml(iv._hDebut):''}${iv._hDebut&&iv._hFin?' \u2192 ':''}${iv._hFin?escHtml(interventionDisplayEndHHMM(iv)):''}</span>`:''}</span>
   <span class="bdg ${iv.s==='terminee'?'bg2':iv.s==='avis-passage'?'bp':iv.s==='annulee'?'bgr':'ba'}" style="font-size:10px;" title="${transfer?'Intervention transférée':'Statut de l’intervention'}">${transfer?'↪':iv.s==='terminee'?'\u2713':iv.s==='avis-passage'?'\ud83d\udfe3':iv.s==='annulee'?'\u2715':'\u21bb'}</span>
   ${iv._mailsEnvoyes&&iv._mailsEnvoyes.length?'<span title="Envoy\u00e9 par mail ('+iv._mailsEnvoyes.length+'x)" style="font-size:11px;margin-left:3px;">\u2709\ufe0f</span>':''}
   <span class="hist-report-flags">
+    ${reportWritingCreditWindow(iv)?'<span class="hist-report-badge validated" title="Clôture initiale '+escHtml(iv._hFin)+' conservée">⏱ Fin après rapport '+escHtml(interventionDisplayEndHHMM(iv))+'</span>':''}
     ${(iv._heureDebutModifiee&&hasAdministrativeAccount()||iv._heureFinModifiee&&hasAdministrativeAccount())&&!iv._sdis?'<span class="hist-report-badge pending" style="background:#FFF7ED;color:#9A3412;border-color:#FDBA74;" title="Les heures r\u00e9elles sont conserv\u00e9es dans la tra\u00e7abilit\u00e9">\u23f1 Horaire corrig\u00e9</span>':''}
     ${iv.s==='terminee'&&iv._crValide?'<span class="hist-report-badge validated" title="Le compte rendu est valid\u00e9">\u2705 Rapport valid\u00e9</span>':iv.s==='terminee'&&(iv._crTexte||iv._compteRendu)?'<span class="hist-report-badge pending" title="Compte rendu en attente de validation">\ud83d\udccb Non valid\u00e9</span>':''}
     ${iv._impressions&&iv._impressions.length?'<span class="hist-report-badge printed" title="Rapport imprim\u00e9 '+iv._impressions.length+' fois">\ud83d\udda8\ufe0f Rapport imprim\u00e9'+(iv._impressions.length>1?' \u00d7'+iv._impressions.length:'')+'</span>':''}
