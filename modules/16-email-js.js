@@ -426,6 +426,26 @@ function hhmmToMinutes(value){
   return hours*60+minutes;
 }
 
+function sdisNormalizeTimeEntry(input){
+  if(!input)return;
+  const raw=String(input.value||'');
+  if(/^\d{2}:\d{0,2}$/.test(raw))return;
+  const digits=raw.replace(/\D/g,'').slice(0,4);
+  input.value=digits.length===4?digits.slice(0,2)+':'+digits.slice(2):digits;
+}
+function sdisCompleteTimeEntry(input){
+  if(!input)return;
+  sdisNormalizeTimeEntry(input);
+  const digits=String(input.value||'').replace(/\D/g,'');
+  if(digits.length===3)input.value='0'+digits[0]+':'+digits.slice(1);
+}
+function sdisTimeInputHTML(id,value,readonly,onchange){
+  return '<input class="fi" id="'+id+'" type="text" inputmode="numeric" autocomplete="off" maxlength="5" placeholder="HH:MM"'
+    +(readonly?' readonly':' oninput="sdisNormalizeTimeEntry(this)" onblur="sdisCompleteTimeEntry(this)"')
+    +(onchange?' onchange="'+onchange+'"':'')
+    +' value="'+escHtml(value||'')+'" style="font-size:12px;padding:4px 6px;">';
+}
+
 function interventionClockMillis(iv,value,status,latest){
   const time=String(value||'').match(/^(\d{2}):(\d{2})$/);
   let stamp=interventionTimelineStamp(iv,status,latest);
@@ -737,29 +757,28 @@ function showCompteRenduModal(ivId) {
   const sdisFields = iv._sdis ? (function(){
     const hDep=iv._hDebut||'';
     const hRet=iv._hFin||'';
-    const hNow=getHHMM(N()).slice(0,5);
-    const ro=canWrite?'':' readonly';
+    const ro=!canWrite;
     return '<div style="background:#DBEAFE;border:1px solid #93C5FD;border-radius:8px;padding:10px 12px;margin-bottom:10px;">'
       +'<div style="font-size:12px;font-weight:700;color:#1D4ED8;margin-bottom:8px;">🚑 Champs spécifiques SDIS</div>'
       // Ligne 1 : Acquis présence + Départ + Retour (modifiables avant validation)
       +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;">'
       +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;">Acquis présence</div>'
-      +'<input class="fi" id="cr-hacquis" type="time"'+ro+' value="'+(iv._hAcquis||'')+'" style="font-size:12px;padding:4px 6px;"></div>'
+      +sdisTimeInputHTML('cr-hacquis',iv._hAcquis,ro,'sdisUpdateMinMax()')+'</div>'
       +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;">N° intervention SDIS</div>'
       +'<input class="fi" id="cr-numsdis"'+ro+' value="'+(iv._numSDIS||'')+'" placeholder="ex: 112057-1" style="font-size:12px;padding:4px 6px;"></div>'
       +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;">⬆️ Départ engin</div>'
-      +'<input class="fi" id="cr-hdepart" type="time"'+ro+' value="'+hDep+'" onchange="sdisUpdateMinMax()" style="font-size:12px;padding:4px 6px;"></div>'
+      +sdisTimeInputHTML('cr-hdepart',hDep,ro,'sdisUpdateMinMax()')+'</div>'
       +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;">⬇️ Retour engin</div>'
-      +'<input class="fi" id="cr-hretour" type="time"'+ro+' value="'+hRet+'" onchange="sdisUpdateMinMax()" style="font-size:12px;padding:4px 6px;"></div>'
+      +sdisTimeInputHTML('cr-hretour',hRet,ro,'sdisUpdateMinMax()')+'</div>'
       +'</div>'
       // Ligne 2 : SLL + Dispo + Op. terminée
       +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;">'
       +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;" id="lbl-hsll">Heure SLL'+(hDep?'<span style="font-size:10px;color:var(--t2);"> (≥ '+hDep+')</span>':'')+' </div>'
-      +'<input class="fi" id="cr-hsll" type="time"'+ro+(hDep?' min="'+hDep+'"':'')+(hRet?' max="'+hRet+'"':'')+' value="'+(iv._hSll||'')+'" style="font-size:12px;padding:4px 6px;"></div>'
+      +sdisTimeInputHTML('cr-hsll',iv._hSll,ro)+'</div>'
       +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;" id="lbl-hdispo">Heure disponible'+(hRet?'<span style="font-size:10px;color:var(--t2);"> (≤ '+hRet+')</span>':'')+' </div>'
-      +'<input class="fi" id="cr-hdispo" type="time"'+ro+(hDep?' min="'+hDep+'"':'')+(hRet?' max="'+hRet+'"':'')+' value="'+(iv._hDispo||'')+'" style="font-size:12px;padding:4px 6px;"></div>'
-      +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;" id="lbl-hopt">Op. terminée'+(hRet?'<span style="font-size:10px;color:var(--t2);"> (≥ '+hRet+')</span>':'')+' </div>'
-      +'<input class="fi" id="cr-hopterminee" type="time"'+ro+(hRet?' min="'+hRet+'"':'')+(hNow?' max="'+hNow+'"':'')+' value="'+(iv._hOpTerminee||'')+'" style="font-size:12px;padding:4px 6px;"></div>'
+      +sdisTimeInputHTML('cr-hdispo',iv._hDispo,ro)+'</div>'
+      +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;" id="lbl-hopt">Op. terminée <span style="font-size:10px;color:var(--t2);">(heure officielle SDIS, retour indépendant)</span></div>'
+      +sdisTimeInputHTML('cr-hopterminee',iv._hOpTerminee,ro)+'</div>'
       +'</div>'
       +'<div class="fg" style="margin-bottom:8px;"><div class="fgl" style="font-size:11px;">Matériel(s) utilisé(s)</div>'
       +'<input class="fi" id="cr-materiels"'+ro+' value="'+(iv._materiels||'')+'" placeholder="-" style="font-size:12px;padding:4px 6px;"></div>'
@@ -800,23 +819,14 @@ function showCompteRenduModal(ivId) {
   }
 }
 
-// Met à jour les min/max des champs SLL/dispo/op.terminée quand départ ou retour change
+// Met à jour les indications horaires sans invoquer le sélecteur natif mobile.
 function sdisUpdateMinMax(){
   const hDep=(document.getElementById('cr-hdepart')||{}).value||'';
   const hRet=(document.getElementById('cr-hretour')||{}).value||'';
-  const hNow=getHHMM(N()).slice(0,5);
-  const sll=document.getElementById('cr-hsll');
-  const dispo=document.getElementById('cr-hdispo');
-  const opt=document.getElementById('cr-hopterminee');
   const lblSll=document.getElementById('lbl-hsll');
   const lblDispo=document.getElementById('lbl-hdispo');
-  const lblOpt=document.getElementById('lbl-hopt');
-  if(sll){if(hDep)sll.min=hDep;else sll.removeAttribute('min');if(hRet)sll.max=hRet;else sll.removeAttribute('max');}
-  if(dispo){if(hDep)dispo.min=hDep;else dispo.removeAttribute('min');if(hRet)dispo.max=hRet;else dispo.removeAttribute('max');}
-  if(opt){if(hRet)opt.min=hRet;else opt.removeAttribute('min');opt.max=hNow;}
   if(lblSll)lblSll.innerHTML='Heure SLL'+(hDep?'<span style="font-size:10px;color:var(--t2);"> (≥ '+hDep+')</span>':'');
   if(lblDispo)lblDispo.innerHTML='Heure disponible'+(hRet?'<span style="font-size:10px;color:var(--t2);"> (≤ '+hRet+')</span>':'');
-  if(lblOpt)lblOpt.innerHTML='Op. terminée'+(hRet?'<span style="font-size:10px;color:var(--t2);"> (≥ '+hRet+')</span>':'');
 }
 
 function _sdisValidateHeures(iv){
@@ -824,14 +834,14 @@ function _sdisValidateHeures(iv){
   const hRet=(document.getElementById('cr-hretour')||{}).value||iv._hFin||'';
   const hNow=getHHMM(N()).slice(0,5);
   const v=id=>(document.getElementById(id)||{}).value||'';
-  const hSll=v('cr-hsll'), hDispo=v('cr-hdispo'), hOpt=v('cr-hopterminee');
+  const hAcq=v('cr-hacquis'),hSll=v('cr-hsll'),hDispo=v('cr-hdispo'),hOpt=v('cr-hopterminee');
   const elapsed=function(from,to){
     const fromMinutes=hhmmToMinutes(from),toMinutes=hhmmToMinutes(to);
     if(fromMinutes===null||toMinutes===null)return null;
     return (toMinutes-fromMinutes+1440)%1440;
   };
-  if((hDep&&hhmmToMinutes(hDep)===null)||(hRet&&hhmmToMinutes(hRet)===null)){
-    showToast('Les heures de départ et de retour doivent être au format HH:MM.','warn');return false;
+  if([hAcq,hDep,hRet,hSll,hDispo,hOpt].some(function(time){return time&&hhmmToMinutes(time)===null;})){
+    showToast('Saisissez les heures au format HH:MM (ex. 19:36).','warn');return false;
   }
   // Une durée nulle est autorisée. Une heure de retour plus petite que l'heure
   // de départ signifie que l'intervention s'est terminée après minuit.
@@ -845,12 +855,12 @@ function _sdisValidateHeures(iv){
   };
   if(!checkInside(hSll,'Heure SLL'))return false;
   if(!checkInside(hDispo,'Heure disponible'))return false;
-  // L'opération terminée peut elle aussi se situer après minuit.
-  if(hOpt&&hRet){
-    const afterReturn=elapsed(hRet,hOpt);
-    const untilNow=elapsed(hRet,hNow);
-    if(afterReturn>untilNow){
-      showToast('L’heure d’opération terminée doit être comprise entre le retour ('+hRet+') et maintenant ('+hNow+').','warn');return false;
+  // L'heure officielle SDIS peut précéder le retour de l'engin. Elle se situe
+  // entre l'acquis présence (ou le départ à défaut) et l'heure actuelle.
+  const reference=hAcq||hDep||hRet;
+  if(hOpt&&reference){
+    if(elapsed(reference,hOpt)>elapsed(reference,hNow)){
+      showToast('L’heure d’opération terminée doit être comprise entre '+reference+' et maintenant ('+hNow+').','warn');return false;
     }
   }
   return true;

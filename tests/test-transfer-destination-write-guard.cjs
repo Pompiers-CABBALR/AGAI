@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'migrations',
-  '20261031125525_authorize_atomic_transfer_destination.sql'), 'utf8');
+  '20261031125525_authorize_atomic_transfer_destination.sql'), 'utf8').replace(/\r\n/g,'\n');
 
 const writer = sql.split('create or replace function agai_private.transfer_intervention(')[0];
 const transfer = sql.split('create or replace function agai_private.transfer_intervention(')[1];
