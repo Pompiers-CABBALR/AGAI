@@ -11,6 +11,12 @@ existe déjà, est active et appartient à la même caserne. Le déclencheur
 le verrouillage définitif. Aucune fiche existante n’est modifiée par la
 migration et aucune actualisation de l’application n’est nécessaire.
 
+La validation elle-même passe désormais par un `UPDATE` unique, car le
+déclencheur général de validation inscrirait deux audits avec un UPSERT
+(passage `BEFORE INSERT`, puis `BEFORE UPDATE`). La fonction conserve le
+contrôle de révision, la trace d’opération et la vraie identité du
+validateur, avec une seule entrée d’audit.
+
 Vérifier l’absence de saisie en cours et « Sync OK » avant d’appliquer la
 migration. Après installation, confirmer la définition du déclencheur et
 observer la prochaine validation réelle ; ne pas créer de rapport fictif.

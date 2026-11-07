@@ -7,6 +7,7 @@ const root=path.join(__dirname,'..');
 const read=name=>fs.readFileSync(path.join(root,'supabase','migrations',name),'utf8');
 const original=read('20261107215000_sdis_linked_personnel_renfort.sql');
 const fix=read('20261107215100_fix_sdis_linked_report_upsert_validation.sql');
+const auditFix=read('20261107215200_finalize_sdis_linked_report_single_audit.sql');
 const functionBody=sql=>{
   const start=sql.indexOf('create or replace function agai_private.guard_sdis_linked_personnel_report()');
   assert.ok(start>=0);
@@ -35,4 +36,14 @@ test('la création directe et la modification après validation restent interdit
   assert.match(sql,/coalesce\(old\.data->>'_crValide','false'\)='true'/);
   assert.match(sql,/old\.data->protected_key is distinct from new\.data->protected_key/);
   assert.match(sql,/AGAI_SDIS_RENFORT_MAIN_REPORT_REQUIRED/);
+});
+
+test('la validation passe une seule fois par UPDATE et conserve son journal',()=>{
+  assert.match(auditFix,/update public\.records set data=report_data,updated_by=actor\.login/);
+  assert.match(auditFix,/returning data into report_data/);
+  assert.match(auditFix,/insert into public\.agai_operation_log/);
+  assert.match(auditFix,/to_jsonb\(p_expected_revision\+1\)/);
+  assert.doesNotMatch(auditFix,/agai_atomic_upsert_record/);
+  assert.match(auditFix,/AGAI_SDIS_RENFORT_MAIN_REPORT_REQUIRED/);
+  assert.match(auditFix,/actor\.login<>report_row\.data->>'agr'/);
 });
