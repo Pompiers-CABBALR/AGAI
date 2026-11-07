@@ -368,17 +368,29 @@ function frelonPhotoSuppr(){
   if(preview){preview.src='';preview.style.display='none';}
 }
 
-function _frelonSaveFields(iv){
-  function v(id){return (document.getElementById(id)||{}).value||'';}
+function _frelonReadFields(){
+  const ids=['frel-destruction','frel-type','frel-haies','frel-arbre','frel-hauteur',
+    'frel-eau','frel-env','frel-bois','frel-pop','frel-dim-h','frel-dim-d','frel-moyen','frel-billes'];
+  const values={photoChange:window._frelonPhotoB64};
+  for(const id of ids){
+    const field=document.getElementById(id);
+    if(!field)return null;
+    values[id]=field.value||'';
+  }
+  return values;
+}
+function _frelonSaveFields(iv,fields){
+  if(!fields)return false;
+  function v(id){return fields[id]||'';}
   const destruction=v('frel-destruction')==='Oui';
   iv._frelonDestruction=destruction;
   if(!destruction){
     iv._frelonData=null;
     window._frelonPhotoB64=null;
-    return;
+    return true;
   }
   const oldPhoto=iv._frelonData&&iv._frelonData.photo||'';
-  const newPhoto=window._frelonPhotoB64;
+  const newPhoto=fields.photoChange;
   const photo=newPhoto==='__suppr__'?'':newPhoto||oldPhoto;
   window._frelonPhotoB64=null;
   iv._frelonData={
@@ -396,6 +408,7 @@ function _frelonSaveFields(iv){
     billes: v('frel-billes'),
     photo:  photo
   };
+  return true;
 }
 function _frelonSummaryLine(iv){
   if(iv&&iv._frelonDestruction===false)return '';
@@ -829,12 +842,26 @@ function sdisUpdateMinMax(){
   if(lblDispo)lblDispo.innerHTML='Heure disponible'+(hRet?'<span style="font-size:10px;color:var(--t2);"> (≤ '+hRet+')</span>':'');
 }
 
-function _sdisValidateHeures(iv){
-  const hDep=(document.getElementById('cr-hdepart')||{}).value||iv._hDebut||'';
-  const hRet=(document.getElementById('cr-hretour')||{}).value||iv._hFin||'';
+function _sdisReadFields(){
+  const ids=['cr-hacquis','cr-numsdis','cr-hdepart','cr-hretour','cr-hsll','cr-hdispo',
+    'cr-hopterminee','cr-materiels','cr-consommables','cr-annotations'];
+  const values={};
+  for(const id of ids){
+    const field=document.getElementById(id);
+    if(!field)return null;
+    values[id]=field.value||'';
+  }
+  return values;
+}
+function _sdisValidateHeures(iv,fields,required){
+  const v=id=>fields?fields[id]||'':(document.getElementById(id)||{}).value||'';
+  const hDep=v('cr-hdepart')||iv._hDebut||'';
+  const hRet=v('cr-hretour')||iv._hFin||'';
   const hNow=getHHMM(N()).slice(0,5);
-  const v=id=>(document.getElementById(id)||{}).value||'';
   const hAcq=v('cr-hacquis'),hSll=v('cr-hsll'),hDispo=v('cr-hdispo'),hOpt=v('cr-hopterminee');
+  if(required&&(!hAcq||!hDep||!hRet||!hOpt)){
+    showToast('Renseignez l’acquis présence, le départ, le retour et l’opération terminée avant de valider le rapport SDIS.','warn');return false;
+  }
   const elapsed=function(from,to){
     const fromMinutes=hhmmToMinutes(from),toMinutes=hhmmToMinutes(to);
     if(fromMinutes===null||toMinutes===null)return null;
@@ -865,8 +892,9 @@ function _sdisValidateHeures(iv){
   }
   return true;
 }
-function _sdisSaveFields(iv){
-  const v=id=>(document.getElementById(id)||{}).value||'';
+function _sdisSaveFields(iv,fields){
+  if(!fields)return false;
+  const v=id=>fields[id]||'';
   const oldDeparture=iv._hDebut||'',oldReturn=iv._hFin||'';
   const nextDeparture=v('cr-hdepart'),nextReturn=v('cr-hretour');
   iv._hAcquis     = v('cr-hacquis');
@@ -899,6 +927,7 @@ function _sdisSaveFields(iv){
     }
     if(notes.length)pushTL(iv,'modif-heure',CU.l,'Correction SDIS : '+notes.join(' · '));
   }
+  return true;
 }
 function validerCompteRendu(ivId) {
   const iv = interventionById(ivId);if(!iv)return;
@@ -910,7 +939,13 @@ function validerCompteRendu(ivId) {
   }
   const texte = (document.getElementById('cr-texte')||{}).value||'';
   if(!texte.trim()){showToast('Saisissez un compte rendu avant de valider','warn');return;}
-  if(iv._sdis&&!_sdisValidateHeures(iv))return;
+  const sdisFields=iv._sdis?_sdisReadFields():null;
+  if(iv._sdis&&(!sdisFields||!_sdisValidateHeures(iv,sdisFields,true))){
+    if(!sdisFields)showToast('Champs SDIS introuvables : rouvrez le compte rendu sans effacer vos données.','warn');
+    return;
+  }
+  const frelonFields=_isFrelonIv(iv)?_frelonReadFields():null;
+  if(_isFrelonIv(iv)&&!frelonFields){showToast('Champs frelons introuvables : rouvrez le compte rendu sans effacer vos données.','warn');return;}
   confirmModal('Valider d\u00e9finitivement le compte rendu\u00a0? Il ne pourra plus \u00eatre modifi\u00e9.',function(){
     const validatedAt=N(),savedAt=validatedAt.getTime();
     writeCompteRenduDraft(ivId,texte,savedAt);
@@ -922,8 +957,8 @@ function validerCompteRendu(ivId) {
     iv._crValide         = true;
     iv._crDateValidation = getHHMM(validatedAt);
     iv._crClientValideAt = validatedAt.toISOString();
-    if(iv._sdis) _sdisSaveFields(iv);
-    if(_isFrelonIv(iv)) _frelonSaveFields(iv);
+    if(iv._sdis) _sdisSaveFields(iv,sdisFields);
+    if(_isFrelonIv(iv)) _frelonSaveFields(iv,frelonFields);
     if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
     saveData(true);refreshOperationalInterventionViews();rHist();
     cM();
@@ -937,7 +972,13 @@ function saveCompteRendu(ivId, andClot) {
   const adminActive= isAdminModeActive();
   if(iv._crValide && !adminActive){showToast('Compte rendu verrouill\u00e9','warn');return;}
   if(!isOwn&&!adminActive){showToast('Non autoris\u00e9','warn');return;}
-  if(iv._sdis&&!_sdisValidateHeures(iv))return;
+  const sdisFields=iv._sdis?_sdisReadFields():null;
+  if(iv._sdis&&(!sdisFields||!_sdisValidateHeures(iv,sdisFields,false))){
+    if(!sdisFields)showToast('Champs SDIS introuvables : rouvrez le compte rendu sans effacer vos données.','warn');
+    return;
+  }
+  const frelonFields=_isFrelonIv(iv)?_frelonReadFields():null;
+  if(_isFrelonIv(iv)&&!frelonFields){showToast('Champs frelons introuvables : rouvrez le compte rendu sans effacer vos données.','warn');return;}
   const reportText=(document.getElementById('cr-texte')||{}).value||'';
   const savedAt=Date.now();
   writeCompteRenduDraft(ivId,reportText,savedAt);
@@ -951,8 +992,8 @@ function saveCompteRendu(ivId, andClot) {
     pushTL(iv,'rapport-modifie',CU.l,'Brouillon de compte rendu complété par un administrateur');
   }
   iv._crDate      = getHHMM(N());
-  if(iv._sdis) _sdisSaveFields(iv);
-  if(_isFrelonIv(iv)) _frelonSaveFields(iv);
+  if(iv._sdis) _sdisSaveFields(iv,sdisFields);
+  if(_isFrelonIv(iv)) _frelonSaveFields(iv,frelonFields);
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true);refreshOperationalInterventionViews();rHist();
   if(andClot){cM();clot(ivId);}
