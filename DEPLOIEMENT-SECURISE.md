@@ -1,5 +1,20 @@
 # AGAI — déploiement sécurisé
 
+## Correctif serveur du rapport de renfort SDIS lié — 7 novembre 2026
+
+Un rapport déjà créé passe par `INSERT ... ON CONFLICT UPDATE` lors de sa
+sauvegarde et de sa validation. La règle V202611_0022 refusait le passage
+préliminaire `BEFORE INSERT`, avant de voir la mise à jour, avec HTTP 400.
+La correction laisse ce passage continuer seulement si la fiche de renfort
+existe déjà, est active et appartient à la même caserne. Le déclencheur
+`BEFORE UPDATE` continue à contrôler les droits, les heures, l’équipage et
+le verrouillage définitif. Aucune fiche existante n’est modifiée par la
+migration et aucune actualisation de l’application n’est nécessaire.
+
+Vérifier l’absence de saisie en cours et « Sync OK » avant d’appliquer la
+migration. Après installation, confirmer la définition du déclencheur et
+observer la prochaine validation réelle ; ne pas créer de rapport fictif.
+
 ## V202611_0022 — rapport de renfort de personnel lié à une intervention SDIS
 
 Le chef d’agrès du rapport SDIS principal, un administrateur aux pouvoirs
