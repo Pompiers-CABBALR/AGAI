@@ -13,6 +13,7 @@ function harness(storage=new Map(),records){
 
     interventionAddressLabel:record=>record.addr,interventionDisplayUTNumber:record=>String(record._numCaserne),
     interventionRainSummary:()=>'',interventionRouteBadgeHTML:()=>'',hasAdministrativeAccount:()=>true,operationalStartOffsiteConfirmed:()=>false,
+    reportWritingCreditWindow:()=>null,
     USERS:[],USE_RECORDS:true,_rcPendingDirty:new Set(),_rcDirtyGeneration:0,
     _rcId:(station,type,id)=>station+':'+type+':'+id,_rcPersistPendingDirty(){},
     isAgres:()=>true,hasRight:()=>true,isAdminModeActive:()=>true,

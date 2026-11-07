@@ -1190,6 +1190,7 @@ function renderInterventionRow(iv, ag, tireur) {
   const isPilp = isPilpIntervention(iv);
   const isRenfortInternal = iv._isRenfortInterneMission === true;
   const isRenfortUT = iv._isRenfort === true && !isRenfortInternal;
+  const writingCredit=reportWritingCreditWindow(iv);
   const chkShow = canCurrentUserSelectIntervention(iv) && !isRenfortUT && (iv.s === 'en-attente' || (iv.s === 'selectionne' && iv.agr === CU.l));
   const checked = iv.s === 'selectionne' && iv.agr === CU.l;
   const onchg = isPilp ? `toggleChkPilp('${iv.id}',this)` : `toggleChk('${iv.id}',this)`;
@@ -1234,6 +1235,7 @@ function renderInterventionRow(iv, ag, tireur) {
       ${isRenfortUT ? '<span class="bdg" style="background:#7C3AED;color:#fff;font-size:10px;">Renfort UT</span>' : isRenfortInternal ? '<span class="bdg" style="background:#047857;color:#fff;font-size:10px;">Renfort interne</span>' : ''}
       ${iv._urgence ? '<span class="bdg" style="background:#B91C1C;color:#fff;font-size:10px;font-weight:700;">PRIORITAIRE — ERP</span>' : ''}
       ${iv._sdis ? '<span class="bdg" style="background:#1D4ED8;color:#fff;font-size:10px;font-weight:700;">SDIS</span>' : ''}
+      ${writingCredit ? '<span class="bdg" style="background:#F0FDFA;color:#0F766E;font-size:10px;" title="Clôture opérationnelle '+escHtml(iv._hFin)+' conservée">⏱ Fin après rapport '+escHtml(writingCredit.endTime)+'</span>' : ''}
       ${(iv._heureDebutModifiee&&hasAdministrativeAccount()||iv._heureFinModifiee&&hasAdministrativeAccount())&&!iv._sdis ? '<span class="bdg" title="Horaire corrigé — consulter la traçabilité" style="background:#FFF7ED;color:#9A3412;border:1px solid #FDBA74;font-size:10px;font-weight:700;">&#x23F1; Horaire corrigé</span>' : ''}
       ${iv._echelleToiture ? '<span class="bdg" style="background:#F59E0B;color:#fff;font-size:10px;">Echelle de toit</span>' : ''}
       ${iv._epa ? '<span class="bdg" style="background:#8E44AD;color:#fff;font-size:10px;">EPA</span>' : ''}
@@ -1691,7 +1693,7 @@ function oM(id){
   // présence et se termine à l'opération terminée. Les heures de départ et
   // de retour de l'engin restent conservées séparément pour le rapport.
   const detailStart=iv._sdis?(iv._hAcquis||iv._hDebut||''):(iv._hDebut||'');
-  const detailEnd=iv._sdis?(iv._hOpTerminee||iv._hFin||''):(iv._hFin||'');
+  const detailEnd=iv._sdis?(iv._hOpTerminee||iv._hFin||''):interventionDisplayEndHHMM(iv);
   const ag=isAgres(),chef=isChef()||hasRight('Administration');
   const canSelect=canCurrentUserSelectIntervention(iv);
   const canStart=canCurrentUserStartIntervention(iv);
@@ -1901,7 +1903,8 @@ function oM(id){
   const reportCredit=typeof reportWritingCreditWindow==='function'?reportWritingCreditWindow(iv):null;
   const reportCreditInfo=reportCredit
     ?'<div style="background:#F0FDFA;border:1px solid #99F6E4;border-radius:8px;padding:9px 12px;margin-bottom:10px;font-size:12px;color:#0F766E;">'
-      +'<strong>Temps de rédaction comptabilisé : '+reportCredit.minutes+' min</strong> pour l’équipage présent à la clôture. L’heure de clôture opérationnelle reste inchangée.'
+      +'<strong>Fin corrigée après rédaction : '+escHtml(iv._hFin)+' → '+escHtml(reportCredit.endTime)+'</strong>. '
+      +reportCredit.minutes+' min comptabilisées pour l’équipage présent à la clôture. Heure initiale conservée dans la trace.'
       +'</div>'
     :'';
   document.getElementById('mb').innerHTML=`

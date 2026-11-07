@@ -840,8 +840,19 @@ function reportWritingCreditWindow(iv,records){
   // L'heure du téléphone doit correspondre à l'heure opérationnelle arrêtée
   // à la clôture. Un horodatage isolé ou une horloge incohérente ne suffit pas.
   if(getHHMM(new Date(closed))!==iv._hFin)return null;
-  const minutes=Math.floor((validated-closed)/60000);
-  return minutes>0?{start:closed,minutes:minutes,received:received}:null;
+  // Les heures visibles sont à la minute : 03:09:27 → 03:10:56 s'affiche
+  // 03:09 → 03:11. Le plafond reste contrôlé sur les secondes réelles.
+  if(validated-closed<60000)return null;
+  const startMinute=Math.floor(closed/60000)*60000;
+  const minutes=Math.min(REPORT_WRITING_CREDIT_MAX_MINUTES,
+    Math.round((validated-startMinute)/60000));
+  const endMinute=startMinute+minutes*60000;
+  return minutes>0?{start:startMinute,minutes:minutes,received:received,
+    endTime:getHHMM(new Date(endMinute))}:null;
+}
+function interventionDisplayEndHHMM(iv,records){
+  const credit=reportWritingCreditWindow(iv,records);
+  return credit?credit.endTime:String(iv&&iv._hFin||'');
 }
 function reportWritingCreditPresentAtClose(iv,login){
   return !!(login&&iv&&iv._hFin&&getAgentPresenceOnIV(iv,login).some(function(period){

@@ -44,6 +44,8 @@ const context = {
   isChef: () => true, hasRight: () => false, canSeePILP: () => false,
   isInterventionComptabilisee: () => false,
   interventionIsClosureTimelineEntry: entry => entry.s === 'terminee',
+  reportWritingCreditWindow: () => null,
+  interventionDisplayEndHHMM: iv => iv._hFin || '',
   interventionReportParticipants: () => [], interventionVehicleNames: () => [],
   interventionDisplayUTNumber: () => '641',
   interventionDisplayCallNumber: iv => iv._numApl || '',
