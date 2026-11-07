@@ -19881,7 +19881,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202611_0020';
+const APP_VERSION='V202611_0021';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -21093,26 +21093,23 @@ function showCompteRenduModal(ivId) {
     const ro=!canWrite;
     return '<div style="background:#DBEAFE;border:1px solid #93C5FD;border-radius:8px;padding:10px 12px;margin-bottom:10px;">'
       +'<div style="font-size:12px;font-weight:700;color:#1D4ED8;margin-bottom:8px;">🚑 Champs spécifiques SDIS</div>'
-      // Ligne 1 : Acquis présence + Départ + Retour (modifiables avant validation)
-      +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;">'
-      +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;">Acquis présence</div>'
-      +sdisTimeInputHTML('cr-hacquis',iv._hAcquis,ro,'sdisUpdateMinMax()')+'</div>'
-      +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;">N° intervention SDIS</div>'
+      +'<div class="fg sdis-number-field"><div class="fgl">N° intervention SDIS</div>'
       +'<input class="fi" id="cr-numsdis"'+ro+' value="'+(iv._numSDIS||'')+'" placeholder="ex: 112057-1" style="font-size:12px;padding:4px 6px;"></div>'
-      +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;">⬆️ Départ engin</div>'
+      +'<div class="sdis-hours-grid">'
+      +'<div class="fg"><div class="fgl">Acquis</div>'
+      +sdisTimeInputHTML('cr-hacquis',iv._hAcquis,ro,'sdisUpdateMinMax()')+'</div>'
+      +'<div class="fg"><div class="fgl">Départ</div>'
       +sdisTimeInputHTML('cr-hdepart',hDep,ro,'sdisUpdateMinMax()')+'</div>'
-      +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;">⬇️ Retour engin</div>'
-      +sdisTimeInputHTML('cr-hretour',hRet,ro,'sdisUpdateMinMax()')+'</div>'
-      +'</div>'
-      // Ligne 2 : SLL + Dispo + Op. terminée
-      +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;">'
-      +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;" id="lbl-hsll">Heure SLL'+(hDep?'<span style="font-size:10px;color:var(--t2);"> (≥ '+hDep+')</span>':'')+' </div>'
+      +'<div class="fg"><div class="fgl" id="lbl-hsll">SLL'+(hDep?'<span class="sdis-hour-hint"> ≥ '+hDep+'</span>':'')+'</div>'
       +sdisTimeInputHTML('cr-hsll',iv._hSll,ro)+'</div>'
-      +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;" id="lbl-hdispo">Heure disponible'+(hRet?'<span style="font-size:10px;color:var(--t2);"> (≤ '+hRet+')</span>':'')+' </div>'
+      +'<div class="fg"><div class="fgl" id="lbl-hdispo">Disponible'+(hRet?'<span class="sdis-hour-hint"> ≤ '+hRet+'</span>':'')+'</div>'
       +sdisTimeInputHTML('cr-hdispo',iv._hDispo,ro)+'</div>'
-      +'<div class="fg" style="margin:0;"><div class="fgl" style="font-size:11px;" id="lbl-hopt">Op. terminée <span style="font-size:10px;color:var(--t2);">(heure officielle SDIS, retour indépendant)</span></div>'
+      +'<div class="fg"><div class="fgl">Retour</div>'
+      +sdisTimeInputHTML('cr-hretour',hRet,ro,'sdisUpdateMinMax()')+'</div>'
+      +'<div class="fg"><div class="fgl" id="lbl-hopt">Opération terminée</div>'
       +sdisTimeInputHTML('cr-hopterminee',iv._hOpTerminee,ro)+'</div>'
       +'</div>'
+      +'<div class="sdis-operation-note">Heure officielle SDIS ; indépendante du retour de l’engin.</div>'
       +'<div class="fg" style="margin-bottom:8px;"><div class="fgl" style="font-size:11px;">Matériel(s) utilisé(s)</div>'
       +'<input class="fi" id="cr-materiels"'+ro+' value="'+(iv._materiels||'')+'" placeholder="-" style="font-size:12px;padding:4px 6px;"></div>'
       +'<div class="fg" style="margin-bottom:8px;"><div class="fgl" style="font-size:11px;">Consommable(s) utilisé(s)</div>'
@@ -21158,8 +21155,8 @@ function sdisUpdateMinMax(){
   const hRet=(document.getElementById('cr-hretour')||{}).value||'';
   const lblSll=document.getElementById('lbl-hsll');
   const lblDispo=document.getElementById('lbl-hdispo');
-  if(lblSll)lblSll.innerHTML='Heure SLL'+(hDep?'<span style="font-size:10px;color:var(--t2);"> (≥ '+hDep+')</span>':'');
-  if(lblDispo)lblDispo.innerHTML='Heure disponible'+(hRet?'<span style="font-size:10px;color:var(--t2);"> (≤ '+hRet+')</span>':'');
+  if(lblSll)lblSll.innerHTML='SLL'+(hDep?'<span class="sdis-hour-hint"> ≥ '+escHtml(hDep)+'</span>':'');
+  if(lblDispo)lblDispo.innerHTML='Disponible'+(hRet?'<span class="sdis-hour-hint"> ≤ '+escHtml(hRet)+'</span>':'');
 }
 
 function _sdisReadFields(){
