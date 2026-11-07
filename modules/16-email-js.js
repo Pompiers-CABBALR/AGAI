@@ -277,7 +277,8 @@ function telechargerAttestationPdf(ivId) {
 
 // ── Helpers Compte Rendu Frelons Asiatiques ──
 function _isFrelonIv(iv){
-  return iv&&(iv.n==='Nid de frelons asiatiques'||iv.n==='Nid de frelons asiatiques — PILP');
+  return iv&&!iv._isSdisPersonnelRenfort
+    &&(iv.n==='Nid de frelons asiatiques'||iv.n==='Nid de frelons asiatiques — PILP');
 }
 function _frelonDetailFormHTML(iv,ro){
   const fd=iv._frelonData||{};
@@ -457,6 +458,140 @@ function sdisTimeInputHTML(id,value,readonly,onchange){
     +(readonly?' readonly':' oninput="sdisNormalizeTimeEntry(this)" onblur="sdisCompleteTimeEntry(this)"')
     +(onchange?' onchange="'+onchange+'"':'')
     +' value="'+escHtml(value||'')+'" style="font-size:12px;padding:4px 6px;">';
+}
+
+function sdisPersonnelRenfortWindow(iv,startTime){
+  const acquired=hhmmToMinutes(iv&&iv._hAcquis||iv&&iv._hDebut||'');
+  const operationEnd=hhmmToMinutes(iv&&iv._hOpTerminee||'');
+  const start=hhmmToMinutes(startTime);
+  if(acquired===null||operationEnd===null||start===null)return null;
+  const operationMinutes=(operationEnd-acquired+1440)%1440;
+  const arrivalMinutes=(start-acquired+1440)%1440;
+  if(!operationMinutes||arrivalMinutes>=operationMinutes)return null;
+  const minutes=Math.min(60,operationMinutes-arrivalMinutes);
+  const end=(start+minutes)%1440;
+  return {hDebut:startTime,hFin:String(Math.floor(end/60)).padStart(2,'0')+':'+String(end%60).padStart(2,'0'),
+    minutes:minutes,dayOffset:start<acquired?1:0};
+}
+function sdisPersonnelRenfortReport(iv){
+  return iv&&iv._sdisPersonnelRenfortId?interventionById(iv._sdisPersonnelRenfortId):null;
+}
+function sdisPersonnelRenfortCanPrepare(iv){
+  return !!(iv&&iv._sdis===true&&iv.s==='terminee'&&!iv._isRenfort&&CU&&isSessionValid()
+    &&(isInterventionReportChef(iv,CU.l)||isAdminModeActive()));
+}
+function sdisPersonnelRenfortSectionHTML(iv){
+  if(!iv||!iv._sdis||iv.s!=='terminee'||iv._isRenfort)return '';
+  const child=sdisPersonnelRenfortReport(iv);
+  const canPrepare=sdisPersonnelRenfortCanPrepare(iv);
+  const linked=!!iv._sdisPersonnelRenfortId;
+  if(!linked&&!canPrepare)return '';
+  return '<div class="mr"><div class="ml" style="color:#0F766E;">👥 Rapport de renfort hors équipage</div>'
+    +'<div class="mv2" style="background:#F0FDFA;border:1px solid #99F6E4;border-radius:8px;padding:9px 10px;">'
+    +(child?'<div style="font-size:12px;margin-bottom:6px;">'+(child._crValide?'Rapport validé':'Rapport à rédiger')
+      +' · '+escHtml((child._sdisPersonnelRenfortMembers||[]).length)+' agent(s)</div>':'')
+    +(linked&&!child?'<div style="font-size:12px;">Rapport lié enregistré ; synchronisation en cours.</div>':'')
+    +(child&&canPrepare?'<button class="btn sm" onclick="showCompteRenduModal(\''+escHtml(child.id)+'\')">'
+      +(child._crValide?'Voir':'Rédiger')+' le rapport de renfort</button>':'')
+    +(canPrepare&&(!child||!child._crValide)?' <button class="btn sm" onclick="openSdisPersonnelRenfortModal(\''+escHtml(iv.id)+'\')">'
+      +(child?'Modifier les agents du brouillon':'Ajouter un rapport de renfort')+'</button>':'')
+    +'</div></div>';
+}
+function sdisPersonnelRenfortRowHTML(iv,entry){
+  const mainCrew=new Set(interventionReportParticipants(iv).map(function(member){return member.login;}));
+  const options='<option value="">— Choisir un agent —</option>'+(USERS||[])
+    .filter(function(user){return user&&user.l&&!mainCrew.has(user.l);})
+    .slice().sort(function(a,b){return fullName(a).localeCompare(fullName(b),'fr');})
+    .map(function(user){return '<option value="'+escHtml(user.l)+'"'
+      +(entry&&entry.login===user.l?' selected':'')+'>'+escHtml(fullName(user))+'</option>';}).join('');
+  return '<div data-sdis-renfort-row="1" style="display:grid;grid-template-columns:minmax(130px,1fr) 105px auto;gap:6px;align-items:end;margin-top:7px;">'
+    +'<div><div class="fgl">Agent hors équipage</div><select class="fi" data-sdis-renfort-login="1">'+options+'</select></div>'
+    +'<div><div class="fgl">Début réel</div><input class="fi" data-sdis-renfort-start="1" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM"'
+    +' oninput="sdisNormalizeTimeEntry(this)" onblur="sdisCompleteTimeEntry(this)" value="'+escHtml(entry&&entry.hDebut||'')+'"></div>'
+    +'<button type="button" class="btn sm" aria-label="Retirer cet agent" onclick="this.closest(\'[data-sdis-renfort-row]\').remove()">✕</button></div>';
+}
+function sdisAddPersonnelRenfortRow(ivId){
+  const iv=interventionById(ivId),container=document.getElementById('sdis-renfort-rows');
+  if(iv&&container)container.insertAdjacentHTML('beforeend',sdisPersonnelRenfortRowHTML(iv,null));
+}
+function openSdisPersonnelRenfortModal(ivId){
+  const iv=interventionById(ivId);
+  if(!sdisPersonnelRenfortCanPrepare(iv)){showToast('Accès au renfort indisponible pour cette fiche.','warn');return;}
+  const child=sdisPersonnelRenfortReport(iv);
+  if(child&&child._crValide){showToast('Ce rapport est déjà validé et ses heures sont verrouillées.','warn');return;}
+  if(!iv._hAcquis||!iv._hOpTerminee){
+    showToast('Enregistrez d’abord les heures « Acquis » et « Opération terminée » du rapport SDIS.','warn');return;
+  }
+  const entries=child&&Array.isArray(child._sdisPersonnelRenfortMembers)?child._sdisPersonnelRenfortMembers:[];
+  document.getElementById('mt').textContent=child?'Modifier le rapport de renfort':'Ajouter un rapport de renfort';
+  document.getElementById('mi').textContent=interventionDisplayCallNumber(iv)+' — '+(iv._numSDIS||'SDIS');
+  document.getElementById('mb').innerHTML='<div style="padding:4px 0;">'
+    +'<p style="font-size:12px;">Choisissez les agents hors équipage et leur heure réelle de début. Le serveur retiendra au maximum 60 minutes par personne, sans créer une deuxième intervention.</p>'
+    +'<p style="font-size:12px;color:#475569;">Acquis '+escHtml(iv._hAcquis)+' · opération terminée '+escHtml(iv._hOpTerminee)
+    +'. Vérifiez ces heures et l’équipage avant de lier le rapport : ils seront ensuite verrouillés. Le chef d’agrès validera normalement le rapport ; si un admin le valide, son propre nom sera conservé.</p>'
+    +'<div id="sdis-renfort-rows">'+entries.map(function(entry){return sdisPersonnelRenfortRowHTML(iv,entry);}).join('')+'</div>'
+    +'<div class="brow" style="margin-top:12px;gap:6px;flex-wrap:wrap;">'
+    +'<button type="button" class="btn sm" onclick="sdisAddPersonnelRenfortRow(\''+escHtml(ivId)+'\')">+ Agent</button>'
+    +'<button type="button" class="btn sm" style="background:#0F766E;color:white;" id="sdis-renfort-send" onclick="saveSdisPersonnelRenfortReport(\''+escHtml(ivId)+'\')">Enregistrer le rapport lié</button>'
+    +'</div></div>';
+  openModalAtTop();
+}
+const _sdisPersonnelRenfortSaving=new Set();
+async function saveSdisPersonnelRenfortReport(ivId){
+  if(_sdisPersonnelRenfortSaving.has(ivId))return;
+  const iv=interventionById(ivId),container=document.getElementById('sdis-renfort-rows');
+  if(!sdisPersonnelRenfortCanPrepare(iv)||!container)return;
+  const entries=Array.from(container.querySelectorAll('[data-sdis-renfort-row]')).map(function(row){
+    return {login:(row.querySelector('[data-sdis-renfort-login]')||{}).value||'',
+      hDebut:(row.querySelector('[data-sdis-renfort-start]')||{}).value||''};
+  }).filter(function(entry){return entry.login||entry.hDebut;});
+  const occupied=new Set(interventionReportParticipants(iv).map(function(member){return member.login;}));
+  const seen=new Set();
+  if(!entries.length||entries.length>30||entries.some(function(entry){
+    if(!entry.login||!entry.hDebut||occupied.has(entry.login)||seen.has(entry.login)
+      ||!sdisPersonnelRenfortWindow(iv,entry.hDebut))return true;
+    seen.add(entry.login);return false;
+  })){
+    showToast('Choisissez des agents distincts de l’équipage et une heure HH:MM comprise dans l’intervention.','warn');return;
+  }
+  if(typeof USE_RECORDS==='undefined'||!USE_RECORDS||!_agaiAuthAccessToken()||navigator.onLine===false){
+    showToast('Connexion serveur requise pour enregistrer le rapport lié.','warn');return;
+  }
+  if(typeof _rcPendingCountInScope==='function'&&_rcPendingCountInScope()>0){
+    showToast('Attendez « Sync OK » pour lier le rapport sans perdre de saisie.','warn');return;
+  }
+  const button=document.getElementById('sdis-renfort-send');if(button)button.disabled=true;
+  _sdisPersonnelRenfortSaving.add(ivId);
+  const station=CURRENT_CASERNE_ID,login=CU.l;
+  try{
+    const response=await _agaiAuthFetchWithTimeout(SB_URL+'/rest/v1/rpc/agai_save_sdis_linked_personnel_report',{
+      method:'POST',headers:_agaiAdminStationEdgeHeaders({apikey:SB_KEY,
+        Authorization:'Bearer '+_agaiAuthAccessToken(),'Content-Type':'application/json'}),
+      body:JSON.stringify({p_caserne:station,p_source_id:ivId,p_members:entries,
+        p_expected_revision:Number(iv._serverRevision)||0})
+    },15000);
+    if(!response.ok){
+      let code='';try{code=(await response.json()).message||'';}catch(_error){}
+      const messages={AGAI_SDIS_RENFORT_STALE_SOURCE:'La fiche SDIS a changé. Synchronisez-la puis recommencez.',
+        AGAI_SDIS_RENFORT_HOURS_REQUIRED:'Enregistrez d’abord les heures SDIS officielles.',
+        AGAI_SDIS_RENFORT_HOURS_INVALID:'Le début d’un renfort doit précéder la fin de l’opération.',
+        AGAI_SDIS_RENFORT_MEMBER_INVALID:'Un agent est déjà dans l’équipage, inconnu ou sélectionné deux fois.',
+        AGAI_SDIS_RENFORT_LOCKED:'Le rapport lié est déjà validé et verrouillé.'};
+      throw new Error(messages[code]||(response.status===404?'Fonction indisponible sur le serveur.':'Enregistrement refusé (HTTP '+response.status+').'));
+    }
+    const result=await response.json();
+    if(!result||result.ok!==true||result.source.id!==ivId||result.report._ivSourceId!==ivId)
+      throw new Error('Réponse serveur incomplète ; aucune nouvelle saisie locale créée.');
+    if(!CU||CU.l!==login||CURRENT_CASERNE_ID!==station){
+      showToast('Rapport enregistré sur le serveur. Reconnectez-vous pour le consulter.','warn');return;
+    }
+    _rcReplaceLocalOperationalRecord(station,'iv',result.source);
+    _rcReplaceLocalOperationalRecord(station,'iv',result.report);
+    _writeLocalCache(_buildDataObject());
+    rI();rAccueil();oM(ivId);
+    showToast('Rapport de renfort lié enregistré. Aucune deuxième intervention créée.','success');
+  }catch(error){showToast(error&&error.message||'Rapport non confirmé ; aucune donnée locale ajoutée.','warn');}
+  finally{_sdisPersonnelRenfortSaving.delete(ivId);if(button)button.disabled=false;}
 }
 
 function interventionClockMillis(iv,value,status,latest){
@@ -718,12 +853,15 @@ function showCompteRenduModal(ivId) {
   const isOwn       = isInterventionReportChef(iv,CU.l);
   const adminActive = isAdminModeActive();
   const isValidated = !!iv._crValide;
-  const canWrite    = (!isValidated && (isOwn||adminActive)) || adminActive;
+  const canWrite    = ((!isValidated && (isOwn||adminActive)) || adminActive)
+    &&!(iv._isSdisPersonnelRenfort&&isValidated);
   const late        = !isValidated&&compteRenduLate(iv);
   const enCours     = iv.s==='en-cours';
+  const mainSdisReport=iv._isSdisPersonnelRenfort?interventionById(iv._ivSourceId):null;
+  const mainSdisReady=!iv._isSdisPersonnelRenfort||!!(mainSdisReport&&mainSdisReport._crValide);
 
   let infoBanner = '';
-  if(isValidated && !adminActive){
+  if(isValidated && (!adminActive||iv._isSdisPersonnelRenfort)){
     infoBanner='<div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#854F0B;">'
       +'\uD83D\uDD12 Compte rendu verrouill\u00e9 \u2014 valid\u00e9 le '+iv._crDateValidation+'.</div>';
   } else if(isValidated){
@@ -735,6 +873,8 @@ function showCompteRenduModal(ivId) {
   }
   if(late)infoBanner+='<div style="background:#FFF7ED;border:1px solid #FDBA74;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#9A3412;">'
     +'L’échéance du '+escHtml(compteRenduDeadline(iv))+' est dépassée. Le brouillon reste sauvegardable ; seule une dérogation motivée du superadministrateur permet la validation, depuis « Rapports à suivre ».</div>';
+  if(!mainSdisReady)infoBanner+='<div style="background:#EFF6FF;border:1px solid #93C5FD;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#1D4ED8;">'
+    +'Le rapport de renfort peut être préparé maintenant ; sa validation sera possible après celle du rapport SDIS principal.</div>';
   if(isValidated&&iv._crValidePar)infoBanner+='<div style="font-size:12px;margin-bottom:10px;color:#475569;">'
     +'Validé par '+escHtml(iv._crValidePar)+(iv._crValideAt?' · '+escHtml(iv._crValideAt):'')
     +(iv._crDerogationMotif?' · Dérogation : '+escHtml(iv._crDerogationMotif):'')+'</div>';
@@ -743,7 +883,7 @@ function showCompteRenduModal(ivId) {
   if(canWrite){
     if(!isValidated){
       btns += '<button class="btn sm" style="background:#0F766E;color:#fff;" onclick="saveCompteRendu(\'' + ivId + '\',false)">&#x1F4BE; Sauvegarder</button>';
-      if(!late)btns += '<button class="btn sm" style="background:#2563EB;color:#fff;" onclick="validerCompteRendu(\'' + ivId + '\')">&#x1F512; Valider d\u00e9finitivement</button>';
+      if(!late&&mainSdisReady)btns += '<button class="btn sm" style="background:#2563EB;color:#fff;" onclick="validerCompteRendu(\'' + ivId + '\')">&#x1F512; Valider d\u00e9finitivement</button>';
       if(enCours && isOwn){
         btns += '<button class="btn sm" style="background:var(--grn);color:#fff;" onclick="saveCompteRendu(\'' + ivId + '\',true)">\u2705 Sauvegarder et cl\u00f4turer</button>';
       }
@@ -759,8 +899,8 @@ function showCompteRenduModal(ivId) {
 
   document.getElementById('mt').textContent = iv._isRenfort?'Compte rendu de renfort':'Compte rendu d\u2019intervention';
   document.getElementById('mi').textContent = iv.n + ' \u2014 ' + iv.com;
-  const teammateFields=interventionTeammateEditorHTML(iv)+interventionSupplementaryCrewsEditorHTML(iv);
-  const startCorrectionFields=interventionStartCorrectionHTML(iv);
+  const teammateFields=iv._isSdisPersonnelRenfort?'':interventionTeammateEditorHTML(iv)+interventionSupplementaryCrewsEditorHTML(iv);
+  const startCorrectionFields=iv._isSdisPersonnelRenfort?'':interventionStartCorrectionHTML(iv);
   const storedReportText=iv._crTexte||iv._compteRendu||'';
   const localDraft=readCompteRenduDraft(ivId);
   const reportText=localDraft&&localDraft.text!==storedReportText&&Number(localDraft.updatedAt||0)>Number(iv._crLocalSavedAt||0)
@@ -809,7 +949,8 @@ function showCompteRenduModal(ivId) {
     + startCorrectionFields
     + sdisFields
     + frelonFields
-    + '<div class="fg"><div class="fgl">Compte rendu du chef d\'agrès</div>'
+    + (iv._isSdisPersonnelRenfort?'<div style="font-size:12px;color:#475569;margin:8px 0;">Rapport lié à l’intervention SDIS '+escHtml(iv._ivSourceId||'')+' · préparé par '+escHtml(iv._renfortPreparedBy||'')+'.</div>':'')
+    + '<div class="fg"><div class="fgl">'+(iv._isSdisPersonnelRenfort?'Compte rendu du renfort':'Compte rendu du chef d\'agrès')+'</div>'
     + '<textarea class="fi" id="cr-texte" data-iv-id="'+escHtml(ivId)+'" rows="7" style="resize:vertical;" oninput="onCompteRenduDraftInput(this)" onfocus="setTimeout(keepCompteRenduFieldVisible,120)"'
     + (canWrite?' placeholder="Ex : Nid de guepes sous toiture..."':' readonly')
     + '>' + escHtml(reportText) + '</textarea></div>'
@@ -926,6 +1067,54 @@ function _sdisSaveFields(iv,fields){
   }
   return true;
 }
+const _sdisPersonnelRenfortFinalizing=new Set();
+async function finalizeSdisPersonnelRenfortReport(ivId,texte){
+  if(_sdisPersonnelRenfortFinalizing.has(ivId))return;
+  const iv=interventionById(ivId),source=iv&&interventionById(iv._ivSourceId);
+  if(!iv||!iv._isSdisPersonnelRenfort||iv._crValide||!source||!source._crValide
+    ||!CU||(!isInterventionReportChef(iv,CU.l)&&!isAdminModeActive())){
+    showToast('Le rapport de renfort ou les droits ont changé. Rouvrez la fiche.','warn');return;
+  }
+  writeCompteRenduDraft(ivId,texte,Date.now());
+  if(typeof USE_RECORDS==='undefined'||!USE_RECORDS||!_agaiAuthAccessToken()||navigator.onLine===false
+    ||typeof _rcPendingCountInScope==='function'&&_rcPendingCountInScope()>0){
+    showToast('Attendez « Sync OK » pour valider le renfort sur le serveur. Le texte reste conservé sur cet appareil.','warn');
+    showCompteRenduModal(ivId);return;
+  }
+  _sdisPersonnelRenfortFinalizing.add(ivId);
+  const station=CURRENT_CASERNE_ID,login=CU.l;
+  try{
+    const response=await _agaiAuthFetchWithTimeout(SB_URL+'/rest/v1/rpc/agai_finalize_sdis_linked_personnel_report',{
+      method:'POST',headers:_agaiAdminStationEdgeHeaders({apikey:SB_KEY,
+        Authorization:'Bearer '+_agaiAuthAccessToken(),'Content-Type':'application/json'}),
+      body:JSON.stringify({p_caserne:station,p_report_id:ivId,p_text:texte,
+        p_expected_revision:Number(iv._serverRevision)||0})
+    },15000);
+    if(!response.ok){
+      let code='';try{code=(await response.json()).message||'';}catch(_error){}
+      const messages={AGAI_SDIS_RENFORT_MAIN_REPORT_REQUIRED:'Le rapport SDIS principal doit être validé sur le serveur avant celui du renfort.',
+        AGAI_SDIS_RENFORT_STALE_REPORT:'Le brouillon a changé sur un autre appareil. Synchronisez puis recommencez.',
+        AGAI_REPORT_DEADLINE_PASSED:'Le délai de validation est dépassé. Demandez une dérogation au superadmin.',
+        AGAI_SDIS_RENFORT_LOCKED:'Le rapport de renfort est déjà validé.'};
+      throw new Error(messages[code]||(response.status===404?'Validation indisponible sur le serveur.':'Validation refusée (HTTP '+response.status+').'));
+    }
+    const result=await response.json();
+    if(!result||result.ok!==true||!result.report||result.report.id!==ivId
+      ||result.report._crValide!==true||!result.report._crValidePar)
+      throw new Error('Validation non confirmée par le serveur. Le texte reste conservé localement.');
+    if(!CU||CU.l!==login||CURRENT_CASERNE_ID!==station){
+      showToast('Rapport validé sur le serveur. Reconnectez-vous pour le consulter.','warn');return;
+    }
+    _rcReplaceLocalOperationalRecord(station,'iv',result.report);
+    _writeLocalCache(_buildDataObject());
+    refreshOperationalInterventionViews();rHist();rAccueil();
+    oM(iv._ivSourceId);
+    showToast('Rapport de renfort validé par '+result.report._crValidePar+'.','success');
+  }catch(error){
+    showToast(error&&error.message||'Validation non confirmée ; texte conservé localement.','warn');
+    if(CU&&CU.l===login&&CURRENT_CASERNE_ID===station)showCompteRenduModal(ivId);
+  }finally{_sdisPersonnelRenfortFinalizing.delete(ivId);}
+}
 function validerCompteRendu(ivId) {
   const iv = interventionById(ivId);if(!iv)return;
   if(!isInterventionReportChef(iv,CU.l)&&!isAdminModeActive()){
@@ -933,6 +1122,12 @@ function validerCompteRendu(ivId) {
   }
   if(compteRenduLate(iv)){
     showToast('Échéance dépassée : dérogation motivée du superadministrateur dans « Rapports à suivre ».','warn');return;
+  }
+  if(iv._isSdisPersonnelRenfort){
+    const source=interventionById(iv._ivSourceId);
+    if(!source||source._crValide!==true){
+      showToast('Validez d’abord le rapport SDIS principal. Le renfort reste en brouillon.','warn');return;
+    }
   }
   const texte = (document.getElementById('cr-texte')||{}).value||'';
   if(!texte.trim()){showToast('Saisissez un compte rendu avant de valider','warn');return;}
@@ -943,7 +1138,11 @@ function validerCompteRendu(ivId) {
   }
   const frelonFields=_isFrelonIv(iv)?_frelonReadFields():null;
   if(_isFrelonIv(iv)&&!frelonFields){showToast('Champs frelons introuvables : rouvrez le compte rendu sans effacer vos données.','warn');return;}
-  confirmModal('Valider d\u00e9finitivement le compte rendu\u00a0? Il ne pourra plus \u00eatre modifi\u00e9.',function(){
+  const adminRenfortValidation=iv._isSdisPersonnelRenfort&&!isInterventionReportChef(iv,CU.l)&&isAdminModeActive();
+  confirmModal(adminRenfortValidation
+    ?'Valider exceptionnellement ce rapport de renfort sous votre propre nom ? Cette validation administrateur sera tracée et les heures seront verrouillées.'
+    :'Valider d\u00e9finitivement le compte rendu\u00a0? Il ne pourra plus \u00eatre modifi\u00e9.',function(){
+    if(iv._isSdisPersonnelRenfort){finalizeSdisPersonnelRenfortReport(ivId,texte);return;}
     const validatedAt=N(),savedAt=validatedAt.getTime();
     writeCompteRenduDraft(ivId,texte,savedAt);
     iv._crTexte          = texte;
@@ -965,6 +1164,7 @@ function validerCompteRendu(ivId) {
 
 function saveCompteRendu(ivId, andClot) {
   const iv = interventionById(ivId);if(!iv)return;
+  if(iv._isSdisPersonnelRenfort&&iv._crValide){showToast('Rapport de renfort validé : heures et texte verrouillés.','warn');return;}
   const isOwn       = isInterventionReportChef(iv,CU.l);
   const adminActive= isAdminModeActive();
   if(iv._crValide && !adminActive){showToast('Compte rendu verrouill\u00e9','warn');return;}
@@ -1051,12 +1251,19 @@ function genRapportInterventionHTML(ivId) {
   if(iv._isRenfort){
     // Modèle dédié au rapport de renfort.
     const casSrc=iv._caserneSourceNom||iv._caserneSource||'';
-    rows_data.push(['\u00a0',iv._isRenfortInterneMission
+    rows_data.push(['\u00a0',iv._isSdisPersonnelRenfort
+      ?'Renfort de personnel hors équipage lié à l’intervention SDIS '+escHtml(iv._numSDIS||iv._ivSourceId||'')+' — '+escHtml(iv.n||'')+' à '+escHtml(iv.addr||'')+' dans la commune de '+escHtml(iv.com||'')
+      :iv._isRenfortInterneMission
       ?'Renfort interne demandé pour l\u2019intervention '+(iv._sourceInterventionNumber||iv._ivSourceId||'')+' — '+(iv.n||'')+' \u00e0 l\u2019adresse suivante\u00a0: '+(iv.addr||'')+' dans la commune de '+(iv.com||'')
       :'Demande de renfort de l\u2019unit\u00e9 territoriale de '+casSrc+' pour '+(iv.n||'')+' \u00e0 l\u2019adresse suivante\u00a0: '+(iv.addr||'')+' dans la commune de '+(iv.com||'')]);
     if(iv.req||iv.tel)rows_data.push(['',(iv.req?'Nom du requ\u00e9rant\u00a0: '+iv.req:'')+(iv.req&&iv.tel?' \u2014 ':'')+(iv.tel?'T\u00e9l\u00a0: '+iv.tel:'')]);
     if(hDebut)rows_data.push([hDebut,'D\u00e9but']);
     if(hFin)rows_data.push([hFin,'Fin']);
+    if(iv._isSdisPersonnelRenfort){
+      (iv._sdisPersonnelRenfortMembers||[]).forEach(function(member){
+        rows_data.push(['',escHtml(interventionTeammateName(member.login))+' : '+escHtml(member.hDebut)+' → '+escHtml(member.hFin)+' ('+member.minutes+' min retenues, maximum 1 h)']);
+      });
+    }
     if(reportCredit)rows_data.push([reportCredit.endTime,'Fin retenue après rédaction du compte rendu']);
     rows_data.push(['','<div style="text-align:center;"><u><b>Compte rendu de mission</b></u></div>']);
     if(_isFrelonIv(iv)&&iv._frelonData){
@@ -1069,6 +1276,12 @@ function genRapportInterventionHTML(ivId) {
     rows_data.push(['','<span style="white-space:pre-wrap;">'+(cr||'\u00a0')+'</span>']);
     rows_data.push(['','\u00a0']);
     rows_data.push(['',presHtml]);
+    if(iv._isSdisPersonnelRenfort){
+      rows_data.push(['','Préparé par : '+escHtml(iv._renfortPreparedBy||'')
+        +' · Rédigé par : '+escHtml(iv._crAuteur||'')
+        +(iv._crDernierEditeur?' · Complété par : '+escHtml(iv._crDernierEditeur):'')
+        +' · Validé par : '+escHtml(iv._crValidePar||'En attente')]);
+    }
   } else {
   if(iv._sdis){
     rows_data.push([iv._hAcquis||'','Acquis pr\u00e9sence pour '+(iv.n||'')+' \u00e0 l\u2019adresse suivante\u00a0: '+(iv.addr||'')+' dans la commune de '+(iv.com||'')]);
@@ -1111,10 +1324,11 @@ function genRapportInterventionHTML(ivId) {
 
   const B='1px solid #000';
   const _numRf=iv._numRenfort?String(iv._numRenfort):'';
-  const numInterco=iv._isRenfort?_numRf:(iv._numGlobal?String(iv._numGlobal):'');
-  const numUT=iv._isRenfort?_numRf:interventionDisplayUTNumber(iv);
-  const numSDIS=iv._isRenfort?'':(iv._numSDIS||'');
-  const numMois=iv._isRenfort?_numRf:(iv._numMois?String(iv._numMois):'');
+  const linkedSdis=iv._isSdisPersonnelRenfort===true;
+  const numInterco=iv._isRenfort&&!linkedSdis?_numRf:(iv._numGlobal?String(iv._numGlobal):'');
+  const numUT=iv._isRenfort&&!linkedSdis?_numRf:interventionDisplayUTNumber(iv);
+  const numSDIS=iv._isRenfort&&!linkedSdis?'':(iv._numSDIS||'');
+  const numMois=iv._isRenfort&&!linkedSdis?_numRf:(iv._numMois?String(iv._numMois):'');
 
   // Index des lignes cibles pour chaque numéro
   const idxRequerant=(iv.req||iv.tel)?2:-1; // ligne requérant si présente
@@ -1155,7 +1369,7 @@ function genRapportInterventionHTML(ivId) {
     const ghStyle='style="width:28mm;border-left:'+B+';border-right:'+B+';'+bb+'text-align:center;vertical-align:top;padding:1px 3px;font-size:12pt;font-weight:bold;line-height:1.6;"';
     const txStyle='style="border-right:'+B+';'+bb+'vertical-align:top;padding:1px 5px;font-size:12pt;line-height:1.6;"';
     let ghExtra='';
-    const _lblP=iv._isRenfort?'Renfort':'Inter';
+    const _lblP=iv._isRenfort&&!linkedSdis?'Renfort':'Inter';
     // Inter CABBALR : label + numéro sur la même ligne (requérant)
     if(i===idxIntercoLabel&&numInterco)  ghExtra+=ghLabel(_lblP+' CABBALR','#1A6B1A');
     if(i===idxIntercoVal&&numInterco)    ghExtra+=ghVal(numInterco,'#1A6B1A');

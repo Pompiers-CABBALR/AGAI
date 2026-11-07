@@ -504,6 +504,8 @@ function interventionRoleKey(role){
 }
 function interventionMainReportCrew(iv){
   if(!iv)return[];
+  if(iv._isSdisPersonnelRenfort===true)return (Array.isArray(iv._equipage1)?iv._equipage1:[])
+    .map(function(member){return Object.assign({},member);});
   const crew=[],seen=new Set();
   const add=function(login,role){
     if(!login||seen.has(login))return;
@@ -1381,7 +1383,7 @@ function rI(){
   document.getElementById('nb3').textContent=ti.filter(iv=>iv.s==='en-cours').length;
   const currentDay=getDS(N());
   const isTermAuj=iv=>interventionWasClosedOnDay(iv,currentDay);
-  document.getElementById('nb4').textContent=IVS.filter(iv=>!iv._isPilip&&isTermAuj(iv)).length;
+  document.getElementById('nb4').textContent=IVS.filter(iv=>!iv._isPilip&&!iv._isSdisPersonnelRenfort&&isTermAuj(iv)).length;
 
   // Avis de passage EN ATTENTE DE RAPPEL — interventions terminées où l'équipe a
   // laissé un avis (requérant absent). Reste affiché jusqu'au rappel du requérant.
@@ -1439,7 +1441,7 @@ function rI(){
   // Liste
   const tireur=isTireurPILP();
   // Statuts actifs quelle que soit la date ; terminées uniquement le jour de leur clôture.
-  let list=IVS.filter(iv=>(iv.s==='terminee'?isTermAuj(iv):(isTdy(iv)||['en-attente','selectionne','en-cours'].includes(iv.s)))&&iv.s!=='avis-passage'&&!iv._isPilip&&iv.s!=='annulee');
+  let list=IVS.filter(iv=>(iv.s==='terminee'?isTermAuj(iv):(isTdy(iv)||['en-attente','selectionne','en-cours'].includes(iv.s)))&&iv.s!=='avis-passage'&&!iv._isPilip&&!iv._isSdisPersonnelRenfort&&iv.s!=='annulee');
   // Si tireur PILP et filtre sélect. ou mes-sel : ajouter aussi les PILP sélectionnées
   let listPilpSel=tireur?PILP_IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l):[];
   if(flt==='all'){
@@ -2020,6 +2022,7 @@ function oM(id){
     ${iv._isRenfort?`<div class="mr"><div class="ml" style="color:${isInternalReinforcement?'#047857':'#7C3AED'};">&#x1F692; ${isInternalReinforcement?'Renfort interne':'Mode Renfort UT'}</div><div class="mv2" style="font-size:12px;background:${isInternalReinforcement?'#ECFDF5':'#F5F3FF'};border-radius:8px;padding:8px 12px;border:1px solid ${isInternalReinforcement?'#A7F3D0':'#DDD6FE'};"><span style="font-weight:600;color:${isInternalReinforcement?'#047857':'#7C3AED'};">${isInternalReinforcement?'Renfort lié à '+(iv._sourceInterventionNumber||iv._ivSourceId||'l’intervention principale'):'Renfort pour '+(iv._caserneSourceNom||iv._caserneSource||'')}</span><br><span style="font-size:11px;color:var(--t2);">${isInternalReinforcement?'Cette mission dispose de son propre véhicule, de son équipage et de son rapport de renfort.':'Votre caserne est intervenue en renfort sur cette intervention.'}</span></div></div>`:''}
     ${iv.det?`<div class="mr"><div class="ml">Détails</div><div class="mv2">${escHtml(iv.det)}</div></div>`:''}
     ${iv.s==='terminee'&&(iv._crTexte||iv._compteRendu)&&(isInterventionReportChef(iv,CU.l)||agentInIV(iv,CU.l)||hasAdministrativeAccount())?`<div class="mr"><div class="ml" style="color:#0F766E;">&#x1F4CB; Compte rendu${iv._crValide?' &#x1F512;':''}</div><div class="mv2" style="white-space:pre-wrap;font-size:12px;background:#F0FDFA;border-radius:8px;padding:8px 10px;border:1px solid #99F6E4;">${iv._crTexte||iv._compteRendu}</div></div>`:''}
+    ${sdisPersonnelRenfortSectionHTML(iv)}
     ${iv.s==='terminee'&&(isInterventionReportChef(iv,CU.l)||hasAdministrativeAccount())?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 2px 0;">
       ${!pilpReadOnly?`<button class="btn sm" style="background:#0F766E;color:#fff;border-color:#0F766E;" onclick="showCompteRenduModal('${iv.id}')">${iv._crValide?'&#x1F512; Voir':iv._crTexte||iv._compteRendu?'&#x270F;&#xFE0F; Modifier':'&#x1F4CB; Rédiger le compte rendu'}</button>`:''}
       ${canOpenInterventionPdfOnThisDevice()?`<button class="btn sm" style="background:#C0392B;color:#fff;" onclick="voirRapportIntervention('${iv.id}')">&#x1F5A8; Rapport PDF</button>`:''}

@@ -135,7 +135,9 @@ function accueilRapportNumero(iv){
   const numeroApl=/^APL_\d{4}_\d{6,}$/.test(apl)?apl:'';
   const utConfirme=iv._numCaserne
     &&!(iv._numberingScheme==='dual-v1'&&iv.s==='terminee'&&iv._numberFinalized!==true);
-  const numeroLocal=iv._isRenfort
+  const numeroLocal=iv._isSdisPersonnelRenfort
+    ?(utConfirme?'UT '+interventionDisplayUTNumber(iv):'')
+    :iv._isRenfort
     ?(iv._numRenfort?'n° '+iv._numRenfort:'')
     :(utConfirme?'UT '+interventionDisplayUTNumber(iv):'');
   return [numeroLocal,numeroApl].filter(Boolean).join(' · ');

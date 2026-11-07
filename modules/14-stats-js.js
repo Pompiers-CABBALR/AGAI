@@ -295,6 +295,20 @@ function rStatsIndemnites(){
   }
   function interventionIsoDate(iv){const key=statsInterventionDateKey(iv);return key&&key.length>=8?key.slice(0,4)+'-'+key.slice(4,6)+'-'+key.slice(6,8):'';}
   (IVS||[]).filter(function(iv){return iv&&!iv._isPilip&&isInterventionPersonnelComptabilisee(iv);}).forEach(function(iv){
+    if(iv._isSdisPersonnelRenfort){
+      (iv._sdisPersonnelRenfortMembers||[]).forEach(function(member){
+        sdisPersonnelRenfortSegments(iv,member).forEach(function(segment){
+          const dateIso=segment.dateKey.slice(0,4)+'-'+segment.dateKey.slice(4,6)+'-'+segment.dateKey.slice(6,8);
+          if(!dateInPeriod(dateIso)||!indemnityScaleForDate(dateIso))return;
+          const split=calcExportTauxAgentIV(sdisPersonnelRenfortSegmentProxy(iv,segment),member.login);
+          if(!split)return;
+          add(member.login,'inter100',split.t100,dateIso,rates.renfJour);
+          add(member.login,'inter150',split.t150,dateIso,rates.renfDimFerie);
+          add(member.login,'inter200',split.t200,dateIso,rates.renfNuit);
+        });
+      });
+      return;
+    }
     const dateIso=interventionIsoDate(iv);if(!dateInPeriod(dateIso)||!indemnityScaleForDate(dateIso))return;
     const report=String(adminExportReportType(iv)||'INTER').toUpperCase();
     agents.forEach(function(user){
@@ -827,7 +841,7 @@ function reportWritingCreditHasFollowingIntervention(iv,records){
   });
 }
 function reportWritingCreditWindow(iv,records){
-  if(!iv||iv.s!=='terminee'||iv._sdis||iv._crValide!==true||iv._heureFinModifiee
+  if(!iv||iv.s!=='terminee'||iv._sdis||iv._isSdisPersonnelRenfort||iv._crValide!==true||iv._heureFinModifiee
     ||!iv._crValidePar||!isInterventionReportChef(iv,iv._crValidePar)
     ||reportWritingCreditHasFollowingIntervention(iv,records))return null;
   const launch=reportWritingCreditIsoMs(REPORT_WRITING_CREDIT_START_AT);
@@ -901,6 +915,11 @@ function calcTauxIntervention(iv){
 // ── Calcule les tranches de présence d'un agent sur une intervention (avec relèves) ──
 function getAgentPresenceOnIV(iv,login){
   // Retourne une liste de {hDebut, hFin} pour cet agent sur cette intervention
+  if(iv&&iv._isSdisPersonnelRenfort===true){
+    return (Array.isArray(iv._sdisPersonnelRenfortMembers)?iv._sdisPersonnelRenfortMembers:[])
+      .filter(function(member){return member&&member.login===login&&member.hDebut&&member.hFin;})
+      .map(function(member){return {hDebut:member.hDebut,hFin:member.hFin,dayOffset:member.dayOffset||0};});
+  }
   if(!iv._hDebut)return [];
   const periodes=[];
   const hFin=iv._hFin||getHHMM(N()); // si pas terminée, maintenant
@@ -955,8 +974,8 @@ function calcTauxAgentIV(iv,login){
   periodes.forEach(function(p){
     const [dh,dm]=p.hDebut.split(':').map(Number);
     const [fh,fm]=p.hFin.split(':').map(Number);
-    let startMin=dh*60+dm;
-    let endMin=fh*60+fm;
+    let startMin=dh*60+dm+(p.dayOffset||0)*1440;
+    let endMin=fh*60+fm+(p.dayOffset||0)*1440;
     if(endMin<startMin)endMin+=1440;
     let cur=startMin;
     while(cur<endMin){
@@ -978,13 +997,16 @@ function calcTauxAgentIV(iv,login){
 
 function calcExportTauxAgentIV(iv,login){
   if(!agentInIV(iv,login))return null;
-  const bounds=adminExportInterventionDurationBounds(iv);
+  const supportMember=iv&&iv._isSdisPersonnelRenfort
+    &&(iv._sdisPersonnelRenfortMembers||[]).find(function(member){return member&&member.login===login;});
+  const bounds=supportMember?{start:supportMember.hDebut,end:supportMember.hFin}:adminExportInterventionDurationBounds(iv);
   const dateStr=adminExportInterventionStartDate(iv);
   if(!bounds.start||!bounds.end||dateStr.length<8)return null;
   const yr=parseInt(dateStr.slice(0,4),10),mo=parseInt(dateStr.slice(4,6),10)-1,da=parseInt(dateStr.slice(6,8),10);
   const startParts=String(bounds.start).split(':').map(Number),endParts=String(bounds.end).split(':').map(Number);
   if([yr,mo,da,startParts[0],startParts[1],endParts[0],endParts[1]].some(function(n){return !Number.isFinite(n);}))return null;
-  let startMin=startParts[0]*60+startParts[1],endMin=endParts[0]*60+endParts[1];
+  let startMin=startParts[0]*60+startParts[1]+(supportMember&&supportMember.dayOffset||0)*1440;
+  let endMin=endParts[0]*60+endParts[1]+(supportMember&&supportMember.dayOffset||0)*1440;
   if(endMin<startMin)endMin+=1440;
   const totals={t100:0,t150:0,t200:0};
   for(let cur=startMin;cur<endMin;cur++){
@@ -997,7 +1019,8 @@ function calcExportTauxAgentIV(iv,login){
     const category=getInterventionTauxConfigFor(date,date.getHours(),adminExportReportType(iv)).categorie;
     if(category==='jour')totals.t100++;else if(category==='dimFerie')totals.t150++;else totals.t200++;
   });
-  const shouldRound=getStatsTaux().exportRoundQuarter!==false&&adminExportReportType(iv)!=='SDIS';
+  const shouldRound=getStatsTaux().exportRoundQuarter!==false&&adminExportReportType(iv)!=='SDIS'
+    &&iv._isSdisPersonnelRenfort!==true;
   return {
     t100:shouldRound?adminExportRoundMinutesQuarter(totals.t100):totals.t100,
     t150:shouldRound?adminExportRoundMinutesQuarter(totals.t150):totals.t150,
@@ -1023,7 +1046,11 @@ function agentInIV(iv,login){
 function rStatsPersonnel(vue){
   const annStr=String(stAnnee);
   const prefix=stMois>0?annStr+String(stMois).padStart(2,'0'):annStr;
-  const ivsFiltres=IVS.filter(function(iv){return !iv._isPilip&&isInterventionPersonnelComptabilisee(iv)&&statsInterventionInPeriod(iv,prefix);});
+  const ivsFiltres=IVS.filter(function(iv){return !iv._isPilip&&isInterventionPersonnelComptabilisee(iv)
+    &&(iv._isSdisPersonnelRenfort
+      ?(iv._sdisPersonnelRenfortMembers||[]).some(function(member){return sdisPersonnelRenfortSegments(iv,member)
+        .some(function(segment){return segment.dateKey.startsWith(prefix);});})
+      :statsInterventionInPeriod(iv,prefix));});
 
   // Tous les agents connus
   const agents=USERS.slice().sort(function(a,b){
@@ -1042,7 +1069,11 @@ function rStatsPersonnel(vue){
       const tot=ivAgent.length;
       const cols=moisActifs.map(function(mi){
         const mStr=annStr+String(mi).padStart(2,'0');
-        const nb=ivAgent.filter(function(iv){return statsInterventionInPeriod(iv,mStr);}).length;
+        const nb=ivAgent.filter(function(iv){return iv._isSdisPersonnelRenfort
+          ?(iv._sdisPersonnelRenfortMembers||[]).filter(function(member){return member.login===u.l;})
+            .some(function(member){return sdisPersonnelRenfortSegments(iv,member)
+              .some(function(segment){return segment.dateKey.startsWith(mStr);});})
+          :statsInterventionInPeriod(iv,mStr);}).length;
         return '<td style="padding:4px 5px;text-align:center;font-size:11px;'+(nb?'font-weight:700;background:#EAF3DE;':'')+'">'+(nb||'\u2014')+'</td>';
       }).join('');
       rows+='<tr style="border-bottom:1px solid #f5f5f5;'+(tot===0?'opacity:.4;':'')+'">'
@@ -1106,9 +1137,14 @@ function rStatsPersonnel(vue){
       let totExport100=0,totExport150=0,totExport200=0;
       const cols=moisActifs.map(function(mi){
         const mStr=annStr+String(mi).padStart(2,'0');
-        const ivMois=ivAgent.filter(function(iv){
+        const ivMois=ivAgent.flatMap(function(iv){
+          if(iv._isSdisPersonnelRenfort)return (iv._sdisPersonnelRenfortMembers||[])
+            .filter(function(member){return member.login===u.l;})
+            .flatMap(function(member){return sdisPersonnelRenfortSegments(iv,member);})
+            .filter(function(segment){return segment.dateKey.startsWith(mStr);})
+            .map(function(segment){return sdisPersonnelRenfortSegmentProxy(iv,segment);});
           const bounds=adminExportInterventionDurationBounds(iv);
-          return statsInterventionInPeriod(iv,mStr)&&bounds.start&&bounds.end;
+          return statsInterventionInPeriod(iv,mStr)&&bounds.start&&bounds.end?[iv]:[];
         });
         let m100=0,m150=0,m200=0;
         let mExport100=0,mExport150=0,mExport200=0;
@@ -1354,7 +1390,7 @@ function rStatsHeader(){
   const annee=String(d.getFullYear());
   const moisStr=annee+String(d.getMonth()+1).padStart(2,'0');
   const todayStr=moisStr+String(d.getDate()).padStart(2,'0');
-  const ivStats=IVS.filter(iv=>!iv._isPilip&&iv.s!=='annulee'&&!iv._refugeAnimalier);
+  const ivStats=IVS.filter(iv=>!iv._isPilip&&!iv._isSdisPersonnelRenfort&&iv.s!=='annulee'&&!iv._refugeAnimalier);
   const nbJour=ivStats.filter(iv=>statsInterventionInPeriod(iv,todayStr)).length;
   const nbMois=ivStats.filter(iv=>statsInterventionInPeriod(iv,moisStr)).length;
   const nbAnnee=ivStats.filter(iv=>statsInterventionInPeriod(iv,annee)).length;
@@ -1422,6 +1458,10 @@ function adminMonthlyData(period){
   };
   const interventions=[].concat(IVS||[],PILP_IVS||[])
     .filter(function(iv){return isInterventionComptabilisee(iv)&&adminExportInterventionStartDate(iv).startsWith(period.prefixCompact);});
+  const renforts=(IVS||[]).filter(function(iv){return iv&&iv._isSdisPersonnelRenfort===true
+    &&iv._crValide===true&&iv.s==='terminee'
+    &&(iv._sdisPersonnelRenfortMembers||[]).some(function(member){return sdisPersonnelRenfortSegments(iv,member)
+      .some(function(segment){return segment.dateKey.startsWith(period.prefixCompact);});});});
   const activites=(actGetData()||[]).filter(function(a){return (a.date||'').startsWith(period.prefixDate)&&(!activityIsFraisAdministratifs(a)||canAccessFraisAdministratifs());});
   const fmpas=(fmpaGetData()||[]).filter(function(f){return (f.date||'').startsWith(period.prefixDate);});
   const stag=(formStagGetData()||[]).filter(function(f){return overlaps(f.ddebut,f.dfin);});
@@ -1429,7 +1469,36 @@ function adminMonthlyData(period){
   const astreintesTel=(USERS||[]).map(function(u){
     return {login:u.l,heures:astrTelTotalMois(u.l,period.year,period.month-1)};
   }).filter(function(a){return a.login&&a.heures>0;});
-  return {interventions,activites,fmpas,stag,form,astreintesTel};
+  return {interventions,renforts,activites,fmpas,stag,form,astreintesTel};
+}
+
+function sdisPersonnelRenfortDateKey(iv,member){
+  const base=String(adminExportInterventionStartDate(iv)||'').replace(/\D/g,'').slice(0,8);
+  if(!/^\d{8}$/.test(base))return '';
+  const date=new Date(Number(base.slice(0,4)),Number(base.slice(4,6))-1,Number(base.slice(6,8))+(member&&member.dayOffset||0));
+  return String(date.getFullYear())+String(date.getMonth()+1).padStart(2,'0')+String(date.getDate()).padStart(2,'0');
+}
+
+function sdisPersonnelRenfortSegments(iv,member){
+  const firstDay=sdisPersonnelRenfortDateKey(iv,member);
+  const time=String(member&&member.hDebut||'').match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+  let remaining=Math.min(60,Math.max(0,Number(member&&member.minutes)||0));
+  if(!/^\d{8}$/.test(firstDay)||!time||!remaining)return [];
+  let minute=Number(time[1])*60+Number(time[2]);
+  let day=new Date(Date.UTC(Number(firstDay.slice(0,4)),Number(firstDay.slice(4,6))-1,Number(firstDay.slice(6,8))));
+  const hhmm=value=>String(Math.floor(value/60)%24).padStart(2,'0')+':'+String(value%60).padStart(2,'0');
+  const segments=[];
+  while(remaining>0){
+    const count=Math.min(remaining,1440-minute);
+    const dateKey=String(day.getUTCFullYear())+String(day.getUTCMonth()+1).padStart(2,'0')+String(day.getUTCDate()).padStart(2,'0');
+    segments.push({login:member.login,dateKey:dateKey,hDebut:hhmm(minute),hFin:hhmm(minute+count),minutes:count,dayOffset:0});
+    remaining-=count;minute=0;day.setUTCDate(day.getUTCDate()+1);
+  }
+  return segments;
+}
+function sdisPersonnelRenfortSegmentProxy(iv,segment){
+  return Object.assign({},iv,{_departureInheritedDate:segment.dateKey,
+    _sdisPersonnelRenfortMembers:[segment],_hDebut:segment.hDebut,_hFin:segment.hFin});
 }
 
 function adminMonthlyExportSummary(){
@@ -1453,6 +1522,10 @@ function adminExportTimeCompact(h){
 function adminExportInterventionStartDate(iv){
   const inherited=String(iv&&iv._departureInheritedDate||'').replace(/\D/g,'').slice(0,8);
   if(/^\d{8}$/.test(inherited))return inherited;
+  if(iv&&iv._isSdisPersonnelRenfort===true&&iv._ivSourceId){
+    const source=(IVS||[]).find(function(item){return item&&item.id===iv._ivSourceId;});
+    if(source)return adminExportInterventionStartDate(source);
+  }
   const timeline=Array.isArray(iv&&iv.tl)?iv.tl:[];
   const departure=timeline.find(function(entry){
     return entry&&entry.s==='en-cours'&&/^\d{8}/.test(String(entry.h||''));
@@ -1518,11 +1591,13 @@ function adminExportRoundMinutesQuarter(minutes){
   return Math.ceil(total/15)*15;
 }
 function adminExportFormatInterventionMinutes(minutes,iv){
-  const enabled=getStatsTaux().exportRoundQuarter!==false&&adminExportReportType(iv)!=='SDIS';
+  const enabled=getStatsTaux().exportRoundQuarter!==false&&adminExportReportType(iv)!=='SDIS'
+    &&iv._isSdisPersonnelRenfort!==true;
   return adminExportMinutesHHMM(enabled?adminExportRoundMinutesQuarter(minutes):minutes);
 }
 function adminExportRoundDurationQuarter(value,iv){
-  if(getStatsTaux().exportRoundQuarter===false||adminExportReportType(iv)==='SDIS'||!value)return value||'';
+  if(getStatsTaux().exportRoundQuarter===false||adminExportReportType(iv)==='SDIS'
+    ||iv._isSdisPersonnelRenfort===true||!value)return value||'';
   const match=String(value).match(/^(\d+):(\d{2})$/);
   if(!match)return value;
   return adminExportMinutesHHMM(adminExportRoundMinutesQuarter(Number(match[1])*60+Number(match[2])));
@@ -1579,6 +1654,25 @@ function adminExportInterventionRates(iv,records){
 }
 function adminExportInterventionPresents(iv){
   return interventionReportParticipants(iv).slice(0,31).map(function(member){return adminExportUser(member.login);});
+}
+function adminExportSdisPersonnelRenfortRows(iv,period,records){
+  return (iv._sdisPersonnelRenfortMembers||[]).flatMap(function(member){return sdisPersonnelRenfortSegments(iv,member);
+  }).filter(function(segment){return segment.dateKey.startsWith(period.prefixCompact);}).map(function(segment){
+    const dateKey=segment.dateKey;
+    const proxy=sdisPersonnelRenfortSegmentProxy(iv,segment);
+    const rates=adminExportInterventionRates(proxy,records);
+    const source=(IVS||[]).find(function(item){return item&&item.id===iv._ivSourceId;});
+    return adminExportRegisterRow({
+      0:iv._numMois||'',1:source?(interventionDisplayUTNumber(source)||interventionDisplayCallNumber(source)):iv._ivSourceId||'',
+      2:iv._numSDIS||'',3:iv._numGlobal||'',
+      4:adminExportDateCompact(dateKey),5:adminExportReportType(iv),
+      6:rates.taux1,7:rates.heures1,8:rates.taux2,9:rates.heures2,
+      11:'Renfort de personnel — '+(iv.n||''),13:iv.addr||'',14:iv.com||'',
+      16:segment.hDebut||'',20:segment.hFin||'',29:iv._crTexte||iv._compteRendu||'',
+      30:iv._crValidePar?'Validé par '+adminExportUser(iv._crValidePar):'',
+      31:adminExportUser(iv._crAuteur||iv.agr)
+    },adminExportPeople([segment.login]));
+  });
 }
 function adminExportPeople(logins){
   return (logins||[]).slice(0,31).map(function(login){return adminExportUser(login);});
@@ -1725,7 +1819,7 @@ function exportAdminMonthlyExcel(){
   const period=adminMonthlyPeriod();
   if(!period){showToast('Sélectionnez un mois et une année valides','warn');return;}
   const data=adminMonthlyData(period);
-  const total=data.interventions.length+data.activites.length+data.fmpas.length+data.stag.length+data.form.length+data.astreintesTel.length;
+  const total=data.interventions.length+data.renforts.length+data.activites.length+data.fmpas.length+data.stag.length+data.form.length+data.astreintesTel.length;
   if(!total){showToast('Aucune donnée à exporter pour cette période','warn');return;}
 
   function doExport(){
@@ -1757,7 +1851,7 @@ function exportAdminMonthlyExcel(){
         isSdis?(iv._materiels||''):'',isSdis?(iv._consommables||''):'',isSdis?veh.complement:'',isSdis?veh.vtu1:'',isSdis?veh.vtu2:'',isSdis?veh.vpi:'',isSdis?veh.autres:'',isSdis?veh.precision:'',
         isSdis?(iv._crTexte||iv._compteRendu||''):'',isSdis?(iv._annotations||''):'',isSdis?rapportAuteur:''
       ].concat(adminExportPad31(adminExportInterventionPresents(iv)));
-    });
+    }).concat(data.renforts.flatMap(function(iv){return adminExportSdisPersonnelRenfortRows(iv,period,data.interventions);}));
     const ivWidths=ivHeaders.map(function(h,i){
       if(i>=32)return 24;
       if([11,12,13,29,30].includes(i))return i===29?55:28;

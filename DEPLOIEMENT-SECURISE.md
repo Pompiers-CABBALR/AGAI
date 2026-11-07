@@ -1,5 +1,26 @@
 # AGAI — déploiement sécurisé
 
+## V202611_0022 — rapport de renfort de personnel lié à une intervention SDIS
+
+Le chef d’agrès du rapport SDIS principal, un administrateur aux pouvoirs
+actifs ou le superadmin peut préparer un second rapport sur la même fiche,
+sans créer une nouvelle intervention ni un nouveau numéro. Chaque agent
+hors équipage reçoit ses minutes réelles depuis l’heure de début choisie,
+plafonnées à 60 minutes et à « Opération terminée ». Le barème RENF confirmé
+par le responsable s’applique. Aucune heure n’est créditée avant validation
+du rapport de renfort. Le chef d’agrès en est le responsable ; une validation
+exceptionnelle par un admin est horodatée sous le nom réel de cet admin.
+
+La migration verrouille les heures et l’équipage de la fiche source dès qu’un
+rapport lié est créé, refuse un agent déjà présent dans l’équipage ou une
+relève, et rend le renfort définitif après validation. Installer la migration
+dans une transaction, puis vérifier ses fonctions, déclencheurs et avis de
+sécurité avant de publier l’interface. Ne publier qu’après confirmation
+qu’aucune intervention ou saisie n’est en cours et que les appareils affichent
+« Sync OK ». Vérifier ensuite avec le prochain renfort réel, sans créer
+d’intervention fictive en production. Si le serveur refuse, aucune fiche
+locale supplémentaire n’est créée et le brouillon de texte est conservé.
+
 ## V202611_0006 — chef de corps visible dans le personnel de l'État-major
 
 La liste « Gestion Utilisateur » de l'État-major affiche le chef de corps

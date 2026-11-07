@@ -158,7 +158,8 @@ function isInterventionComptabilisee(iv){
 function isInterventionPersonnelComptabilisee(iv){
   // Les renforts restent pris en compte pour les agents, leurs heures et
   // leurs indemnités, même s'ils sont exclus des autres statistiques.
-  return !!(iv&&iv.s==='terminee'&&!iv._refugeAnimalier);
+  return !!(iv&&iv.s==='terminee'&&!iv._refugeAnimalier
+    &&(iv._isSdisPersonnelRenfort!==true||iv._crValide===true));
 }
 function statsCommunesIntervenuesEnPremier(interventions){
   const actives=new Set((interventions||[]).map(function(iv){return String(iv&&iv.com||'').trim();}).filter(Boolean));
