@@ -100,8 +100,13 @@ function pecToggleCatalog(type) {
   const panel=document.getElementById('pec-'+type+'-catalog');
   if(!panel)return;
   const opening=panel.hidden;
-  ['race','couleur'].forEach(function(other){const el=document.getElementById('pec-'+other+'-catalog');if(el)el.hidden=true;});
+  ['race','couleur'].forEach(function(other){
+    const el=document.getElementById('pec-'+other+'-catalog');
+    if(el){el.hidden=true;const field=el.closest('.fg');if(field)field.classList.remove('pec-catalog-expanded');}
+  });
   panel.hidden=!opening;
+  const field=panel.closest('.fg');
+  if(field)field.classList.toggle('pec-catalog-expanded',opening);
   if(opening){
     pecRenderCatalog(type);
     const search=document.getElementById('pec-'+type+'-search');
@@ -146,7 +151,8 @@ function pecPreviewCatalog(type,name) {
 }
 function pecChooseCatalog(type,name) {
   const input=document.getElementById('pec-'+type);if(input)input.value=name;
-  const panel=document.getElementById('pec-'+type+'-catalog');if(panel)panel.hidden=true;
+  const panel=document.getElementById('pec-'+type+'-catalog');
+  if(panel){panel.hidden=true;const field=panel.closest('.fg');if(field)field.classList.remove('pec-catalog-expanded');}
   if(type==='race')pecRaceChanged();
 }
 function pecRaceChanged() {
