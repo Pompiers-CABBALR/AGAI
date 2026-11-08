@@ -983,6 +983,23 @@ html.modal-scroll-locked body{position:fixed;width:100%;max-width:100vw;left:0;r
 .pec-form-scroll>*,.pec-form-grid>*,.pec-two-col>*{min-width:0;max-width:100%;box-sizing:border-box;}
 .pec-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
 .pec-choice-row{display:flex;gap:12px;flex-wrap:wrap;max-width:100%;}
+.pec-catalog-toggle{display:block;margin:5px 0 0;padding:5px 8px;border:1px solid #bfd3e8;border-radius:7px;background:#eff6ff;color:#1d4ed8;font-size:11px;cursor:pointer;text-align:left;}
+.pec-catalog[hidden]{display:none!important;}
+.pec-catalog{margin-top:6px;padding:9px;border:1px solid #bfd3e8;border-radius:9px;background:#f8fbff;}
+.pec-catalog-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(150px,38%);gap:8px;margin-top:7px;}
+.pec-catalog-list{max-height:210px;overflow:auto;border:1px solid #dbe4ef;border-radius:7px;background:#fff;}
+.pec-catalog-row{display:flex;align-items:stretch;border-bottom:1px solid #edf1f6;}
+.pec-catalog-row:last-child{border-bottom:0;}
+.pec-catalog-name,.pec-catalog-photo{border:0;background:#fff;cursor:pointer;font-size:11px;}
+.pec-catalog-name{flex:1;min-width:0;padding:8px;text-align:left;}
+.pec-catalog-photo{padding:7px;color:#1d4ed8;border-left:1px solid #edf1f6;}
+.pec-catalog-name:hover,.pec-catalog-name:focus-visible,.pec-catalog-photo:hover,.pec-catalog-photo:focus-visible{background:#dbeafe;}
+.pec-catalog-preview{min-width:0;padding:7px;border:1px solid #dbe4ef;border-radius:7px;background:#fff;font-size:11px;overflow-wrap:anywhere;}
+.pec-catalog-preview strong,.pec-catalog-preview a{display:block;}
+.pec-catalog-preview img{display:block;width:100%;max-height:175px;object-fit:contain;margin:6px 0;background:#f3f4f6;}
+.pec-catalog-preview a{font-size:9px;color:#1d4ed8;}
+.pec-catalog-note{margin-top:6px;color:#64748b;font-size:10px;}
+@media(max-width:680px){.pec-catalog-layout{grid-template-columns:minmax(0,1fr);}.pec-catalog-list{max-height:160px;}.pec-catalog-preview img{max-height:150px;}}
 .fi,.fta,.lf input,.urow input,select,textarea{
   min-inline-size:0;
   max-inline-size:100%;

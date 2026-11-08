@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AGAI — essai du catalogue animal</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body{margin:0;padding:16px;background:#f3f4f6;}
+    .preview-form{max-width:830px;margin:auto;padding:18px;border-radius:14px;background:#fff;border:1px solid #dfe3ea;}
+    .preview-form h1{font-size:18px;margin:0 0 7px;}
+    .preview-form p{font-size:12px;color:#475569;line-height:1.5;}
+    .preview-form .pec-form-grid{margin-top:12px;}
+    .preview-form .fi{width:100%;}
+    .preview-notice{padding:9px 11px;border-radius:8px;background:#ecfdf5;color:#065f46!important;}
+  </style>
+  <script>function escHtml(value){return String(value).replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;').replaceAll('>','&gt;');}</script>
+  <script src="modules/animal-catalog-demo.js" defer></script>
+</head>
+<body>
+  <main class="preview-form pec-form-scroll">
+    <h1>🐾 Prise en charge animal — essai</h1>
+    <p class="preview-notice">Cette page est une démonstration : aucun choix n’est enregistré, aucune intervention n’est modifiée.</p>
+    <p>Choisis un type d’animal, recherche une race, puis ouvre la liste des robes. Sur ordinateur, survole le nom ; sur téléphone, touche « Photo » pour voir l’aperçu.</p>
+    <div class="fg"><label class="fgl" for="pec-espece">Type d’animal</label><select class="fi" id="pec-espece" onchange="pecSpeciesChanged()"></select></div>
+    <div class="pec-form-grid">
+      <div class="fg"><label class="fgl" for="pec-race">Race ou type apparent</label><input class="fi" id="pec-race" value="Labrador" oninput="pecRaceChanged()"><button type="button" class="pec-catalog-toggle" onclick="pecToggleCatalog('race')">🔎 Choisir une race · voir les photos</button><div id="race-panel"></div></div>
+      <div class="fg"><label class="fgl" for="pec-couleur">Couleur ou robe</label><input class="fi" id="pec-couleur"><button type="button" class="pec-catalog-toggle" onclick="pecToggleCatalog('couleur')">🎨 Choisir une robe · voir les photos</button><div id="couleur-panel"></div></div>
+    </div>
+  </main>
+  <script>window.addEventListener('load',function(){document.getElementById('pec-espece').innerHTML=pecSpeciesOptions('Chien');document.getElementById('race-panel').innerHTML=pecCatalogPanel('race');document.getElementById('couleur-panel').innerHTML=pecCatalogPanel('couleur');pecToggleCatalog('race');document.getElementById('pec-race-search').value='Labrador';pecRenderCatalog('race');pecPreviewCatalog('race','Labrador');});</script>
+</body>
+</html>

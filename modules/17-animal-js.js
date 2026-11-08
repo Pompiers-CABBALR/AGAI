@@ -90,12 +90,8 @@ function showPriseEnChargeModal(ivId,ficheIndex) {
     // Description animal
     + '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--t2);margin:10px 0 8px;letter-spacing:.04em;">Description de l\'animal</div>'
     + '<div class="pec-form-grid">'
-    + '<div class="fg"><div class="fgl">Espèce</div>'
-    + '<div class="pec-choice-row" style="margin-top:4px;">'
-    + '<label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;"><input type="radio" name="pec-espece" value="Chien" '+((!saved.espece||saved.espece==='Chien')?'checked':'')+' style="accent-color:var(--red);"> Chien</label>'
-    + '<label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;"><input type="radio" name="pec-espece" value="Chat" '+(saved.espece==='Chat'?'checked':'')+' style="accent-color:var(--red);"> Chat</label>'
-    + '<label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;"><input type="radio" name="pec-espece" value="Autre" '+(saved.espece==='Autre'?'checked':'')+' style="accent-color:var(--red);"> Autre</label>'
-    + '</div></div>'
+    + '<div class="fg"><label class="fgl" for="pec-espece">Type d’animal</label>'
+    + '<select class="fi" id="pec-espece" onchange="pecSpeciesChanged()">'+pecSpeciesOptions(saved.espece||'Chien')+'</select></div>'
     + '<div class="fg"><div class="fgl">Sexe</div>'
     + '<div class="pec-choice-row" style="margin-top:4px;">'
     + '<label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;"><input type="radio" name="pec-sexe" value="M" '+(saved.sexe==='M'?'checked':'')+' style="accent-color:var(--red);"> Mâle</label>'
@@ -104,18 +100,14 @@ function showPriseEnChargeModal(ivId,ficheIndex) {
     + '</div></div>'
     + '</div>'
     + '<div class="pec-form-grid">'
-    + '<div class="fg"><div class="fgl">Race <span id="pec-race-aide-btn" onclick="togglePecAide(\'race\')" style="cursor:pointer;font-size:10px;background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE;border-radius:4px;padding:1px 6px;margin-left:4px;">❓ Aide</span> <span onclick="ouvrirGaleriePec(\'race\')" style="cursor:pointer;font-size:10px;background:#F0FDF4;color:#166534;border:1px solid #86EFAC;border-radius:4px;padding:1px 6px;margin-left:2px;">🖼 Galerie</span></div>'
-    + '<input class="fi" id="pec-race" type="text" value="'+(saved.race||'')+'" placeholder="Ex: Labrador, croisé..."/>'
-    + '<div id="pec-race-aide" style="display:none;margin-top:4px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:8px;font-size:11px;">'
-    + '<div style="font-weight:600;margin-bottom:4px;color:#1D4ED8;">Races fréquentes :</div>'
-    + '<div id="pec-race-chips" style="display:flex;flex-wrap:wrap;gap:4px;"></div>'
-    + '</div></div>'
-    + '<div class="fg"><div class="fgl">Couleur <span id="pec-couleur-aide-btn" onclick="togglePecAide(\'couleur\')" style="cursor:pointer;font-size:10px;background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE;border-radius:4px;padding:1px 6px;margin-left:4px;">❓ Aide</span> <span onclick="ouvrirGaleriePec(\'couleur\')" style="cursor:pointer;font-size:10px;background:#F0FDF4;color:#166534;border:1px solid #86EFAC;border-radius:4px;padding:1px 6px;margin-left:2px;">🖼 Galerie</span></div>'
-    + '<input class="fi" id="pec-couleur" type="text" value="'+(saved.couleur||'')+'" placeholder="Ex: Noir, fauve et blanc..."/>'
-    + '<div id="pec-couleur-aide" style="display:none;margin-top:4px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:8px;font-size:11px;">'
-    + '<div style="font-weight:600;margin-bottom:4px;color:#1D4ED8;">Couleurs fréquentes :</div>'
-    + '<div id="pec-couleur-chips" style="display:flex;flex-wrap:wrap;gap:4px;"></div>'
-    + '</div></div>'
+    + '<div class="fg"><label class="fgl" for="pec-race">Race ou type apparent</label>'
+    + '<input class="fi" id="pec-race" type="text" value="'+escHtml(saved.race||'')+'" placeholder="Ex. Labrador, croisé, non déterminé" oninput="pecRaceChanged()"/>'
+    + '<button type="button" class="pec-catalog-toggle" onclick="pecToggleCatalog(\'race\')">🔎 Choisir une race · voir les photos</button>'
+    + pecCatalogPanel('race')+'</div>'
+    + '<div class="fg"><label class="fgl" for="pec-couleur">Couleur ou robe</label>'
+    + '<input class="fi" id="pec-couleur" type="text" value="'+escHtml(saved.couleur||'')+'" placeholder="Ex. Sable, bai, pie noire"/>'
+    + '<button type="button" class="pec-catalog-toggle" onclick="pecToggleCatalog(\'couleur\')">🎨 Choisir une robe · voir les photos</button>'
+    + pecCatalogPanel('couleur')+'</div>'
     + '</div>'
     + '<div class="fg"><div class="fgl">N° identification (puce/tatouage)</div><input class="fi" id="pec-identification" type="text" value="'+(saved.identification||'')+'"/></div>'
 
@@ -285,13 +277,175 @@ function pecChipClick(type, val) {
   if(div) div.style.display='none';
 }
 
+// Catalogue d'essai : les valeurs restent du texte libre dans les fiches existantes.
+// Les photos CC0 sont des exemples illustratifs, jamais une preuve de race.
+const PEC_TYPES = [
+  ['Chiens et chats', ['Chien','Chat']],
+  ['Animaux d’élevage', ['Bovin','Ovin','Caprin','Porcin']],
+  ['Équidés', ['Cheval','Âne']],
+  ['NAC', ['Lapin','Furet','Cobaye','Hamster','Oiseau','Reptile']],
+  ['Autre', ['Autre']]
+];
+const PEC_RACE_CATALOG = {
+  Chien: ['Akita Inu','American Staffordshire Terrier','Beagle','Berger allemand','Berger australien','Berger belge Malinois','Bichon frisé','Border Collie','Bouledogue français','Boxer','Braque allemand','Briard','Cane Corso','Caniche','Cavalier King Charles','Chihuahua','Cocker Spaniel anglais','Dalmatien','Épagneul breton','Golden Retriever','Husky sibérien','Jack Russell Terrier','Labrador','Rottweiler','Saint-Bernard','Shih Tzu','Spitz allemand','Teckel','Terre-Neuve','Yorkshire Terrier','Croisé / type apparent','Non déterminé'],
+  Chat: ['Abyssin','Bengal','British Shorthair','Chartreux','Européen','Maine Coon','Norvégien','Persan','Ragdoll','Sacré de Birmanie','Siamois','Sphynx','Croisé / type apparent','Non déterminé'],
+  Bovin: ['Aubrac','Blonde d’Aquitaine','Charolaise','Holstein','Limousine','Montbéliarde','Normande','Salers','Simmental française','Croisé / type apparent','Non déterminé'],
+  Ovin: ['Berrichon du Cher','Île-de-France','Lacaune','Mérinos d’Arles','Suffolk','Croisé / type apparent','Non déterminé'],
+  Caprin: ['Alpine','Anglo-nubienne','Poitevine','Saanen','Croisé / type apparent','Non déterminé'],
+  Porcin: ['Duroc','Large White','Landrace français','Piétrain','Croisé / type apparent','Non déterminé'],
+  Cheval: ['Arabe','Camargue','Connemara','Frison','Haflinger','Percheron','Pur-sang','Selle français','Shetland','Trotteur français','Croisé / type apparent','Non déterminé'],
+  Âne: ['Âne de Provence','Âne du Cotentin','Baudet du Poitou','Grand noir du Berry','Croisé / type apparent','Non déterminé'],
+  Lapin: ['Bélier','Fauve de Bourgogne','Géant des Flandres','Nain de couleur','Rex','Croisé / type apparent','Non déterminé'],
+  Furet: ['Furet domestique','Non déterminé'],
+  Cobaye: ['Abyssinien','Péruvien','Rex','Rosette','Shelty','Non déterminé'],
+  Hamster: ['Doré / syrien','Nain de Campbell','Nain russe','Roborovski','Non déterminé'],
+  Oiseau: ['Canari','Inséparable','Perruche ondulée','Perroquet gris du Gabon','Non déterminé'],
+  Reptile: ['Agame barbu','Gecko léopard','Python royal','Tortue d’Hermann','Non déterminé'],
+  Autre: ['Non déterminé']
+};
+const PEC_ROBE_CATALOG = {
+  Chien: ['Noir','Blanc','Fauve','Sable','Brun / chocolat','Gris','Roux','Bringé','Merle','Bicolore','Tricolore'],
+  Chat: ['Noir','Blanc','Bleu / gris','Roux','Crème','Tigré / tabby','Écaille de tortue','Bicolore','Tricolore'],
+  Bovin: ['Noir','Blanc','Rouge','Fauve','Froment','Pie noire','Pie rouge','Bringé'],
+  Ovin: ['Blanc','Noir','Brun','Gris','Pie'],
+  Caprin: ['Blanc','Noir','Brun','Chamoisé','Pie'],
+  Porcin: ['Blanc','Noir','Roux','Pie'],
+  Cheval: ['Bai','Alezan','Noir','Gris','Isabelle','Palomino','Pie','Rouan'],
+  Âne: ['Gris','Bai','Noir','Brun','Pie'],
+  Lapin: ['Blanc','Noir','Gris','Fauve','Chamois','Havane','Pie'],
+  Furet: ['Albinos','Putoisé','Sable','Champagne','Noir','Blanc'],
+  Cobaye: ['Blanc','Noir','Fauve','Roux','Tricolore','Agouti'],
+  Hamster: ['Doré','Blanc','Gris','Noir','Bicolore'],
+  Oiseau: ['Vert','Bleu','Jaune','Blanc','Gris','Multicolore'],
+  Reptile: ['Vert','Brun','Gris','Jaune','Noir','Tacheté'],
+  Autre: ['Noir','Blanc','Gris','Brun','Roux','Multicolore']
+};
+const PEC_ROBES_PAR_RACE = {
+  'Chien|Labrador': ['Noir','Jaune / sable','Chocolat'],
+  'Chien|Golden Retriever': ['Doré','Crème'],
+  'Chien|Berger belge Malinois': ['Fauve charbonné'],
+  'Chat|Chartreux': ['Bleu / gris'],
+  'Chat|Maine Coon': ['Roux tigré','Noir','Bleu / gris','Bicolore'],
+  'Bovin|Limousine': ['Froment'],
+  'Bovin|Holstein': ['Pie noire','Pie rouge'],
+  'Cheval|Frison': ['Noir'],
+  'Cheval|Haflinger': ['Alezan crins lavés']
+};
+const PEC_PHOTOS_CC0 = {
+  'race|Chien|Labrador': ['Labrador kutya.jpg','Hári Zalán','labrador-jaune.jpg'],
+  'race|Chien|Golden Retriever': ['Golden Retriever adult.jpg','Johan Spaedtke','golden-retriever.jpg'],
+  'race|Chat|Chartreux': ['Safira Chartreux cat.jpg','Bobkovka','chartreux.jpg'],
+  'race|Chat|Maine Coon': ['Cat MaineCoon.jpg','Dartuchi','maine-coon.jpg'],
+  'race|Bovin|Limousine': ['Chamborand (Creuse, Fr), vaches limousines.JPG','Henk van Gaal','bovin-limousin.jpg'],
+  'race|Cheval|Shetland': ['Shetland Pony at Avon Valley.jpg','Rodw','poney-shetland.jpg'],
+  'race|Lapin|Bélier': ['Lopeared rabbit in Artis themepark, South Korea.jpg','Drcbrothephotographer','lapin-belier.jpg'],
+  'couleur|Chien|Labrador|Noir': ['Labrador.retriever.jpg','C.cantile','labrador-noir.jpg'],
+  'couleur|Chien|Labrador|Jaune / sable': ['Labrador kutya.jpg','Hári Zalán','labrador-jaune.jpg'],
+  'couleur|Chat|Chartreux|Bleu / gris': ['Safira Chartreux cat.jpg','Bobkovka','chartreux.jpg'],
+  'couleur|Chat|Maine Coon|Roux tigré': ['Cat MaineCoon.jpg','Dartuchi','maine-coon.jpg'],
+  'couleur|Bovin|Limousine|Froment': ['Chamborand (Creuse, Fr), vaches limousines.JPG','Henk van Gaal','bovin-limousin.jpg']
+};
+
+function pecSpeciesOptions(selected) {
+  const values=PEC_TYPES.flatMap(function(group){return group[1];});
+  let html=PEC_TYPES.map(function(group){
+    return '<optgroup label="'+escHtml(group[0])+'">'+group[1].map(function(value){
+      return '<option value="'+escHtml(value)+'"'+(value===selected?' selected':'')+'>'+escHtml(value)+'</option>';
+    }).join('')+'</optgroup>';
+  }).join('');
+  if(selected&&!values.includes(selected)) html+='<option value="'+escHtml(selected)+'" selected>'+escHtml(selected)+'</option>';
+  return html;
+}
+function pecCatalogPanel(type) {
+  const label=type==='race'?'une race':'une couleur ou robe';
+  return '<div class="pec-catalog" id="pec-'+type+'-catalog" hidden>'
+    +'<label class="fgl" for="pec-'+type+'-search">Rechercher '+label+'</label>'
+    +'<input class="fi" id="pec-'+type+'-search" type="search" autocomplete="off" oninput="pecRenderCatalog(\''+type+'\')"/>'
+    +'<div class="pec-catalog-layout"><div class="pec-catalog-list" id="pec-'+type+'-list"></div>'
+    +'<div class="pec-catalog-preview" id="pec-'+type+'-preview" aria-live="polite">Survolez un nom ou touchez « Photo ».</div></div>'
+    +'<div class="pec-catalog-note">Photo illustrative, identification à confirmer. La saisie libre reste possible.</div></div>';
+}
+function pecCatalogSpecies() {
+  return (document.getElementById('pec-espece')||{}).value||'Chien';
+}
+function pecCatalogEntries(type) {
+  const species=pecCatalogSpecies();
+  if(type==='race') return PEC_RACE_CATALOG[species]||PEC_RACE_CATALOG.Autre;
+  const race=(document.getElementById('pec-race')||{}).value||'';
+  const key=Object.keys(PEC_ROBES_PAR_RACE).find(function(item){return item.toLocaleLowerCase('fr')===(species+'|'+race.trim()).toLocaleLowerCase('fr');});
+  return Array.from(new Set([...(PEC_ROBES_PAR_RACE[key]||[]),...(PEC_ROBE_CATALOG[species]||PEC_ROBE_CATALOG.Autre)]));
+}
+function pecToggleCatalog(type) {
+  const panel=document.getElementById('pec-'+type+'-catalog');
+  if(!panel)return;
+  const opening=panel.hidden;
+  ['race','couleur'].forEach(function(other){const el=document.getElementById('pec-'+other+'-catalog');if(el)el.hidden=true;});
+  panel.hidden=!opening;
+  if(opening){
+    pecRenderCatalog(type);
+    const search=document.getElementById('pec-'+type+'-search');
+    if(search&&typeof window!=='undefined'&&window.matchMedia&&window.matchMedia('(hover:hover) and (pointer:fine)').matches)search.focus();
+  }
+}
+function pecRenderCatalog(type) {
+  const list=document.getElementById('pec-'+type+'-list');
+  if(!list)return;
+  const query=((document.getElementById('pec-'+type+'-search')||{}).value||'').toLocaleLowerCase('fr');
+  const names=pecCatalogEntries(type).filter(function(name){return name.toLocaleLowerCase('fr').includes(query);});
+  list.replaceChildren();
+  if(!names.length){list.textContent='Aucun résultat. Saisissez directement le nom dans le champ.';return;}
+  names.forEach(function(name){
+    const row=document.createElement('div');row.className='pec-catalog-row';
+    const select=document.createElement('button');select.type='button';select.className='pec-catalog-name';select.textContent=name;
+    select.addEventListener('mouseenter',function(){pecPreviewCatalog(type,name);});
+    select.addEventListener('focus',function(){pecPreviewCatalog(type,name);});
+    select.addEventListener('click',function(){pecChooseCatalog(type,name);});
+    const photo=document.createElement('button');photo.type='button';photo.className='pec-catalog-photo';photo.textContent='Photo';
+    photo.setAttribute('aria-label','Aperçu de '+name);
+    photo.addEventListener('click',function(){pecPreviewCatalog(type,name);});
+    row.append(select,photo);list.appendChild(row);
+  });
+}
+function pecPreviewCatalog(type,name) {
+  const preview=document.getElementById('pec-'+type+'-preview');if(!preview)return;
+  const species=pecCatalogSpecies();
+  const race=((document.getElementById('pec-race')||{}).value||'').trim();
+  const key=type==='race'?'race|'+species+'|'+name:'couleur|'+species+'|'+race+'|'+name;
+  const photo=PEC_PHOTOS_CC0[key];
+  preview.replaceChildren();
+  const title=document.createElement('strong');title.textContent=name;preview.appendChild(title);
+  if(!photo){const note=document.createElement('p');note.textContent='Photo de référence à compléter pour cette entrée.';preview.appendChild(note);return;}
+  const fileUrl='https://commons.wikimedia.org/wiki/File:'+encodeURIComponent(photo[0]).replace(/%20/g,'_');
+  const img=document.createElement('img');img.alt='Exemple illustratif : '+name;img.loading='lazy';img.referrerPolicy='no-referrer';
+  img.onerror=function(){this.replaceWith(document.createTextNode('Photo indisponible hors connexion.'));};
+  img.src='assets/animal/'+photo[2];
+  preview.appendChild(img);
+  const credit=document.createElement('a');credit.href=fileUrl;credit.target='_blank';credit.rel='noopener noreferrer';
+  credit.textContent='Photo : '+photo[1]+' · Wikimedia Commons · CC0';preview.appendChild(credit);
+}
+function pecChooseCatalog(type,name) {
+  const input=document.getElementById('pec-'+type);if(input)input.value=name;
+  const panel=document.getElementById('pec-'+type+'-catalog');if(panel)panel.hidden=true;
+  if(type==='race')pecRaceChanged();
+}
+function pecRaceChanged() {
+  const panel=document.getElementById('pec-couleur-catalog');
+  if(panel&&!panel.hidden)pecRenderCatalog('couleur');
+}
+function pecSpeciesChanged() {
+  ['race','couleur'].forEach(function(type){
+    const panel=document.getElementById('pec-'+type+'-catalog');
+    if(panel&&!panel.hidden)pecRenderCatalog(type);
+  });
+}
+
 function savePriseEnCharge(ivId,ficheIndex) {
   const iv = IVS.find(function(v){return v.id===ivId;});if(!iv)return;
   if(!requireCurrentUserOperationalManager(iv,'La prise en charge animale'))return;
   const fiches=getPrisesEnChargeAnimal(iv);
   ficheIndex=Math.max(0,Number(ficheIndex)||0);
   const statuts = Array.from(document.querySelectorAll('input[name="pec-statut"]:checked')).map(function(c){return c.value;});
-  const especeEl = document.querySelector('input[name="pec-espece"]:checked');
+  const especeEl = document.getElementById('pec-espece');
   const sexeEl   = document.querySelector('input[name="pec-sexe"]:checked');
   const savedBefore=fiches[ficheIndex]||{};
   const fiche = {
@@ -393,7 +547,8 @@ function _buildPriseEnChargeHTML(ivId,ficheIndex) {
     +'<td style="'+LB+'">Espèce :<br><table style="width:100%;border:none;margin-top:2mm;"><tr>'
     +'<td style="border:none;width:50%;"><span style="'+VAL+'">'+cb(d.espece==='Chien')+'</span> <span style="font-size:11pt;">Chien</span></td>'
     +'<td style="border:none;width:50%;"><span style="'+VAL+'">'+cb(d.espece==='Chat')+'</span> <span style="font-size:11pt;">Chat</span></td>'
-    +'</tr></table></td>'
+    +'</tr></table>'
+    +(d.espece&&d.espece!=='Chien'&&d.espece!=='Chat'?'<span style="font-size:10pt;">Autre : '+escHtml(d.espece)+'</span>':'')+'</td>'
     +'</tr>'
     // R3 Nom/Tel / Sexe
     +'<tr style="height:14mm;">'
