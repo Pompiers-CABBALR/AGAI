@@ -85,4 +85,9 @@ test('l’aperçu public est autonome et ne contient aucune action de sauvegarde
   assert.match(page, /modules\/animal-catalog-demo\.js/);
   assert.match(page, /aucun choix n’est enregistré/);
   assert.doesNotMatch(page, /savePriseEnCharge|saveData|supabase|AGAI_WRITE/);
+  const version = JSON.parse(fs.readFileSync(path.join(root, 'version.json'), 'utf8')).version;
+  assert.match(page, new RegExp('style\\.css\\?v=' + version));
+  assert.match(page, new RegExp('animal-catalog-demo\\.js\\?v=' + version));
+  assert.match(demoJs, /classList\.toggle\('pec-catalog-expanded',opening\)/);
+  assert.match(fs.readFileSync(path.join(root, 'style.css'), 'utf8'), /\.pec-form-grid>\.fg\.pec-catalog-expanded\{grid-column:1\/-1;/);
 });
