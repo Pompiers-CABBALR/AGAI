@@ -163,7 +163,9 @@ for(const file of ['modules/17-animal-js.js','app.js']) {
       vm.runInNewContext(source.slice(start,end)+'\nglobalThis.allowed=_rcCanWriteStationConfig();',context);
       assert.equal(context.allowed,allowed);
     }
-    assert.match(source,/if\(row\.type==='config'&&!_rcCanWriteStationConfig\(\)\)return false/);
+    assert.match(source,/if\(row\.type==='config'&&!_rcCanWriteStationConfig\(\)&&!_rcCanWriteTeamPiquetConfig\(\)\)return false/);
+    assert.match(source,/_rcTeamPiquetOtherSignature\(row\.data\)!==pending\.otherBaseline/);
+    assert.match(source,/RC_TEAM_PIQUET_RPC/);
     assert.match(source,/cid===CURRENT_CASERNE_ID&&_rcCanWriteStationConfig\(\)/);
     assert.match(source,/if\(_rcCanWriteStationConfig\(\)\s*&&\(\(Date\.now\(\)-_jbEditLock/);
   });

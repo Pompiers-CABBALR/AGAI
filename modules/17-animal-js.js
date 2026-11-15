@@ -1997,6 +1997,7 @@ const RC_REST = SB_URL + '/rest/v1/records';
 const RC_ATOMIC_RPC = SB_URL + '/rest/v1/rpc/'
   + (PERSONNEL_ONLINE_GATE?'agai_atomic_upsert_record_auth':'agai_atomic_upsert_record');
 const RC_ATOMIC_HEALTH_RPC = SB_URL + '/rest/v1/rpc/agai_atomic_health';
+const RC_TEAM_PIQUET_RPC = SB_URL + '/rest/v1/rpc/agai_save_unvalidated_piquet_week';
 let _rcAtomicServerState='unknown';
 let _rcAtomicServerCheckedAt=0;
 let _rcAtomicServerHealth=null;
@@ -2364,11 +2365,50 @@ function _rcCanWriteStationConfig(){
   if(!PERSONNEL_ONLINE_GATE)return true;
   return !!(CU&&(CU.appRole==='superadmin'||CU.appRole==='administrateur_caserne'));
 }
+function _rcCanWriteFullStationConfig(){
+  return _rcCanWriteStationConfig();
+}
+function _rcCanWriteTeamPiquetConfig(){
+  return PERSONNEL_ONLINE_GATE&&typeof isRespEquipe==='function'&&isRespEquipe();
+}
+const RC_TEAM_PIQUET_PENDING_KEY='agai_team_piquet_pending_v1';
+const _rcTeamPiquetPending=(function(){
+  try{
+    const saved=JSON.parse(localStorage.getItem(RC_TEAM_PIQUET_PENDING_KEY)||'{}');
+    return saved&&typeof saved==='object'&&!Array.isArray(saved)?saved:{};
+  }catch(error){return {};}
+})();
+function _rcTeamPiquetPendingKey(caserne){return String(caserne||'')+'__'+String(CU&&CU.l||'');}
+function _rcTeamPiquetPersist(){
+  try{localStorage.setItem(RC_TEAM_PIQUET_PENDING_KEY,JSON.stringify(_rcTeamPiquetPending));}catch(error){}
+}
+function _rcTeamPiquetOtherSignature(data){
+  const other=Object.assign({},data||{});
+  const piquets=Object.assign({},other.piquets||{});
+  Object.keys(piquets).forEach(function(key){if(/^\d{8}$/.test(key))delete piquets[key];});
+  other.piquets=piquets;
+  return JSON.stringify(_rcCanonicalSyncValue(other));
+}
+function _rcTrackTeamLeadPiquetEdits(before,after,caserne){
+  if(!before||!after||!caserne)return;
+  const prior=before.piquets||{},next=after.piquets||{};
+  const weeks=Array.from(new Set(Object.keys(prior).concat(Object.keys(next))))
+    .filter(function(week){return /^\d{8}$/.test(week);});
+  const pendingKey=_rcTeamPiquetPendingKey(caserne);
+  let pending=_rcTeamPiquetPending[pendingKey];
+  weeks.forEach(function(week){
+    if(JSON.stringify(_rcCanonicalSyncValue(prior[week]))
+       ===JSON.stringify(_rcCanonicalSyncValue(next[week])))return;
+    if(!pending)pending=_rcTeamPiquetPending[pendingKey]={weeks:{},otherBaseline:_rcTeamPiquetOtherSignature(before)};
+    if(!pending.weeks[week])pending.weeks[week]={expected:prior[week]===undefined?null:prior[week]};
+  });
+  if(pending)_rcTeamPiquetPersist();
+}
 function _rcRowWritableHere(row){
   if(!row)return false;
   // La politique serveur refuse la configuration aux agents. Ne jamais
   // recréer sur leur appareil une ligne impossible à transmettre.
-  if(row.type==='config'&&!_rcCanWriteStationConfig())return false;
+  if(row.type==='config'&&!_rcCanWriteStationConfig()&&!_rcCanWriteTeamPiquetConfig())return false;
   // Le pilote n'autorise pas la réécriture des comptes historiques : leur
   // projection Auth ne contient plus les mots de passe de l'ancien système.
   if(PERSONNEL_SECURE_CIS05_PILOT&&(row.type==='global'||row.type==='user'))return false;
@@ -2550,7 +2590,13 @@ function _rcTrackChangedRecords(previousData,nextData){
   const changedRows=[];
   _rcSplitAll(nextData).filter(_rcRowWritableHere).forEach(function(row){
     const serialized=_rcSyncSignature(row);
-    if(previousMap[row.id]!==serialized){_rcPendingDirty.add(row.id);changedRows.push(row);changed=true;}
+    if(previousMap[row.id]!==serialized){
+      if(row.type==='config'&&!_rcCanWriteFullStationConfig()){
+        const before=previousRows.find(function(entry){return entry.id===row.id;});
+        _rcTrackTeamLeadPiquetEdits(before&&before.data,row.data,row.caserne);
+      }
+      _rcPendingDirty.add(row.id);changedRows.push(row);changed=true;
+    }
   });
   if(changed)_rcDirtyGeneration++;
   if(changedRows.length)_rcClearDeferred(changedRows.map(function(row){return row.id;}));
@@ -3451,6 +3497,49 @@ async function _rcResolveAtomicRejection(failure){
 
 async function _rcSendRowsWithIsolation(rows,currentUser){
   const succeeded=[],failures=[];
+  async function sendTeamLeadConfig(row){
+    const pendingKey=_rcTeamPiquetPendingKey(row.caserne);
+    const pending=_rcTeamPiquetPending[pendingKey];
+    if(!pending||!pending.weeks||!Object.keys(pending.weeks).length
+      ||_rcTeamPiquetOtherSignature(row.data)!==pending.otherBaseline){
+      failures.push({row:row,status:409,detail:'AGAI_PIQUET_LOCAL_CHANGE_REQUIRES_REVIEW'});
+      return;
+    }
+    for(const week of Object.keys(pending.weeks).sort()){
+      const next=row.data&&row.data.piquets&&row.data.piquets[week];
+      if(!Array.isArray(next)){
+        failures.push({row:row,status:409,detail:'AGAI_PIQUET_INVALID_WEEK'});
+        return;
+      }
+      let response;
+      try{
+        response=await _agaiFetchWithTimeout(RC_TEAM_PIQUET_RPC,{
+          method:'POST',headers:_sbHeaders,
+          body:JSON.stringify({p_week:week,p_expected:pending.weeks[week].expected,p_next:next})
+        },45000);
+      }catch(error){
+        failures.push({row:row,status:0,detail:String(error&&error.message||error||'Réseau indisponible')});
+        return;
+      }
+      if(!response.ok){
+        let detail='';
+        try{detail=String(await response.text()||'').replace(/\s+/g,' ').slice(0,300);}catch(error){}
+        failures.push({row:row,status:response.status||0,detail:detail||'AGAI_PIQUET_SAVE_FAILED'});
+        return;
+      }
+      const now=CASERNE_DATA[row.caserne]&&CASERNE_DATA[row.caserne].piquets
+        &&CASERNE_DATA[row.caserne].piquets[week];
+      if(JSON.stringify(_rcCanonicalSyncValue(now))===JSON.stringify(_rcCanonicalSyncValue(next))){
+        delete pending.weeks[week];
+      }else{
+        pending.weeks[week].expected=next;
+      }
+      if(!Object.keys(pending.weeks).length)delete _rcTeamPiquetPending[pendingKey];
+      _rcTeamPiquetPersist();
+    }
+    succeeded.push(row);
+    _rcRequestRealtimePull(150);
+  }
   async function send(group){
     if(!group.length)return;
     const payload=group.map(function(r){return {id:r.id,caserne:r.caserne,type:r.type,data:r.data,deleted:r.deleted,updated_by:currentUser};});
@@ -3477,6 +3566,11 @@ async function _rcSendRowsWithIsolation(rows,currentUser){
   }
   const atomicRows=(rows||[]).filter(function(row){return row&&row._atomicEligible&&(row.type==='iv'||row.type==='pilp');});
   const standardRows=(rows||[]).filter(function(row){return !atomicRows.includes(row);});
+  const teamPiquetRows=standardRows.filter(function(row){
+    return row&&row.type==='config'&&PERSONNEL_ONLINE_GATE
+      &&!_rcCanWriteFullStationConfig();
+  });
+  teamPiquetRows.forEach(function(row){standardRows.splice(standardRows.indexOf(row),1);});
   // Ne jamais contourner le RPC opérationnel après la bascule Auth.
   if(PERSONNEL_ONLINE_GATE){
     for(let index=standardRows.length-1;index>=0;index--){
@@ -3496,6 +3590,7 @@ async function _rcSendRowsWithIsolation(rows,currentUser){
     else if(result.fallback&&!PERSONNEL_ONLINE_GATE&&!(row.data&&row.data._numberingScheme==='dual-v1'))await send([row]);
     else failures.push({row:row,status:result.status||0,detail:result.detail||''});
   }
+  for(const row of teamPiquetRows)await sendTeamLeadConfig(row);
   for(let index=0;index<standardRows.length;index+=10)await send(standardRows.slice(index,index+10));
   return {succeeded:succeeded,failures:failures};
 }
