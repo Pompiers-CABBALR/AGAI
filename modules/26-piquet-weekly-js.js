@@ -30,6 +30,16 @@ function pqWeeklyOverlaps(a,b){
   const ar=pqWeeklyRange(a),br=pqWeeklyRange(b);
   return ar[0]<br[1]&&br[0]<ar[1];
 }
+function pqWeeklyMemberRange(slot,role,login){
+  const chief=role==='chief';
+  const partialLogin=chief?slot.partialChief:slot.partialDriver;
+  const from=login===partialLogin
+    ?(chief?slot.partialChiefHDebut:slot.partialDriverHDebut)||slot.debut:slot.debut;
+  const to=login===partialLogin
+    ?(chief?slot.partialChiefHFin:slot.partialDriverHFin)||slot.fin:slot.fin;
+  return pqWeeklyRange({wk:slot.wk,jour:slot.jour,debut:from,fin:to});
+}
+function pqWeeklyRangesOverlap(a,b){return a[0]<b[1]&&b[0]<a[1];}
 function pqDraftPlan(wk,engin,options={}){
   const engins=Array.isArray(engin)?engin:[engin];
   const existingForPlan=options.ignoreExisting?[]:(PIQUETS[wk]||[]);
@@ -254,8 +264,12 @@ function pqWeeklySetChoice(index,role,login){
   const permitted=role==='chief'?slot.chiefEligible:slot.eligible;
   if(login&&!permitted.includes(login))return;
   if(login&&_pqWeeklyDraft.some(function(other){
-    return other!==slot&&pqWeeklyOverlaps(other,slot)
-      &&(other.chief===login||other.driver===login);
+    if(other===slot)return false;
+    const proposed=pqWeeklyMemberRange(slot,role,login);
+    return ['chief','driver'].some(function(otherRole){
+      return other[otherRole]===login&&pqWeeklyRangesOverlap(proposed,
+        pqWeeklyMemberRange(other,otherRole,login));
+    });
   })){
     showToast('Cet agent est déjà proposé sur un autre départ VTU au même horaire.','warn');
     pqWeeklyRenderDraft();return;
@@ -430,11 +444,18 @@ function pqWeeklyWrites(){
       ||(selected.driverHDebut||selected.debut)!==driverStart
       ||(selected.driverHFin||selected.fin)!==driverEnd)
       return {error:'Les horaires individuels ont changé. Relancez la proposition.'};
-    for(const login of [selected.chief,selected.driver].filter(Boolean)){
+    for(const [role,login] of [['chief',selected.chief],['driver',selected.driver]]){
+      if(!login)continue;
+      const range=pqWeeklyMemberRange(fresh,role,login);
       const prior=usedByAgent.get(login)||[];
-      if(prior.some(function(other){return pqWeeklyOverlaps(other,selected);}))
-        return {error:'Un agent figure sur deux départs VTU simultanés. Aucun piquet ajouté.'};
-      prior.push(selected);usedByAgent.set(login,prior);
+      const conflict=prior.find(function(other){return pqWeeklyRangesOverlap(other.range,range);});
+      if(conflict){
+        const person=USERS.find(function(u){return u.l===login;});
+        return {error:'Un agent figure sur deux départs VTU simultanés : '
+          +(person?fullName(person):login)+' ('+conflict.jour+' '+conflict.engin+' '+pqDraftClock(conflict.range[0])+'–'+pqDraftClock(conflict.range[1])
+          +' et '+selected.jour+' '+selected.engin+' '+pqDraftClock(range[0])+'–'+pqDraftClock(range[1])+'). Aucun piquet ajouté.'};
+      }
+      prior.push({range:range,engin:selected.engin,jour:selected.jour});usedByAgent.set(login,prior);
     }
     const uncovered=[];
     if(selected.chief&&chiefStart!==selected.debut)uncovered.push(selected.debut+'–'+chiefStart+' sans chef');

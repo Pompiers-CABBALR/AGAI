@@ -690,6 +690,63 @@ test('une correction manuelle ne peut pas affecter un agent aux deux départs du
   assert.equal(vm.runInContext('_pqWeeklyDraft[1].driver',context),before);
   assert.match(warnings[0],/autre départ VTU/);
 });
+test('enregistrement groupé : une même personne peut relayer deux départs sans chevauchement réel',()=>{
+  const {context}=contextFor([
+    {l:'ca-f',chief:true},{l:'ca-b',chief:true},{l:'relay'}
+  ]);
+  context.ASTR_CONFIG.engins=['VTU-01','VTU-02'];
+  preview(context);
+  const slots=[
+    {wk:'week',engin:'VTU-01',jour:'Lundi',label:'Soir',debut:'18:00',fin:'00:00',
+      chief:'ca-f',driver:'relay',chiefEligible:['ca-f','ca-b'],eligible:['relay'],
+      partialDriver:'relay',partialDriverHFin:'20:00',driverHFin:'20:00',state:'ready'},
+    {wk:'week',engin:'VTU-02',jour:'Lundi',label:'Soir',debut:'18:00',fin:'00:00',
+      chief:'ca-b',driver:'relay',chiefEligible:['ca-f','ca-b'],eligible:['relay'],
+      partialDriver:'relay',partialDriverHDebut:'20:00',driverHDebut:'20:00',state:'ready'}
+  ];
+  context.testSlots=slots;
+  context.pqDraftPlan=()=>slots.map(slot=>({...slot}));
+  vm.runInContext('_pqWeeklyDraft=testSlots',context);
+  const checked=context.pqWeeklyWrites();
+  assert.equal(checked.error,undefined);
+  assert.equal(checked.entries.length,2);
+  assert.equal(checked.entries[0].membres[1].hFin,'20:00');
+  assert.equal(checked.entries[1].membres[1].hDebut,'20:00');
+  const warnings=[];
+  context.showToast=message=>warnings.push(message);
+  slots[1].driver='';slots[1].state='partial';
+  context.pqWeeklySetChoice(1,'driver','relay');
+  assert.equal(slots[1].driver,'relay');
+  assert.equal(warnings.length,0);
+  slots[1].partialDriverHDebut='19:00';
+  slots[1].driverHDebut='19:00';
+  assert.match(context.pqWeeklyWrites().error,/deux départs VTU simultanés : relay \(Lundi VTU-01 18:00–20:00 et Lundi VTU-02 19:00–00:00\)/);
+});
+test('la relève à minuit ne crée pas de faux chevauchement entre soir et nuit',()=>{
+  const {context}=contextFor([{l:'relay'}]);
+  const evening={wk:'week',jour:'Lundi',debut:'18:00',fin:'00:00'};
+  const night={wk:'week',jour:'Lundi',debut:'00:00',fin:'08:00'};
+  const first=context.pqWeeklyMemberRange(evening,'driver','relay');
+  const second=context.pqWeeklyMemberRange(night,'driver','relay');
+  assert.equal(context.pqWeeklyRangesOverlap(first,second),false);
+});
+test('des disponibilités morcelées ne bloquent pas à tort l’enregistrement groupé',()=>{
+  const users=[
+    {l:'ca-f',chief:true},{l:'ca-b',chief:true},{l:'ca-autre',chief:true},
+    {l:'conducteur-f'},{l:'conducteur-b'},{l:'conducteur-autre'}
+  ];
+  for(let seed=1;seed<=20;seed++){
+    const {context,dispos}=contextFor(users);
+    context.ASTR_CONFIG.engins=['VTU-01','VTU-02'];
+    let value=seed;
+    for(const user of users)for(let slot=0;slot<24;slot++){
+      value=(Math.imul(value,1664525)+1013904223)>>>0;
+      if(value%4===0)delete dispos[user.l]['0_'+slot];
+    }
+    preview(context);
+    assert.equal(context.pqWeeklyWrites().error,undefined,'disponibilités morcelées, cas '+seed);
+  }
+});
 test('un troisième départ configuré multiplie les créneaux sans inventer d’agents',()=>{
   const {context}=contextFor([
     {l:'ca-f',chief:true},{l:'conducteur-f'},
