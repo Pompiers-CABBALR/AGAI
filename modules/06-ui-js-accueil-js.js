@@ -549,7 +549,8 @@ function rAccueilAstreinte(){
     +renderAgendaCard('dispo','Disponibilité','Aucune prochaine disponibilité renseignée.','warn')
     +renderAgendaCard('piquet','Piquet','Aucun piquet sous 48 h.','next')
     +'</div>';
-  if(telephoneDuty&&telephoneDuty.mode==='person'&&telephoneDuty.login===CU.l){
+  if((typeof isSuperAdmin==='function'&&isSuperAdmin())
+    ||(telephoneDuty&&telephoneDuty.mode==='person'&&telephoneDuty.login===CU.l)){
     const todayStart=new Date(now);todayStart.setHours(0,0,0,0);
     const todayEnd=new Date(todayStart);todayEnd.setDate(todayEnd.getDate()+1);
     const weeks=[weekKey(getMondayOfWeek(-1)),wk];

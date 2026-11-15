@@ -2104,7 +2104,9 @@ function clearPiquetsSemaine(){
     showToast('Tous les créneaux supprimés','success');
   });
 }
+let _agaiPiquetValidationRunning=false;
 function validerPiquets(){
+  if(typeof _agaiPiquetValidationRunning!=='undefined'&&_agaiPiquetValidationRunning)return;
   if(astrPiquetWeek<0){showToast('Impossible de modifier une semaine passée','warn');return;}
   const mon=getMondayOfWeek(astrPiquetWeek);
   const wk=weekKey(mon);
@@ -2113,7 +2115,22 @@ function validerPiquets(){
   confirmModal(
     'Valider les piquets ET les disponibilités de la semaine '+weekLabel(mon)+'. '
       +'Après validation, les chefs d\'équipe ne pourront plus modifier.',
-    function(){
+    async function(){
+      if(PERSONNEL_ONLINE_GATE&&!hasRight('Administration')){
+        if(typeof _rcValidateTeamPiquetWeek!=='function'){
+          showToast('Validation sécurisée indisponible sur cette version.','warn');return;
+        }
+        _agaiPiquetValidationRunning=true;
+        try{
+          await _rcValidateTeamPiquetWeek(wk,PIQUETS[wk]||[]);
+          await _rcPull(true);
+          showToast('Piquets et disponibilités validés sur le serveur ✔','success');
+          rAstrPiquets();
+        }catch(error){
+          showToast(String(error&&error.message||'Validation non enregistrée.'),'warn',7000);
+        }finally{_agaiPiquetValidationRunning=false;}
+        return;
+      }
       // Valider piquets
       PIQUETS_VALIDATED[wk]=true;
       if(CD())CD().piquetsValidated=PIQUETS_VALIDATED;
