@@ -6203,11 +6203,11 @@ function rAccueilAstreinte(){
     const groupedHtml=groups.map(function(group){
       const items=rows.filter(function(row){return row.rank===group.rank;});
       if(!items.length)return '';
-      return '<div style="font-size:12px;font-weight:700;color:#581C87;margin:8px 0 4px;border-bottom:1px solid #D8B4FE;padding-bottom:3px;">'
+      return '<div style="font-size:12px;font-weight:700;color:#7C2D12;margin:8px 0 4px;border-bottom:1px solid #F4B8A5;padding-bottom:3px;">'
         +group.title+'</div>'
         +items.map(function(row){return '<div class="acc-agenda-detail">'+escHtml(row.label)+'</div>';}).join('');
     }).join('');
-    el.innerHTML+='<details class="acc-agenda-card" style="margin-top:8px;--agenda-bg:#F3E8FF;--agenda-color:#7E22CE;--agenda-text:#581C87;">'
+    el.innerHTML+='<details class="acc-agenda-card" style="margin-top:8px;--agenda-bg:#FFF1E8;--agenda-color:#C2410C;--agenda-text:#7C2D12;">'
       +'<summary><span class="acc-agenda-icon">🚒</span><span class="acc-agenda-main"><div class="acc-agenda-title">Piquets du jour</div>'
       +'<div class="acc-agenda-summary">'+currentCount+' en cours · '+upcomingCount+' à venir</div></span><span class="acc-agenda-more">▼</span></summary>'
       +'<div class="acc-agenda-details">'+(groupedHtml||'Aucun piquet restant aujourd’hui.')+'</div></details>';
@@ -20371,7 +20371,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202611_0029';
+const APP_VERSION='V202611_0030';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
