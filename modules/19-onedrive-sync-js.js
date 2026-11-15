@@ -660,7 +660,9 @@ function pqBuildForm(wk,engin,jourDefaut,existingP){
   const CA='Chef d\u2019agr\u00e8s';
   if(!roles.some(function(x){return _normRole(x)===_normRole(CA);}))roles.unshift(CA);
   if(!roles.length)roles=isVPI(engin)?PQ_ROLES_VPI:PQ_ROLES_VTU;
-  const debutDef=existingP?existingP.debut:'08:00';
+  const weekRule=astrScheduleForWeek(wk);
+  const morningStart=weekRule.morningStart??(weekRule.weekStartHour===0?8:weekRule.weekStartHour??8);
+  const debutDef=existingP?existingP.debut:String(morningStart).padStart(2,'0')+':00';
   const finDef=existingP?existingP.fin:'20:00';
   _pqLineId=0;
 

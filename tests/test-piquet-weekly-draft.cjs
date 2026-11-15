@@ -137,7 +137,10 @@ test('les heures restent alignées sur le planning même si la journée de dispo
   assert.equal(draft[3].fin,'08:00');
   assert.equal(draft[3].state,'ready');
   delete dispos['ca-f']['0_16'];
-  assert.equal(context.pqDraftPlan('week','VTU-01')[3].state,'partial');
+  const partialNight=context.pqDraftPlan('week','VTU-01')[3];
+  assert.equal(partialNight.state,'ready');
+  assert.equal(partialNight.chiefHDebut,'01:00');
+  assert.equal(partialNight.coverageGap,true);
 });
 test('aucune proposition si la disponibilité, un conflit ou un piquet existant couvre la tranche',()=>{
   const users=[{l:'ca-f',chief:true},{l:'conducteur-f'}];
@@ -414,6 +417,106 @@ test('deux départs VTU : 56 créneaux, chefs réservés avant conducteurs et au
   assert.equal(saveCount,1);
   for(let i=0;i<56;i+=2)
     assert.equal(new Set(context.PIQUETS.week.slice(i,i+2).flatMap(p=>[p.chefAgres,p.conducteur])).size,4);
+});
+test('deux chefs seulement : le premier départ est complété avant le deuxième et la fin de disponibilité reste visible',()=>{
+  const {context,dispos}=contextFor([
+    {l:'nicolas',chief:true},{l:'sebastien',chief:true}
+  ]);
+  context.ASTR_CONFIG.engins=['VTU-01','VTU-02'];
+  context.ASTR_CONFIG.weekStartHour=7;
+  context.astrPeriodsForWeek=()=>[
+    {key:'m',label:'Matin',from:420,to:720},
+    {key:'a',label:'Après-midi',from:720,to:1080},
+    {key:'s',label:'Soir',from:1080,to:1440},
+    {key:'n',label:'Nuit',from:1440,to:1860}
+  ];
+  context.planningEquipeGroups=()=>[{eq:{id:'forte'}},{eq:{id:'autre'}}];
+  context.getEquipeOfUser=login=>({id:login==='nicolas'?'forte':'autre'});
+  for(let slot=4;slot<24;slot++)delete dispos.sebastien['0_'+slot];
+  for(let slot=11;slot<24;slot++)delete dispos.nicolas['0_'+slot];
+  const draft=context.pqDraftPlan('week',context.pqWeeklyVtuEngins());
+  const first=draft.find(s=>s.jour==='Lundi'&&s.label==='Matin'&&s.engin==='VTU-01'&&s.debut==='07:00');
+  const second=draft.find(s=>s.jour==='Lundi'&&s.label==='Matin'&&s.engin==='VTU-02'&&s.debut==='07:00');
+  assert.equal(first.fin,'12:00');
+  assert.equal(first.state,'ready');
+  assert.equal(first.chief,'nicolas');
+  assert.equal(first.driver,'sebastien');
+  assert.equal(first.driverHFin,'11:00');
+  assert.equal(first.coverageGap,true);
+  assert.equal(second.state,'empty');
+  assert.equal(second.chief,'');
+  assert.equal(second.fin,'12:00');
+  assert.equal(draft.filter(s=>s.jour==='Lundi'&&s.label==='Matin'&&s.engin==='VTU-01').length,1);
+  const html=preview(context).innerHTML;
+  assert.match(html,/11:00–12:00 sans conducteur/);
+  const entry=context.pqWeeklyWrites().entries.find(p=>p.jour==='Lundi'&&p.engin==='VTU-01');
+  assert.equal(entry.debut,'07:00');
+  assert.equal(entry.fin,'12:00');
+  assert.equal(entry.membres[0].hFin,'12:00');
+  assert.equal(entry.membres[1].hFin,'11:00');
+  assert.match(entry.note,/11:00–12:00 sans conducteur/);
+  let confirmation;
+  context.confirmModal=(message,callback)=>{confirmation={message,callback};};
+  context.pqWeeklySaveWeek();
+  assert.match(confirmation.message,/présence partielle/);
+  assert.equal(context.PIQUETS.week.length,0);
+  confirmation.callback();
+  const saved=context.PIQUETS.week.filter(p=>p.jour==='Lundi'&&p.engin==='VTU-01'&&p.debut==='07:00');
+  assert.equal(saved.length,1);
+  assert.equal(saved[0].fin,'12:00');
+  assert.equal(saved[0].membres[1].hFin,'11:00');
+});
+test('les horaires individuels partiels valent aussi pour le chef et pour un conducteur arrivant en cours de créneau',()=>{
+  const chief=contextFor([{l:'ca-f',chief:true},{l:'conducteur-f'}]);
+  for(let slot=11;slot<12;slot++)delete chief.dispos['ca-f']['0_'+slot];
+  const first=chief.context.pqDraftPlan('week','VTU-01')[0];
+  assert.equal(first.debut,'08:00');
+  assert.equal(first.fin,'12:00');
+  assert.equal(first.chiefHFin,'11:00');
+  assert.equal(first.driverHFin,undefined);
+  preview(chief.context);
+  const chiefEntry=chief.context.pqWeeklyWrites().entries[0];
+  assert.equal(chiefEntry.membres[0].hFin,'11:00');
+  assert.equal(chiefEntry.membres[1].hFin,'12:00');
+  const driver=contextFor([{l:'ca-f',chief:true},{l:'conducteur-f'}]);
+  delete driver.dispos['conducteur-f']['0_8'];
+  delete driver.dispos['conducteur-f']['0_9'];
+  const later=driver.context.pqDraftPlan('week','VTU-01')[0];
+  assert.equal(later.debut,'08:00');
+  assert.equal(later.fin,'12:00');
+  assert.equal(later.driverHDebut,'10:00');
+  preview(driver.context);
+  const driverEntry=driver.context.pqWeeklyWrites().entries[0];
+  assert.equal(driverEntry.membres[1].hDebut,'10:00');
+  assert.match(driverEntry.note,/08:00–10:00 sans conducteur/);
+});
+test('un piquet existant à présence partielle ne prétend pas couvrir les heures absentes',()=>{
+  const {context}=contextFor([{l:'ca-f',chief:true},{l:'conducteur-f'}],{existing:[{
+    engin:'VTU-01',jour:'Lundi',debut:'08:00',fin:'12:00',
+    chefAgres:'ca-f',conducteur:'conducteur-f',membres:[
+      {role:'Chef d’agrès',login:'ca-f',hDebut:'08:00',hFin:'12:00'},
+      {role:'Conducteur',login:'conducteur-f',hDebut:'08:00',hFin:'11:00'}
+    ]
+  }]});
+  const morning=context.pqDraftPlan('week','VTU-01').filter(s=>s.jour==='Lundi'&&s.label==='Matin');
+  assert.equal(morning[0].state,'existing');
+  assert.ok(morning.some(s=>s.state==='existing-partial'));
+});
+test('le nouveau piquet reprend le début de la semaine choisie sans changer un piquet existant',()=>{
+  const formSource=fs.readFileSync(path.join(__dirname,'../modules/19-onedrive-sync-js.js'),'utf8');
+  const context={
+    JOURS_FULL:days,getEnginRoles:()=>[{role:'Chef d’agrès'},{role:'Conducteur'}],
+    astrScheduleForWeek:wk=>({weekStartHour:wk==='20261116'?7:8}),
+    isVPI:()=>false,PQ_ROLES_VPI:[],PQ_ROLES_VTU:[],PQ_ROLE_COLORS:{},PQ_ROLE_TEXT_COLORS:{},
+    _encodeRole:role=>role.replace(/[^a-zA-Z0-9]/g,'_'),pqBuildLine:()=>''
+  };
+  vm.createContext(context);
+  vm.runInContext(functionSource(formSource,'pqBuildForm'),context);
+  assert.match(context.pqBuildForm('20261109','VTU-01','Lundi',null),/id="pq-debut" value="08:00"/);
+  assert.match(context.pqBuildForm('20261116','VTU-01','Lundi',null),/id="pq-debut" value="07:00"/);
+  assert.match(context.pqBuildForm('20261116','VTU-01','Lundi',{
+    debut:'09:00',fin:'12:00',membres:[]
+  }),/id="pq-debut" value="09:00"/);
 });
 test('une disponibilité partielle de l’astreinte faible crée des relais réels dans le soir et la nuit',()=>{
   const users=[

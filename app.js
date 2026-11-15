@@ -14555,7 +14555,9 @@ function rAstrPiquets(){
           });
           const del=canAdd?'<button class="btn sm" style="font-size:10px;padding:1px 5px;color:#E24B4A;margin-top:2px;" onclick="delPiquet(\''+wk+'\','+globalIdx+')">&times;</button>':'';
           const incomplete=!p.chefAgres||!p.conducteur;
-          const warning=incomplete?'<div style="font-size:10px;font-weight:700;color:#9A3412;background:#FFEDD5;border-radius:4px;padding:3px;margin:3px 0;">À compléter — départ non garanti</div>':'';
+          const warning=incomplete?'<div style="font-size:10px;font-weight:700;color:#9A3412;background:#FFEDD5;border-radius:4px;padding:3px;margin:3px 0;">À compléter — départ non garanti</div>'
+            :String(p.note||'').startsWith('Présence partielle : ')
+              ?'<div style="font-size:10px;font-weight:700;color:#9A3412;background:#FFEDD5;border-radius:4px;padding:3px;margin:3px 0;">'+escHtml(p.note)+'</div>':'';
           const edit=canAdd?'<button class="btn sm" style="font-size:10px;padding:1px 5px;margin-top:2px;margin-right:2px;" onclick="editPiquet(\''+wk+'\','+globalIdx+')">&#x270F;</button>':'';
           const dragAttrs=canAdd?' draggable="true" ondragstart="piquetDragStart(event,\''+wk+'\','+globalIdx+')" style="background:'+bg+';color:'+fg+';border-radius:5px;padding:4px 7px;margin-bottom:3px;cursor:grab;"':' style="background:'+bg+';color:'+fg+';border-radius:5px;padding:4px 7px;margin-bottom:3px;"';
           return '<div'+dragAttrs+'>'
@@ -14854,8 +14856,10 @@ function validerPiquets(){
   const wk=weekKey(mon);
   const incomplete=(PIQUETS[wk]||[]).filter(function(p){return !p.chefAgres||!p.conducteur;}).length;
   if(incomplete){showToast(incomplete+' piquet(s) à compléter : chef et conducteur requis avant validation.','warn');return;}
+  const partialHours=(PIQUETS[wk]||[]).filter(function(p){return String(p.note||'').startsWith('Présence partielle : ');}).length;
   confirmModal(
     'Valider les piquets ET les disponibilités de la semaine '+weekLabel(mon)+'. '
+      +(partialHours?partialHours+' piquet(s) gardent des heures sans binôme : vérifiez les horaires individuels. ':'')
       +'Après validation, les chefs d\'équipe ne pourront plus modifier.',
     async function(){
       if(PERSONNEL_ONLINE_GATE&&!hasRight('Administration')){
@@ -20371,7 +20375,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202611_0030';
+const APP_VERSION='V202611_0031';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -27506,7 +27510,9 @@ function pqBuildForm(wk,engin,jourDefaut,existingP){
   const CA='Chef d\u2019agr\u00e8s';
   if(!roles.some(function(x){return _normRole(x)===_normRole(CA);}))roles.unshift(CA);
   if(!roles.length)roles=isVPI(engin)?PQ_ROLES_VPI:PQ_ROLES_VTU;
-  const debutDef=existingP?existingP.debut:'08:00';
+  const weekRule=astrScheduleForWeek(wk);
+  const morningStart=weekRule.morningStart??(weekRule.weekStartHour===0?8:weekRule.weekStartHour??8);
+  const debutDef=existingP?existingP.debut:String(morningStart).padStart(2,'0')+':00';
   const finDef=existingP?existingP.fin:'20:00';
   _pqLineId=0;
 
@@ -31527,8 +31533,17 @@ function pqDraftPlan(wk,engin,options={}){
       const range=piquetToAbsRangeIdx(effectiveExisting,p.debut,p.fin);
       if(proposed[0]>=range[1]||range[0]>=proposed[1])return;
       overlaps=true;
-      if(p.chefAgres&&p.conducteur&&p.chefAgres!==p.conducteur)
-        complete.push([Math.max(proposed[0],range[0]),Math.min(proposed[1],range[1])]);
+      if(p.chefAgres&&p.conducteur&&p.chefAgres!==p.conducteur){
+        const memberRange=function(login){
+          const member=(p.membres||[]).find(function(m){return m.login===login;});
+          const begin=member?.hDebut||p.debut,end=member?.hFin||p.fin;
+          return piquetToAbsRangeIdx(pdi+(timeToMin(begin)<start?1:0),begin,end);
+        };
+        const chiefRange=memberRange(p.chefAgres),driverRange=memberRange(p.conducteur);
+        const from=Math.max(proposed[0],range[0],chiefRange[0],driverRange[0]);
+        const to=Math.min(proposed[1],range[1],chiefRange[1],driverRange[1]);
+        if(from<to)complete.push([from,to]);
+      }
     });
     if(!overlaps)return '';
     complete.sort(function(a,b){return a[0]-b[0];});
@@ -31582,21 +31597,64 @@ function pqDraftPlan(wk,engin,options={}){
           burden.minutes+=slice.to-slice.from;
           if(night)burden.nights++;
         }
-        // Chaque heure réserve d'abord les chefs de tous les départs.
-        slotDrafts.filter(function(s){return !s.state.startsWith('existing');}).forEach(function(s){
+        // Un second départ incomplet ne doit pas priver le premier de son conducteur.
+        // Garder toutefois les chefs nécessaires aux départs suivants quand des
+        // conducteurs non chefs sont disponibles sur cette même tranche.
+        const pending=slotDrafts.filter(function(s){return !s.state.startsWith('existing');});
+        pending.forEach(function(s,index){
           assign(s,'chief',USERS.filter(function(u){return s.chiefEligible.includes(u.l);}));
-        });
-        slotDrafts.filter(function(s){return !s.state.startsWith('existing');}).forEach(function(s){
-          assign(s,'driver',USERS.filter(function(u){return s.eligible.includes(u.l);}));
+          let drivers=USERS.filter(function(u){return s.eligible.includes(u.l)&&!allocated.has(u.l);});
+          const later=pending.slice(index+1);
+          const remainingChiefs=USERS.filter(function(u){return !allocated.has(u.l)
+            &&later.some(function(other){return other.chiefEligible.includes(u.l);});}).length;
+          if(later.length&&remainingChiefs<=later.length){
+            const nonChiefs=drivers.filter(function(u){return !isChefAgresByGrade(u);});
+            if(nonChiefs.length)drivers=nonChiefs;
+          }
+          assign(s,'driver',drivers);
           s.state=s.chief&&s.driver?'ready':s.chief||s.driver?'partial':'empty';
         });
         slotDrafts.forEach(function(s){
           const last=lastSegment.get(s.engin);
-          if(last&&last.fin===s.debut&&last.state===s.state
-            &&last.chief===s.chief&&last.driver===s.driver){
+          const adjacent=last&&last.label===s.label&&last.fin===s.debut
+            &&!last.state.startsWith('existing')&&!s.state.startsWith('existing');
+          const continuousChief=adjacent&&last.chief&&last.chief===s.chief&&!last.chiefHFin;
+          const continuousDriver=adjacent&&last.driver&&last.driver===s.driver&&!last.driverHFin;
+          const chiefChanges=adjacent&&last.chief!==s.chief&&(!last.chief||!s.chief);
+          const driverChanges=adjacent&&last.driver!==s.driver&&(!last.driver||!s.driver);
+          if((continuousChief&&driverChanges&&!chiefChanges)
+            ||(continuousDriver&&chiefChanges&&!driverChanges)){
+            // Garder un seul piquet pour la période, avec les horaires réels de
+            // chaque membre. Les heures sans binôme restent visibles dans l'aperçu.
+            if(chiefChanges){
+              if(!last.chief){last.chief=s.chief;last.chiefHDebut=s.debut;}
+              else last.chiefHFin=last.chiefHFin||s.debut;
+              last.partialChief=last.chief;
+              last.partialChiefHDebut=last.chiefHDebut||'';
+              last.partialChiefHFin=last.chiefHFin||'';
+            }
+            if(driverChanges){
+              if(!last.driver){last.driver=s.driver;last.driverHDebut=s.debut;}
+              else last.driverHFin=last.driverHFin||s.debut;
+              last.partialDriver=last.driver;
+              last.partialDriverHDebut=last.driverHDebut||'';
+              last.partialDriverHFin=last.driverHFin||'';
+            }
             last.fin=s.fin;
             last.eligible=last.eligible.filter(function(login){return s.eligible.includes(login);});
             last.chiefEligible=last.chiefEligible.filter(function(login){return s.chiefEligible.includes(login);});
+            if(last.partialDriver&&!last.eligible.includes(last.partialDriver))last.eligible.push(last.partialDriver);
+            if(last.partialChief&&!last.chiefEligible.includes(last.partialChief))last.chiefEligible.push(last.partialChief);
+            last.coverageGap=!!(last.chiefHDebut||last.chiefHFin||last.driverHDebut||last.driverHFin);
+            last.state=last.chief&&last.driver?'ready':last.chief||last.driver?'partial':'empty';
+          }else if(last&&last.fin===s.debut&&last.state===s.state
+            &&last.chief===s.chief&&last.driver===s.driver
+            &&!last.chiefHFin&&!last.driverHFin){
+            last.fin=s.fin;
+            last.eligible=last.eligible.filter(function(login){return s.eligible.includes(login);});
+            last.chiefEligible=last.chiefEligible.filter(function(login){return s.chiefEligible.includes(login);});
+            if(last.partialDriver&&!last.eligible.includes(last.partialDriver))last.eligible.push(last.partialDriver);
+            if(last.partialChief&&!last.chiefEligible.includes(last.partialChief))last.chiefEligible.push(last.partialChief);
           }else{
             draft.push(s);lastSegment.set(s.engin,s);
           }
@@ -31639,6 +31697,11 @@ function pqWeeklySetChoice(index,role,login){
   }
   slot[role]=login;
   if(login&&slot.chief&&slot.chief===slot.driver)slot[role==='chief'?'driver':'chief']='';
+  slot.chiefHDebut=slot.chief&&slot.chief===slot.partialChief?slot.partialChiefHDebut||'':'';
+  slot.chiefHFin=slot.chief&&slot.chief===slot.partialChief?slot.partialChiefHFin||'':'';
+  slot.driverHDebut=slot.driver&&slot.driver===slot.partialDriver?slot.partialDriverHDebut||'':'';
+  slot.driverHFin=slot.driver&&slot.driver===slot.partialDriver?slot.partialDriverHFin||'':'';
+  slot.coverageGap=!!(slot.chiefHDebut||slot.chiefHFin||slot.driverHDebut||slot.driverHFin);
   slot.state=slot.chief&&slot.driver?'ready':slot.chief||slot.driver?'partial':'empty';
   pqWeeklyRenderDraft();
 }
@@ -31666,10 +31729,16 @@ function pqWeeklyRenderDraft(){
     html+='<div style="font-weight:700;font-size:12px;margin:8px 0 4px;">'+escHtml(jour)+'</div>';
     _pqWeeklyDraft.forEach(function(s,index){
       if(s.jour!==jour)return;
-      const ready=s.state==='ready',partial=s.state==='partial';
-      const bg=ready?'#F0FDF4':partial?'#FFF7ED':'#F1F5F9';
-      const border=ready?'#86EFAC':partial?'#FDBA74':'#CBD5E1';
-      const status=ready?'Chef et conducteur proposés'
+      const ready=s.state==='ready',partial=s.state==='partial',coverageGap=!!s.coverageGap;
+      const bg=coverageGap||partial?'#FFF7ED':ready?'#F0FDF4':'#F1F5F9';
+      const border=coverageGap||partial?'#FDBA74':ready?'#86EFAC':'#CBD5E1';
+      const missing=[];
+      if(s.chiefHDebut)missing.push(s.debut+'–'+s.chiefHDebut+' sans chef');
+      if(s.chiefHFin)missing.push(s.chiefHFin+'–'+s.fin+' sans chef');
+      if(s.driverHDebut)missing.push(s.debut+'–'+s.driverHDebut+' sans conducteur');
+      if(s.driverHFin)missing.push(s.driverHFin+'–'+s.fin+' sans conducteur');
+      const status=coverageGap?'Présence partielle · '+missing.join(' ; ')
+        :ready?'Chef et conducteur proposés'
         :partial?'Incomplet — départ non garanti'
         :s.state==='existing'?'Piquet déjà présent'
         :s.state==='existing-partial'?'Piquet existant incomplet — départ non garanti'
@@ -31687,7 +31756,11 @@ function pqWeeklyRenderDraft(){
           +'<span style="white-space:nowrap;">'+(role==='chief'?'Chef':'Conducteur')+' :</span>'
           +'<select class="fi" style="min-width:0;flex:1;font-size:11px;padding:3px 5px;" '
           +'aria-label="'+(role==='chief'?'Chef d’agrès':'Conducteur')+' du '+escHtml(s.jour)+' '+escHtml(s.label)+'" '
-          +'onchange="pqWeeklySetChoice('+index+',\''+role+'\',this.value)">'+options+'</select></label>';
+          +'onchange="pqWeeklySetChoice('+index+',\''+role+'\',this.value)">'+options+'</select>'
+          +((role==='chief'&&(s.chiefHDebut||s.chiefHFin))
+            ?'<span>'+(s.chiefHDebut||s.debut)+'–'+(s.chiefHFin||s.fin)+'</span>'
+            :role==='driver'&&(s.driverHDebut||s.driverHFin)
+              ?'<span>'+(s.driverHDebut||s.debut)+'–'+(s.driverHFin||s.fin)+'</span>':'')+'</label>';
       };
       html+='<div style="background:'+bg+';border:1px solid '+border+';border-radius:7px;padding:6px;margin:4px 0;font-size:11px;">'
         +'<div style="font-weight:700;">'+escHtml(piquetDepartureLabel(s.engin))+' · '+escHtml(s.label)+' · '+s.debut+'–'+s.fin+' · '+status+'</div>';
@@ -31783,16 +31856,31 @@ function pqWeeklyWrites(){
       ||(selected.driver&&!fresh.eligible.includes(selected.driver))
       ||(selected.chief&&selected.chief===selected.driver))
       return {error:'La semaine comporte un créneau non enregistrable. Aucun piquet ajouté.'};
+    const chiefStart=selected.chief===fresh.partialChief?fresh.partialChiefHDebut||selected.debut:selected.debut;
+    const chiefEnd=selected.chief===fresh.partialChief?fresh.partialChiefHFin||selected.fin:selected.fin;
+    const driverStart=selected.driver===fresh.partialDriver?fresh.partialDriverHDebut||selected.debut:selected.debut;
+    const driverEnd=selected.driver===fresh.partialDriver?fresh.partialDriverHFin||selected.fin:selected.fin;
+    if((selected.chiefHDebut||selected.debut)!==chiefStart
+      ||(selected.chiefHFin||selected.fin)!==chiefEnd
+      ||(selected.driverHDebut||selected.debut)!==driverStart
+      ||(selected.driverHFin||selected.fin)!==driverEnd)
+      return {error:'Les horaires individuels ont changé. Relancez la proposition.'};
     for(const login of [selected.chief,selected.driver].filter(Boolean)){
       const prior=usedByAgent.get(login)||[];
       if(prior.some(function(other){return pqWeeklyOverlaps(other,selected);}))
         return {error:'Un agent figure sur deux départs VTU simultanés. Aucun piquet ajouté.'};
       prior.push(selected);usedByAgent.set(login,prior);
     }
-    entries.push({engin:selected.engin,jour:selected.jour,debut:selected.debut,fin:selected.fin,note:'',
+    const uncovered=[];
+    if(selected.chief&&chiefStart!==selected.debut)uncovered.push(selected.debut+'–'+chiefStart+' sans chef');
+    if(selected.chief&&chiefEnd!==selected.fin)uncovered.push(chiefEnd+'–'+selected.fin+' sans chef');
+    if(selected.driver&&driverStart!==selected.debut)uncovered.push(selected.debut+'–'+driverStart+' sans conducteur');
+    if(selected.driver&&driverEnd!==selected.fin)uncovered.push(driverEnd+'–'+selected.fin+' sans conducteur');
+    entries.push({engin:selected.engin,jour:selected.jour,debut:selected.debut,fin:selected.fin,
+      note:uncovered.length?'Présence partielle : '+uncovered.join(' ; '):'',
       membres:[
-        selected.chief?{role:'Chef d’agrès',login:selected.chief,hDebut:selected.debut,hFin:selected.fin}:null,
-        selected.driver?{role:'Conducteur',login:selected.driver,hDebut:selected.debut,hFin:selected.fin}:null
+        selected.chief?{role:'Chef d’agrès',login:selected.chief,hDebut:chiefStart,hFin:chiefEnd}:null,
+        selected.driver?{role:'Conducteur',login:selected.driver,hDebut:driverStart,hFin:driverEnd}:null
       ].filter(Boolean),chefAgres:selected.chief,conducteur:selected.driver,chefEquipe:'',stagiaire:''});
   }
   return {entries,skipped};
@@ -31808,8 +31896,10 @@ function pqWeeklySaveWeek(){
   const entriesAtConfirmation=JSON.stringify(checked.entries);
   const skippedAtConfirmation=JSON.stringify(checked.skipped);
   const partial=checked.entries.filter(function(p){return !p.chefAgres||!p.conducteur;}).length;
+  const uncovered=checked.entries.filter(function(p){return p.note.startsWith('Présence partielle : ');}).length;
   confirmModal('Ajouter '+checked.entries.length+' créneaux VTU ? '
     +(partial?partial+' resteront incomplets et empêcheront la validation de la semaine. ':'')
+    +(uncovered?uncovered+' auront une présence partielle : vérifiez les heures sans binôme avant validation. ':'')
     +(checked.skipped.length?checked.skipped.length+' autres créneaux seront laissés de côté et resteront à traiter. ':'')
     +'Les piquets existants ne seront pas modifiés. Vérifiez ensuite « Sync OK ».',function(){
     const fresh=pqWeeklyWrites();
@@ -31849,6 +31939,10 @@ function applySuggestion(index){
     showToast('Ce créneau a changé. Relancez la proposition.','warn');return;
   }
   fresh.chief=previous.chief;fresh.driver=previous.driver;
+  fresh.chiefHDebut=fresh.chief===fresh.partialChief?fresh.partialChiefHDebut||'':'';
+  fresh.chiefHFin=fresh.chief===fresh.partialChief?fresh.partialChiefHFin||'':'';
+  fresh.driverHDebut=fresh.driver===fresh.partialDriver?fresh.partialDriverHDebut||'':'';
+  fresh.driverHFin=fresh.driver===fresh.partialDriver?fresh.partialDriverHFin||'':'';
   fresh.state=fresh.chief&&fresh.driver?'ready':'partial';
   // Le formulaire initial peut concerner le premier départ alors que ce
   // créneau appartient à un autre VTU : ouvrir celui du bon rang.
@@ -31870,7 +31964,14 @@ function applySuggestion(index){
   ].forEach(function(entry){
     if(!entry[1])return;
     const sel=sels.find(function(candidate){return candidate.dataset.role===entry[0];});
-    if(sel)sel.value=entry[1];
+    if(!sel)return;
+    sel.value=entry[1];
+    const lineId=String(sel.id||'').replace('pq-agent-','');
+    const memberStart=document.getElementById('pq-hdebut-'+lineId);
+    const memberEnd=document.getElementById('pq-hfin-'+lineId);
+    const isChief=entry[0]===_encodeRole('Chef d’agrès');
+    if(memberStart)memberStart.value=(isChief?fresh.chiefHDebut:fresh.driverHDebut)||fresh.debut;
+    if(memberEnd)memberEnd.value=(isChief?fresh.chiefHFin:fresh.driverHFin)||fresh.fin;
   });
   pqRefreshDispos();
   const target=document.getElementById('pq-suggestions');

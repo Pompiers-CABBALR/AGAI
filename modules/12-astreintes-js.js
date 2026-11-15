@@ -1813,7 +1813,9 @@ function rAstrPiquets(){
           });
           const del=canAdd?'<button class="btn sm" style="font-size:10px;padding:1px 5px;color:#E24B4A;margin-top:2px;" onclick="delPiquet(\''+wk+'\','+globalIdx+')">&times;</button>':'';
           const incomplete=!p.chefAgres||!p.conducteur;
-          const warning=incomplete?'<div style="font-size:10px;font-weight:700;color:#9A3412;background:#FFEDD5;border-radius:4px;padding:3px;margin:3px 0;">À compléter — départ non garanti</div>':'';
+          const warning=incomplete?'<div style="font-size:10px;font-weight:700;color:#9A3412;background:#FFEDD5;border-radius:4px;padding:3px;margin:3px 0;">À compléter — départ non garanti</div>'
+            :String(p.note||'').startsWith('Présence partielle : ')
+              ?'<div style="font-size:10px;font-weight:700;color:#9A3412;background:#FFEDD5;border-radius:4px;padding:3px;margin:3px 0;">'+escHtml(p.note)+'</div>':'';
           const edit=canAdd?'<button class="btn sm" style="font-size:10px;padding:1px 5px;margin-top:2px;margin-right:2px;" onclick="editPiquet(\''+wk+'\','+globalIdx+')">&#x270F;</button>':'';
           const dragAttrs=canAdd?' draggable="true" ondragstart="piquetDragStart(event,\''+wk+'\','+globalIdx+')" style="background:'+bg+';color:'+fg+';border-radius:5px;padding:4px 7px;margin-bottom:3px;cursor:grab;"':' style="background:'+bg+';color:'+fg+';border-radius:5px;padding:4px 7px;margin-bottom:3px;"';
           return '<div'+dragAttrs+'>'
@@ -2112,8 +2114,10 @@ function validerPiquets(){
   const wk=weekKey(mon);
   const incomplete=(PIQUETS[wk]||[]).filter(function(p){return !p.chefAgres||!p.conducteur;}).length;
   if(incomplete){showToast(incomplete+' piquet(s) à compléter : chef et conducteur requis avant validation.','warn');return;}
+  const partialHours=(PIQUETS[wk]||[]).filter(function(p){return String(p.note||'').startsWith('Présence partielle : ');}).length;
   confirmModal(
     'Valider les piquets ET les disponibilités de la semaine '+weekLabel(mon)+'. '
+      +(partialHours?partialHours+' piquet(s) gardent des heures sans binôme : vérifiez les horaires individuels. ':'')
       +'Après validation, les chefs d\'équipe ne pourront plus modifier.',
     async function(){
       if(PERSONNEL_ONLINE_GATE&&!hasRight('Administration')){
