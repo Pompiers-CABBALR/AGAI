@@ -6166,7 +6166,8 @@ function rAccueilAstreinte(){
     +renderAgendaCard('dispo','Disponibilité','Aucune prochaine disponibilité renseignée.','warn')
     +renderAgendaCard('piquet','Piquet','Aucun piquet sous 48 h.','next')
     +'</div>';
-  if(telephoneDuty&&telephoneDuty.mode==='person'&&telephoneDuty.login===CU.l){
+  if((typeof isSuperAdmin==='function'&&isSuperAdmin())
+    ||(telephoneDuty&&telephoneDuty.mode==='person'&&telephoneDuty.login===CU.l)){
     const todayStart=new Date(now);todayStart.setHours(0,0,0,0);
     const todayEnd=new Date(todayStart);todayEnd.setDate(todayEnd.getDate()+1);
     const weeks=[weekKey(getMondayOfWeek(-1)),wk];
@@ -14830,7 +14831,9 @@ function clearPiquetsSemaine(){
     showToast('Tous les créneaux supprimés','success');
   });
 }
+let _agaiPiquetValidationRunning=false;
 function validerPiquets(){
+  if(typeof _agaiPiquetValidationRunning!=='undefined'&&_agaiPiquetValidationRunning)return;
   if(astrPiquetWeek<0){showToast('Impossible de modifier une semaine passée','warn');return;}
   const mon=getMondayOfWeek(astrPiquetWeek);
   const wk=weekKey(mon);
@@ -14839,7 +14842,22 @@ function validerPiquets(){
   confirmModal(
     'Valider les piquets ET les disponibilités de la semaine '+weekLabel(mon)+'. '
       +'Après validation, les chefs d\'équipe ne pourront plus modifier.',
-    function(){
+    async function(){
+      if(PERSONNEL_ONLINE_GATE&&!hasRight('Administration')){
+        if(typeof _rcValidateTeamPiquetWeek!=='function'){
+          showToast('Validation sécurisée indisponible sur cette version.','warn');return;
+        }
+        _agaiPiquetValidationRunning=true;
+        try{
+          await _rcValidateTeamPiquetWeek(wk,PIQUETS[wk]||[]);
+          await _rcPull(true);
+          showToast('Piquets et disponibilités validés sur le serveur ✔','success');
+          rAstrPiquets();
+        }catch(error){
+          showToast(String(error&&error.message||'Validation non enregistrée.'),'warn',7000);
+        }finally{_agaiPiquetValidationRunning=false;}
+        return;
+      }
       // Valider piquets
       PIQUETS_VALIDATED[wk]=true;
       if(CD())CD().piquetsValidated=PIQUETS_VALIDATED;
@@ -20338,7 +20356,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202611_0026';
+const APP_VERSION='V202611_0027';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -24344,6 +24362,25 @@ const RC_ATOMIC_RPC = SB_URL + '/rest/v1/rpc/'
   + (PERSONNEL_ONLINE_GATE?'agai_atomic_upsert_record_auth':'agai_atomic_upsert_record');
 const RC_ATOMIC_HEALTH_RPC = SB_URL + '/rest/v1/rpc/agai_atomic_health';
 const RC_TEAM_PIQUET_RPC = SB_URL + '/rest/v1/rpc/agai_save_unvalidated_piquet_week';
+const RC_TEAM_PIQUET_VALIDATE_RPC = SB_URL + '/rest/v1/rpc/agai_validate_piquet_week';
+async function _rcValidateTeamPiquetWeek(week,piquets){
+  if(!CU||!_rcCanWriteTeamPiquetConfig())throw new Error('Droit de validation indisponible.');
+  const expected=JSON.parse(JSON.stringify(piquets||[]));
+  if(!expected.length||expected.some(function(p){return !p||!p.chefAgres||!p.conducteur;}))
+    throw new Error('Complétez les chefs et conducteurs avant validation.');
+  const response=await _agaiFetchWithTimeout(RC_TEAM_PIQUET_VALIDATE_RPC,{
+    method:'POST',headers:_sbHeaders,body:JSON.stringify({p_week:week,p_expected:expected})
+  },45000);
+  if(!response.ok){
+    let detail='';try{detail=await response.text();}catch(error){}
+    if(/AGAI_PIQUET_REVISION_CONFLICT/.test(detail))
+      throw new Error('Les piquets ne sont pas encore identiques sur le serveur. La saisie locale est conservée ; attendez la synchronisation.');
+    if(/AGAI_PIQUET_INCOMPLETE/.test(detail))
+      throw new Error('Des piquets sont incomplets sur le serveur : chef et conducteur requis.');
+    throw new Error('Validation refusée (HTTP '+response.status+'). Aucun piquet local supprimé.');
+  }
+  return true;
+}
 let _rcAtomicServerState='unknown';
 let _rcAtomicServerCheckedAt=0;
 let _rcAtomicServerHealth=null;

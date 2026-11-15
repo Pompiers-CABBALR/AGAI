@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AGAI — reprise des piquets</title>
+  <style>
+    body{font:16px/1.5 system-ui,sans-serif;max-width:34rem;margin:2rem auto;padding:0 1rem;color:#172033;background:#f3f4f8}
+    main{background:white;border-radius:16px;padding:1.25rem;box-shadow:0 2px 12px #0001}
+    h1{font-size:1.35rem;margin-top:0}button{font:inherit;background:#bb382c;color:white;border:0;border-radius:8px;padding:.8rem 1rem;cursor:pointer}
+    button:disabled{background:#aaa;cursor:default}.state{padding:.85rem;background:#eef2f8;border-radius:8px;margin:1rem 0;white-space:pre-line}
+    .warning{color:#92400e}small{color:#667085}
+  </style>
+  <script src="runtime-config.js?v=V202611_0027" defer></script>
+  <script src="piquet-recovery.js?v=V202611_0027" defer></script>
+</head>
+<body>
+  <main>
+    <h1>Reprise des piquets d’Éric</h1>
+    <p>Semaine du 16 novembre 2026 — CIS05. Cette page sauvegarde d’abord les piquets présents sur ce téléphone, puis vérifie le serveur. Elle ne recharge pas AGAI et ne touche ni aux interventions ni aux autres semaines.</p>
+    <div id="state" class="state" role="status" aria-live="polite">Lecture de la copie locale…</div>
+    <button id="send" type="button" disabled>Transmettre mes piquets</button>
+    <p><small>Garde l’onglet AGAI ouvert. N’actualise pas AGAI avant que la transmission soit confirmée ici.</small></p>
+  </main>
+</body>
+</html>
