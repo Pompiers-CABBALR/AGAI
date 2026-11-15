@@ -19,7 +19,7 @@ try {
   }
 } catch(_error){}
 </script>
-<link rel="stylesheet" href="style.css?v=V202611_0024"/>
+<link rel="stylesheet" href="style.css?v=V202611_0025"/>
 </head>
 <body>
 
@@ -79,7 +79,7 @@ try {
     <button class="nb hidden" id="nav-appel" onclick="showT('appel',this)">📞 <span class="nb-txt">Appel</span></button>
     <button class="nb hidden" id="nav-interv" onclick="showT('interv',this)">🚒 <span class="nb-txt">Interventions</span><span id="renfort-badge" style="display:none;background:#7C3AED;color:#fff;border-radius:10px;padding:0 6px;font-size:10px;font-weight:700;margin-left:5px;min-width:18px;height:18px;align-items:center;justify-content:center;vertical-align:middle;"></span></button>
     <button class="nb" id="nav-activite" onclick="showT('activite',this)">📋 <span class="nb-txt">Activités de service</span></button>
-    <button class="nb" id="nav-astreintes" onclick="showT('astreintes',this)">📅 <span class="nb-txt">Astreintes</span></button>
+    <button class="nb" id="nav-astreintes" onclick="showT('astreintes',this)">📅 <span class="nb-txt">Astreintes</span><span id="astr-requests-nav-count" class="astr-request-count" style="display:none;"></span></button>
     <button class="nb" id="nav-formation" onclick="showT('formation',this)">🎓 <span class="nb-txt">Formations</span></button>
     <button class="nb" id="nav-stats" onclick="showT('stats',this)">📊 <span class="nb-txt">Statistiques</span></button>
     <button class="nb hidden" id="nav-users" onclick="showT('users',this)">👥 <span class="nb-txt">Gestion Utilisateur</span></button>
@@ -93,6 +93,7 @@ try {
         <div class="accueil-bonjour" id="acc-bonjour">Bonjour !</div>
         <div class="accueil-date" id="acc-date">—</div>
         <div id="acc-astreinte-msg" style="margin-top:12px;"></div>
+        <div id="acc-astreinte-actions" style="margin-top:8px;"></div>
       </div>
       <div id="acc-rapports" style="margin-top:14px;"></div>
       <div id="acc-admin-report-summary" style="display:none;margin-top:10px;"></div>
@@ -524,9 +525,9 @@ try {
             <div style="font-size:11px;color:var(--t2);margin-top:4px;">Jour et heure limite pour que les chefs d’équipe valident les piquets. Passé ce délai, seul l’admin peut faire des modifications.</div>
           </div>
           <div class="fg">
-            <div class="fgl">Début de la semaine d’astreinte</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr 80px;gap:8px;align-items:center;">
-              <select class="fi" id="ws-day" onchange="saveWeekStart()">
+            <div class="fgl">Horaires des quatre créneaux — application future</div>
+            <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;align-items:center;">
+              <select class="fi" id="ws-day" aria-label="Jour de début de semaine">
                 <option value="1">Lundi</option>
                 <option value="2">Mardi</option>
                 <option value="3">Mercredi</option>
@@ -535,10 +536,16 @@ try {
                 <option value="6">Samedi</option>
                 <option value="0">Dimanche</option>
               </select>
-              <input class="fi" type="time" id="ws-hour" value="00:00" onchange="saveWeekStart()"/>
-              <span id="ws-saved" style="font-size:11px;color:var(--grn);display:none;">✅ Sauvé</span>
+              <label>Début matin / fin nuit<input class="fi" type="time" id="ws-hour" value="08:00" step="3600"/></label>
+              <label>Début après-midi<input class="fi" type="time" id="ws-afternoon" value="12:00" step="3600"/></label>
+              <label>Début soir<input class="fi" type="time" id="ws-evening" value="18:00" step="3600"/></label>
+              <label>Début nuit<input class="fi" type="time" id="ws-night" value="00:00" step="3600"/></label>
+              <label>À partir du lundi<input class="fi" type="date" id="ws-effective-week"/></label>
             </div>
-            <div style="font-size:11px;color:var(--t2);margin-top:4px;">Jour et heure de début de chaque semaine d'astreinte.</div>
+            <button type="button" class="btn pr sm" onclick="saveWeekStart()" style="margin-top:8px;">Enregistrer pour les semaines futures</button>
+            <span id="ws-saved" style="font-size:11px;color:var(--grn);display:none;">✅ Sauvé</span>
+            <div style="font-size:11px;color:var(--t2);margin-top:4px;">Le matin commence avec la semaine ; la nuit finit à cette même heure le lendemain. Les semaines passées restent inchangées.</div>
+            <div id="ws-history" style="margin-top:8px;"></div>
           </div>
           <div class="fg"><div class="fgl">Engins disponibles</div>
             <div id="engins-list" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;"></div>
@@ -873,34 +880,34 @@ try {
   <div class="mod"><div class="mhan"></div><div class="mtit" id="mt">—</div><div class="mid2" id="mi">—</div><div id="mb"></div><button class="mclose" onclick="cM()">Fermer</button></div>
 </div>
 
-<script src="runtime-config.js?v=V202611_0024"></script>
-<script src="modules/00-preambule.js?v=V202611_0024" defer></script>
-<script src="modules/01-config-js.js?v=V202611_0024" defer></script>
-<script src="modules/02-auth-js-partie-1-2-structure-casernes-numerotation.js?v=V202611_0024" defer></script>
-<script src="modules/03-security-js.js?v=V202611_0024" defer></script>
-<script src="modules/04-auth-js-partie-2-2-login-session-droits.js?v=V202611_0024&amp;rev=auth-safe-1" defer></script>
-<script src="modules/05-admin-js-partie-1-2-vues-globales-superadmin.js?v=V202611_0024" defer></script>
-<script src="modules/06-ui-js-accueil-js.js?v=V202611_0024" defer></script>
-<script src="modules/07-appel-js.js?v=V202611_0024" defer></script>
-<script src="modules/08-interventions-js.js?v=V202611_0024&amp;rev=dated-chain-1" defer></script>
-<script src="modules/09-pilp-js.js?v=V202611_0024" defer></script>
-<script src="modules/10-historique-js.js?v=V202611_0024" defer></script>
-<script src="modules/11-admin-js-partie-2-2-gestion-utilisateurs.js?v=V202611_0024" defer></script>
-<script src="modules/12-astreintes-js.js?v=V202611_0024" defer></script>
-<script src="modules/13-autorisation-js.js?v=V202611_0024" defer></script>
-<script src="modules/14-stats-js.js?v=V202611_0024" defer></script>
-<script src="modules/15-storage-js.js?v=V202611_0024&amp;rev=auth-safe-1" defer></script>
-<script src="modules/16-email-js.js?v=V202611_0024" defer></script>
-<script src="modules/17-animal-js.js?v=V202611_0024&amp;rev=auth-safe-1" defer></script>
-<script src="modules/18-planning-annuel-js.js?v=V202611_0024" defer></script>
-<script src="modules/19-onedrive-sync-js.js?v=V202611_0024" defer></script>
-<script src="modules/20-formations-js.js?v=V202611_0024" defer></script>
-<script src="modules/21-astreinte-tel-js.js?v=V202611_0024" defer></script>
-<script src="modules/22-renforts-auth-js.js?v=V202611_0024" defer></script>
-<script src="modules/23-login-repair-js.js?v=V202611_0024" defer></script>
-<script src="modules/24-secure-transfers-js.js?v=V202611_0024" defer></script>
-<script src="modules/25-report-editions-js.js?v=V202611_0024" defer></script>
-<script src="modules/26-piquet-weekly-js.js?v=V202611_0024" defer></script>
-<script src="modules/27-planning-pdf-js.js?v=V202611_0024" defer></script>
+<script src="runtime-config.js?v=V202611_0025"></script>
+<script src="modules/00-preambule.js?v=V202611_0025" defer></script>
+<script src="modules/01-config-js.js?v=V202611_0025" defer></script>
+<script src="modules/02-auth-js-partie-1-2-structure-casernes-numerotation.js?v=V202611_0025" defer></script>
+<script src="modules/03-security-js.js?v=V202611_0025" defer></script>
+<script src="modules/04-auth-js-partie-2-2-login-session-droits.js?v=V202611_0025&amp;rev=auth-safe-1" defer></script>
+<script src="modules/05-admin-js-partie-1-2-vues-globales-superadmin.js?v=V202611_0025" defer></script>
+<script src="modules/06-ui-js-accueil-js.js?v=V202611_0025" defer></script>
+<script src="modules/07-appel-js.js?v=V202611_0025" defer></script>
+<script src="modules/08-interventions-js.js?v=V202611_0025&amp;rev=dated-chain-1" defer></script>
+<script src="modules/09-pilp-js.js?v=V202611_0025" defer></script>
+<script src="modules/10-historique-js.js?v=V202611_0025" defer></script>
+<script src="modules/11-admin-js-partie-2-2-gestion-utilisateurs.js?v=V202611_0025" defer></script>
+<script src="modules/12-astreintes-js.js?v=V202611_0025" defer></script>
+<script src="modules/13-autorisation-js.js?v=V202611_0025" defer></script>
+<script src="modules/14-stats-js.js?v=V202611_0025" defer></script>
+<script src="modules/15-storage-js.js?v=V202611_0025&amp;rev=auth-safe-1" defer></script>
+<script src="modules/16-email-js.js?v=V202611_0025" defer></script>
+<script src="modules/17-animal-js.js?v=V202611_0025&amp;rev=auth-safe-1" defer></script>
+<script src="modules/18-planning-annuel-js.js?v=V202611_0025" defer></script>
+<script src="modules/19-onedrive-sync-js.js?v=V202611_0025" defer></script>
+<script src="modules/20-formations-js.js?v=V202611_0025" defer></script>
+<script src="modules/21-astreinte-tel-js.js?v=V202611_0025" defer></script>
+<script src="modules/22-renforts-auth-js.js?v=V202611_0025" defer></script>
+<script src="modules/23-login-repair-js.js?v=V202611_0025" defer></script>
+<script src="modules/24-secure-transfers-js.js?v=V202611_0025" defer></script>
+<script src="modules/25-report-editions-js.js?v=V202611_0025" defer></script>
+<script src="modules/26-piquet-weekly-js.js?v=V202611_0025" defer></script>
+<script src="modules/27-planning-pdf-js.js?v=V202611_0025" defer></script>
 </body>
 </html>

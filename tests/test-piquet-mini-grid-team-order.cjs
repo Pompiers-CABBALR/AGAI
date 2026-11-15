@@ -40,6 +40,7 @@ for(const file of ['modules/19-onedrive-sync-js.js','app.js']){
     const controls={'pq-jour':'Lundi','pq-debut':'08:00','pq-fin':'20:00'};
     const context={
       USERS:users,DISPOS:{week:dispos},ASTR_CONFIG:{granularity:60,weekStartHour:0},
+      astrScheduleForWeek:()=>({weekStartHour:0,afternoonStart:12,eveningStart:18,nightStart:24}),
       JOURS_FULL:['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'],
       document:{getElementById:id=>({value:controls[id]})},
       planningEquipeGroups:()=>groups,

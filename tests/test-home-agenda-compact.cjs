@@ -22,6 +22,7 @@ function render(nowText,departure='VTU-01'){
     GLOBAL_ROLE:'agent',CU:{l:'agent'},N:()=>now,
     getMondayOfWeek:()=>new Date('2026-11-09T00:00:00'),weekKey:()=> '20261109',
     ASTR_CONFIG:{granularity:60,weekStartDay:1,weekStartHour:8},
+    astrScheduleForWeek:()=>({weekStartHour:8,afternoonStart:12,eveningStart:18,nightStart:24}),
     JOURS_FULL:['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'],
     DISPOS:{20261109:{agent:{'0_4':true,'0_5':true}}},
     PIQUETS:{20261109:[{engin:departure,jour:'Lundi',debut:'12:00',fin:'18:00',

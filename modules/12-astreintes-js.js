@@ -7,6 +7,52 @@ let selEqColor_ = '#3498DB';
 let astrPlanningWeek = 0; // offset semaines depuis aujourd'hui
 let astrDispoWeek = 1;    // par défaut = semaine prochaine
 let astrPiquetWeek = 0;
+let astrPiquetNowTimer=null;
+// La relève automatique reste inactive tant que son écriture atomique côté
+// serveur n'est pas disponible. Le formulaire actuel reste inchangé en V25.
+const ASTR_REPLACEMENT_ENABLED=false;
+
+// Chaque changement d'horaires entre en vigueur au début d'une semaine.
+// Les semaines antérieures continuent d'utiliser leur propre règle.
+function astrScheduleHistory(){
+  const saved=Array.isArray(ASTR_CONFIG.scheduleHistory)?ASTR_CONFIG.scheduleHistory:[];
+  if(saved.length)return saved;
+  // Transition confirmée pour UT Lapugnoy : 08 h avant le 16/11/2026,
+  // puis 07 h. Les autres casernes conservent intégralement leur réglage.
+  if(typeof CURRENT_CASERNE_ID!=='undefined'&&CURRENT_CASERNE_ID==='CIS05'
+    &&Number(ASTR_CONFIG.weekStartHour)===7){
+    return [
+      {effectiveWeek:'00000000',weekStartHour:8,afternoonStart:12,eveningStart:18,nightStart:24,author:'Règle antérieure'},
+      {effectiveWeek:'20261116',weekStartHour:7,afternoonStart:12,eveningStart:18,nightStart:24,author:'Transition du 16/11/2026'}
+    ];
+  }
+  return saved;
+}
+function astrScheduleForWeek(wk){
+  const fallback={weekStartHour:Number(ASTR_CONFIG.weekStartHour??8),afternoonStart:12,eveningStart:18,nightStart:24};
+  const history=astrScheduleHistory();
+  const rule=history.filter(function(entry){return entry&&/^\d{8}$/.test(entry.effectiveWeek||'')&&entry.effectiveWeek<=wk;})
+    .sort(function(a,b){return a.effectiveWeek.localeCompare(b.effectiveWeek);})
+    .reduce(function(value,entry){return Object.assign(value,{
+      weekStartHour:Number(entry.weekStartHour),afternoonStart:Number(entry.afternoonStart),
+      eveningStart:Number(entry.eveningStart),nightStart:Number(entry.nightStart)
+    });},fallback);
+  // Les casernes historiques à 00 h stockent leurs disponibilités depuis minuit,
+  // mais leurs quatre créneaux visuels restent 08–12 / 12–18 / 18–00 / 00–08.
+  rule.morningStart=rule.weekStartHour===0?8:rule.weekStartHour;
+  return rule;
+}
+function astrPeriodsForWeek(wk){
+  const rule=astrScheduleForWeek(wk),start=rule.morningStart*60;
+  return [
+    {key:'m',label:'Matin',from:start,to:rule.afternoonStart*60},
+    {key:'a',label:'Après-midi',from:rule.afternoonStart*60,to:rule.eveningStart*60},
+    {key:'s',label:'Soir',from:rule.eveningStart*60,to:rule.nightStart*60},
+    rule.weekStartHour===0
+      ?{key:'n',label:'Nuit',from:0,to:start}
+      :{key:'n',label:'Nuit',from:rule.nightStart*60,to:1440+start}
+  ];
+}
 
 // ── Utilitaires dates semaine ──
 function getWeekOffset(wk){
@@ -19,13 +65,15 @@ function getWeekOffset(wk){
 function getMondayOfWeek(offsetWeeks){
   // Retourne le début de la semaine d'astreinte selon ASTR_CONFIG.weekStartDay/Hour
   const startDay=ASTR_CONFIG.weekStartDay??1; // 0=dim,1=lun,...,6=sam
-  const startHour=ASTR_CONFIG.weekStartHour??0;
-  const d=new Date(TODAY);
+  const now=N(),d=new Date(now);
   // Trouver le dernier "startDay" <= aujourd'hui
   let dow=d.getDay(); // 0=dim
   let diff=((dow-startDay)+7)%7;
-  d.setDate(d.getDate()-diff+offsetWeeks*7);
-  d.setHours(startHour,0,0,0);
+  d.setDate(d.getDate()-diff);
+  const thisStartHour=astrScheduleForWeek(weekKey(d)).weekStartHour;
+  if(diff===0&&now.getHours()<thisStartHour)d.setDate(d.getDate()-7);
+  d.setDate(d.getDate()+offsetWeeks*7);
+  d.setHours(astrScheduleForWeek(weekKey(d)).weekStartHour,0,0,0);
   return d;
 }
 function weekKey(startDate){
@@ -99,8 +147,8 @@ function slotToLabel(slotIdx,granularity){
   return `${pad(h)}:${pad(m)}`;
 }
 // Retourne le label d'un slot : chaque jour commence à startHour
-function slotToLabelDay(dayIdx,slotIdx,granularity){
-  const startHour=ASTR_CONFIG.weekStartHour??0;
+function slotToLabelDay(dayIdx,slotIdx,granularity,wk){
+  const startHour=astrScheduleForWeek(wk||weekKey(getMondayOfWeek(0))).weekStartHour;
   const totalMin=(startHour*60+slotIdx*validDispoGranularity(granularity))%1440;
   const h=Math.floor(totalMin/60),m=totalMin%60;
   return `${pad(h)}h${m>0?pad(m):''}`;
@@ -236,9 +284,10 @@ function rAstrPlanning(){
     filterDiv.innerHTML=`<button class="fb${astrPlanningFilter.has('all')?' active':''}" onclick="setAstrFilter('all',this)">Toutes</button>`
       +equipeGroups.map(function(group){
         const e=group.eq;
-        const accent=group.tone==='forte'?'#BE185D':group.tone==='faible'?'#B45309':e.color;
-        const prefix=group.tone==='forte'?'Forte · ':group.tone==='faible'?'Faible · ':'';
-        return `<button class="fb${astrPlanningFilter.has(e.id)?' active':''}" style="border-left:4px solid ${accent};" onclick="setAstrFilter('${e.id}',this)">${prefix}${escHtml(e.nom)}</button>`;
+        const accent=group.tone==='forte'?'#BE185D':group.tone==='faible'?'#A16207':e.color;
+        const prefix=group.tone==='forte'?'◆ Forte · ':group.tone==='faible'?'● Faible · ':'';
+        const toneClass=group.tone==='forte'?' astr-filter-forte':group.tone==='faible'?' astr-filter-faible':'';
+        return `<button class="fb${toneClass}${astrPlanningFilter.has(e.id)?' active':''}" style="border-left:4px solid ${accent};" onclick="setAstrFilter('${e.id}',this)">${prefix}${escHtml(e.nom)}</button>`;
       }).join('')
       +(sansEqAll.length?`<button class="fb${astrPlanningFilter.has('sans-equipe')?' active':''}" onclick="setAstrFilter('sans-equipe',this)">Sans équipe</button>`:'');
   }
@@ -330,8 +379,9 @@ function rAstrPlanning(){
   }
 
   // Créneaux horaires : de 08h à 08h (24 colonnes de 1h) ou selon gran
-  const startHour=8; // colonnes du planning commencent à 08h
-  const dispoStartHour=ASTR_CONFIG.weekStartHour??0; // base stockage dispos
+  const weekRule=astrScheduleForWeek(wk);
+  const startHour=weekRule.morningStart;
+  const dispoStartHour=weekRule.weekStartHour; // base de stockage de cette semaine
   const nbSlots=Math.floor(1440/gran);
 
   // Créneaux piquets de la semaine
@@ -593,7 +643,7 @@ function oAstrCellDetailSansEq(wk,dayIdx,slotIdx){
   const mon=new Date(wk.slice(0,4)+'-'+wk.slice(4,6)+'-'+wk.slice(6,8));
   const dd=new Date(mon);dd.setDate(dd.getDate()+dayIdx);
   const gran=validDispoGranularity(ASTR_CONFIG.granularity);
-  const label=`${jourLabel(dayIdx,true)} ${dd.getDate()}/${dd.getMonth()+1} — ${slotToLabelDay(dayIdx,slotIdx,gran)}`;
+  const label=`${jourLabel(dayIdx,true)} ${dd.getDate()}/${dd.getMonth()+1} — ${slotToLabelDay(dayIdx,slotIdx,gran,wk)}`;
   const agents=sansEq.map(u=>{
     const dispo=personnelDispoSlotAllowed(wk,u.l,dayIdx,slotIdx,gran)&&DISPOS[wk]?.[u.l]?.[`${dayIdx}_${slotIdx}`]===true;
     return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--brd);font-size:12px;">
@@ -640,7 +690,7 @@ function oAstrCellDetail(wk,dayIdx,slotIdx,eqId){
   if(!eq)return;
   const mon=new Date(wk.slice(0,4)+'-'+wk.slice(4,6)+'-'+wk.slice(6,8));
   const dd=new Date(mon);dd.setDate(dd.getDate()+dayIdx);
-  const label=`${jourLabel(dayIdx,true)} ${dd.getDate()}/${dd.getMonth()+1} — ${slotToLabelDay(dayIdx,slotIdx,eq.granularity)}`;
+  const label=`${jourLabel(dayIdx,true)} ${dd.getDate()}/${dd.getMonth()+1} — ${slotToLabelDay(dayIdx,slotIdx,eq.granularity,wk)}`;
   const agents=eq.membres.map(login=>{
     const u=USERS.find(x=>x.l===login);
     const dispo=personnelDispoSlotAllowed(wk,login,dayIdx,slotIdx,eq.granularity)&&DISPOS[wk]?.[login]?.[`${dayIdx}_${slotIdx}`]===true;
@@ -673,7 +723,7 @@ function showDispoRequestModal(wk,login){
   const gran=dispoGranularityFor(login);
   const mon=new Date(wk.slice(0,4)+'-'+wk.slice(4,6)+'-'+wk.slice(6,8));
   const MOIS_FR=['janv.','f\u00e9vr.','mars','avr.','mai','juin','juil.','ao\u00fbt','sept.','oct.','nov.','d\u00e9c.'];
-  const startHour=ASTR_CONFIG.weekStartHour||0;
+  const startHour=astrScheduleForWeek(wk).weekStartHour;
 
   function slotLabel(s){
     const totalMin=(startHour*60+s*gran)%1440;
@@ -736,6 +786,11 @@ function showDispoRequestModal(wk,login){
     +'<button type="button" class="btn sm" style="font-size:10px;margin-left:auto;" onclick="reqSelectAll(true)">Tout s\u00e9lectionner</button>'
     +'</div>'
     +creneauxHtml
+    +(ASTR_REPLACEMENT_ENABLED?'<div class="fg"><div class="fgl">Remplaçant proposé <span style="font-size:10px;color:var(--t2);font-weight:400;">(obligatoire si un piquet est concerné)</span></div>'
+    +'<select class="fi" id="dispo-req-replacement"><option value="">— Aucun piquet à remplacer —</option>'
+    +sortByName(USERS.filter(function(candidate){return candidate&&candidate.l!==login;}))
+      .map(function(candidate){return '<option value="'+escHtml(candidate.l)+'">'+escHtml(fullNameAff(candidate))+'</option>';}).join('')
+    +'</select></div>':'')
     +'<div class="fg"><div class="fgl">Motif <span style="font-size:10px;color:var(--t2);font-weight:400;">(optionnel)</span></div>'
     +'<textarea class="fi" id="dispo-req-motif" rows="2" placeholder="Ex: Contrainte professionnelle..." style="resize:vertical;"></textarea></div>'
     +'<div class="brow" style="margin-top:10px;">'
@@ -767,13 +822,42 @@ function reqSelectAll(checked){
   });
 }
 
+function astrRequestAffectedPiquets(wk,login,slots,granularity){
+  const start=astrScheduleForWeek(wk).weekStartHour*60;
+  const requested=(slots||[]).filter(function(slot){return slot&&slot.newVal==='false';})
+    .map(function(slot){
+      const parts=String(slot.key||'').split('_').map(Number);
+      if(parts.length!==2||!Number.isInteger(parts[0])||parts[0]<0||parts[0]>6
+        ||!Number.isInteger(parts[1])||parts[1]<0)return null;
+      const from=parts[0]*1440+start+parts[1]*granularity;
+      return [from,from+granularity];
+    }).filter(Boolean);
+  if(!requested.length)return [];
+  return (PIQUETS[wk]||[]).filter(function(p){
+    const day=JOURS_FULL.indexOf(p.jour);
+    if(day<0||!p.debut||!p.fin)return false;
+    const members=p.membres&&p.membres.length?p.membres:[
+      p.chefAgres?{login:p.chefAgres}:null,p.conducteur?{login:p.conducteur}:null,
+      p.chefEquipe?{login:p.chefEquipe}:null,p.stagiaire?{login:p.stagiaire}:null
+    ].filter(Boolean);
+    return members.some(function(member){
+      if(member.login!==login)return false;
+      const begin=member.hDebut||p.debut,end=member.hFin||p.fin;
+      const effectiveDay=day+(timeToMin(begin)<start?1:0);
+      const range=piquetToAbsRangeIdx(effectiveDay,begin,end);
+      return requested.some(function(slot){return slot[0]<range[1]&&range[0]<slot[1];});
+    });
+  });
+}
+
 function envoyerDispoRequest(wk,login){
   const motif=document.getElementById('dispo-req-motif')?.value.trim()||'';
+  const replacementLogin=document.getElementById('dispo-req-replacement')?.value||'';
   const checkedSlots=Array.from(document.querySelectorAll('input[name="req-slots"]:checked'));
   if(!checkedSlots.length){showToast('S\u00e9lectionnez au moins un cr\u00e9neau.','warn');return;}
 
   const gran=dispoGranularityFor(login);
-  const startHour=ASTR_CONFIG.weekStartHour||0;
+  const startHour=astrScheduleForWeek(wk).weekStartHour;
   const mon=new Date(wk.slice(0,4)+'-'+wk.slice(4,6)+'-'+wk.slice(6,8));
   const MOIS_FR=['janv.','f\u00e9vr.','mars','avr.','mai','juin','juil.','ao\u00fbt','sept.','oct.','nov.','d\u00e9c.'];
 
@@ -785,6 +869,13 @@ function envoyerDispoRequest(wk,login){
     return {key:key,newVal:newVal};
   });
   if(slots.some(function(slot){return slot.newVal==='true'&&!personnelDispoKeyAllowed(wk,login,slot.key,gran);})){showToast('Disponibilité impossible pendant une absence ou une sortie du personnel.','warn');return;}
+  if(replacementLogin&&(!USERS.some(function(user){return user&&user.l===replacementLogin;})||replacementLogin===login)){
+    showToast('Choisissez un autre agent de cette caserne comme remplaçant.','warn');return;
+  }
+  const affectedPiquets=ASTR_REPLACEMENT_ENABLED?astrRequestAffectedPiquets(wk,login,slots,gran):[];
+  if(ASTR_REPLACEMENT_ENABLED&&affectedPiquets.length&&!replacementLogin){
+    showToast('Un piquet est concerné : choisissez le remplaçant avant d’envoyer la demande.','warn');return;
+  }
 
   // Grouper par jour pour affichage
   const slotsByDay={};
@@ -815,7 +906,7 @@ function envoyerDispoRequest(wk,login){
   });
   DISPO_REQUESTS[wk].push({
     id:'dr_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),
-    caserneId:CURRENT_CASERNE_ID,login:login,wk:wk,motif:motif,
+    caserneId:CURRENT_CASERNE_ID,login:login,wk:wk,motif:motif,replacementLogin:replacementLogin,
     slots:slots,slotsDetail:slotsDetail,
     hDemande:getHHMM(N()),dateDemande:getDS(N()),
     statut:'en-attente',reponduPar:null,hReponse:null
@@ -838,6 +929,10 @@ function repondreDispoRequest(wk,reqId,reponse){
   if(!DISPO_REQUESTS[wk])return;
   const req=DISPO_REQUESTS[wk].find(function(r){return r.id===reqId;});
   if(!req)return;
+  if(reponse==='accepte'&&req.replacementLogin){
+    showToast('Relève non appliquée : la validation atomique avec les piquets doit être disponible sur le serveur. Aucune donnée modifiée.','warn');
+    return;
+  }
   if(reponse==='accepte'){
     const gran=dispoGranularityFor(req.login);
     if((req.slots||[]).some(function(slot){return slot&&slot.newVal==='true'&&!personnelDispoKeyAllowed(wk,req.login,slot.key,gran);})){showToast('Demande refusée : la situation du personnel interdit ces disponibilités.','warn');return;}
@@ -845,6 +940,7 @@ function repondreDispoRequest(wk,reqId,reponse){
   req.statut=reponse;
   req.reponduPar=CU.l;
   req.hReponse=getHHMM(N());
+  req.dateReponse=getDS(N());
   // Si accepté → appliquer les valeurs demandées
   if(reponse==='accepte'){
     if(!DISPOS[wk])DISPOS[wk]={};
@@ -951,7 +1047,7 @@ function personnelPlanningCheckContext(wk){
 }
 function personnelDispoSlotAllowed(wk,login,dayIdx,slotIdx,granularity,context){
   if(!Number.isInteger(dayIdx)||dayIdx<0||dayIdx>6||!Number.isInteger(slotIdx)||slotIdx<0)return false;
-  const range=personnelPlanningSlotRange(wk,dayIdx,(ASTR_CONFIG.weekStartHour??0)*60+slotIdx*granularity,granularity);
+  const range=personnelPlanningSlotRange(wk,dayIdx,astrScheduleForWeek(wk).weekStartHour*60+slotIdx*granularity,granularity);
   if(!range)return false;
   if(PERSONNEL_ONLINE_GATE&&!personnelCurrentRecord(login))return false;
   return !personnelPlanningSlotState(login,range.start,range.end,context||personnelPlanningCheckContext(wk));
@@ -967,7 +1063,7 @@ function personnelPiquetMemberAllowed(wk,login,jour,debut,fin){
   const dayIdx=Array.from({length:7},function(_,idx){return idx;}).find(function(idx){return jourLabel(idx,true)===jour;});
   if(dayIdx===undefined)return false;
   const start=new Date(Number(wk.slice(0,4)),Number(wk.slice(4,6))-1,Number(wk.slice(6,8)));
-  start.setDate(start.getDate()+dayIdx+(timeToMin(debut)<(ASTR_CONFIG.weekStartHour??0)*60?1:0));
+  start.setDate(start.getDate()+dayIdx+(timeToMin(debut)<astrScheduleForWeek(wk).weekStartHour*60?1:0));
   start.setHours(Number(debut.slice(0,2)),Number(debut.slice(3,5)),0,0);
   const end=new Date(start);
   end.setHours(Number(fin.slice(0,2)),Number(fin.slice(3,5)),0,0);
@@ -1033,7 +1129,7 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
   h+='<div class="dispo-grid-inner" style="--dispo-min-width:'+(_lw+slotsDay0*16)+'px;--dispo-touch-min-width:'+(_lw+slotsDay0*24)+'px;">';
   // En-tête des heures — même présentation que le planning :
   // ligne 1 = heures de début, ligne 2 = heures de fin (décalées, grisées).
-  const _startH=ASTR_CONFIG.weekStartHour??0;
+  const _startH=astrScheduleForWeek(wk).weekStartHour;
   const _hLabel=function(slotIdx){
     const totalMin=(_startH*60+slotIdx*agGran)%1440;
     const hh=Math.floor(totalMin/60),mm=totalMin%60;
@@ -1058,7 +1154,7 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
     h+='<div style="'+_rowGrid+'align-items:center;margin-bottom:3px;"><div style="font-size:11px;font-weight:600;color:var(--t);white-space:nowrap;">'+dispoDayLabel(wk,d,false)+'</div>';
     for(let s=0;s<slotsD;s++){
       const key=d+'_'+s;
-      const range=personnelPlanningSlotRange(wk,d,(ASTR_CONFIG.weekStartHour??0)*60+s*agGran,agGran);
+      const range=personnelPlanningSlotRange(wk,d,astrScheduleForWeek(wk).weekStartHour*60+s*agGran,agGran);
       const unavailable=personnelPlanningSlotState(login,range.start,range.end,availability);
       const allowed=!unavailable&&personnelDispoSlotAllowed(wk,login,d,s,agGran,availability);
       const val=allowed?DISPOS[wk][login][key]:false;
@@ -1068,7 +1164,7 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
       const oc=canEdit&&allowed?'toggleDispoCell(\''+wk+'\',\''+login+'\','+d+','+s+',this,\''+(eq?eq.color:'#22C55E')+'\')':'';
       const dragVal=isDispo?'true':isIndispo?'false':'null';
       h+='<div class="dispo-cell'+(unavailable?(unavailable.kind==='formation'?' astr-formation':' astr-personnel-unavailable'):'')+'" style="display:flex;align-items:center;justify-content:center;font-size:9px;min-width:0;box-sizing:border-box;height:28px;background:'+bg+';cursor:'+cursor+';transition:background .1s;border-radius:3px;border:1px solid #fff;user-select:none;"'
-        +' title="'+escHtml(dispoDayLabel(wk,d,true)+' '+slotToLabelDay(d,s,agGran)+(unavailable?' — '+unavailable.label:allowed?'':' — Indisponible durant la situation du personnel'))+'"'
+        +' title="'+escHtml(dispoDayLabel(wk,d,true)+' '+slotToLabelDay(d,s,agGran,wk)+(unavailable?' — '+unavailable.label:allowed?'':' — Indisponible durant la situation du personnel'))+'"'
         +' data-wk="'+wk+'" data-login="'+login+'" data-d="'+d+'" data-s="'+s+'" data-val="'+dragVal+'" data-personnel-allowed="'+(allowed?'true':'false')+'" data-can-edit="'+(canEdit&&allowed?'true':'false')+'"'
         +(oc?' onclick="'+oc+'"':'')+'>'+(unavailable?unavailable.code:'')+'</div>';
     }
@@ -1164,14 +1260,16 @@ function rAstrDispo(){
         +'<div style="font-size:13px;font-weight:700;color:#7C3AED;margin-bottom:8px;">&#x270F; Demandes de modification ('+pendingReqs.length+')</div>'
         +pendingReqs.map(function(r){
           const u=USERS.find(function(x){return x.l===r.login;});
+          const replacement=USERS.find(function(user){return user&&user.l===r.replacementLogin;});
           return '<div style="background:#fff;border-radius:8px;padding:8px 10px;margin-bottom:6px;border:1px solid #DDD6FE;">'
             +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">'
-            +'<span style="font-size:12px;font-weight:600;">'+(u?fullName(u):r.login)+'</span>'
-            +'<span style="font-size:10px;color:var(--t2);">'+r.dateDemande+' \u00e0 '+r.hDemande+'</span></div>'
-            +(r.motif?'<div style="font-size:11px;color:var(--t2);margin-bottom:6px;font-style:italic;">'+r.motif+'</div>':'')
+            +'<span style="font-size:12px;font-weight:600;">'+escHtml(u?fullName(u):r.login)+'</span>'
+            +'<span style="font-size:10px;color:var(--t2);">'+escHtml(r.dateDemande||'')+' \u00e0 '+escHtml(r.hDemande||'')+'</span></div>'
+            +(r.replacementLogin?'<div style="font-size:11px;font-weight:600;margin-bottom:5px;">Remplaçant proposé : '+escHtml(replacement?fullName(replacement):r.replacementLogin)+'</div>':'')
+            +(r.motif?'<div style="font-size:11px;color:var(--t2);margin-bottom:6px;font-style:italic;">'+escHtml(r.motif)+'</div>':'')
             +(r.slotsDetail&&r.slotsDetail.length?'<div style="margin-bottom:6px;">'
               +r.slotsDetail.map(function(d){
-                return '<div style="font-size:11px;margin-bottom:2px;"><span style="font-weight:600;color:var(--t);">'+d.jour+'</span> : <span style="color:#7C3AED;">'+d.heures+'</span></div>';
+                return '<div style="font-size:11px;margin-bottom:2px;"><span style="font-weight:600;color:var(--t);">'+escHtml(d.jour)+'</span> : <span style="color:#7C3AED;">'+escHtml(d.heures)+'</span></div>';
               }).join('')+'</div>':'')
             +'<div style="display:flex;gap:6px;">'
             +'<button class="btn sm" style="background:#3B6D11;color:#fff;" onclick="repondreDispoRequest(\''+wk+'\',\''+r.id+'\',\'accepte\')">&#x2705; Accepter</button>'
@@ -1180,6 +1278,25 @@ function rAstrDispo(){
         }).join('')+'</div>';
     } else {
       reqPanel.innerHTML='';
+    }
+    const history=(DISPO_REQUESTS[wk]||[]).filter(function(r){
+      return r&&r.statut&&r.statut!=='en-attente'
+        &&(!r.caserneId||r.caserneId===CURRENT_CASERNE_ID)
+        &&(isResp||isAdmin||isSuperAdmin()||r.login===CU.l);
+    }).slice(-50).reverse();
+    if(history.length){
+      reqPanel.innerHTML+='<details style="margin:8px 0;border:1px solid var(--brd);border-radius:8px;padding:8px 10px;">'
+        +'<summary style="cursor:pointer;font-size:12px;font-weight:700;">Historique des demandes ('+history.length+')</summary>'
+        +history.map(function(r){
+          const requester=USERS.find(function(user){return user&&user.l===r.login;});
+          const replacement=USERS.find(function(user){return user&&user.l===r.replacementLogin;});
+          return '<div style="font-size:11px;padding:6px 0;border-bottom:1px solid var(--brd);">'
+            +escHtml(requester?fullName(requester):r.login)+' → '+escHtml(r.statut)
+            +(r.replacementLogin?' · remplaçant '+escHtml(replacement?fullName(replacement):r.replacementLogin):'')
+            +(r.reponduPar?' · '+escHtml(r.reponduPar):'')
+            +(r.dateReponse?' · '+escHtml(r.dateReponse):'')
+            +(r.hReponse?' '+escHtml(r.hReponse):'')+'</div>';
+        }).join('')+'</details>';
     }
   }
 
@@ -1492,7 +1609,7 @@ function piquetToAbsRange(jour,debut,fin){
   return [startMin,endMin];
 }
 function hasConflitPiquet(wk,login,jour,debut,fin,excludeIdx){
-  const startH=(ASTR_CONFIG.weekStartHour??8)*60;
+  const startH=astrScheduleForWeek(wk).weekStartHour*60;
   // Si debut < startHour, le créneau appartient au jour suivant dans le planning
   const jourIdx=JOURS_FULL.indexOf(jour);
   const debutMin=timeToMin(debut);
@@ -1542,8 +1659,16 @@ function piquetDepartureLabel(engin){
 }
 
 function rAstrPiquets(){
+  if(astrPiquetNowTimer){clearTimeout(astrPiquetNowTimer);astrPiquetNowTimer=null;}
   const mon=getMondayOfWeek(astrPiquetWeek);
   const wk=weekKey(mon);
+  const periods=astrPeriodsForWeek(wk);
+  const periodByKey=Object.fromEntries(periods.map(function(period){return [period.key,period];}));
+  const now=N(),dayZero=new Date(mon);dayZero.setHours(0,0,0,0);
+  const nowAbs=Math.floor((now-dayZero)/60000),startMinute=astrScheduleForWeek(wk).weekStartHour*60;
+  const currentDayIdx=Math.floor((nowAbs-startMinute)/1440);
+  const currentMinute=nowAbs-currentDayIdx*1440;
+  const currentPeriod=periods.find(function(period){return currentMinute>=period.from&&currentMinute<period.to;});
   document.getElementById('astr-piquet-week-label').textContent=weekLabel(mon);
   if(!PIQUETS[wk])PIQUETS[wk]=[];
 
@@ -1582,8 +1707,8 @@ function rAstrPiquets(){
   });
 
   let html='<div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;padding:8px 12px;background:var(--bg);border-radius:10px;border:1px solid var(--brd);">'
-    +'<span style="font-size:12px;color:var(--t2);">&#x1F534; Astr. forte :</span> '+badge1
-    +'<span style="font-size:12px;color:var(--t2);margin-left:6px;">&#x1F7E1; 2&egrave;me astreinte :</span> '+badge2
+    +'<span style="font-size:12px;color:#9D174D;font-weight:700;">◆ Astreinte forte :</span> '+badge1
+    +'<span style="font-size:12px;color:#854D0E;font-weight:700;margin-left:6px;">● Astreinte faible :</span> '+badge2
     +(piquetsValidated?'<span style="background:#22C55E;color:#fff;border-radius:10px;padding:2px 10px;font-size:11px;font-weight:600;">&#x2705; Validé</span>':'')
     +'</div>';
   if(piquetsValidated&&!isAdmin){
@@ -1604,18 +1729,17 @@ function rAstrPiquets(){
     const dlpLabel=JOURS_DL[dlp.dayOfWeek]+' '+dlpDateStr+' \u00e0 '+pad(dlp.hour)+'h'+pad(dlp.minute);
     html+='<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:11px;color:#1D4ED8;">\u23F0 D\u00e9lai de validation\u00a0: '+dlpLabel+'</div>';
   }
+  const periodColors={m:'#B5D4F4',a:'#C0DD97',s:'#CECBF6',n:'#FAC775'};
   html+='<div style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:10px;font-size:11px;color:var(--t2);">'
-    +'<span><span style="display:inline-block;width:10px;height:10px;background:#B5D4F4;border-radius:2px;margin-right:4px;"></span>Matin 08:00&ndash;12:00</span>'
-    +'<span><span style="display:inline-block;width:10px;height:10px;background:#C0DD97;border-radius:2px;margin-right:4px;"></span>Apr&egrave;s-midi 12:00&ndash;18:00</span>'
-    +'<span><span style="display:inline-block;width:10px;height:10px;background:#CECBF6;border-radius:2px;margin-right:4px;"></span>Soir 18:00&ndash;00:00</span>'
-    +'<span><span style="display:inline-block;width:10px;height:10px;background:#FAC775;border-radius:2px;margin-right:4px;"></span>Nuit 00:00&ndash;08:00</span>'
+    +periods.map(function(period){return '<span><span style="display:inline-block;width:10px;height:10px;background:'+periodColors[period.key]+';border-radius:2px;margin-right:4px;"></span>'
+      +period.label+' '+pad(Math.floor(period.from/60)%24)+':00&ndash;'+pad(Math.floor(period.to/60)%24)+':00</span>';}).join('')
     +'</div>';
 
   function getTranche(p){
     const d=timeToMin(p.debut);
-    if(d<8*60)return 'n';
-    if(d<12*60)return 'm';
-    if(d<18*60)return 'a';
+    if(d<periods[0].from||periods[3].from<1440&&d>=periods[3].from)return 'n';
+    if(d<periods[0].to)return 'm';
+    if(d<periods[1].to)return 'a';
     return 's';
   }
 
@@ -1702,10 +1826,10 @@ function rAstrPiquets(){
 
       html+='<tr style="border-bottom:0.5px solid var(--brd);">'
         +'<td style="padding:6px 8px;font-size:11px;font-weight:500;text-align:center;background:var(--bg);border-right:0.5px solid var(--brd);">&#x1F692; '+piquetDepartureLabel(engin)+'</td>'
-        +'<td class="pq-drop-cell" data-wk="'+wk+'" data-jour="'+jour+'" data-tr="m" data-engin="'+engin+'" style="padding:6px 8px;border-right:0.5px solid var(--brd);">'+cellHtml(tranches.m,'#E6F1FB','#185FA5','m')+'</td>'
-        +'<td class="pq-drop-cell" data-wk="'+wk+'" data-jour="'+jour+'" data-tr="a" data-engin="'+engin+'" style="padding:6px 8px;border-right:0.5px solid var(--brd);">'+cellHtml(tranches.a,'#EAF3DE','#3B6D11','a')+'</td>'
-        +'<td class="pq-drop-cell" data-wk="'+wk+'" data-jour="'+jour+'" data-tr="s" data-engin="'+engin+'" style="padding:6px 8px;border-right:0.5px solid var(--brd);">'+cellHtml(tranches.s,'#EEEDFE','#534AB7','s')+'</td>'
-        +'<td class="pq-drop-cell" data-wk="'+wk+'" data-jour="'+jour+'" data-tr="n" data-engin="'+engin+'" style="padding:6px 8px;border-right:0.5px solid var(--brd);">'+cellHtml(tranches.n,'#FAEEDA','#854F0B','n')+'</td>'
+        +'<td class="pq-drop-cell'+(currentDayIdx===di&&currentPeriod?.key==='m'?' pq-current-slot':'')+'" data-wk="'+wk+'" data-jour="'+jour+'" data-tr="m" data-engin="'+engin+'" style="padding:6px 8px;border-right:0.5px solid var(--brd);">'+cellHtml(tranches.m,'#E6F1FB','#185FA5','m')+'</td>'
+        +'<td class="pq-drop-cell'+(currentDayIdx===di&&currentPeriod?.key==='a'?' pq-current-slot':'')+'" data-wk="'+wk+'" data-jour="'+jour+'" data-tr="a" data-engin="'+engin+'" style="padding:6px 8px;border-right:0.5px solid var(--brd);">'+cellHtml(tranches.a,'#EAF3DE','#3B6D11','a')+'</td>'
+        +'<td class="pq-drop-cell'+(currentDayIdx===di&&currentPeriod?.key==='s'?' pq-current-slot':'')+'" data-wk="'+wk+'" data-jour="'+jour+'" data-tr="s" data-engin="'+engin+'" style="padding:6px 8px;border-right:0.5px solid var(--brd);">'+cellHtml(tranches.s,'#EEEDFE','#534AB7','s')+'</td>'
+        +'<td class="pq-drop-cell'+(currentDayIdx===di&&currentPeriod?.key==='n'?' pq-current-slot':'')+'" data-wk="'+wk+'" data-jour="'+jour+'" data-tr="n" data-engin="'+engin+'" style="padding:6px 8px;border-right:0.5px solid var(--brd);">'+cellHtml(tranches.n,'#FAEEDA','#854F0B','n')+'</td>'
         +'<td style="padding:4px 6px;text-align:right;vertical-align:middle;white-space:nowrap;">'+addBtn+'</td>'
         +'</tr>';
     });
@@ -1726,7 +1850,7 @@ function rAstrPiquets(){
   sortEquipes(EQUIPES).forEach(function(eq){
     if(!eq.membres.length)return;
     const isEq1=dispoPlanSlots[0]===eq.id,isEq2=dispoPlanSlots[1]===eq.id;
-    const labelSuffix=isEq1?' <span style="background:#E24B4A;color:#fff;border-radius:4px;padding:1px 5px;font-size:9px;">Astr. forte</span>':isEq2?' <span style="background:#F59E0B;color:#fff;border-radius:4px;padding:1px 5px;font-size:9px;">2&egrave;me astr.</span>':'';
+    const labelSuffix=isEq1?' <span style="background:#FDF2F8;color:#9D174D;border:1px solid #F9A8D4;border-radius:4px;padding:1px 5px;font-size:9px;">◆ Forte</span>':isEq2?' <span style="background:#FEF9C3;color:#713F12;border:1px solid #FCD34D;border-radius:4px;padding:1px 5px;font-size:9px;">● Faible</span>':'';
     html+='<div class="panel" style="padding:8px;margin-bottom:6px;">'
       +'<div style="font-size:11px;font-weight:600;color:'+eq.color+';margin-bottom:6px;">'+eq.nom+labelSuffix+'</div>';
     sortByGradeThenName(eq.membres.map(function(l){return USERS.find(function(x){return x.l===l;});}).filter(Boolean)).forEach(function(u){
@@ -1803,6 +1927,13 @@ function rAstrPiquets(){
     }
   }
   document.getElementById('astr-piquet-content').innerHTML=html;
+  if(astrPiquetWeek===0&&currentPeriod){
+    const nextBoundary=dayZero.getTime()+(currentDayIdx*1440+currentPeriod.to)*60000;
+    astrPiquetNowTimer=setTimeout(function(){
+      const pane=document.getElementById('astr-piquets');
+      if(pane&&pane.style.display!=='none')rAstrPiquets();
+    },Math.max(1000,nextBoundary-Date.now()+100));
+  }
 }
 
 // ── Drag & drop des piquets entre tranches et engins ──
@@ -1834,7 +1965,9 @@ document.addEventListener('drop',function(e){
   const original=JSON.stringify(p);
   const previousSlot=piquetDepartureLabel(p.engin)+' '+p.jour+' '+p.debut+'-'+p.fin;
   // Changer de tranche applique les horaires de référence de cette période.
-  const tranchesHoraires={m:['08:00','12:00'],a:['12:00','18:00'],s:['18:00','00:00'],n:['00:00','08:00']};
+  const tranchesHoraires=Object.fromEntries(astrPeriodsForWeek(wk).map(function(period){
+    return [period.key,[pad(Math.floor(period.from/60)%24)+':00',pad(Math.floor(period.to/60)%24)+':00']];
+  }));
   const anciennesHeures=[p.debut,p.fin];
   const nouvellesHeures=tranchesHoraires[tranche];
   const nextDebut=nouvellesHeures?nouvellesHeures[0]:p.debut;
@@ -1998,13 +2131,14 @@ function exportPiquets(){
   const mon=getMondayOfWeek(astrPiquetWeek);
   const wk=weekKey(mon);
   const piquetsSem=PIQUETS[wk]||[];
+  const rule=astrScheduleForWeek(wk);
   const MOIS_FR=['janvier','f\u00e9vrier','mars','avril','mai','juin','juillet','ao\u00fbt','septembre','octobre','novembre','d\u00e9cembre'];
 
   function getTranche(p){
     const d=timeToMin(p.debut);
-    if(d<8*60)return 'nuit';
-    if(d<12*60)return 'matin';
-    if(d<18*60)return 'am';
+    if(d<rule.morningStart*60||d>=rule.nightStart*60)return 'nuit';
+    if(d<rule.afternoonStart*60)return 'matin';
+    if(d<rule.eveningStart*60)return 'am';
     return 'soir';
   }
 
@@ -2181,16 +2315,42 @@ function saveDeadlinePiquet(){
   if(saved){saved.style.display='inline';setTimeout(()=>saved.style.display='none',2000);}
 }
 function saveWeekStart(){
+  if(!isAdminModeActive()){showToast('Activez vos pouvoirs administrateur pour modifier les horaires.','warn');return;}
   const day=parseInt(document.getElementById('ws-day').value);
-  const time=document.getElementById('ws-hour').value||'00:00';
-  const [h]=time.split(':').map(Number);
-  ASTR_CONFIG.weekStartDay=day;
+  if(day!==(ASTR_CONFIG.weekStartDay??1)){showToast('Le jour de début ne peut pas être déplacé sur une semaine déjà planifiée.','warn');return;}
+  const hour=function(id){
+    const value=document.getElementById(id)?.value||'';
+    return /^\d{2}:00$/.test(value)?Number(value.slice(0,2)):NaN;
+  };
+  const h=hour('ws-hour'),afternoon=hour('ws-afternoon'),evening=hour('ws-evening');
+  const nightRaw=hour('ws-night'),night=nightRaw===0?24:nightRaw;
+  if(![h,afternoon,evening,night].every(Number.isInteger)||h<6||h>=12
+    ||!(h<afternoon&&afternoon<evening&&evening<night&&night<=24)){
+    showToast('Horaires invalides : matin < après-midi < soir < nuit < fin de nuit.','warn');return;
+  }
+  const date=document.getElementById('ws-effective-week')?.value||'';
+  const monday=new Date(date+'T12:00:00');
+  const effectiveWeek=date.replace(/-/g,'');
+  if(!/^\d{8}$/.test(effectiveWeek)||Number.isNaN(monday.getTime())||monday.getDay()!==1
+    ||effectiveWeek<=weekKey(getMondayOfWeek(0))){
+    showToast('Choisissez un lundi futur comme date d’application.','warn');return;
+  }
+  if(!Array.isArray(ASTR_CONFIG.scheduleHistory))ASTR_CONFIG.scheduleHistory=[];
+  if(!ASTR_CONFIG.scheduleHistory.length){
+    const initial=astrScheduleHistory();
+    if(initial.length)ASTR_CONFIG.scheduleHistory=initial.map(function(entry){return Object.assign({},entry);});
+    else ASTR_CONFIG.scheduleHistory.push(Object.assign({effectiveWeek:'00000000',createdAt:'',author:'Règle antérieure'},astrScheduleForWeek('00000000')));
+  }
+  ASTR_CONFIG.scheduleHistory=ASTR_CONFIG.scheduleHistory.filter(function(entry){return entry.effectiveWeek!==effectiveWeek;});
+  ASTR_CONFIG.scheduleHistory.push({effectiveWeek,weekStartHour:h,afternoonStart:afternoon,
+    eveningStart:evening,nightStart:night,createdAt:new Date().toISOString(),author:CU.l});
+  ASTR_CONFIG.scheduleHistory.sort(function(a,b){return a.effectiveWeek.localeCompare(b.effectiveWeek);});
   ASTR_CONFIG.weekStartHour=h;
   if(CD())CD().astrConfig=ASTR_CONFIG;saveData();
   const saved=document.getElementById('ws-saved');
   saved.style.display='inline';
   setTimeout(()=>saved.style.display='none',2000);
-  rAstrPlanning();rAstrDispo();
+  rAstrEquipes();rAstrPlanning();rAstrDispo();
 }
 function rAstrEquipes(){
   // Défense d'affichage : une ancienne configuration avec engins=null ne doit
@@ -2212,7 +2372,28 @@ function rAstrEquipes(){
   const wsDay=document.getElementById('ws-day');
   const wsHour=document.getElementById('ws-hour');
   if(wsDay)wsDay.value=String(ASTR_CONFIG.weekStartDay??1);
-  if(wsHour)wsHour.value=pad(ASTR_CONFIG.weekStartHour??0)+':00';
+  const nextMonday=getMondayOfWeek(1),nextWeek=weekKey(nextMonday),nextRule=astrScheduleForWeek(nextWeek);
+  if(wsHour)wsHour.value=pad(nextRule.weekStartHour)+':00';
+  const af=document.getElementById('ws-afternoon'),ev=document.getElementById('ws-evening'),ni=document.getElementById('ws-night');
+  if(af)af.value=pad(nextRule.afternoonStart)+':00';
+  if(ev)ev.value=pad(nextRule.eveningStart)+':00';
+  if(ni)ni.value=pad(nextRule.nightStart%24)+':00';
+  const effective=document.getElementById('ws-effective-week');
+  if(effective)effective.value=nextMonday.getFullYear()+'-'+pad(nextMonday.getMonth()+1)+'-'+pad(nextMonday.getDate());
+  const historyEl=document.getElementById('ws-history');
+  if(historyEl){
+    const entries=astrScheduleHistory();
+    historyEl.innerHTML=isAdminModeActive()&&entries.length
+      ?'<details><summary>Historique des horaires ('+entries.length+')</summary>'
+        +entries.slice().reverse().map(function(entry){
+          const date=entry.effectiveWeek==='00000000'?'Avant les changements':entry.effectiveWeek.slice(6,8)+'/'+entry.effectiveWeek.slice(4,6)+'/'+entry.effectiveWeek.slice(0,4);
+          return '<div style="padding:5px 0;border-bottom:1px solid var(--brd);font-size:11px;">'
+            +escHtml(date)+' · '+pad(entry.weekStartHour)+' h–'+pad(entry.afternoonStart)+' h / '
+            +pad(entry.afternoonStart)+' h–'+pad(entry.eveningStart)+' h / '
+            +pad(entry.eveningStart)+' h–'+pad(entry.nightStart%24)+' h / nuit jusqu’à '+pad(entry.weekStartHour)+' h'
+            +(entry.author?' · '+escHtml(entry.author):'')+'</div>';
+        }).join('')+'</details>':'';
+  }
   // Remplir select responsable
   const respSel=document.getElementById('eq-resp');
   // USERS contient déjà le superadmin via syncCaserneContext — tri alphabétique nom prénom
@@ -2830,7 +3011,7 @@ function getPiquetActif(wk,login){
   const dayIndex=Math.round((Date.UTC(now.getFullYear(),now.getMonth(),now.getDate())
     -Date.UTC(year,month,day))/86400000);
   const nowAbs=dayIndex*1440+now.getHours()*60+now.getMinutes();
-  const weekStart=(ASTR_CONFIG.weekStartHour??0)*60;
+  const weekStart=astrScheduleForWeek(wk).weekStartHour*60;
   return (PIQUETS[wk]||[]).find(function(p){
     // chef d'agrès : raccourci p.chefAgres, ou repli sur les membres (insensible apostrophe)
     let caLogin=p.chefAgres;
@@ -3201,7 +3382,7 @@ function showPersonnelModal(id){
   const piquetNow=N(),piquetStart=new Date(piquetNow);
   const piquetStartDay=ASTR_CONFIG.weekStartDay??1;
   piquetStart.setDate(piquetStart.getDate()-((piquetStart.getDay()-piquetStartDay+7)%7));
-  piquetStart.setHours(ASTR_CONFIG.weekStartHour??0,0,0,0);
+  piquetStart.setHours(astrScheduleForWeek(weekKey(piquetStart)).weekStartHour,0,0,0);
   if(piquetNow<piquetStart)piquetStart.setDate(piquetStart.getDate()-7);
   const wk=weekKey(piquetStart);
   const previous=chained&&iv._chainPreviousInterventionId?interventionById(iv._chainPreviousInterventionId):null;

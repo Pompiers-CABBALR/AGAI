@@ -37,6 +37,11 @@ function contextFor(users,options={}){
     PIQUETS_VALIDATED:{},PLANNING_ROTATIONS:{week:['forte','faible']},
     CURRENT_CASERNE_ID:'CIS05',astrPiquetWeek:0,
     ASTR_CONFIG:{granularity:60,weekStartHour:0,engins:['VTU-01']},JOURS_FULL:days,
+    astrScheduleForWeek:()=>({weekStartHour:context.ASTR_CONFIG.weekStartHour,afternoonStart:12,eveningStart:18,nightStart:24}),
+    astrPeriodsForWeek:()=>[
+      {key:'m',label:'Matin',from:480,to:720},{key:'a',label:'Après-midi',from:720,to:1080},
+      {key:'s',label:'Soir',from:1080,to:1440},{key:'n',label:'Nuit',from:0,to:480}
+    ],
     sortVehicleNames:list=>list.slice().sort(),piquetDepartureLabel:engin=>engin,
     getMondayOfWeek:()=>new Date(2026,9,26),weekKey:()=> 'week',
     hasRight:()=>true,isRespEquipe:()=>false,
@@ -455,6 +460,7 @@ test('le piquet actif respecte la relève de nuit, y compris le lundi avant 08 h
     const context={
       N:()=>now,PIQUETS:{'20261026':[monday],'20261019':[sunday]},
       ASTR_CONFIG:{weekStartHour:8},JOURS_FULL:days,
+      astrScheduleForWeek:()=>({weekStartHour:8,afternoonStart:12,eveningStart:18,nightStart:24}),
       timeToMin:value=>Number(value.slice(0,2))*60+Number(value.slice(3)),
       piquetToAbsRangeIdx:(day,debut,fin)=>{
         const toMin=value=>Number(value.slice(0,2))*60+Number(value.slice(3));

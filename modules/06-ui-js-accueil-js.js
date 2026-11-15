@@ -61,11 +61,41 @@ function rAccueil(){
   document.getElementById('acc-stats').innerHTML=statsHtml;
   // ── Messages astreinte ──
   try{rAccueilAstreinte();}catch(e){}
+  try{rAccueilAstreinteActions();}catch(e){console.warn('[AGAI] Demandes d’astreinte indisponibles',e);}
   try{rAccueilRapports();}catch(e){console.warn('[AGAI] Rappels de rapports indisponibles',e);}
   try{if(typeof renderHomeAdminReportBanner==='function')renderHomeAdminReportBanner();}
   catch(e){console.warn('[AGAI] Suivi des rapports indisponible',e);}
   try{rAccueilDepartsHorsCaserne();}catch(e){console.warn('[AGAI] Suivi des départs hors caserne indisponible',e);}
   try{rStatsHeader();}catch(e){}
+}
+
+function pendingAstreinteRequests(){
+  if(!CU||!(isRespEquipe()||isAdminModeActive()))return [];
+  const current=weekKey(getMondayOfWeek(0));
+  return Object.keys(DISPO_REQUESTS||{}).filter(function(wk){return wk>=current;})
+    .flatMap(function(wk){return (DISPO_REQUESTS[wk]||[]).filter(function(req){
+      return req&&req.statut==='en-attente'&&(!req.caserneId||req.caserneId===CURRENT_CASERNE_ID)
+        &&USERS.some(function(user){return user.l===req.login;});
+    }).map(function(req){return {wk,req};});});
+}
+function openAccueilAstreinteRequest(wk){
+  if(!pendingAstreinteRequests().some(function(item){return item.wk===wk;}))return;
+  astrDispoWeek=getWeekOffset(wk);
+  showT('astreintes',document.getElementById('nav-astreintes'));
+  showAstrTab('dispo',document.getElementById('astr-btn-dispo'));
+}
+function rAccueilAstreinteActions(){
+  const panel=document.getElementById('acc-astreinte-actions');
+  const badge=document.getElementById('astr-requests-nav-count');
+  const pending=pendingAstreinteRequests();
+  if(badge){badge.style.display=pending.length?'inline-flex':'none';badge.textContent=String(pending.length);}
+  if(!panel)return;
+  if(!pending.length){panel.innerHTML='';return;}
+  const weeks=[...new Set(pending.map(function(item){return item.wk;}))];
+  panel.innerHTML='<div style="border:1px solid #C4B5FD;background:#F5F3FF;border-radius:10px;padding:10px;color:#5B21B6;">'
+    +'<strong>📨 '+pending.length+' demande'+(pending.length>1?'s':'')+' d’astreinte à traiter</strong>'
+    +weeks.map(function(wk){return '<button type="button" class="btn sm" style="margin:5px 5px 0 0;" onclick="openAccueilAstreinteRequest(\''+wk+'\')">Semaine du '+wk.slice(6,8)+'/'+wk.slice(4,6)+' · '+pending.filter(function(item){return item.wk===wk;}).length+'</button>';}).join('')
+    +'</div>';
 }
 
 function rAccueilDepartsHorsCaserne(){
@@ -251,11 +281,11 @@ function rAccueilAstreinte(){
 
   // Trouver le créneau dispo actuel ou prochain
   // Chercher le prochain bloc contigu de dispos (en partant de maintenant)
-  function slotToMinOfDay(s){return (((ASTR_CONFIG.weekStartHour||0)*60)+s*gran)%1440;}
+  function slotToMinOfDay(s){return ((astrScheduleForWeek(wk).weekStartHour*60)+s*gran)%1440;}
   function slotAbsMin(dayIdx,slotIdx){
     // Minutes absolues depuis lundi 00h00
     // Sans %1440 pour garder les slots après minuit dans le bon jour
-    const startHour=ASTR_CONFIG.weekStartHour||0;
+    const startHour=astrScheduleForWeek(wk).weekStartHour;
     const rawMin=startHour*60+slotIdx*gran;
     const dayOffset=Math.floor(rawMin/1440);
     return (dayIdx+dayOffset)*1440+(rawMin%1440);
@@ -276,7 +306,7 @@ function rAccueilAstreinte(){
 
   // Trouver le bloc contigu qui contient maintenant ou le prochain
   function formatSlotTime(d,s){
-    const startHour=ASTR_CONFIG.weekStartHour||0;
+    const startHour=astrScheduleForWeek(wk).weekStartHour;
     const totalMin=(startHour*60+s*gran)%1440;
     return pad(Math.floor(totalMin/60))+'h'+((totalMin%60)?pad(totalMin%60):'');
   }
@@ -313,7 +343,7 @@ function rAccueilAstreinte(){
   const blocProchain=!blocActuel?blocs.find(function(b){return b.debut.abs>nowAbsMin;}):null;
 
   function formatBlocMsg(b,prefixe){
-    const startHour=ASTR_CONFIG.weekStartHour||0;
+    const startHour=astrScheduleForWeek(wk).weekStartHour;
 
     // Heure du début d'un slot
     function slotHeure(s){
@@ -398,7 +428,7 @@ function rAccueilAstreinte(){
   function piquetAgendaRange(p,m){
     const jourIdx=JOURS_FULL.indexOf(p.jour);
     const debut=timeToMin(m.hDebut),fin=timeToMin(m.hFin);
-    const startHour=(ASTR_CONFIG.weekStartHour??8)*60;
+    const startHour=astrScheduleForWeek(wk).weekStartHour*60;
     const effectifIdx=(jourIdx+(debut<startHour?1:0))%7;
     const finIdx=(effectifIdx+(fin<=debut?1:0))%7;
     const jourDebut=JOURS_FULL[effectifIdx].toLowerCase();
@@ -415,7 +445,7 @@ function rAccueilAstreinte(){
     const m=agentDansPiquet(p,CU.l);
     const dMin=timeToMin(m.hDebut),fMin=timeToMin(m.hFin);
     const overnight=fMin<=dMin;
-    const startH=(ASTR_CONFIG.weekStartHour??8)*60;
+    const startH=astrScheduleForWeek(wk).weekStartHour*60;
     // Si hDebut < startHour → appartient au jour suivant dans le planning
     const effectifJourIdx=dMin<startH?jourIdx+1:jourIdx;
     if(overnight){
@@ -444,14 +474,14 @@ function rAccueilAstreinte(){
     if(piquetsActuels.includes(p))return false;
     const jourIdx=JOURS_FULL.indexOf(p.jour);if(jourIdx<0)return false;
     const m=agentDansPiquet(p,CU.l);
-    const startH=(ASTR_CONFIG.weekStartHour??8)*60;
+    const startH=astrScheduleForWeek(wk).weekStartHour*60;
     const dMin=timeToMin(m.hDebut);
     const effectifJourIdx=dMin<startH?jourIdx+1:jourIdx;
     const pAbsMin=effectifJourIdx*1440+dMin;
     return pAbsMin>nowAbsMin&&pAbsMin-nowAbsMin<=2880;
   }).sort(function(a,b){
     const ma=agentDansPiquet(a,CU.l),mb=agentDansPiquet(b,CU.l);
-    const startH=(ASTR_CONFIG.weekStartHour??8)*60;
+    const startH=astrScheduleForWeek(wk).weekStartHour*60;
     const ia=(JOURS_FULL.indexOf(a.jour)+(timeToMin(ma.hDebut)<startH?1:0))*1440+timeToMin(ma.hDebut);
     const ib=(JOURS_FULL.indexOf(b.jour)+(timeToMin(mb.hDebut)<startH?1:0))*1440+timeToMin(mb.hDebut);
     return ia-ib;
@@ -519,6 +549,36 @@ function rAccueilAstreinte(){
     +renderAgendaCard('dispo','Disponibilité','Aucune prochaine disponibilité renseignée.','warn')
     +renderAgendaCard('piquet','Piquet','Aucun piquet sous 48 h.','next')
     +'</div>';
+  if(telephoneDuty&&telephoneDuty.mode==='person'&&telephoneDuty.login===CU.l){
+    const todayStart=new Date(now);todayStart.setHours(0,0,0,0);
+    const todayEnd=new Date(todayStart);todayEnd.setDate(todayEnd.getDate()+1);
+    const weeks=[weekKey(getMondayOfWeek(-1)),wk];
+    const rows=[];
+    weeks.forEach(function(week){
+      const base=new Date(Number(week.slice(0,4)),Number(week.slice(4,6))-1,Number(week.slice(6,8)));
+      const startMinute=astrScheduleForWeek(week).weekStartHour*60;
+      (PIQUETS[week]||[]).forEach(function(p){
+        const dayIdx=JOURS_FULL.indexOf(p.jour);
+        if(dayIdx<0||!p.debut||!p.fin)return;
+        const from=timeToMin(p.debut),to=timeToMin(p.fin);
+        const start=new Date(base);start.setDate(base.getDate()+dayIdx+(from<startMinute?1:0));
+        start.setHours(Math.floor(from/60),from%60,0,0);
+        const end=new Date(start);end.setMinutes(end.getMinutes()+(to<=from?to+1440-from:to-from));
+        if(start>=todayEnd||end<=todayStart)return;
+        const displayStart=new Date(Math.max(start.getTime(),todayStart.getTime()));
+        const displayEnd=new Date(Math.min(end.getTime(),todayEnd.getTime()));
+        const clock=function(date){return date.getTime()===todayEnd.getTime()?'24:00':pad(date.getHours())+':'+pad(date.getMinutes());};
+        const name=function(login){const user=USERS.find(function(u){return u.l===login;});return user?fullNameAff(user):login||'—';};
+        rows.push({time:displayStart.getTime(),label:clock(displayStart)+'–'+clock(displayEnd)+' · '+piquetDepartureLabel(p.engin)
+          +' · '+name(p.chefAgres)+' / '+name(p.conducteur)});
+      });
+    });
+    rows.sort(function(a,b){return a.time-b.time||a.label.localeCompare(b.label,'fr');});
+    el.innerHTML+='<details class="acc-agenda-card" style="margin-top:8px;--agenda-bg:#F0F9FF;--agenda-color:#0369A1;--agenda-text:#0C4A6E;">'
+      +'<summary><span class="acc-agenda-icon">🚒</span><span class="acc-agenda-main"><div class="acc-agenda-title">Piquets de la journée</div>'
+      +'<div class="acc-agenda-summary">'+rows.length+' créneau'+(rows.length>1?'x':'')+' à suivre aujourd’hui</div></span><span class="acc-agenda-more">▼</span></summary>'
+      +'<div class="acc-agenda-details">'+(rows.length?rows.map(function(row){return '<div class="acc-agenda-detail">'+escHtml(row.label)+'</div>';}).join(''):'Aucun piquet pour cette journée.')+'</div></details>';
+  }
 }
 
 // ── Toast notification (remplace alert() natif) ──

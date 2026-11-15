@@ -23,7 +23,7 @@ function pqDraftClock(minutes){
 }
 function pqWeeklyRange(slot){
   const day=JOURS_FULL.indexOf(slot.jour);
-  const start=(ASTR_CONFIG.weekStartHour??0)*60;
+  const start=astrScheduleForWeek(slot.wk).weekStartHour*60;
   return piquetToAbsRangeIdx(day+(timeToMin(slot.debut)<start?1:0),slot.debut,slot.fin);
 }
 function pqWeeklyOverlaps(a,b){
@@ -34,14 +34,9 @@ function pqDraftPlan(wk,engin,options={}){
   const engins=Array.isArray(engin)?engin:[engin];
   const existingForPlan=options.ignoreExisting?[]:(PIQUETS[wk]||[]);
   const gran=ASTR_CONFIG.granularity||60;
-  const start=(ASTR_CONFIG.weekStartHour??0)*60;
+  const start=astrScheduleForWeek(wk).weekStartHour*60;
   const slots=getSlotsPerDay(gran);
-  const periods=[
-    {label:'Matin',from:480,to:720},
-    {label:'Après-midi',from:720,to:1080},
-    {label:'Soir',from:1080,to:1440},
-    {label:'Nuit',from:0,to:480}
-  ];
+  const periods=astrPeriodsForWeek(wk);
   const groups=planningEquipeGroups(wk);
   const tiers=new Map(groups.map(function(g,i){return [g.eq.id,i];}));
   const load=new Map();
@@ -187,7 +182,7 @@ function suggestCreneaux(wk,engin){
   _pqWeeklyRepriseDraft=(PIQUETS[wk]||[]).length
     ?pqDraftPlan(wk,engins,{ignoreExisting:true}):[];
   _pqWeeklySnapshot={wk,engins,caserneId:CURRENT_CASERNE_ID,
-    granularity:ASTR_CONFIG.granularity||60,weekStartHour:ASTR_CONFIG.weekStartHour??0,
+    granularity:ASTR_CONFIG.granularity||60,schedule:JSON.stringify(astrScheduleForWeek(wk)),
     piquets:JSON.stringify(PIQUETS[wk]||[]),rotation:JSON.stringify(PLANNING_ROTATIONS[wk]||null)};
   pqWeeklyRenderDraft();
 }
@@ -313,7 +308,7 @@ function pqWeeklyWrites(){
   if(CURRENT_CASERNE_ID!==snapshot.caserneId
     ||JSON.stringify(pqWeeklyVtuEngins())!==JSON.stringify(snapshot.engins)
     ||(ASTR_CONFIG.granularity||60)!==snapshot.granularity
-    ||(ASTR_CONFIG.weekStartHour??0)!==snapshot.weekStartHour
+    ||JSON.stringify(astrScheduleForWeek(snapshot.wk))!==snapshot.schedule
     ||JSON.stringify(PLANNING_ROTATIONS[snapshot.wk]||null)!==snapshot.rotation)
     return {error:'La caserne ou les équipes ont changé. Relancez la proposition.'};
   if(JSON.stringify(PIQUETS[snapshot.wk]||[])!==snapshot.piquets)

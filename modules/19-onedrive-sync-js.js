@@ -458,7 +458,7 @@ function piquetAgentOpts(agents,exclude,includeNone){
     if(!jour||!debut||!fin)return false;
     const jourIdx=JOURS_FULL.indexOf(jour);
     if(jourIdx<0)return false;
-    const startHour=ASTR_CONFIG.weekStartHour||0;
+    const startHour=astrScheduleForWeek(wk).weekStartHour;
     const dMin=timeToMin(debut);
     const fMin=timeToMin(fin);
     const overnight=fMin<=dMin;
@@ -572,7 +572,7 @@ function pqBuildMiniGrille(wk){
   const jourIdx=JOURS_FULL.indexOf(jour);
   if(jourIdx<0)return '';
   const gran=ASTR_CONFIG.granularity||60;
-  const startHour=ASTR_CONFIG.weekStartHour||0;
+  const startHour=astrScheduleForWeek(wk).weekStartHour;
   const slots=Math.floor(1440/gran);
   const dispoWk=DISPOS[wk]||{};
   const agents=sortByGradeThenName(USERS.filter(function(u){
@@ -790,7 +790,7 @@ function addPiquet(wk,engin,jourDefaut){
 }
 function suggestCreneaux(wk){
   const gran=ASTR_CONFIG.granularity||60;
-  const startHour=ASTR_CONFIG.weekStartHour||0;
+  const startHour=astrScheduleForWeek(wk).weekStartHour;
   const slotsPerDay=getSlotsPerDay(gran);
   const _pv=PLANNING_ROTATIONS[wk];
   const planSlots=!_pv?[]:(typeof _pv==='string'?[_pv]:(Array.isArray(_pv)?_pv:[]));
@@ -907,7 +907,7 @@ function autoFillPiquet(wk){
       const fin=document.getElementById('pq-fin')?.value;
       if(!jour||!debut||!fin)return false;
       const gran=ASTR_CONFIG.granularity||60;
-      const startHour=ASTR_CONFIG.weekStartHour||0;
+      const startHour=astrScheduleForWeek(wk).weekStartHour;
       const jourIdx=JOURS_FULL.indexOf(jour);
       if(jourIdx<0)return false;
       const d=DISPOS[wk]?.[login];if(!d)return false;

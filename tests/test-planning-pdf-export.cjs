@@ -28,7 +28,7 @@ for(const file of ['modules/12-astreintes-js.js','app.js']){
 for(const file of ['modules/27-planning-pdf-js.js','app.js']){
   const source=fs.readFileSync(path.join(__dirname,'..',file),'utf8');
   const exportStart=source.indexOf('async function exportAstrPlanningPDF(){');
-  const exportEnd=file==='app.js'?source.indexOf('\nfunction showAstrTelParams(',exportStart):source.length;
+  const exportEnd=source.length;
   test(`${file} : téléchargement direct de sept pages A4 paysage`,()=>{
     assert.ok(exportStart>=0&&exportEnd>exportStart);
     const body=source.slice(exportStart,exportEnd);

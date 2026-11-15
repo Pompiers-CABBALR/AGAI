@@ -21,7 +21,8 @@ function harness(){
   const eq={id:'eq',nom:'Équipe',color:'#225588',granularity:60,membres:users.map(u=>u.l)};
   const c=vm.createContext({
     USERS:users,CASERNE_DATA:{CIS05:data},CU:{l:'alice'},PERSONNEL_ONLINE_GATE:true,
-    ASTR_CONFIG:{weekStartHour:0},EQUIPES:[eq],DISPOS:{[wk]:dispos},DISPOS_UNLOCKED:{},DISPO_REQUESTS:{},DISPOS_VALIDATED:{},
+    ASTR_CONFIG:{weekStartHour:8},EQUIPES:[eq],DISPOS:{[wk]:dispos},DISPOS_UNLOCKED:{},DISPO_REQUESTS:{},DISPOS_VALIDATED:{},
+    astrScheduleForWeek:()=>({weekStartHour:8,morningStart:8,afternoonStart:12,eveningStart:18,nightStart:24}),
     PIQUETS:{},PLANNING_ROTATIONS:{},JOURS:['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'],JOURS_FULL:['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'],
     TODAY:new Date(2026,9,23,12),astrPlanningWeek:0,astrPlanningNowTimer:null,astrPlanningFilter:new Set(['all']),
     document:{getElementById:element},window:{matchMedia:()=>({matches:false})},
@@ -104,9 +105,9 @@ test('grille de disponibilités : cellules FOR verrouillées, saisies antérieur
   const html=h.c.renderDispoAgentBlock('bob',h.wk,false,true,false,1,null);
   const cell=html.match(/<div class="dispo-cell astr-formation"[^>]+>FOR<\/div>/);
   assert.ok(cell);assert.match(cell[0],/data-can-edit="false"/);assert.doesNotMatch(cell[0],/onclick=/);
-  assert.equal(h.c.personnelDispoSlotAllowed(h.wk,'bob',0,10,60),false);
+  assert.equal(h.c.personnelDispoSlotAllowed(h.wk,'bob',0,2,60),false);
   assert.equal(JSON.stringify(h.dispos),before);
-  h.data.formStag=[];await Promise.resolve();assert.equal(h.c.personnelDispoSlotAllowed(h.wk,'bob',0,10,60),true);
+  h.data.formStag=[];await Promise.resolve();assert.equal(h.c.personnelDispoSlotAllowed(h.wk,'bob',0,2,60),true);
 });
 test('planning : lignes grisées, FOR et exclusion des comptes de disponibilités et piquets',()=>{
   const h=harness();h.users[0]._personnelPeriods=[{kind:'arret',start:'2026-10-19'}];h.data.formStag.push(h.form());
@@ -122,7 +123,7 @@ test('planning : lignes grisées, FOR et exclusion des comptes de disponibilité
 });
 test('les commandes de masse préservent les créneaux couverts par une absence ou une formation',()=>{
   const h=harness();h.data.formStag.push(h.form());h.c.setAllDispoFor(h.wk,'bob',false,'#888');
-  assert.equal(h.dispos.bob['0_10'],true);assert.equal(h.dispos.bob['0_17'],false);
+  assert.equal(h.dispos.bob['0_2'],true);assert.equal(h.dispos.bob['0_9'],false);
   h.users[0]._personnelPeriods=[{kind:'disponibilite',start:'2026-10-19'}];
   const before=JSON.stringify(h.dispos.alice);h.c.setAllDispoFor(h.wk,'alice',null,'#888',true);
   assert.equal(JSON.stringify(h.dispos.alice),before);
