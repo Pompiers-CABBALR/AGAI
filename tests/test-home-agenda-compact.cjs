@@ -103,7 +103,7 @@ test('l’astreinte du jour montre seulement les piquets en cours et à venir, p
   assert.match(html,/À venir · 18:00–23:00/);
   assert.match(html,/À venir · 20:00–24:00/);
   assert.doesNotMatch(html,/08:00–12:00/);
-  assert.match(html,/--agenda-bg:#EEF2FF;--agenda-color:#4F46E5/);
+  assert.match(html,/--agenda-bg:#F3E8FF;--agenda-color:#7E22CE/);
 });
 
 test('après le dernier piquet du jour, aucun créneau passé ne reste affiché',()=>{

@@ -527,7 +527,7 @@ function rAccueilAstreinte(){
     success:{bg:'#F0FDF4',border:'#22C55E',icon:'&#x2705;',color:'#14532D'},
     next:{bg:'#F3EAF8',border:'#A855F7',icon:'&#x1F51C;',color:'#4A1D6D'},
     forward:{bg:'#FAF5FF',border:'#7C3AED',icon:'&#x21AA;&#xFE0F;',color:'#581C87'},
-    piquet:{bg:'#EEF2FF',border:'#4F46E5',icon:'&#x1F692;',color:'#312E81'},
+    piquet:{bg:'#F3E8FF',border:'#7E22CE',icon:'&#x1F692;',color:'#581C87'},
   };
   function renderAgendaCard(scope,title,emptyText,defaultType){
     const items=msgs.filter(function(m){return m.scope===scope;});
@@ -586,11 +586,11 @@ function rAccueilAstreinte(){
     const groupedHtml=groups.map(function(group){
       const items=rows.filter(function(row){return row.rank===group.rank;});
       if(!items.length)return '';
-      return '<div style="font-size:12px;font-weight:700;color:#312E81;margin:8px 0 4px;border-bottom:1px solid #C7D2FE;padding-bottom:3px;">'
+      return '<div style="font-size:12px;font-weight:700;color:#581C87;margin:8px 0 4px;border-bottom:1px solid #D8B4FE;padding-bottom:3px;">'
         +group.title+'</div>'
         +items.map(function(row){return '<div class="acc-agenda-detail">'+escHtml(row.label)+'</div>';}).join('');
     }).join('');
-    el.innerHTML+='<details class="acc-agenda-card" style="margin-top:8px;--agenda-bg:#EEF2FF;--agenda-color:#4F46E5;--agenda-text:#312E81;">'
+    el.innerHTML+='<details class="acc-agenda-card" style="margin-top:8px;--agenda-bg:#F3E8FF;--agenda-color:#7E22CE;--agenda-text:#581C87;">'
       +'<summary><span class="acc-agenda-icon">🚒</span><span class="acc-agenda-main"><div class="acc-agenda-title">Piquets du jour</div>'
       +'<div class="acc-agenda-summary">'+currentCount+' en cours · '+upcomingCount+' à venir</div></span><span class="acc-agenda-more">▼</span></summary>'
       +'<div class="acc-agenda-details">'+(groupedHtml||'Aucun piquet restant aujourd’hui.')+'</div></details>';
