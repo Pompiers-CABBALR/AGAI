@@ -23,6 +23,7 @@ function functionSource(source,name){
 const names=['validDispoGranularity','dispoGranularityFor','getSlotsPerDay','getSlotsForDay','renderDispoAgentBlock'];
 const context={
   ASTR_CONFIG:{granularity:undefined,weekStartHour:8},
+  astrScheduleForWeek:()=>({weekStartHour:8,afternoonStart:12,eveningStart:18,nightStart:24}),
   EQUIPES:[],USERS:[{l:'agent.sans.equipe',prenom:'Agent',nom:'Sans équipe'}],
   CU:{l:'admin'},DISPOS:{},DISPOS_UNLOCKED:{},DISPO_REQUESTS:{},
   window:{matchMedia:()=>({matches:false})},

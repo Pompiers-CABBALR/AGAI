@@ -53,6 +53,11 @@ window.addEventListener('orientationchange',syncViewportMetrics,{passive:true});
 window.addEventListener('pageshow',syncViewportMetrics,{passive:true});
 if(window.visualViewport)window.visualViewport.addEventListener('resize',syncViewportMetrics,{passive:true});
 if(window.visualViewport)window.visualViewport.addEventListener('scroll',syncViewportMetrics,{passive:true});
+function dismissAppKeyboard(){
+  const active=document.activeElement;
+  if(active&&/^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName))active.blur();
+  requestAnimationFrame(syncViewportMetrics);
+}
 
 // === MODULE: config.js ===
 
@@ -516,6 +521,18 @@ const AUTH_LINK_ENABLED = AUTH_LINK_MODE!=='off';
 const PERSONNEL_AUTH_CUTOVER_SUPPORTED=true;
 const PERSONNEL_ONLINE_GATE=PERSONNEL_AUTH_CUTOVER_SUPPORTED
   &&(AGAI_RUNTIME_CONFIG.personnelOnlineGateEnabled===true||PERSONNEL_SECURE_CIS05_PILOT);
+const SECURE_RENFORTS_PILOT=typeof location!=='undefined'
+  &&new URLSearchParams(location.search).get('secureRenfortPilot')==='1';
+const SECURE_RENFORTS_ENABLED=PERSONNEL_ONLINE_GATE
+  &&(AGAI_RUNTIME_CONFIG.secureRenfortsEnabled===true||SECURE_RENFORTS_PILOT);
+const SECURE_TRANSFERS_PILOT=typeof location!=='undefined'
+  &&new URLSearchParams(location.search).get('secureTransferPilot')==='1';
+const SECURE_APL_PILOT=typeof location!=='undefined'
+  &&(new URLSearchParams(location.search).get('secureAplPilot')==='1'||SECURE_TRANSFERS_PILOT);
+const SECURE_APL_ENABLED=PERSONNEL_ONLINE_GATE
+  &&(AGAI_RUNTIME_CONFIG.secureAplNumberingEnabled===true||SECURE_APL_PILOT);
+const SECURE_TRANSFERS_ENABLED=PERSONNEL_ONLINE_GATE&&SECURE_APL_ENABLED
+  &&(AGAI_RUNTIME_CONFIG.secureTransfersEnabled===true||SECURE_TRANSFERS_PILOT);
 const AUTH_LINK_CANARY_LOGINS = new Set((Array.isArray(AGAI_RUNTIME_CONFIG.accountLinkCanaryLogins)?AGAI_RUNTIME_CONFIG.accountLinkCanaryLogins:[]).map(function(login){return String(login||'').trim().toLowerCase();}));
 const AUTH_LINK_NEW_CANARY_LOGINS=new Set((Array.isArray(AGAI_RUNTIME_CONFIG.accountLinkNewCanaryLogins)?AGAI_RUNTIME_CONFIG.accountLinkNewCanaryLogins:[]).map(function(login){return String(login||'').trim().toLowerCase();}));
 function _agaiIsNewLinkPilot(login){return AUTH_LINK_NEW_CANARY_LOGINS.has(String(login||'').trim().toLowerCase());}
@@ -774,6 +791,47 @@ function nextAplNum(annee){
   });
   APL_COUNTER[y]=max+1;
   return 'APL_'+y+'_'+String(APL_COUNTER[y]).padStart(APL_NUM_DIGITS,'0');
+}
+
+function aplCreationActionKey(purpose,context){
+  const storageKey='agai_apl_action_'+purpose+'_'+context;
+  let key='';
+  try{key=localStorage.getItem(storageKey)||'';}catch(_error){}
+  if(!key){
+    if(!globalThis.crypto||typeof crypto.randomUUID!=='function')
+      throw new Error('Numérotation sécurisée indisponible sur cet appareil.');
+    key=crypto.randomUUID();
+    try{localStorage.setItem(storageKey,key);}catch(_error){}
+  }
+  return key;
+}
+function clearAplCreationActionKey(purpose,context){
+  try{localStorage.removeItem('agai_apl_action_'+purpose+'_'+context);}catch(_error){}
+}
+async function allocateNewApl(purpose,context){
+  if(!SECURE_APL_ENABLED)return {apl:nextAplNum(new Date().getFullYear()),actionKey:null};
+  const token=_agaiAuthAccessToken();
+  if(!token||typeof navigator==='undefined'||navigator.onLine===false)
+    throw new Error('Connexion requise pour obtenir un nouveau numéro APL.');
+  const actionKey=aplCreationActionKey(purpose,context);
+  let response;
+  try{
+    response=await _agaiAuthFetchWithTimeout(SB_URL+'/rest/v1/rpc/agai_reserve_apl',{
+      method:'POST',
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+      body:JSON.stringify({p_action_key:actionKey,p_purpose:purpose})
+    },12000);
+  }catch(_error){throw new Error('Attribution du numéro APL impossible. Réessayez avec la connexion active.');}
+  if(!response.ok){
+    if(response.status===401||response.status===403)
+      throw new Error('Accès à la numérotation refusé. Reconnectez-vous.');
+    throw new Error('Attribution du numéro APL refusée (HTTP '+response.status+').');
+  }
+  const result=await response.json();
+  if(!result||!/^APL_[0-9]{4}_[0-9]{6,}$/.test(result.apl||'')
+     ||result.actionKey!==actionKey)
+    throw new Error('Réponse de numérotation invalide. Aucune fiche créée.');
+  return {apl:result.apl,actionKey};
 }
 
 // Le numero APL reste lisible par les utilisateurs, mais ne sert plus de cle
@@ -1391,6 +1449,7 @@ function showParamsTab(sub,btn){
   if(sub==='profil')rProfil();
   else if(sub==='onedrive')odRenderStatus();
 }
+
 // === MODULE: security.js ===
 // ══════════════════════════════════════════════════════
 // SÉCURITÉ — Hachage PBKDF2 (P1), Session (P2), XSS (P4)
@@ -5619,9 +5678,41 @@ function rAccueil(){
   document.getElementById('acc-stats').innerHTML=statsHtml;
   // ── Messages astreinte ──
   try{rAccueilAstreinte();}catch(e){}
+  try{rAccueilAstreinteActions();}catch(e){console.warn('[AGAI] Demandes d’astreinte indisponibles',e);}
   try{rAccueilRapports();}catch(e){console.warn('[AGAI] Rappels de rapports indisponibles',e);}
+  try{if(typeof renderHomeAdminReportBanner==='function')renderHomeAdminReportBanner();}
+  catch(e){console.warn('[AGAI] Suivi des rapports indisponible',e);}
   try{rAccueilDepartsHorsCaserne();}catch(e){console.warn('[AGAI] Suivi des départs hors caserne indisponible',e);}
   try{rStatsHeader();}catch(e){}
+}
+
+function pendingAstreinteRequests(){
+  if(!CU||!(isRespEquipe()||isAdminModeActive()))return [];
+  const current=weekKey(getMondayOfWeek(0));
+  return Object.keys(DISPO_REQUESTS||{}).filter(function(wk){return wk>=current;})
+    .flatMap(function(wk){return (DISPO_REQUESTS[wk]||[]).filter(function(req){
+      return req&&req.statut==='en-attente'&&(!req.caserneId||req.caserneId===CURRENT_CASERNE_ID)
+        &&USERS.some(function(user){return user.l===req.login;});
+    }).map(function(req){return {wk,req};});});
+}
+function openAccueilAstreinteRequest(wk){
+  if(!pendingAstreinteRequests().some(function(item){return item.wk===wk;}))return;
+  astrDispoWeek=getWeekOffset(wk);
+  showT('astreintes',document.getElementById('nav-astreintes'));
+  showAstrTab('dispo',document.getElementById('astr-btn-dispo'));
+}
+function rAccueilAstreinteActions(){
+  const panel=document.getElementById('acc-astreinte-actions');
+  const badge=document.getElementById('astr-requests-nav-count');
+  const pending=pendingAstreinteRequests();
+  if(badge){badge.style.display=pending.length?'inline-flex':'none';badge.textContent=String(pending.length);}
+  if(!panel)return;
+  if(!pending.length){panel.innerHTML='';return;}
+  const weeks=[...new Set(pending.map(function(item){return item.wk;}))];
+  panel.innerHTML='<div style="border:1px solid #C4B5FD;background:#F5F3FF;border-radius:10px;padding:10px;color:#5B21B6;">'
+    +'<strong>📨 '+pending.length+' demande'+(pending.length>1?'s':'')+' d’astreinte à traiter</strong>'
+    +weeks.map(function(wk){return '<button type="button" class="btn sm" style="margin:5px 5px 0 0;" onclick="openAccueilAstreinteRequest(\''+wk+'\')">Semaine du '+wk.slice(6,8)+'/'+wk.slice(4,6)+' · '+pending.filter(function(item){return item.wk===wk;}).length+'</button>';}).join('')
+    +'</div>';
 }
 
 function rAccueilDepartsHorsCaserne(){
@@ -5667,11 +5758,19 @@ function rapportsFinalisationDebut(){
 }
 // Ne pas afficher un état « original à éditer » tant que l'émission unique
 // n'est pas verrouillée et vérifiée par le serveur entre les appareils.
-const RAPPORT_EDITION_SUIVI_SECURISÉ=false;
+const RAPPORT_EDITION_SUIVI_SECURISÉ=true;
 function rapportsEditionDebut(){
   if(!RAPPORT_EDITION_SUIVI_SECURISÉ)return '';
-  const value=String(CASERNE_DATA&&CASERNE_DATA._global&&CASERNE_DATA._global.reportPrintReminderStartDate||'');
+  const state=globalThis._agaiReportEditionState;
+  if(!state||state.enabled!==true)return '';
+  const value=String(state.startDate||'');
   return /^\d{4}-\d{2}-\d{2}$/.test(value)?value.replace(/-/g,''):'';
+}
+function rapportEditionNonEmis(caserne,type,id){
+  const state=globalThis._agaiReportEditionState;
+  if(!state||!state.items)return false;
+  const item=state.items[_rcId(caserne,type,id)];
+  return !!item&&Number(item.count)===0;
 }
 function accueilRapportDate(iv){
   if(typeof statsInterventionDateKey==='function')return statsInterventionDateKey(iv);
@@ -5710,16 +5809,20 @@ function collectAccueilReportReminders(login,printStart){
       +(iv.n||iv.id)+(iv.com?' — '+iv.com:'');
     const item={kind:'iv',id:iv.id,label,date:key};
     if(key>=rapportsFinalisationDebut()&&!iv._crValide)finaliser.push(Object.assign({stage:'finaliser'},item));
-    if(printStart&&key>=printStart&&iv._crValide&&!(iv._impressions||[]).length)editer.push(Object.assign({stage:'editer'},item));
+    if(printStart&&key>=printStart&&iv._crValide
+       &&rapportEditionNonEmis(CURRENT_CASERNE_ID,isPilpIntervention(iv)?'pilp':'iv',iv.id))
+      editer.push(Object.assign({stage:'editer'},item));
   });
   if(printStart){
     (actGetData()||[]).forEach(function(a){
       if(!a||a.auteur!==login||String(a.date||'').replace(/-/g,'')<printStart||!a.cr)return;
-      if(!(a.impressions||[]).length)editer.push({kind:'act',stage:'editer',id:a.id,label:'Activité · '+(a.type||a.id),date:String(a.date||'').replace(/-/g,'')});
+      if(rapportEditionNonEmis(CURRENT_CASERNE_ID,'activite',a.id))
+        editer.push({kind:'act',stage:'editer',id:a.id,label:'Activité · '+(a.type||a.id),date:String(a.date||'').replace(/-/g,'')});
     });
     (fmpaGetData()||[]).forEach(function(f){
       if(!f||f.auteur!==login||String(f.date||'').replace(/-/g,'')<printStart)return;
-      if(!(f.impressions||[]).length)editer.push({kind:'fmpa',stage:'editer',id:f.id,label:'Formation · '+(f.theme||f.id),date:String(f.date||'').replace(/-/g,'')});
+      if(rapportEditionNonEmis(CURRENT_CASERNE_ID,'fmpa',f.id))
+        editer.push({kind:'fmpa',stage:'editer',id:f.id,label:'Formation · '+(f.theme||f.id),date:String(f.date||'').replace(/-/g,'')});
     });
   }
   const byDate=function(a,b){return a.date.localeCompare(b.date)||a.label.localeCompare(b.label,'fr');};
@@ -5759,6 +5862,7 @@ function rAccueilRapports(){
     +(RAPPORT_EDITION_SUIVI_SECURISÉ&&start?'<details><summary style="cursor:pointer;font-weight:600;padding:7px 0;">À éditer · '+items.editer.length+'</summary>'
       +(items.editer.length?items.editer.map(line).join(''):'<div style="font-size:12px;color:var(--t2);">Aucun rapport à éditer.</div>')+'</details>':'')
     +'</section>';
+  if(typeof reportEditionScheduleHomeStatus==='function')reportEditionScheduleHomeStatus();
 }
 
 // ────────────────── MESSAGES ASTREINTE ACCUEIL ──────────────────
@@ -5794,11 +5898,11 @@ function rAccueilAstreinte(){
 
   // Trouver le créneau dispo actuel ou prochain
   // Chercher le prochain bloc contigu de dispos (en partant de maintenant)
-  function slotToMinOfDay(s){return (((ASTR_CONFIG.weekStartHour||0)*60)+s*gran)%1440;}
+  function slotToMinOfDay(s){return ((astrScheduleForWeek(wk).weekStartHour*60)+s*gran)%1440;}
   function slotAbsMin(dayIdx,slotIdx){
     // Minutes absolues depuis lundi 00h00
     // Sans %1440 pour garder les slots après minuit dans le bon jour
-    const startHour=ASTR_CONFIG.weekStartHour||0;
+    const startHour=astrScheduleForWeek(wk).weekStartHour;
     const rawMin=startHour*60+slotIdx*gran;
     const dayOffset=Math.floor(rawMin/1440);
     return (dayIdx+dayOffset)*1440+(rawMin%1440);
@@ -5819,7 +5923,7 @@ function rAccueilAstreinte(){
 
   // Trouver le bloc contigu qui contient maintenant ou le prochain
   function formatSlotTime(d,s){
-    const startHour=ASTR_CONFIG.weekStartHour||0;
+    const startHour=astrScheduleForWeek(wk).weekStartHour;
     const totalMin=(startHour*60+s*gran)%1440;
     return pad(Math.floor(totalMin/60))+'h'+((totalMin%60)?pad(totalMin%60):'');
   }
@@ -5856,7 +5960,7 @@ function rAccueilAstreinte(){
   const blocProchain=!blocActuel?blocs.find(function(b){return b.debut.abs>nowAbsMin;}):null;
 
   function formatBlocMsg(b,prefixe){
-    const startHour=ASTR_CONFIG.weekStartHour||0;
+    const startHour=astrScheduleForWeek(wk).weekStartHour;
 
     // Heure du début d'un slot
     function slotHeure(s){
@@ -5941,7 +6045,7 @@ function rAccueilAstreinte(){
   function piquetAgendaRange(p,m){
     const jourIdx=JOURS_FULL.indexOf(p.jour);
     const debut=timeToMin(m.hDebut),fin=timeToMin(m.hFin);
-    const startHour=(ASTR_CONFIG.weekStartHour??8)*60;
+    const startHour=astrScheduleForWeek(wk).weekStartHour*60;
     const effectifIdx=(jourIdx+(debut<startHour?1:0))%7;
     const finIdx=(effectifIdx+(fin<=debut?1:0))%7;
     const jourDebut=JOURS_FULL[effectifIdx].toLowerCase();
@@ -5958,7 +6062,7 @@ function rAccueilAstreinte(){
     const m=agentDansPiquet(p,CU.l);
     const dMin=timeToMin(m.hDebut),fMin=timeToMin(m.hFin);
     const overnight=fMin<=dMin;
-    const startH=(ASTR_CONFIG.weekStartHour??8)*60;
+    const startH=astrScheduleForWeek(wk).weekStartHour*60;
     // Si hDebut < startHour → appartient au jour suivant dans le planning
     const effectifJourIdx=dMin<startH?jourIdx+1:jourIdx;
     if(overnight){
@@ -5987,14 +6091,14 @@ function rAccueilAstreinte(){
     if(piquetsActuels.includes(p))return false;
     const jourIdx=JOURS_FULL.indexOf(p.jour);if(jourIdx<0)return false;
     const m=agentDansPiquet(p,CU.l);
-    const startH=(ASTR_CONFIG.weekStartHour??8)*60;
+    const startH=astrScheduleForWeek(wk).weekStartHour*60;
     const dMin=timeToMin(m.hDebut);
     const effectifJourIdx=dMin<startH?jourIdx+1:jourIdx;
     const pAbsMin=effectifJourIdx*1440+dMin;
     return pAbsMin>nowAbsMin&&pAbsMin-nowAbsMin<=2880;
   }).sort(function(a,b){
     const ma=agentDansPiquet(a,CU.l),mb=agentDansPiquet(b,CU.l);
-    const startH=(ASTR_CONFIG.weekStartHour??8)*60;
+    const startH=astrScheduleForWeek(wk).weekStartHour*60;
     const ia=(JOURS_FULL.indexOf(a.jour)+(timeToMin(ma.hDebut)<startH?1:0))*1440+timeToMin(ma.hDebut);
     const ib=(JOURS_FULL.indexOf(b.jour)+(timeToMin(mb.hDebut)<startH?1:0))*1440+timeToMin(mb.hDebut);
     return ia-ib;
@@ -6062,6 +6166,36 @@ function rAccueilAstreinte(){
     +renderAgendaCard('dispo','Disponibilité','Aucune prochaine disponibilité renseignée.','warn')
     +renderAgendaCard('piquet','Piquet','Aucun piquet sous 48 h.','next')
     +'</div>';
+  if(telephoneDuty&&telephoneDuty.mode==='person'&&telephoneDuty.login===CU.l){
+    const todayStart=new Date(now);todayStart.setHours(0,0,0,0);
+    const todayEnd=new Date(todayStart);todayEnd.setDate(todayEnd.getDate()+1);
+    const weeks=[weekKey(getMondayOfWeek(-1)),wk];
+    const rows=[];
+    weeks.forEach(function(week){
+      const base=new Date(Number(week.slice(0,4)),Number(week.slice(4,6))-1,Number(week.slice(6,8)));
+      const startMinute=astrScheduleForWeek(week).weekStartHour*60;
+      (PIQUETS[week]||[]).forEach(function(p){
+        const dayIdx=JOURS_FULL.indexOf(p.jour);
+        if(dayIdx<0||!p.debut||!p.fin)return;
+        const from=timeToMin(p.debut),to=timeToMin(p.fin);
+        const start=new Date(base);start.setDate(base.getDate()+dayIdx+(from<startMinute?1:0));
+        start.setHours(Math.floor(from/60),from%60,0,0);
+        const end=new Date(start);end.setMinutes(end.getMinutes()+(to<=from?to+1440-from:to-from));
+        if(start>=todayEnd||end<=todayStart)return;
+        const displayStart=new Date(Math.max(start.getTime(),todayStart.getTime()));
+        const displayEnd=new Date(Math.min(end.getTime(),todayEnd.getTime()));
+        const clock=function(date){return date.getTime()===todayEnd.getTime()?'24:00':pad(date.getHours())+':'+pad(date.getMinutes());};
+        const name=function(login){const user=USERS.find(function(u){return u.l===login;});return user?fullNameAff(user):login||'—';};
+        rows.push({time:displayStart.getTime(),label:clock(displayStart)+'–'+clock(displayEnd)+' · '+piquetDepartureLabel(p.engin)
+          +' · '+name(p.chefAgres)+' / '+name(p.conducteur)});
+      });
+    });
+    rows.sort(function(a,b){return a.time-b.time||a.label.localeCompare(b.label,'fr');});
+    el.innerHTML+='<details class="acc-agenda-card" style="margin-top:8px;--agenda-bg:#F0F9FF;--agenda-color:#0369A1;--agenda-text:#0C4A6E;">'
+      +'<summary><span class="acc-agenda-icon">🚒</span><span class="acc-agenda-main"><div class="acc-agenda-title">Piquets de la journée</div>'
+      +'<div class="acc-agenda-summary">'+rows.length+' créneau'+(rows.length>1?'x':'')+' à suivre aujourd’hui</div></span><span class="acc-agenda-more">▼</span></summary>'
+      +'<div class="acc-agenda-details">'+(rows.length?rows.map(function(row){return '<div class="acc-agenda-detail">'+escHtml(row.label)+'</div>';}).join(''):'Aucun piquet pour cette journée.')+'</div></details>';
+  }
 }
 
 // ── Toast notification (remplace alert() natif) ──
@@ -6143,6 +6277,7 @@ function showT(id,btn){
     applyNavRights();
     return;
   }
+  dismissAppKeyboard();
   document.querySelectorAll('.sec').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.nb').forEach(b=>b.classList.remove('active'));
   if(id==='users'){
@@ -7247,7 +7382,15 @@ function _captureAppelDetails(){
   return Object.keys(d).length?d:null;
 }
 
-function enr(){
+let _appelEnrInFlight=false;
+function _appelFormSnapshot(){
+  const fields=Array.from(document.querySelectorAll('#tab-appel input, #tab-appel textarea, #tab-appel select'));
+  return JSON.stringify([selNat,selC2,appelResumeAvisId,
+    fields.map(function(field){return [field.id,field.value,field.checked];}),
+    getAppelNids(),getAppelAnimals()]);
+}
+async function enr(){
+  if(_appelEnrInFlight){showToast('Enregistrement déjà en cours.','warn');return;}
   if(!vF())return;
   const avisCible=appelResumeAvisId?interventionById(appelResumeAvisId):null;
   if(appelResumeAvisId&&(!avisCible||!avisCible._avisEnAttente||avisCible.s==='annulee')){showToast('Cet avis a déjà été traité. Actualisez la liste avant de reprendre un appel.','warn');return;}
@@ -7256,7 +7399,7 @@ function enr(){
   const gpsError=document.getElementById('fa-gps-error');if(gpsError)gpsError.style.display=gps.valid?'none':'block';
   if(!gps.valid)return;
   const h=hoA?getH(hoA):getH(N());
-  const annee=new Date().getFullYear();
+  let annee=new Date().getFullYear();
   const addrBase=formatInterventionStreetAddress(document.getElementById('fa').value),addrComp=document.getElementById('fa2').value.trim(),addr=addrComp?addrBase+' — '+addrComp:addrBase,com=selC2;
   document.getElementById('fa').value=addrBase;
   const pilpDirect=!!(avisCible&&isPilpIntervention(avisCible))||!!(document.getElementById('chk-pilp-direct')&&document.getElementById('chk-pilp-direct').checked);
@@ -7278,7 +7421,20 @@ function enr(){
   const exIv=avisCible?(isPilpIntervention(avisCible)?[]:[avisCible]):findMatchingPendingAvisPassages(IVS,_adr,natureAppel,com).filter(iv=>!iv._isPilip);
   const exPilp=avisCible?(isPilpIntervention(avisCible)?[avisCible]:[]):findMatchingPendingAvisPassages(PILP_IVS,_adr,natureAppel,com);
   // Seul l'appel reçoit son numéro ici. Les numéros d'intervention sont attribués au passage En cours.
-  const numApl=nextAplNum(annee);
+  _appelEnrInFlight=true;
+  const aplContext='appel-'+CURRENT_CASERNE_ID;
+  const sessionCaserne=CURRENT_CASERNE_ID,sessionLogin=CU&&CU.l;
+  try{
+  const formSnapshot=_appelFormSnapshot();
+  const allocation=await allocateNewApl('appel',aplContext);
+  if(CURRENT_CASERNE_ID!==sessionCaserne||!CU||CU.l!==sessionLogin){
+    showToast('La session a changé. Recommencez cet appel.','warn');return;
+  }
+  if(_appelFormSnapshot()!==formSnapshot||!vF()){
+    showToast('Le formulaire a changé pendant la numérotation. Vérifiez-le et réessayez.','warn');return;
+  }
+  const numApl=allocation.apl;
+  annee=Number(numApl.slice(4,8));
   let det=document.getElementById('fo').value.trim();
   const appelDetails=_captureAppelDetails();
   const tels=getAppelPhones();
@@ -7293,7 +7449,7 @@ function enr(){
     const primaryNid=nidsAppel[0]||{};
     const primaryHeight=pilpHeightNumber(primaryNid.hauteur);
     const newPilp={
-      id:nextPilpId(annee),ivRef:null,_numApl:numApl,
+      id:nextPilpId(annee),ivRef:null,_numApl:numApl,_aplReservationKey:allocation.actionKey,
       // Aucun numéro d'intervention tant que la PILP reste en attente.
       n:'Nid de frelons asiatiques — PILP',addr,_addrBase:addrBase,_addressCoordinates:addrSelectedCoords?addrSelectedCoords.slice():null,_gpsCoordinates:gps.coordinates,com,h,
       req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,_additionalRequesters:additionalRequesters,reqDispo,_nidsAppel:nidsAppel,_erp:erp,_urgence:erp,
@@ -7311,12 +7467,13 @@ function enr(){
     const cm=document.getElementById('cm');cm.style.display='block';
     cm.innerHTML='&#x1F3AF; PILP créée — <strong>'+escHtml(newPilp.id)+'</strong><br><span style="font-family:monospace;font-size:11px;">'+escHtml(numApl)+'</span>';
     saveData(true);
+    clearAplCreationActionKey('appel',aplContext);
     rF();rI();rAccueil();gS(1);
     setTimeout(()=>{cm.style.display='none';},5000);
     return;
   }
   // Enregistrement normal — id = numéro APL, numéro INT attribué à la clôture
-  const newIv={id:makeInterventionRecordId(numApl),_numApl:numApl,
+  const newIv={id:makeInterventionRecordId(numApl),_numApl:numApl,_aplReservationKey:allocation.actionKey,
     n:natureAppel,_natureAppelInitiale:selNat,addr,_addrBase:addrBase,_addressCoordinates:addrSelectedCoords?addrSelectedCoords.slice():null,_gpsCoordinates:gps.coordinates,com,h,op:CU.l,s:'en-attente',det,eng:null,_sdis:document.getElementById('chk-sdis')?.checked||false,_erp:erp,_urgence:erp,_animauxAppel:animauxAppel,_nidsAppel:nidsAppel,
     req:document.getElementById('fr').value.trim(),tel:tels[0]||'',tels,_additionalRequesters:additionalRequesters,reqDispo,
     obs:'',agr:null,rappels:exIv.length+exPilp.length,avisIds:exIv.concat(exPilp).map(iv=>iv.id),_appelDetails:appelDetails,
@@ -7326,6 +7483,7 @@ function enr(){
   if(CD())CD().ivs=IVS;
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true); // push immédiat : sinon un pull peut écraser le nouvel appel avant sauvegarde
+  clearAplCreationActionKey('appel',aplContext);
   const cm=document.getElementById('cm');cm.style.display='block';
   cm.innerHTML=`✅ Appel enregistré — <strong>${numApl}</strong>
     <br><span style="font-family:monospace;font-size:11px;">&#x1F4C5; ${h} | ${CU.l}</span>
@@ -7335,6 +7493,8 @@ function enr(){
   gS(1);
   // Masquer le bandeau de confirmation après 5s
   setTimeout(()=>{cm.style.display='none';},5000);
+  }catch(error){showToast(error&&error.message||'Appel non enregistré : numéro APL indisponible.','warn');}
+  finally{_appelEnrInFlight=false;}
 }
 function annulerAppel(ivId){
   const iv=IVS.find(v=>v.id===ivId);
@@ -7397,6 +7557,7 @@ function rF(){
 }
 function updateH(){document.getElementById('hv').textContent=hoA?getH(hoA):getH(N());}
 function cpH(){const v=document.getElementById('hv').textContent;if(navigator.clipboard)navigator.clipboard.writeText(v).catch(()=>{});const b=document.querySelector('.cpbtn');if(b){b.textContent='✅';setTimeout(()=>b.textContent='&#x1F4CB; Copier',1500);}}
+
 // === MODULE: interventions.js ===
 // ────────────────── INTERVENTIONS ──────────────────
 function rIPostUpdate(){rStatsHeader();}
@@ -10957,6 +11118,18 @@ function clotPilp(id,options){
     return;
   }
   if(opts._closeSnapshot!==operationalCloseSnapshot(iv)){showToast('La fiche a changé : rouvrez-la avant de clôturer.','warn');return;}
+  if(opts._followup&&SECURE_APL_ENABLED&&!opts._followupAllocation){
+    if(_followupAplInFlight.has(id))return;
+    _followupAplInFlight.add(id);
+    allocateNewApl('suite','suite:'+id).then(function(allocation){
+      _followupAplInFlight.delete(id);
+      clotPilp(id,Object.assign({},opts,{_followupAllocation:allocation}));
+    }).catch(function(error){
+      _followupAplInFlight.delete(id);
+      showToast(error&&error.message||'Suite PILP non créée : numéro APL indisponible.','warn');
+    });
+    return;
+  }
   if(!beginOperationalAction(iv,'cloture-pilp',['en-cours']))return;
   const h=opts._closeStamp||getH(N());
   if(avis){
@@ -10971,9 +11144,10 @@ function clotPilp(id,options){
   } else {
     iv.s='terminee';iv._hFin=opts._closeTime||getHHMM(N());pushTL(iv,'terminee',CU.l,'',h);
     (iv.avisIds||[]).forEach(aid=>{const av=PILP_IVS.find(v=>v.id===aid&&v.s==='avis-passage'&&v.id!==iv.id);if(av){av.s='terminee';pushTL(av,'terminee',CU.l+' (fusion)','',h);}});
-    if(opts._followup)creerSuiteApresCloture(iv,opts._followup,h);
+    if(opts._followup)creerSuiteApresCloture(iv,opts._followup,h,opts._followupAllocation);
     if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
     saveData(true);
+    if(opts._followupAllocation)clearAplCreationActionKey('suite','suite:'+id);
     cM();rPilp();rI();rAccueil();
   }
 }
@@ -11644,6 +11818,7 @@ function vp(){
   if(isTireurPILP())PILP_IVS.filter(iv=>iv.s==='selectionne'&&iv.agr===CU.l).forEach(iv=>{iv.s='en-attente';iv.agr=null;delete iv._routeBatchId;delete iv._routeOrder;pushTL(iv,'en-attente',CU.l);});
   selEng=null;parcConfirmed.clear();document.querySelectorAll('#eg .ec').forEach(c=>c.classList.remove('sel'));saveData(true);rI();
 }
+
 // === MODULE: historique.js ===
 // ────────────────── HISTORIQUE ──────────────────
 function rHistLegacy(){
@@ -12548,6 +12723,7 @@ function _updateUserRefresh(login,field){
     if(profPanel&&profPanel.style.display!=='none')rProfil();
   }
 }
+
 // === MODULE: astreintes.js ===
 // ══════════════════════════════════════════════════════
 // ASTREINTES — Données
@@ -12557,6 +12733,52 @@ let selEqColor_ = '#3498DB';
 let astrPlanningWeek = 0; // offset semaines depuis aujourd'hui
 let astrDispoWeek = 1;    // par défaut = semaine prochaine
 let astrPiquetWeek = 0;
+let astrPiquetNowTimer=null;
+// La relève automatique reste inactive tant que son écriture atomique côté
+// serveur n'est pas disponible. Le formulaire actuel reste inchangé en V25.
+const ASTR_REPLACEMENT_ENABLED=false;
+
+// Chaque changement d'horaires entre en vigueur au début d'une semaine.
+// Les semaines antérieures continuent d'utiliser leur propre règle.
+function astrScheduleHistory(){
+  const saved=Array.isArray(ASTR_CONFIG.scheduleHistory)?ASTR_CONFIG.scheduleHistory:[];
+  if(saved.length)return saved;
+  // Transition confirmée pour UT Lapugnoy : 08 h avant le 16/11/2026,
+  // puis 07 h. Les autres casernes conservent intégralement leur réglage.
+  if(typeof CURRENT_CASERNE_ID!=='undefined'&&CURRENT_CASERNE_ID==='CIS05'
+    &&Number(ASTR_CONFIG.weekStartHour)===7){
+    return [
+      {effectiveWeek:'00000000',weekStartHour:8,afternoonStart:12,eveningStart:18,nightStart:24,author:'Règle antérieure'},
+      {effectiveWeek:'20261116',weekStartHour:7,afternoonStart:12,eveningStart:18,nightStart:24,author:'Transition du 16/11/2026'}
+    ];
+  }
+  return saved;
+}
+function astrScheduleForWeek(wk){
+  const fallback={weekStartHour:Number(ASTR_CONFIG.weekStartHour??8),afternoonStart:12,eveningStart:18,nightStart:24};
+  const history=astrScheduleHistory();
+  const rule=history.filter(function(entry){return entry&&/^\d{8}$/.test(entry.effectiveWeek||'')&&entry.effectiveWeek<=wk;})
+    .sort(function(a,b){return a.effectiveWeek.localeCompare(b.effectiveWeek);})
+    .reduce(function(value,entry){return Object.assign(value,{
+      weekStartHour:Number(entry.weekStartHour),afternoonStart:Number(entry.afternoonStart),
+      eveningStart:Number(entry.eveningStart),nightStart:Number(entry.nightStart)
+    });},fallback);
+  // Les casernes historiques à 00 h stockent leurs disponibilités depuis minuit,
+  // mais leurs quatre créneaux visuels restent 08–12 / 12–18 / 18–00 / 00–08.
+  rule.morningStart=rule.weekStartHour===0?8:rule.weekStartHour;
+  return rule;
+}
+function astrPeriodsForWeek(wk){
+  const rule=astrScheduleForWeek(wk),start=rule.morningStart*60;
+  return [
+    {key:'m',label:'Matin',from:start,to:rule.afternoonStart*60},
+    {key:'a',label:'Après-midi',from:rule.afternoonStart*60,to:rule.eveningStart*60},
+    {key:'s',label:'Soir',from:rule.eveningStart*60,to:rule.nightStart*60},
+    rule.weekStartHour===0
+      ?{key:'n',label:'Nuit',from:0,to:start}
+      :{key:'n',label:'Nuit',from:rule.nightStart*60,to:1440+start}
+  ];
+}
 
 // ── Utilitaires dates semaine ──
 function getWeekOffset(wk){
@@ -12569,13 +12791,15 @@ function getWeekOffset(wk){
 function getMondayOfWeek(offsetWeeks){
   // Retourne le début de la semaine d'astreinte selon ASTR_CONFIG.weekStartDay/Hour
   const startDay=ASTR_CONFIG.weekStartDay??1; // 0=dim,1=lun,...,6=sam
-  const startHour=ASTR_CONFIG.weekStartHour??0;
-  const d=new Date(TODAY);
+  const now=N(),d=new Date(now);
   // Trouver le dernier "startDay" <= aujourd'hui
   let dow=d.getDay(); // 0=dim
   let diff=((dow-startDay)+7)%7;
-  d.setDate(d.getDate()-diff+offsetWeeks*7);
-  d.setHours(startHour,0,0,0);
+  d.setDate(d.getDate()-diff);
+  const thisStartHour=astrScheduleForWeek(weekKey(d)).weekStartHour;
+  if(diff===0&&now.getHours()<thisStartHour)d.setDate(d.getDate()-7);
+  d.setDate(d.getDate()+offsetWeeks*7);
+  d.setHours(astrScheduleForWeek(weekKey(d)).weekStartHour,0,0,0);
   return d;
 }
 function weekKey(startDate){
@@ -12649,8 +12873,8 @@ function slotToLabel(slotIdx,granularity){
   return `${pad(h)}:${pad(m)}`;
 }
 // Retourne le label d'un slot : chaque jour commence à startHour
-function slotToLabelDay(dayIdx,slotIdx,granularity){
-  const startHour=ASTR_CONFIG.weekStartHour??0;
+function slotToLabelDay(dayIdx,slotIdx,granularity,wk){
+  const startHour=astrScheduleForWeek(wk||weekKey(getMondayOfWeek(0))).weekStartHour;
   const totalMin=(startHour*60+slotIdx*validDispoGranularity(granularity))%1440;
   const h=Math.floor(totalMin/60),m=totalMin%60;
   return `${pad(h)}h${m>0?pad(m):''}`;
@@ -12786,9 +13010,10 @@ function rAstrPlanning(){
     filterDiv.innerHTML=`<button class="fb${astrPlanningFilter.has('all')?' active':''}" onclick="setAstrFilter('all',this)">Toutes</button>`
       +equipeGroups.map(function(group){
         const e=group.eq;
-        const accent=group.tone==='forte'?'#BE185D':group.tone==='faible'?'#B45309':e.color;
-        const prefix=group.tone==='forte'?'Forte · ':group.tone==='faible'?'Faible · ':'';
-        return `<button class="fb${astrPlanningFilter.has(e.id)?' active':''}" style="border-left:4px solid ${accent};" onclick="setAstrFilter('${e.id}',this)">${prefix}${escHtml(e.nom)}</button>`;
+        const accent=group.tone==='forte'?'#BE185D':group.tone==='faible'?'#A16207':e.color;
+        const prefix=group.tone==='forte'?'◆ Forte · ':group.tone==='faible'?'● Faible · ':'';
+        const toneClass=group.tone==='forte'?' astr-filter-forte':group.tone==='faible'?' astr-filter-faible':'';
+        return `<button class="fb${toneClass}${astrPlanningFilter.has(e.id)?' active':''}" style="border-left:4px solid ${accent};" onclick="setAstrFilter('${e.id}',this)">${prefix}${escHtml(e.nom)}</button>`;
       }).join('')
       +(sansEqAll.length?`<button class="fb${astrPlanningFilter.has('sans-equipe')?' active':''}" onclick="setAstrFilter('sans-equipe',this)">Sans équipe</button>`:'');
   }
@@ -12880,8 +13105,9 @@ function rAstrPlanning(){
   }
 
   // Créneaux horaires : de 08h à 08h (24 colonnes de 1h) ou selon gran
-  const startHour=8; // colonnes du planning commencent à 08h
-  const dispoStartHour=ASTR_CONFIG.weekStartHour??0; // base stockage dispos
+  const weekRule=astrScheduleForWeek(wk);
+  const startHour=weekRule.morningStart;
+  const dispoStartHour=weekRule.weekStartHour; // base de stockage de cette semaine
   const nbSlots=Math.floor(1440/gran);
 
   // Créneaux piquets de la semaine
@@ -13143,7 +13369,7 @@ function oAstrCellDetailSansEq(wk,dayIdx,slotIdx){
   const mon=new Date(wk.slice(0,4)+'-'+wk.slice(4,6)+'-'+wk.slice(6,8));
   const dd=new Date(mon);dd.setDate(dd.getDate()+dayIdx);
   const gran=validDispoGranularity(ASTR_CONFIG.granularity);
-  const label=`${jourLabel(dayIdx,true)} ${dd.getDate()}/${dd.getMonth()+1} — ${slotToLabelDay(dayIdx,slotIdx,gran)}`;
+  const label=`${jourLabel(dayIdx,true)} ${dd.getDate()}/${dd.getMonth()+1} — ${slotToLabelDay(dayIdx,slotIdx,gran,wk)}`;
   const agents=sansEq.map(u=>{
     const dispo=personnelDispoSlotAllowed(wk,u.l,dayIdx,slotIdx,gran)&&DISPOS[wk]?.[u.l]?.[`${dayIdx}_${slotIdx}`]===true;
     return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--brd);font-size:12px;">
@@ -13190,7 +13416,7 @@ function oAstrCellDetail(wk,dayIdx,slotIdx,eqId){
   if(!eq)return;
   const mon=new Date(wk.slice(0,4)+'-'+wk.slice(4,6)+'-'+wk.slice(6,8));
   const dd=new Date(mon);dd.setDate(dd.getDate()+dayIdx);
-  const label=`${jourLabel(dayIdx,true)} ${dd.getDate()}/${dd.getMonth()+1} — ${slotToLabelDay(dayIdx,slotIdx,eq.granularity)}`;
+  const label=`${jourLabel(dayIdx,true)} ${dd.getDate()}/${dd.getMonth()+1} — ${slotToLabelDay(dayIdx,slotIdx,eq.granularity,wk)}`;
   const agents=eq.membres.map(login=>{
     const u=USERS.find(x=>x.l===login);
     const dispo=personnelDispoSlotAllowed(wk,login,dayIdx,slotIdx,eq.granularity)&&DISPOS[wk]?.[login]?.[`${dayIdx}_${slotIdx}`]===true;
@@ -13223,7 +13449,7 @@ function showDispoRequestModal(wk,login){
   const gran=dispoGranularityFor(login);
   const mon=new Date(wk.slice(0,4)+'-'+wk.slice(4,6)+'-'+wk.slice(6,8));
   const MOIS_FR=['janv.','f\u00e9vr.','mars','avr.','mai','juin','juil.','ao\u00fbt','sept.','oct.','nov.','d\u00e9c.'];
-  const startHour=ASTR_CONFIG.weekStartHour||0;
+  const startHour=astrScheduleForWeek(wk).weekStartHour;
 
   function slotLabel(s){
     const totalMin=(startHour*60+s*gran)%1440;
@@ -13286,6 +13512,11 @@ function showDispoRequestModal(wk,login){
     +'<button type="button" class="btn sm" style="font-size:10px;margin-left:auto;" onclick="reqSelectAll(true)">Tout s\u00e9lectionner</button>'
     +'</div>'
     +creneauxHtml
+    +(ASTR_REPLACEMENT_ENABLED?'<div class="fg"><div class="fgl">Remplaçant proposé <span style="font-size:10px;color:var(--t2);font-weight:400;">(obligatoire si un piquet est concerné)</span></div>'
+    +'<select class="fi" id="dispo-req-replacement"><option value="">— Aucun piquet à remplacer —</option>'
+    +sortByName(USERS.filter(function(candidate){return candidate&&candidate.l!==login;}))
+      .map(function(candidate){return '<option value="'+escHtml(candidate.l)+'">'+escHtml(fullNameAff(candidate))+'</option>';}).join('')
+    +'</select></div>':'')
     +'<div class="fg"><div class="fgl">Motif <span style="font-size:10px;color:var(--t2);font-weight:400;">(optionnel)</span></div>'
     +'<textarea class="fi" id="dispo-req-motif" rows="2" placeholder="Ex: Contrainte professionnelle..." style="resize:vertical;"></textarea></div>'
     +'<div class="brow" style="margin-top:10px;">'
@@ -13317,13 +13548,42 @@ function reqSelectAll(checked){
   });
 }
 
+function astrRequestAffectedPiquets(wk,login,slots,granularity){
+  const start=astrScheduleForWeek(wk).weekStartHour*60;
+  const requested=(slots||[]).filter(function(slot){return slot&&slot.newVal==='false';})
+    .map(function(slot){
+      const parts=String(slot.key||'').split('_').map(Number);
+      if(parts.length!==2||!Number.isInteger(parts[0])||parts[0]<0||parts[0]>6
+        ||!Number.isInteger(parts[1])||parts[1]<0)return null;
+      const from=parts[0]*1440+start+parts[1]*granularity;
+      return [from,from+granularity];
+    }).filter(Boolean);
+  if(!requested.length)return [];
+  return (PIQUETS[wk]||[]).filter(function(p){
+    const day=JOURS_FULL.indexOf(p.jour);
+    if(day<0||!p.debut||!p.fin)return false;
+    const members=p.membres&&p.membres.length?p.membres:[
+      p.chefAgres?{login:p.chefAgres}:null,p.conducteur?{login:p.conducteur}:null,
+      p.chefEquipe?{login:p.chefEquipe}:null,p.stagiaire?{login:p.stagiaire}:null
+    ].filter(Boolean);
+    return members.some(function(member){
+      if(member.login!==login)return false;
+      const begin=member.hDebut||p.debut,end=member.hFin||p.fin;
+      const effectiveDay=day+(timeToMin(begin)<start?1:0);
+      const range=piquetToAbsRangeIdx(effectiveDay,begin,end);
+      return requested.some(function(slot){return slot[0]<range[1]&&range[0]<slot[1];});
+    });
+  });
+}
+
 function envoyerDispoRequest(wk,login){
   const motif=document.getElementById('dispo-req-motif')?.value.trim()||'';
+  const replacementLogin=document.getElementById('dispo-req-replacement')?.value||'';
   const checkedSlots=Array.from(document.querySelectorAll('input[name="req-slots"]:checked'));
   if(!checkedSlots.length){showToast('S\u00e9lectionnez au moins un cr\u00e9neau.','warn');return;}
 
   const gran=dispoGranularityFor(login);
-  const startHour=ASTR_CONFIG.weekStartHour||0;
+  const startHour=astrScheduleForWeek(wk).weekStartHour;
   const mon=new Date(wk.slice(0,4)+'-'+wk.slice(4,6)+'-'+wk.slice(6,8));
   const MOIS_FR=['janv.','f\u00e9vr.','mars','avr.','mai','juin','juil.','ao\u00fbt','sept.','oct.','nov.','d\u00e9c.'];
 
@@ -13335,6 +13595,13 @@ function envoyerDispoRequest(wk,login){
     return {key:key,newVal:newVal};
   });
   if(slots.some(function(slot){return slot.newVal==='true'&&!personnelDispoKeyAllowed(wk,login,slot.key,gran);})){showToast('Disponibilité impossible pendant une absence ou une sortie du personnel.','warn');return;}
+  if(replacementLogin&&(!USERS.some(function(user){return user&&user.l===replacementLogin;})||replacementLogin===login)){
+    showToast('Choisissez un autre agent de cette caserne comme remplaçant.','warn');return;
+  }
+  const affectedPiquets=ASTR_REPLACEMENT_ENABLED?astrRequestAffectedPiquets(wk,login,slots,gran):[];
+  if(ASTR_REPLACEMENT_ENABLED&&affectedPiquets.length&&!replacementLogin){
+    showToast('Un piquet est concerné : choisissez le remplaçant avant d’envoyer la demande.','warn');return;
+  }
 
   // Grouper par jour pour affichage
   const slotsByDay={};
@@ -13365,7 +13632,7 @@ function envoyerDispoRequest(wk,login){
   });
   DISPO_REQUESTS[wk].push({
     id:'dr_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),
-    caserneId:CURRENT_CASERNE_ID,login:login,wk:wk,motif:motif,
+    caserneId:CURRENT_CASERNE_ID,login:login,wk:wk,motif:motif,replacementLogin:replacementLogin,
     slots:slots,slotsDetail:slotsDetail,
     hDemande:getHHMM(N()),dateDemande:getDS(N()),
     statut:'en-attente',reponduPar:null,hReponse:null
@@ -13388,6 +13655,10 @@ function repondreDispoRequest(wk,reqId,reponse){
   if(!DISPO_REQUESTS[wk])return;
   const req=DISPO_REQUESTS[wk].find(function(r){return r.id===reqId;});
   if(!req)return;
+  if(reponse==='accepte'&&req.replacementLogin){
+    showToast('Relève non appliquée : la validation atomique avec les piquets doit être disponible sur le serveur. Aucune donnée modifiée.','warn');
+    return;
+  }
   if(reponse==='accepte'){
     const gran=dispoGranularityFor(req.login);
     if((req.slots||[]).some(function(slot){return slot&&slot.newVal==='true'&&!personnelDispoKeyAllowed(wk,req.login,slot.key,gran);})){showToast('Demande refusée : la situation du personnel interdit ces disponibilités.','warn');return;}
@@ -13395,6 +13666,7 @@ function repondreDispoRequest(wk,reqId,reponse){
   req.statut=reponse;
   req.reponduPar=CU.l;
   req.hReponse=getHHMM(N());
+  req.dateReponse=getDS(N());
   // Si accepté → appliquer les valeurs demandées
   if(reponse==='accepte'){
     if(!DISPOS[wk])DISPOS[wk]={};
@@ -13501,7 +13773,7 @@ function personnelPlanningCheckContext(wk){
 }
 function personnelDispoSlotAllowed(wk,login,dayIdx,slotIdx,granularity,context){
   if(!Number.isInteger(dayIdx)||dayIdx<0||dayIdx>6||!Number.isInteger(slotIdx)||slotIdx<0)return false;
-  const range=personnelPlanningSlotRange(wk,dayIdx,(ASTR_CONFIG.weekStartHour??0)*60+slotIdx*granularity,granularity);
+  const range=personnelPlanningSlotRange(wk,dayIdx,astrScheduleForWeek(wk).weekStartHour*60+slotIdx*granularity,granularity);
   if(!range)return false;
   if(PERSONNEL_ONLINE_GATE&&!personnelCurrentRecord(login))return false;
   return !personnelPlanningSlotState(login,range.start,range.end,context||personnelPlanningCheckContext(wk));
@@ -13517,7 +13789,7 @@ function personnelPiquetMemberAllowed(wk,login,jour,debut,fin){
   const dayIdx=Array.from({length:7},function(_,idx){return idx;}).find(function(idx){return jourLabel(idx,true)===jour;});
   if(dayIdx===undefined)return false;
   const start=new Date(Number(wk.slice(0,4)),Number(wk.slice(4,6))-1,Number(wk.slice(6,8)));
-  start.setDate(start.getDate()+dayIdx+(timeToMin(debut)<(ASTR_CONFIG.weekStartHour??0)*60?1:0));
+  start.setDate(start.getDate()+dayIdx+(timeToMin(debut)<astrScheduleForWeek(wk).weekStartHour*60?1:0));
   start.setHours(Number(debut.slice(0,2)),Number(debut.slice(3,5)),0,0);
   const end=new Date(start);
   end.setHours(Number(fin.slice(0,2)),Number(fin.slice(3,5)),0,0);
@@ -13583,7 +13855,7 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
   h+='<div class="dispo-grid-inner" style="--dispo-min-width:'+(_lw+slotsDay0*16)+'px;--dispo-touch-min-width:'+(_lw+slotsDay0*24)+'px;">';
   // En-tête des heures — même présentation que le planning :
   // ligne 1 = heures de début, ligne 2 = heures de fin (décalées, grisées).
-  const _startH=ASTR_CONFIG.weekStartHour??0;
+  const _startH=astrScheduleForWeek(wk).weekStartHour;
   const _hLabel=function(slotIdx){
     const totalMin=(_startH*60+slotIdx*agGran)%1440;
     const hh=Math.floor(totalMin/60),mm=totalMin%60;
@@ -13608,7 +13880,7 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
     h+='<div style="'+_rowGrid+'align-items:center;margin-bottom:3px;"><div style="font-size:11px;font-weight:600;color:var(--t);white-space:nowrap;">'+dispoDayLabel(wk,d,false)+'</div>';
     for(let s=0;s<slotsD;s++){
       const key=d+'_'+s;
-      const range=personnelPlanningSlotRange(wk,d,(ASTR_CONFIG.weekStartHour??0)*60+s*agGran,agGran);
+      const range=personnelPlanningSlotRange(wk,d,astrScheduleForWeek(wk).weekStartHour*60+s*agGran,agGran);
       const unavailable=personnelPlanningSlotState(login,range.start,range.end,availability);
       const allowed=!unavailable&&personnelDispoSlotAllowed(wk,login,d,s,agGran,availability);
       const val=allowed?DISPOS[wk][login][key]:false;
@@ -13618,7 +13890,7 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
       const oc=canEdit&&allowed?'toggleDispoCell(\''+wk+'\',\''+login+'\','+d+','+s+',this,\''+(eq?eq.color:'#22C55E')+'\')':'';
       const dragVal=isDispo?'true':isIndispo?'false':'null';
       h+='<div class="dispo-cell'+(unavailable?(unavailable.kind==='formation'?' astr-formation':' astr-personnel-unavailable'):'')+'" style="display:flex;align-items:center;justify-content:center;font-size:9px;min-width:0;box-sizing:border-box;height:28px;background:'+bg+';cursor:'+cursor+';transition:background .1s;border-radius:3px;border:1px solid #fff;user-select:none;"'
-        +' title="'+escHtml(dispoDayLabel(wk,d,true)+' '+slotToLabelDay(d,s,agGran)+(unavailable?' — '+unavailable.label:allowed?'':' — Indisponible durant la situation du personnel'))+'"'
+        +' title="'+escHtml(dispoDayLabel(wk,d,true)+' '+slotToLabelDay(d,s,agGran,wk)+(unavailable?' — '+unavailable.label:allowed?'':' — Indisponible durant la situation du personnel'))+'"'
         +' data-wk="'+wk+'" data-login="'+login+'" data-d="'+d+'" data-s="'+s+'" data-val="'+dragVal+'" data-personnel-allowed="'+(allowed?'true':'false')+'" data-can-edit="'+(canEdit&&allowed?'true':'false')+'"'
         +(oc?' onclick="'+oc+'"':'')+'>'+(unavailable?unavailable.code:'')+'</div>';
     }
@@ -13714,14 +13986,16 @@ function rAstrDispo(){
         +'<div style="font-size:13px;font-weight:700;color:#7C3AED;margin-bottom:8px;">&#x270F; Demandes de modification ('+pendingReqs.length+')</div>'
         +pendingReqs.map(function(r){
           const u=USERS.find(function(x){return x.l===r.login;});
+          const replacement=USERS.find(function(user){return user&&user.l===r.replacementLogin;});
           return '<div style="background:#fff;border-radius:8px;padding:8px 10px;margin-bottom:6px;border:1px solid #DDD6FE;">'
             +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">'
-            +'<span style="font-size:12px;font-weight:600;">'+(u?fullName(u):r.login)+'</span>'
-            +'<span style="font-size:10px;color:var(--t2);">'+r.dateDemande+' \u00e0 '+r.hDemande+'</span></div>'
-            +(r.motif?'<div style="font-size:11px;color:var(--t2);margin-bottom:6px;font-style:italic;">'+r.motif+'</div>':'')
+            +'<span style="font-size:12px;font-weight:600;">'+escHtml(u?fullName(u):r.login)+'</span>'
+            +'<span style="font-size:10px;color:var(--t2);">'+escHtml(r.dateDemande||'')+' \u00e0 '+escHtml(r.hDemande||'')+'</span></div>'
+            +(r.replacementLogin?'<div style="font-size:11px;font-weight:600;margin-bottom:5px;">Remplaçant proposé : '+escHtml(replacement?fullName(replacement):r.replacementLogin)+'</div>':'')
+            +(r.motif?'<div style="font-size:11px;color:var(--t2);margin-bottom:6px;font-style:italic;">'+escHtml(r.motif)+'</div>':'')
             +(r.slotsDetail&&r.slotsDetail.length?'<div style="margin-bottom:6px;">'
               +r.slotsDetail.map(function(d){
-                return '<div style="font-size:11px;margin-bottom:2px;"><span style="font-weight:600;color:var(--t);">'+d.jour+'</span> : <span style="color:#7C3AED;">'+d.heures+'</span></div>';
+                return '<div style="font-size:11px;margin-bottom:2px;"><span style="font-weight:600;color:var(--t);">'+escHtml(d.jour)+'</span> : <span style="color:#7C3AED;">'+escHtml(d.heures)+'</span></div>';
               }).join('')+'</div>':'')
             +'<div style="display:flex;gap:6px;">'
             +'<button class="btn sm" style="background:#3B6D11;color:#fff;" onclick="repondreDispoRequest(\''+wk+'\',\''+r.id+'\',\'accepte\')">&#x2705; Accepter</button>'
@@ -13730,6 +14004,25 @@ function rAstrDispo(){
         }).join('')+'</div>';
     } else {
       reqPanel.innerHTML='';
+    }
+    const history=(DISPO_REQUESTS[wk]||[]).filter(function(r){
+      return r&&r.statut&&r.statut!=='en-attente'
+        &&(!r.caserneId||r.caserneId===CURRENT_CASERNE_ID)
+        &&(isResp||isAdmin||isSuperAdmin()||r.login===CU.l);
+    }).slice(-50).reverse();
+    if(history.length){
+      reqPanel.innerHTML+='<details style="margin:8px 0;border:1px solid var(--brd);border-radius:8px;padding:8px 10px;">'
+        +'<summary style="cursor:pointer;font-size:12px;font-weight:700;">Historique des demandes ('+history.length+')</summary>'
+        +history.map(function(r){
+          const requester=USERS.find(function(user){return user&&user.l===r.login;});
+          const replacement=USERS.find(function(user){return user&&user.l===r.replacementLogin;});
+          return '<div style="font-size:11px;padding:6px 0;border-bottom:1px solid var(--brd);">'
+            +escHtml(requester?fullName(requester):r.login)+' → '+escHtml(r.statut)
+            +(r.replacementLogin?' · remplaçant '+escHtml(replacement?fullName(replacement):r.replacementLogin):'')
+            +(r.reponduPar?' · '+escHtml(r.reponduPar):'')
+            +(r.dateReponse?' · '+escHtml(r.dateReponse):'')
+            +(r.hReponse?' '+escHtml(r.hReponse):'')+'</div>';
+        }).join('')+'</details>';
     }
   }
 
@@ -14042,7 +14335,7 @@ function piquetToAbsRange(jour,debut,fin){
   return [startMin,endMin];
 }
 function hasConflitPiquet(wk,login,jour,debut,fin,excludeIdx){
-  const startH=(ASTR_CONFIG.weekStartHour??8)*60;
+  const startH=astrScheduleForWeek(wk).weekStartHour*60;
   // Si debut < startHour, le créneau appartient au jour suivant dans le planning
   const jourIdx=JOURS_FULL.indexOf(jour);
   const debutMin=timeToMin(debut);
@@ -14092,8 +14385,16 @@ function piquetDepartureLabel(engin){
 }
 
 function rAstrPiquets(){
+  if(astrPiquetNowTimer){clearTimeout(astrPiquetNowTimer);astrPiquetNowTimer=null;}
   const mon=getMondayOfWeek(astrPiquetWeek);
   const wk=weekKey(mon);
+  const periods=astrPeriodsForWeek(wk);
+  const periodByKey=Object.fromEntries(periods.map(function(period){return [period.key,period];}));
+  const now=N(),dayZero=new Date(mon);dayZero.setHours(0,0,0,0);
+  const nowAbs=Math.floor((now-dayZero)/60000),startMinute=astrScheduleForWeek(wk).weekStartHour*60;
+  const currentDayIdx=Math.floor((nowAbs-startMinute)/1440);
+  const currentMinute=nowAbs-currentDayIdx*1440;
+  const currentPeriod=periods.find(function(period){return currentMinute>=period.from&&currentMinute<period.to;});
   document.getElementById('astr-piquet-week-label').textContent=weekLabel(mon);
   if(!PIQUETS[wk])PIQUETS[wk]=[];
 
@@ -14132,8 +14433,8 @@ function rAstrPiquets(){
   });
 
   let html='<div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;padding:8px 12px;background:var(--bg);border-radius:10px;border:1px solid var(--brd);">'
-    +'<span style="font-size:12px;color:var(--t2);">&#x1F534; Astr. forte :</span> '+badge1
-    +'<span style="font-size:12px;color:var(--t2);margin-left:6px;">&#x1F7E1; 2&egrave;me astreinte :</span> '+badge2
+    +'<span style="font-size:12px;color:#9D174D;font-weight:700;">◆ Astreinte forte :</span> '+badge1
+    +'<span style="font-size:12px;color:#854D0E;font-weight:700;margin-left:6px;">● Astreinte faible :</span> '+badge2
     +(piquetsValidated?'<span style="background:#22C55E;color:#fff;border-radius:10px;padding:2px 10px;font-size:11px;font-weight:600;">&#x2705; Validé</span>':'')
     +'</div>';
   if(piquetsValidated&&!isAdmin){
@@ -14154,18 +14455,17 @@ function rAstrPiquets(){
     const dlpLabel=JOURS_DL[dlp.dayOfWeek]+' '+dlpDateStr+' \u00e0 '+pad(dlp.hour)+'h'+pad(dlp.minute);
     html+='<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:11px;color:#1D4ED8;">\u23F0 D\u00e9lai de validation\u00a0: '+dlpLabel+'</div>';
   }
+  const periodColors={m:'#B5D4F4',a:'#C0DD97',s:'#CECBF6',n:'#FAC775'};
   html+='<div style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:10px;font-size:11px;color:var(--t2);">'
-    +'<span><span style="display:inline-block;width:10px;height:10px;background:#B5D4F4;border-radius:2px;margin-right:4px;"></span>Matin 08:00&ndash;12:00</span>'
-    +'<span><span style="display:inline-block;width:10px;height:10px;background:#C0DD97;border-radius:2px;margin-right:4px;"></span>Apr&egrave;s-midi 12:00&ndash;18:00</span>'
-    +'<span><span style="display:inline-block;width:10px;height:10px;background:#CECBF6;border-radius:2px;margin-right:4px;"></span>Soir 18:00&ndash;00:00</span>'
-    +'<span><span style="display:inline-block;width:10px;height:10px;background:#FAC775;border-radius:2px;margin-right:4px;"></span>Nuit 00:00&ndash;08:00</span>'
+    +periods.map(function(period){return '<span><span style="display:inline-block;width:10px;height:10px;background:'+periodColors[period.key]+';border-radius:2px;margin-right:4px;"></span>'
+      +period.label+' '+pad(Math.floor(period.from/60)%24)+':00&ndash;'+pad(Math.floor(period.to/60)%24)+':00</span>';}).join('')
     +'</div>';
 
   function getTranche(p){
     const d=timeToMin(p.debut);
-    if(d<8*60)return 'n';
-    if(d<12*60)return 'm';
-    if(d<18*60)return 'a';
+    if(d<periods[0].from||periods[3].from<1440&&d>=periods[3].from)return 'n';
+    if(d<periods[0].to)return 'm';
+    if(d<periods[1].to)return 'a';
     return 's';
   }
 
@@ -14252,10 +14552,10 @@ function rAstrPiquets(){
 
       html+='<tr style="border-bottom:0.5px solid var(--brd);">'
         +'<td style="padding:6px 8px;font-size:11px;font-weight:500;text-align:center;background:var(--bg);border-right:0.5px solid var(--brd);">&#x1F692; '+piquetDepartureLabel(engin)+'</td>'
-        +'<td class="pq-drop-cell" data-wk="'+wk+'" data-jour="'+jour+'" data-tr="m" data-engin="'+engin+'" style="padding:6px 8px;border-right:0.5px solid var(--brd);">'+cellHtml(tranches.m,'#E6F1FB','#185FA5','m')+'</td>'
-        +'<td class="pq-drop-cell" data-wk="'+wk+'" data-jour="'+jour+'" data-tr="a" data-engin="'+engin+'" style="padding:6px 8px;border-right:0.5px solid var(--brd);">'+cellHtml(tranches.a,'#EAF3DE','#3B6D11','a')+'</td>'
-        +'<td class="pq-drop-cell" data-wk="'+wk+'" data-jour="'+jour+'" data-tr="s" data-engin="'+engin+'" style="padding:6px 8px;border-right:0.5px solid var(--brd);">'+cellHtml(tranches.s,'#EEEDFE','#534AB7','s')+'</td>'
-        +'<td class="pq-drop-cell" data-wk="'+wk+'" data-jour="'+jour+'" data-tr="n" data-engin="'+engin+'" style="padding:6px 8px;border-right:0.5px solid var(--brd);">'+cellHtml(tranches.n,'#FAEEDA','#854F0B','n')+'</td>'
+        +'<td class="pq-drop-cell'+(currentDayIdx===di&&currentPeriod?.key==='m'?' pq-current-slot':'')+'" data-wk="'+wk+'" data-jour="'+jour+'" data-tr="m" data-engin="'+engin+'" style="padding:6px 8px;border-right:0.5px solid var(--brd);">'+cellHtml(tranches.m,'#E6F1FB','#185FA5','m')+'</td>'
+        +'<td class="pq-drop-cell'+(currentDayIdx===di&&currentPeriod?.key==='a'?' pq-current-slot':'')+'" data-wk="'+wk+'" data-jour="'+jour+'" data-tr="a" data-engin="'+engin+'" style="padding:6px 8px;border-right:0.5px solid var(--brd);">'+cellHtml(tranches.a,'#EAF3DE','#3B6D11','a')+'</td>'
+        +'<td class="pq-drop-cell'+(currentDayIdx===di&&currentPeriod?.key==='s'?' pq-current-slot':'')+'" data-wk="'+wk+'" data-jour="'+jour+'" data-tr="s" data-engin="'+engin+'" style="padding:6px 8px;border-right:0.5px solid var(--brd);">'+cellHtml(tranches.s,'#EEEDFE','#534AB7','s')+'</td>'
+        +'<td class="pq-drop-cell'+(currentDayIdx===di&&currentPeriod?.key==='n'?' pq-current-slot':'')+'" data-wk="'+wk+'" data-jour="'+jour+'" data-tr="n" data-engin="'+engin+'" style="padding:6px 8px;border-right:0.5px solid var(--brd);">'+cellHtml(tranches.n,'#FAEEDA','#854F0B','n')+'</td>'
         +'<td style="padding:4px 6px;text-align:right;vertical-align:middle;white-space:nowrap;">'+addBtn+'</td>'
         +'</tr>';
     });
@@ -14276,7 +14576,7 @@ function rAstrPiquets(){
   sortEquipes(EQUIPES).forEach(function(eq){
     if(!eq.membres.length)return;
     const isEq1=dispoPlanSlots[0]===eq.id,isEq2=dispoPlanSlots[1]===eq.id;
-    const labelSuffix=isEq1?' <span style="background:#E24B4A;color:#fff;border-radius:4px;padding:1px 5px;font-size:9px;">Astr. forte</span>':isEq2?' <span style="background:#F59E0B;color:#fff;border-radius:4px;padding:1px 5px;font-size:9px;">2&egrave;me astr.</span>':'';
+    const labelSuffix=isEq1?' <span style="background:#FDF2F8;color:#9D174D;border:1px solid #F9A8D4;border-radius:4px;padding:1px 5px;font-size:9px;">◆ Forte</span>':isEq2?' <span style="background:#FEF9C3;color:#713F12;border:1px solid #FCD34D;border-radius:4px;padding:1px 5px;font-size:9px;">● Faible</span>':'';
     html+='<div class="panel" style="padding:8px;margin-bottom:6px;">'
       +'<div style="font-size:11px;font-weight:600;color:'+eq.color+';margin-bottom:6px;">'+eq.nom+labelSuffix+'</div>';
     sortByGradeThenName(eq.membres.map(function(l){return USERS.find(function(x){return x.l===l;});}).filter(Boolean)).forEach(function(u){
@@ -14353,6 +14653,13 @@ function rAstrPiquets(){
     }
   }
   document.getElementById('astr-piquet-content').innerHTML=html;
+  if(astrPiquetWeek===0&&currentPeriod){
+    const nextBoundary=dayZero.getTime()+(currentDayIdx*1440+currentPeriod.to)*60000;
+    astrPiquetNowTimer=setTimeout(function(){
+      const pane=document.getElementById('astr-piquets');
+      if(pane&&pane.style.display!=='none')rAstrPiquets();
+    },Math.max(1000,nextBoundary-Date.now()+100));
+  }
 }
 
 // ── Drag & drop des piquets entre tranches et engins ──
@@ -14384,7 +14691,9 @@ document.addEventListener('drop',function(e){
   const original=JSON.stringify(p);
   const previousSlot=piquetDepartureLabel(p.engin)+' '+p.jour+' '+p.debut+'-'+p.fin;
   // Changer de tranche applique les horaires de référence de cette période.
-  const tranchesHoraires={m:['08:00','12:00'],a:['12:00','18:00'],s:['18:00','00:00'],n:['00:00','08:00']};
+  const tranchesHoraires=Object.fromEntries(astrPeriodsForWeek(wk).map(function(period){
+    return [period.key,[pad(Math.floor(period.from/60)%24)+':00',pad(Math.floor(period.to/60)%24)+':00']];
+  }));
   const anciennesHeures=[p.debut,p.fin];
   const nouvellesHeures=tranchesHoraires[tranche];
   const nextDebut=nouvellesHeures?nouvellesHeures[0]:p.debut;
@@ -14548,13 +14857,14 @@ function exportPiquets(){
   const mon=getMondayOfWeek(astrPiquetWeek);
   const wk=weekKey(mon);
   const piquetsSem=PIQUETS[wk]||[];
+  const rule=astrScheduleForWeek(wk);
   const MOIS_FR=['janvier','f\u00e9vrier','mars','avril','mai','juin','juillet','ao\u00fbt','septembre','octobre','novembre','d\u00e9cembre'];
 
   function getTranche(p){
     const d=timeToMin(p.debut);
-    if(d<8*60)return 'nuit';
-    if(d<12*60)return 'matin';
-    if(d<18*60)return 'am';
+    if(d<rule.morningStart*60||d>=rule.nightStart*60)return 'nuit';
+    if(d<rule.afternoonStart*60)return 'matin';
+    if(d<rule.eveningStart*60)return 'am';
     return 'soir';
   }
 
@@ -14731,16 +15041,42 @@ function saveDeadlinePiquet(){
   if(saved){saved.style.display='inline';setTimeout(()=>saved.style.display='none',2000);}
 }
 function saveWeekStart(){
+  if(!isAdminModeActive()){showToast('Activez vos pouvoirs administrateur pour modifier les horaires.','warn');return;}
   const day=parseInt(document.getElementById('ws-day').value);
-  const time=document.getElementById('ws-hour').value||'00:00';
-  const [h]=time.split(':').map(Number);
-  ASTR_CONFIG.weekStartDay=day;
+  if(day!==(ASTR_CONFIG.weekStartDay??1)){showToast('Le jour de début ne peut pas être déplacé sur une semaine déjà planifiée.','warn');return;}
+  const hour=function(id){
+    const value=document.getElementById(id)?.value||'';
+    return /^\d{2}:00$/.test(value)?Number(value.slice(0,2)):NaN;
+  };
+  const h=hour('ws-hour'),afternoon=hour('ws-afternoon'),evening=hour('ws-evening');
+  const nightRaw=hour('ws-night'),night=nightRaw===0?24:nightRaw;
+  if(![h,afternoon,evening,night].every(Number.isInteger)||h<6||h>=12
+    ||!(h<afternoon&&afternoon<evening&&evening<night&&night<=24)){
+    showToast('Horaires invalides : matin < après-midi < soir < nuit < fin de nuit.','warn');return;
+  }
+  const date=document.getElementById('ws-effective-week')?.value||'';
+  const monday=new Date(date+'T12:00:00');
+  const effectiveWeek=date.replace(/-/g,'');
+  if(!/^\d{8}$/.test(effectiveWeek)||Number.isNaN(monday.getTime())||monday.getDay()!==1
+    ||effectiveWeek<=weekKey(getMondayOfWeek(0))){
+    showToast('Choisissez un lundi futur comme date d’application.','warn');return;
+  }
+  if(!Array.isArray(ASTR_CONFIG.scheduleHistory))ASTR_CONFIG.scheduleHistory=[];
+  if(!ASTR_CONFIG.scheduleHistory.length){
+    const initial=astrScheduleHistory();
+    if(initial.length)ASTR_CONFIG.scheduleHistory=initial.map(function(entry){return Object.assign({},entry);});
+    else ASTR_CONFIG.scheduleHistory.push(Object.assign({effectiveWeek:'00000000',createdAt:'',author:'Règle antérieure'},astrScheduleForWeek('00000000')));
+  }
+  ASTR_CONFIG.scheduleHistory=ASTR_CONFIG.scheduleHistory.filter(function(entry){return entry.effectiveWeek!==effectiveWeek;});
+  ASTR_CONFIG.scheduleHistory.push({effectiveWeek,weekStartHour:h,afternoonStart:afternoon,
+    eveningStart:evening,nightStart:night,createdAt:new Date().toISOString(),author:CU.l});
+  ASTR_CONFIG.scheduleHistory.sort(function(a,b){return a.effectiveWeek.localeCompare(b.effectiveWeek);});
   ASTR_CONFIG.weekStartHour=h;
   if(CD())CD().astrConfig=ASTR_CONFIG;saveData();
   const saved=document.getElementById('ws-saved');
   saved.style.display='inline';
   setTimeout(()=>saved.style.display='none',2000);
-  rAstrPlanning();rAstrDispo();
+  rAstrEquipes();rAstrPlanning();rAstrDispo();
 }
 function rAstrEquipes(){
   // Défense d'affichage : une ancienne configuration avec engins=null ne doit
@@ -14762,7 +15098,28 @@ function rAstrEquipes(){
   const wsDay=document.getElementById('ws-day');
   const wsHour=document.getElementById('ws-hour');
   if(wsDay)wsDay.value=String(ASTR_CONFIG.weekStartDay??1);
-  if(wsHour)wsHour.value=pad(ASTR_CONFIG.weekStartHour??0)+':00';
+  const nextMonday=getMondayOfWeek(1),nextWeek=weekKey(nextMonday),nextRule=astrScheduleForWeek(nextWeek);
+  if(wsHour)wsHour.value=pad(nextRule.weekStartHour)+':00';
+  const af=document.getElementById('ws-afternoon'),ev=document.getElementById('ws-evening'),ni=document.getElementById('ws-night');
+  if(af)af.value=pad(nextRule.afternoonStart)+':00';
+  if(ev)ev.value=pad(nextRule.eveningStart)+':00';
+  if(ni)ni.value=pad(nextRule.nightStart%24)+':00';
+  const effective=document.getElementById('ws-effective-week');
+  if(effective)effective.value=nextMonday.getFullYear()+'-'+pad(nextMonday.getMonth()+1)+'-'+pad(nextMonday.getDate());
+  const historyEl=document.getElementById('ws-history');
+  if(historyEl){
+    const entries=astrScheduleHistory();
+    historyEl.innerHTML=isAdminModeActive()&&entries.length
+      ?'<details><summary>Historique des horaires ('+entries.length+')</summary>'
+        +entries.slice().reverse().map(function(entry){
+          const date=entry.effectiveWeek==='00000000'?'Avant les changements':entry.effectiveWeek.slice(6,8)+'/'+entry.effectiveWeek.slice(4,6)+'/'+entry.effectiveWeek.slice(0,4);
+          return '<div style="padding:5px 0;border-bottom:1px solid var(--brd);font-size:11px;">'
+            +escHtml(date)+' · '+pad(entry.weekStartHour)+' h–'+pad(entry.afternoonStart)+' h / '
+            +pad(entry.afternoonStart)+' h–'+pad(entry.eveningStart)+' h / '
+            +pad(entry.eveningStart)+' h–'+pad(entry.nightStart%24)+' h / nuit jusqu’à '+pad(entry.weekStartHour)+' h'
+            +(entry.author?' · '+escHtml(entry.author):'')+'</div>';
+        }).join('')+'</details>':'';
+  }
   // Remplir select responsable
   const respSel=document.getElementById('eq-resp');
   // USERS contient déjà le superadmin via syncCaserneContext — tri alphabétique nom prénom
@@ -15380,7 +15737,7 @@ function getPiquetActif(wk,login){
   const dayIndex=Math.round((Date.UTC(now.getFullYear(),now.getMonth(),now.getDate())
     -Date.UTC(year,month,day))/86400000);
   const nowAbs=dayIndex*1440+now.getHours()*60+now.getMinutes();
-  const weekStart=(ASTR_CONFIG.weekStartHour??0)*60;
+  const weekStart=astrScheduleForWeek(wk).weekStartHour*60;
   return (PIQUETS[wk]||[]).find(function(p){
     // chef d'agrès : raccourci p.chefAgres, ou repli sur les membres (insensible apostrophe)
     let caLogin=p.chefAgres;
@@ -15751,7 +16108,7 @@ function showPersonnelModal(id){
   const piquetNow=N(),piquetStart=new Date(piquetNow);
   const piquetStartDay=ASTR_CONFIG.weekStartDay??1;
   piquetStart.setDate(piquetStart.getDate()-((piquetStart.getDay()-piquetStartDay+7)%7));
-  piquetStart.setHours(ASTR_CONFIG.weekStartHour??0,0,0,0);
+  piquetStart.setHours(astrScheduleForWeek(weekKey(piquetStart)).weekStartHour,0,0,0);
   if(piquetNow<piquetStart)piquetStart.setDate(piquetStart.getDate()-7);
   const wk=weekKey(piquetStart);
   const previous=chained&&iv._chainPreviousInterventionId?interventionById(iv._chainPreviousInterventionId):null;
@@ -19981,7 +20338,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202611_0024';
+const APP_VERSION='V202611_0025';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -21273,6 +21630,26 @@ function writeCompteRenduDraft(ivId,text,updatedAt){
 function onCompteRenduDraftInput(field){
   if(!field)return;
   writeCompteRenduDraft(field.dataset.ivId||'',field.value);
+}
+
+function compteRenduDeadline(iv){
+  const day=String(iv&&iv.h||'').replace(/\D/g,'').slice(0,8);
+  if(!/^20\d{6}$/.test(day))return '';
+  const year=Number(day.slice(0,4)),month=Number(day.slice(4,6)),date=Number(day.slice(6,8));
+  const parsed=new Date(Date.UTC(year,month-1,date));
+  if(parsed.getUTCFullYear()!==year||parsed.getUTCMonth()!==month-1||parsed.getUTCDate()!==date)return '';
+  const limit=new Date(Date.UTC(year,month,5));
+  return limit.toISOString().slice(0,10);
+}
+function compteRenduParisToday(){
+  const parts=new Intl.DateTimeFormat('fr-FR',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+  const value=key=>parts.find(part=>part.type===key)?.value||'';
+  return value('year')+'-'+value('month')+'-'+value('day');
+}
+function compteRenduLate(iv){
+  const day=String(iv&&iv.h||'').replace(/\D/g,'').slice(0,8);
+  const deadline=compteRenduDeadline(iv);
+  return day>='20261001'&&!!deadline&&compteRenduParisToday()>deadline;
 }
 
 function showCompteRenduModal(ivId) {
@@ -26319,6 +26696,7 @@ function effacerPlanningAnnee(){
   rAstrGarde();
   });
 }
+
 // === MODULE: onedrive_sync.js ===
 // ══════════════════════════════════════════════════════
 // SYNCHRONISATION DOSSIER PARTAGÉ (OneDrive / réseau)
@@ -26779,7 +27157,7 @@ function piquetAgentOpts(agents,exclude,includeNone){
     if(!jour||!debut||!fin)return false;
     const jourIdx=JOURS_FULL.indexOf(jour);
     if(jourIdx<0)return false;
-    const startHour=ASTR_CONFIG.weekStartHour||0;
+    const startHour=astrScheduleForWeek(wk).weekStartHour;
     const dMin=timeToMin(debut);
     const fMin=timeToMin(fin);
     const overnight=fMin<=dMin;
@@ -26893,7 +27271,7 @@ function pqBuildMiniGrille(wk){
   const jourIdx=JOURS_FULL.indexOf(jour);
   if(jourIdx<0)return '';
   const gran=ASTR_CONFIG.granularity||60;
-  const startHour=ASTR_CONFIG.weekStartHour||0;
+  const startHour=astrScheduleForWeek(wk).weekStartHour;
   const slots=Math.floor(1440/gran);
   const dispoWk=DISPOS[wk]||{};
   const agents=sortByGradeThenName(USERS.filter(function(u){
@@ -27111,7 +27489,7 @@ function addPiquet(wk,engin,jourDefaut){
 }
 function suggestCreneaux(wk){
   const gran=ASTR_CONFIG.granularity||60;
-  const startHour=ASTR_CONFIG.weekStartHour||0;
+  const startHour=astrScheduleForWeek(wk).weekStartHour;
   const slotsPerDay=getSlotsPerDay(gran);
   const _pv=PLANNING_ROTATIONS[wk];
   const planSlots=!_pv?[]:(typeof _pv==='string'?[_pv]:(Array.isArray(_pv)?_pv:[]));
@@ -27228,7 +27606,7 @@ function autoFillPiquet(wk){
       const fin=document.getElementById('pq-fin')?.value;
       if(!jour||!debut||!fin)return false;
       const gran=ASTR_CONFIG.granularity||60;
-      const startHour=ASTR_CONFIG.weekStartHour||0;
+      const startHour=astrScheduleForWeek(wk).weekStartHour;
       const jourIdx=JOURS_FULL.indexOf(jour);
       if(jourIdx<0)return false;
       const d=DISPOS[wk]?.[login];if(!d)return false;
@@ -27512,6 +27890,7 @@ function actToggleForm(){
   const panel=document.getElementById('act-form-panel');
   const btn=document.getElementById('act-new-btn');
   const willOpen=panel.style.display==='none'||panel.style.display==='';
+  if(!willOpen)dismissAppKeyboard();
   panel.style.display=willOpen?'block':'none';
   if(btn){btn.style.display=willOpen?'none':'';btn.textContent='+ Nouvelle activité';}
   if(willOpen){
@@ -27572,14 +27951,16 @@ function rActiviteList(){
         const canSee=actCanSeeDetail(a);
         const printCount=(a.impressions||[]).length;
         const pb=printCount?` 🖨×${printCount}`:'';
-        return `<div class="hm" onclick="${canSee?`actVoirDetail('${a.id}')`:''}">
-          <span style="font-family:monospace;font-size:10px;color:var(--t3);">${a.date.slice(8,10)}/${m}/${y}</span>
-          <span style="flex:1;font-size:12px;color:var(--t);">${ico} ${a.type}</span>
-          <span style="font-size:11px;color:var(--t2);">${a.hDebut||''}${a.hFin?' → '+a.hFin:''} ${(a.duree||a.hDebut&&a.hFin)?'· '+dureeFormatHHMM(a.duree,a.hDebut,a.hFin):''} · ${nbP}p${pb}</span>
+        return `<div class="hm activity-history-row" onclick="${canSee?`actVoirDetail('${a.id}')`:''}">
+          <span class="activity-history-date" style="font-family:monospace;font-size:10px;color:var(--t3);">${a.date.slice(8,10)}/${m}/${y}</span>
+          <span class="activity-history-title" style="flex:1;font-size:12px;color:var(--t);">${ico} ${a.type}</span>
+          <span class="activity-history-meta" style="font-size:11px;color:var(--t2);">${a.hDebut||''}${a.hFin?' → '+a.hFin:''} ${(a.duree||a.hDebut&&a.hFin)?'· '+dureeFormatHHMM(a.duree,a.hDebut,a.hFin):''} · ${nbP}p${pb}</span>
+          <span class="activity-history-actions">
           ${!canSee?'<span style="font-size:10px;color:var(--t3);">🔒</span>':''}
-          ${canSee?`<button class="btn sm" style="background:var(--rd);color:#fff;font-size:10px;padding:1px 5px;margin-left:4px;" onclick="event.stopPropagation();actImprimerRapport('${a.id}')">🖨</button>`:''}
+          ${canSee&&canOpenInterventionPdfOnThisDevice()?`<button class="btn sm" style="background:var(--rd);color:#fff;font-size:10px;padding:1px 5px;margin-left:4px;" onclick="event.stopPropagation();actImprimerRapport('${a.id}')">🖨</button>`:''}
           ${isAdmin?`<button class="btn sm" style="font-size:10px;padding:1px 5px;" onclick="event.stopPropagation();actEditer('${a.id}')">✏️</button>`:''}
           ${isSuperAdmin()?`<button class="btn sm danger" style="font-size:10px;padding:1px 5px;" onclick="event.stopPropagation();deleteActivite('${a.id}')">🗑</button>`:''}
+          </span>
         </div>`;
       }).join('')}</div>`;
     }).join('')}</div></div>`;
@@ -27617,6 +27998,7 @@ function saveActivite(){
   actGetData().push(entry);
   if(typeof _jbEditLock!=='undefined')_jbEditLock=Date.now();
   saveData(true); // push immédiat : sinon l'activité peut être écrasée au prochain pull
+  dismissAppKeyboard();
   // Reset form
   ['act-date','act-hdebut','act-hfin','act-cr'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('act-duree').value='';
@@ -27632,6 +28014,7 @@ function saveActivite(){
 
 // ── Voir détail ──
 function actVoirDetail(id){
+  dismissAppKeyboard();
   const data=actGetData();
   const a=data.find(x=>x.id===id);
   if(!a)return;
@@ -27665,7 +28048,7 @@ function actVoirDetail(id){
     ${printHtml}
     ${histHtml}
     <div class="brow" style="margin-top:12px;">
-      <button class="btn sm" style="background:var(--rd);color:#fff;" onclick="actImprimerRapport('${id}')">🖨 Imprimer rapport</button>
+      ${canOpenInterventionPdfOnThisDevice()?`<button class="btn sm" style="background:var(--rd);color:#fff;" onclick="actImprimerRapport('${id}')">🖨 Imprimer rapport</button>`:desktopOnlyInterventionPdfMessageHTML()}
       ${canEdit?`<button class="btn sm" onclick="cM();actEditer('${id}')">✏️ Modifier</button>`:''}
       ${isSuperAdmin()?`<button class="btn sm danger" onclick="cM();deleteActivite('${id}')">🗑 Supprimer</button>`:''}
     </div>
@@ -27675,6 +28058,7 @@ function actVoirDetail(id){
 
 // ── Modifier (admin/superadmin uniquement) ──
 function actEditer(id){
+  dismissAppKeyboard();
   if(!isAdminModeActive()){showToast('Accès réservé aux administrateurs','warn');return;}
   const data=actGetData();
   const a=data.find(x=>x.id===id);
@@ -27741,6 +28125,10 @@ function actSaveEdit(id){
 
 // ── Impression rapport ──
 function actImprimerRapport(id){
+  if(!canOpenInterventionPdfOnThisDevice()){
+    showToast('Les rapports d’activité de service sont consultables uniquement sur ordinateur.','warn');
+    return;
+  }
   const data=actGetData();
   const a=data.find(x=>x.id===id);
   if(!a){showToast('Activité introuvable','warn');return;}
@@ -27861,6 +28249,7 @@ function deleteFmpa(id){
     }
   });
 }
+
 // === MODULE: formations.js ===
 // ══════════════════════════════════════════════════════
 // FORMATION
@@ -28635,6 +29024,7 @@ function fmpaVoirDetail(id){
     <div class="brow" style="margin-top:12px;">
 
       ${isAdmin?`<button class="btn sm" onclick="cM();fmpaEditer('${id}')">✏️ Modifier</button>`:''}
+      ${canOpenInterventionPdfOnThisDevice()?`<button class="btn sm" onclick="cM();fmpaImprimerRapport('${id}')">🖨 Imprimer rapport</button>`:''}
       ${isSuperAdmin()?`<button class="btn sm danger" onclick="cM();deleteFmpa('${id}')">🗑 Supprimer</button>`:''}
     </div>
   </div>`;
@@ -28748,6 +29138,7 @@ function genRapportFmpaHTML(a){
   rows.push(['','\u00a0']);
   rows.push(['',presHtml]);
   if(formHtml)rows.push(['',formHtml]);
+  const idxH=a.hDebut?2:-1;
   let rowsBefore=idxH>=0?idxH:rows.length;
   if(rowsBefore===0)rowsBefore=1;
 
@@ -29423,6 +29814,1482 @@ function astrTelSaveParams(){
   cM();
 }
 
+function showAstrTelParams(){
+  // Lire quota actuel (depuis la 1ère caserne dispo ou valeur globale)
+  let currentQuota=QUOTA_ASTREINTE_TEL_H;
+  if(CASERNES&&CASERNES.length){
+    const cd=CASERNE_DATA[CASERNES[0].id];
+    if(cd&&cd.astrTelParams&&cd.astrTelParams.quota)currentQuota=cd.astrTelParams.quota;
+  }
+  document.getElementById('mt').textContent='📞 Paramètres astreinte téléphonique';
+  document.getElementById('mi').textContent='';
+  document.getElementById('mb').innerHTML=`<div>
+    <div class="fg">
+      <div class="fgl">Nombre d'heures maximum annuel par agent</div>
+      <input class="fi" type="number" id="astrtel-quota-input" style="max-width:140px;" min="0" step="24" value="${currentQuota}"/>
+      <div style="font-size:11px;color:var(--t2);margin-top:4px;">Par défaut : 3 024 heures (18 semaines × 7 jours × 24h)</div>
+    </div>
+    <div class="fg">
+      <div class="fgl">Ce quota s'applique à toutes les casernes.</div>
+    </div>
+    <div class="brow">
+      <button class="btn pr" onclick="astrTelSaveParams()">💾 Enregistrer</button>
+      <button class="btn" onclick="cM()">Annuler</button>
+    </div>
+  </div>`;
+  document.getElementById('mo').style.display='flex';
+}
+
+// Nouveau circuit Auth : demandes et transitions vérifiées côté serveur.
+let _secureRenfortRows=[];
+let _secureRenfortFetchedAt=0;
+let _secureRenfortFetchPromise=null;
+let _secureRenfortStation='';
+let _secureLegacyRenderInterventions=null;
+
+function secureRenfortById(id){
+  return _secureRenfortRows.find(function(row){return row.id===id;})||null;
+}
+function secureRenfortPending(){
+  return _secureRenfortRows.filter(function(row){
+    return row.destination_caserne===CURRENT_CASERNE_ID&&row.status==='en-attente';
+  });
+}
+async function secureRenfortRequest(path,method,payload){
+  const token=_agaiAuthAccessToken();
+  if(!SECURE_RENFORTS_ENABLED||!token||!navigator.onLine){
+    throw new Error('Connexion en ligne requise pour les renforts.');
+  }
+  const response=await _agaiAuthFetchWithTimeout(SB_REST+path,{
+    method:method,
+    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+    body:payload===undefined?undefined:JSON.stringify(payload)
+  },12000);
+  if(!response.ok){
+    let serverCode='';
+    try{serverCode=(await response.json()).message||'';}catch(_error){}
+    const knownErrors={
+      AGAI_RENFORT_RESOURCES_BUSY:'Un agent ou un véhicule est déjà engagé. Actualisez les interventions avant de repartir.',
+      AGAI_RENFORT_VEHICLE_UNKNOWN:'Ce véhicule ne figure plus dans les engins de la caserne. Actualisez la page.',
+      AGAI_RENFORT_PERSONNEL_UNAVAILABLE:'Un membre de l’équipage n’est plus disponible pour ce départ.',
+      AGAI_RENFORT_SOURCE_CLOSED:'L’intervention demandeuse n’est plus ouverte.',
+      AGAI_RENFORT_ALREADY_PROCESSED:'Cette demande a déjà changé de statut. Actualisez les renforts.'
+    };
+    if(knownErrors[serverCode])throw new Error(knownErrors[serverCode]);
+    if(response.status===401||response.status===403)throw new Error('Accès au renfort refusé. Reconnectez-vous.');
+    if(response.status===409)throw new Error('Cette demande a changé. Actualisez les renforts.');
+    throw new Error('Renfort non enregistré (HTTP '+response.status+').');
+  }
+  return response.json();
+}
+async function secureRenfortRpc(name,payload){
+  return secureRenfortRequest('/rpc/'+name,'POST',payload);
+}
+async function securePullRenfortRecord(){
+  try{return typeof _rcPull==='function'&&await _rcPull(true)===true;}
+  catch(error){console.warn('[AGAI][renforts] Fiche locale non actualisée',error);return false;}
+}
+async function secureRefreshRenforts(force){
+  if(!SECURE_RENFORTS_ENABLED||!CURRENT_CASERNE_ID||!CU)return false;
+  if(_secureRenfortFetchPromise)return _secureRenfortFetchPromise;
+  if(!force&&_secureRenfortStation===CURRENT_CASERNE_ID
+      &&Date.now()-_secureRenfortFetchedAt<15000)return true;
+  const station=CURRENT_CASERNE_ID;
+  const login=CU.l;
+  _secureRenfortFetchPromise=(async function(){try{
+    const rows=await secureRenfortRequest(
+      '/agai_renfort_requests?select=id,request_key,source_record_id,source_caserne,destination_caserne,kind,note,source_snapshot,status,requested_by,requested_at,responded_by,responded_at,local_record_id,crew,vehicle,started_at,finished_at&order=requested_at.desc&limit=300',
+      'GET');
+    if(!Array.isArray(rows))throw new Error('Réponse des renforts invalide.');
+    if(!CU||CU.l!==login||CURRENT_CASERNE_ID!==station)return false;
+    rows.forEach(function(row){
+      const sourceId=row.source_snapshot&&row.source_snapshot.ivId;
+      if(row.source_caserne!==station||!sourceId||!row.request_key)return;
+      const storageKey='agai_renfort_action_send_'+sourceId;
+      try{
+        if(localStorage.getItem(storageKey)===row.request_key)
+          localStorage.removeItem(storageKey);
+      }catch(_error){}
+    });
+    _secureRenfortRows=rows;
+    _secureRenfortStation=station;
+    _secureRenfortFetchedAt=Date.now();
+    if(typeof _secureLegacyRenderInterventions==='function')_secureLegacyRenderInterventions();
+    secureRenderRenfortInbox();
+    updateRenfortBadge();
+    return true;
+  }catch(error){
+    console.warn('[AGAI][renforts] Synchronisation impossible',error);
+    return false;
+  }finally{_secureRenfortFetchPromise=null;}})();
+  return _secureRenfortFetchPromise;
+}
+function secureRenfortActionKey(id,action){
+  const storageKey='agai_renfort_action_'+action+'_'+id;
+  try{
+    let key=localStorage.getItem(storageKey);
+    if(!key){key=crypto.randomUUID();localStorage.setItem(storageKey,key);}
+    return key;
+  }catch(_error){return crypto.randomUUID();}
+}
+function secureClearRenfortActionKey(id,action){
+  try{localStorage.removeItem('agai_renfort_action_'+action+'_'+id);}catch(_error){}
+}
+function secureRenfortSummary(row){
+  const source=row.source_snapshot||{};
+  return escHtml(source.ivNature||'Intervention')+' — '+escHtml(source.ivCommune||'')
+    +(source.ivAdresse?' · '+escHtml(source.ivAdresse):'');
+}
+function secureRenderRenfortInbox(){
+  if(!SECURE_RENFORTS_ENABLED)return;
+  const zone=document.getElementById('renfort-zone');if(!zone)return;
+  const rows=_secureRenfortRows.filter(function(row){
+    return row.destination_caserne===CURRENT_CASERNE_ID
+      &&['en-attente','accepte','en-cours'].includes(row.status);
+  });
+  if(!rows.length){zone.innerHTML='';return;}
+  zone.innerHTML='<div style="background:#F5F3FF;border:2px solid #DDD6FE;border-radius:12px;padding:12px;margin-bottom:12px;">'
+    +'<div style="font-size:13px;font-weight:700;color:#7C3AED;margin-bottom:8px;">📢 Renforts reçus ('+rows.length+')</div>'
+    +rows.map(function(row){
+      const station=CASERNES.find(function(c){return c.id===row.source_caserne;});
+      const id=escHtml(row.id);
+      const actions=row.status==='en-attente'
+        ?'<button class="btn sm gn" onclick="secureAnswerRenfort(\''+id+'\',\'accepte\')">Accepter</button> '
+          +'<button class="btn sm" onclick="secureAnswerRenfort(\''+id+'\',\'refuse\')">Refuser</button>'
+        :row.status==='accepte'
+          ?'<button class="btn sm pr" onclick="secureShowRenfortCrew(\''+id+'\')">Composer et partir</button>'
+          :'<span style="font-size:11px;color:#5B21B6;">Équipage en route</span>';
+      return '<div style="background:#fff;border:1px solid #DDD6FE;border-radius:8px;padding:10px;margin-bottom:6px;">'
+        +'<div style="font-size:12px;font-weight:700;">'+(row.kind==='complet'?'🚒 Renfort complet':'👥 Renfort personnel')
+        +' · '+escHtml(station?station.nom:row.source_caserne)+'</div>'
+        +'<div style="font-size:12px;margin:5px 0;">'+secureRenfortSummary(row)+'</div>'
+        +(row.note?'<div style="font-size:11px;color:var(--t2);">'+escHtml(row.note)+'</div>':'')
+        +'<div style="display:flex;gap:6px;margin-top:7px;">'+actions+'</div></div>';
+    }).join('')+'</div>';
+}
+function secureRenfortSourceRows(iv){
+  return _secureRenfortRows.filter(function(row){
+    return row.source_caserne===CURRENT_CASERNE_ID
+      &&row.source_snapshot&&row.source_snapshot.ivId===iv.id;
+  });
+}
+function secureRenfortSourceHtml(iv){
+  const rows=secureRenfortSourceRows(iv);
+  if(!rows.length)return '';
+  return '<div style="margin-top:10px;padding:10px;border:1px solid #DDD6FE;border-radius:9px;background:#F5F3FF;">'
+    +'<div style="font-weight:700;font-size:12px;margin-bottom:5px;">Renforts demandés</div>'
+    +rows.map(function(row){
+      const station=CASERNES.find(function(c){return c.id===row.destination_caserne;});
+      return '<div style="font-size:12px;margin:5px 0;">'
+        +escHtml(station?station.nom:row.destination_caserne)+' · '+escHtml(row.status)
+        +(row.status==='en-attente'
+          ?' <button class="btn sm" onclick="secureCancelRenfort(\''+escHtml(row.id)+'\')">Annuler</button>':'')
+        +'</div>';
+    }).join('')+'</div>';
+}
+function secureAppendRenfortSource(ivId){
+  const iv=interventionById(ivId);if(!iv)return;
+  const body=document.getElementById('mb');if(!body)return;
+  const html=secureRenfortSourceHtml(iv);
+  if(html)body.insertAdjacentHTML('beforeend',html);
+}
+function secureShowRenfortModal(ivId,forcePersonnel){
+  const iv=interventionById(ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La demande de renfort'))return;
+  if(!['selectionne','en-cours'].includes(iv.s)){
+    showToast('Cette intervention ne peut plus demander de renfort.','warn');return;
+  }
+  const stations=CASERNES.filter(function(c){return c.id!==CURRENT_CASERNE_ID;});
+  if(!stations.length){showToast('Aucune caserne destinataire disponible.','warn');return;}
+  document.getElementById('mt').textContent='Demande de renfort';
+  document.getElementById('mi').textContent=iv.n+' — '+iv.com;
+  document.getElementById('mb').innerHTML=
+    '<div class="fg"><div class="fgl">Type</div><select class="fi" id="secure-renfort-kind">'
+    +(forcePersonnel?'<option value="personnel">Renfort personnel</option>'
+      :'<option value="complet">Camion et équipage</option><option value="personnel">Personnel seulement</option>')
+    +'</select></div>'
+    +'<div class="fgl">Caserne(s) destinataire(s)</div>'
+    +stations.map(function(station){return '<label style="display:block;margin:7px 0;font-size:12px;">'
+      +'<input type="checkbox" class="secure-renfort-dest" value="'+escHtml(station.id)+'"> '
+      +escHtml(station.nom)+'</label>';}).join('')
+    +'<div class="fg"><div class="fgl">Précision facultative</div>'
+    +'<textarea class="fi" id="secure-renfort-note" maxlength="1000" rows="2"></textarea></div>'
+    +'<div class="brow"><button class="btn pr" id="secure-renfort-send" onclick="secureSendRenfort(\''+escHtml(ivId)+'\')">Envoyer</button>'
+    +'<button class="btn" onclick="cM()">Annuler</button></div>'
+    +secureRenfortSourceHtml(iv);
+  document.getElementById('mo').style.display='flex';
+  void secureRefreshRenforts(false);
+}
+async function secureSendRenfort(ivId){
+  const iv=interventionById(ivId);if(!iv)return;
+  if(!requireCurrentUserOperationalManager(iv,'La demande de renfort'))return;
+  const destinations=Array.from(document.querySelectorAll('.secure-renfort-dest:checked'))
+    .map(function(input){return input.value;});
+  if(!destinations.length){showToast('Choisissez au moins une caserne.','warn');return;}
+  const button=document.getElementById('secure-renfort-send');
+  if(button&&button.disabled)return;
+  if(button)button.disabled=true;
+  try{
+    await secureRenfortRpc('agai_renfort_send',{
+      p_source_record_id:_rcId(CURRENT_CASERNE_ID,'iv',iv.id),
+      p_destinations:destinations,
+      p_kind:document.getElementById('secure-renfort-kind').value,
+      p_note:document.getElementById('secure-renfort-note').value.trim(),
+      p_request_key:secureRenfortActionKey(iv.id,'send')
+    });
+    const refreshed=await secureRefreshRenforts(true);
+    cM();
+    if(refreshed){
+      secureClearRenfortActionKey(iv.id,'send');
+      showToast('Demande de renfort enregistrée.','success');
+    }else{
+      showToast('Demande enregistrée sur le serveur, mais affichage à actualiser.','warn');
+    }
+  }catch(error){showToast(error.message,'warn');}
+  finally{if(button)button.disabled=false;}
+}
+async function secureAnswerRenfort(id,answer){
+  try{
+    await secureRenfortRpc('agai_renfort_answer',{p_id:id,p_answer:answer});
+    if(!await secureRefreshRenforts(true)){
+      showToast('Réponse enregistrée sur le serveur, mais affichage à actualiser.','warn');return;
+    }
+    showToast(answer==='accepte'?'Renfort accepté.':'Renfort refusé.','success');
+    if(answer==='accepte')secureShowRenfortCrew(id);
+  }catch(error){showToast(error.message,'warn');}
+}
+async function secureCancelRenfort(id){
+  try{
+    await secureRenfortRpc('agai_renfort_cancel',{p_id:id});
+    cM();
+    if(!await secureRefreshRenforts(true)){
+      showToast('Annulation enregistrée sur le serveur, mais affichage à actualiser.','warn');return;
+    }
+    showToast('Demande de renfort annulée.','success');
+  }catch(error){showToast(error.message,'warn');}
+}
+function secureShowRenfortCrew(id){
+  const row=secureRenfortById(id);if(!row||row.status!=='accepte')return;
+  if(!canUseOperationalStartInterface()){
+    showToast('Le départ du renfort est réservé au mobile ou à la tablette.','warn');return;
+  }
+  const vehicles=availableCaserneVehicleNames('');
+  const users=sortByGradeThenName(USERS);
+  const crewSelect=function(index,label){
+    return '<div class="fg"><div class="fgl">'+label+'</div><select class="fi secure-renfort-member" id="secure-renfort-member-'+index+'">'
+      +'<option value="">— Aucun —</option>'
+      +users.map(function(user){return '<option value="'+escHtml(user.l)+'">'
+        +escHtml(fullName(user))+'</option>';}).join('')+'</select></div>';
+  };
+  document.getElementById('mt').textContent='Départ du renfort';
+  document.getElementById('mi').textContent=(row.source_snapshot&&row.source_snapshot.ivNature||'Intervention')
+    +' — '+(row.source_snapshot&&row.source_snapshot.ivCommune||'');
+  document.getElementById('mb').innerHTML='<div style="font-size:12px;margin-bottom:9px;">Caserne demandeuse : '
+    +escHtml(row.source_caserne)+'</div>'
+    +(row.kind==='complet'?'<div class="fg"><div class="fgl">Véhicule</div><select class="fi" id="secure-renfort-vehicle">'
+      +'<option value="">— Sélectionner —</option>'
+      +vehicles.map(function(vehicle){return '<option value="'+escHtml(vehicle)+'">'+escHtml(vehicle)+'</option>';}).join('')
+      +'</select></div>':'')
+    +crewSelect(0,'Chef d’agrès / premier agent')
+    +crewSelect(1,'Conducteur / deuxième agent')
+    +crewSelect(2,'Équipier')
+    +crewSelect(3,'Équipier 2')
+    +'<div class="brow"><button class="btn pr" onclick="secureStartRenfort(\''+escHtml(id)+'\')">Vérifier et partir</button>'
+    +'<button class="btn" onclick="cM()">Annuler</button></div>';
+  document.getElementById('mo').style.display='flex';
+}
+function secureStartRenfort(id,authorized){
+  const row=secureRenfortById(id);if(!row||row.status!=='accepte')return;
+  if(!canUseOperationalStartInterface()){
+    showToast('Le départ du renfort est réservé au mobile ou à la tablette.','warn');return;
+  }
+  const target={id:'RENFORT_'+id,n:row.source_snapshot&&row.source_snapshot.ivNature||'',
+    com:row.source_snapshot&&row.source_snapshot.ivCommune||''};
+  if(!authorized){
+    requestOperationalStartAuthorization(target,function(){secureStartRenfort(id,true);},{skipChaining:true});
+    return;
+  }
+  const members=Array.from(document.querySelectorAll('.secure-renfort-member'))
+    .map(function(input){return input.value;}).filter(Boolean);
+  const vehicle=document.getElementById('secure-renfort-vehicle')?.value||'';
+  if(!members.length||new Set(members).size!==members.length){
+    showToast('Choisissez un équipage sans doublon.','warn');return;
+  }
+  if(row.kind==='complet'&&!vehicle){showToast('Choisissez le véhicule.','warn');return;}
+  if(vehicle){
+    const conflict=findActiveVehicleConflict(vehicle,null);
+    if(conflict){showOperationalConflict('vehicle',vehicle,conflict);return;}
+  }
+  for(const login of members){
+    const conflict=findActivePersonnelConflict(login,null);
+    if(conflict){showOperationalConflict('personnel',login,conflict);return;}
+  }
+  if(!takeOperationalStartAuthorization(target)){
+    showToast(OPERATIONAL_START_DENIED_MESSAGE,'warn');return;
+  }
+  void secureStartRenfortCommit(id,members,vehicle);
+}
+async function secureStartRenfortCommit(id,members,vehicle){
+  try{
+    await secureRenfortRpc('agai_renfort_start',{
+      p_id:id,p_members:members,p_vehicle:vehicle,
+      p_action_key:secureRenfortActionKey(id,'start')
+    });
+    const refreshed=await secureRefreshRenforts(true);
+    const pulled=await securePullRenfortRecord();
+    cM();rI();
+    if(refreshed&&pulled){
+      secureClearRenfortActionKey(id,'start');
+      showToast('Renfort en cours.','success');
+    }else{
+      showToast('Départ enregistré sur le serveur, mais affichage à actualiser.','warn');
+    }
+  }catch(error){showToast(error.message,'warn');}
+}
+function secureCloseRenfort(_cid,id,confirmed){
+  const row=secureRenfortById(id);
+  const local=(IVS||[]).find(function(iv){return iv._renfortId===id;});
+  if(!row||row.status!=='en-cours'||!local){
+    showToast('Fiche de renfort à actualiser avant clôture.','warn');return;
+  }
+  if(!confirmed){
+    requestOperationalCloseConfirmation(local,'Renfort · Retour : '+getHHMM(N()),
+      function(snapshot){secureCloseRenfort(_cid,id,snapshot);});
+    return;
+  }
+  if(confirmed!==operationalCloseSnapshot(local)){
+    showToast('La fiche a changé : rouvrez-la avant de clôturer.','warn');return;
+  }
+  void secureCloseRenfortCommit(id,Number(local._serverRevision)||0);
+}
+async function secureCloseRenfortCommit(id,revision){
+  try{
+    await secureRenfortRpc('agai_renfort_finish',{
+      p_id:id,p_action_key:secureRenfortActionKey(id,'finish'),
+      p_expected_record_revision:revision
+    });
+    const refreshed=await secureRefreshRenforts(true);
+    const pulled=await securePullRenfortRecord();
+    cM();rI();
+    if(refreshed&&pulled){
+      secureClearRenfortActionKey(id,'finish');
+      showToast('Renfort clôturé.','success');
+    }else{
+      showToast('Clôture enregistrée sur le serveur, mais affichage à actualiser.','warn');
+    }
+  }catch(error){showToast(error.message,'warn');}
+}
+
+if(SECURE_RENFORTS_ENABLED){
+  // L'ancien circuit conserve ses verrous. Ces seules entrées sont redirigées
+  // vers les opérations Auth, sans aucun saveData() inter-casernes.
+  showRenfortModal=secureShowRenfortModal;
+  envoyerRenfort=secureSendRenfort;
+  repondreRenfort=function(_cid,id,answer){return secureAnswerRenfort(id,answer);};
+  showRenfortEquipageModal=function(_cid,id){return secureShowRenfortCrew(id);};
+  confirmerRenfortEquipage=function(_cid,id){return secureStartRenfort(id);};
+  cloturerRenfort=secureCloseRenfort;
+  annulerRenfortUT=function(_ivId,id){return secureCancelRenfort(id);};
+  // L'ancien panneau attend un autre format de données. Le laisser vide :
+  // secureRenderRenfortInbox affiche seul les demandes du nouveau circuit.
+  getRenfortsEnAttente=function(){return [];};
+  updateRenfortBadge=function(){
+    const badge=document.getElementById('renfort-badge');
+    if(!badge)return;
+    const count=secureRenfortPending().length;
+    badge.textContent=count;
+    badge.style.display=count>0?'inline-flex':'none';
+  };
+  _secureLegacyRenderInterventions=rI;
+  rI=function(){
+    _secureLegacyRenderInterventions();
+    secureRenderRenfortInbox();
+    void secureRefreshRenforts(false);
+  };
+  const _secureLegacyOpenIntervention=oM;
+  oM=function(id){
+    _secureLegacyOpenIntervention(id);
+    secureAppendRenfortSource(id);
+  };
+  window.setInterval(function(){void secureRefreshRenforts(false);},30000);
+}
+
+// Diagnostic local de connexion. Il n'envoie rien au serveur et ne lit aucun
+// contenu d'intervention : seuls les nombres d'actions en attente sont affichés.
+let _agaiLoginRepairBusy=false;
+
+function _agaiLoginRepairReasonLabel(){
+  const labels={
+    offline:'Internet ou contrôle en ligne indisponible',
+    input:'Identifiant ou mot de passe manquant',
+    refused:'Connexion refusée par le service',
+    service:'Réponse du service incomplète ou indisponible',
+    network:'Le service ne répond pas',
+    configuration:'Configuration de synchronisation indisponible',
+    pending:'Actions locales de la caserne à transmettre',
+    busy:'Synchronisation déjà en cours',
+    storage:'Vérification du stockage local impossible',
+    data:'Identité vérifiée, chargement des données impossible'
+  };
+  return labels[typeof _agaiLoginFailureReason==='string'?_agaiLoginFailureReason:'']||'Aucun échec de connexion récent sur cette page';
+}
+
+function _agaiLoginRepairTimingLabel(){
+  try{
+    const raw=JSON.parse(localStorage.getItem(AGAI_LOGIN_TIMING_KEY)||'null');
+    if(!raw||!Number.isFinite(raw.at)||Date.now()-raw.at>7*24*60*60*1000)return '';
+    const seconds=function(ms){
+      return Number.isFinite(ms)&&ms>=0&&ms<=600000?(ms/1000).toFixed(1)+' s':null;
+    };
+    const verification=seconds(raw.verificationMs);
+    if(!verification)return '';
+    let label=' Durées du dernier essai : vérification '+verification;
+    const chargement=seconds(raw.chargementMs);
+    if(chargement)label+=' ; chargement '+chargement;
+    const reception=seconds(raw.receptionMs);
+    if(reception)label+=' (dont réception des données '+reception+')';
+    return label+'.';
+  }catch(error){return '';}
+}
+
+function _agaiLoginRepairOutboxCount(databaseName){
+  return new Promise(function(resolve,reject){
+    if(!window.indexedDB){reject(new Error('Stockage durable indisponible'));return;}
+    let request,db=null,absent=false,done=false;
+    const timer=setTimeout(function(){finish(new Error('Lecture du stockage trop longue'));},8000);
+    function finish(error,count){
+      if(done)return;
+      done=true;clearTimeout(timer);
+      if(db)try{db.close();}catch(_error){}
+      if(error)reject(error);else resolve(count);
+    }
+    try{
+      request=indexedDB.open(databaseName||RC_OUTBOX_DB_NAME,1);
+      request.onupgradeneeded=function(event){
+        // Ne pas créer une base lors d'un contrôle en lecture seule.
+        absent=event.oldVersion===0;
+        request.transaction.abort();
+      };
+      request.onerror=function(){
+        if(absent)finish(null,0);
+        else finish(new Error('Lecture de la file durable impossible'));
+      };
+      request.onblocked=function(){finish(new Error('File durable utilisée par une autre page'));};
+      request.onsuccess=function(){
+        db=request.result;
+        if(done){db.close();return;}
+        if(!db.objectStoreNames.contains(RC_OUTBOX_STORE)){
+          finish(new Error('File durable non reconnue'));return;
+        }
+        try{
+          const tx=db.transaction(RC_OUTBOX_STORE,'readonly');
+          const countRequest=tx.objectStore(RC_OUTBOX_STORE).count();
+          tx.oncomplete=function(){finish(null,Number(countRequest.result)||0);};
+          tx.onerror=function(){finish(new Error('Lecture de la file durable impossible'));};
+          tx.onabort=function(){finish(new Error('Lecture de la file durable interrompue'));};
+        }catch(_error){finish(new Error('Lecture de la file durable impossible'));}
+      };
+    }catch(_error){finish(new Error('Stockage durable indisponible'));}
+  });
+}
+
+async function _agaiInspectLoginRepair(){
+  // Si une source est illisible, refuser la réparation au lieu de supposer zéro.
+  const raw=localStorage.getItem(RC_PENDING_DIRTY_KEY);
+  const saved=raw===null?[]:JSON.parse(raw);
+  if(!Array.isArray(saved)||saved.some(function(id){return typeof id!=='string'||!id;}))
+    throw new Error('Liste des actions locales illisible');
+  if(typeof _rcPendingDirty==='undefined'||!(_rcPendingDirty instanceof Set))
+    throw new Error('État des actions locales indisponible');
+  const pending=new Set(saved.concat(Array.from(_rcPendingDirty)));
+  const durable=await _agaiLoginRepairOutboxCount();
+  return {pending:pending.size,durable:durable,
+    busy:typeof _rcSaving!=='undefined'&&_rcSaving||typeof _rcPulling!=='undefined'&&_rcPulling,
+    online:typeof navigator!=='undefined'&&navigator.onLine!==false};
+}
+
+function _agaiLoginRepairPanel(message,allowReset){
+  const panel=document.getElementById('login-repair-panel');
+  if(!panel)return;
+  panel.hidden=false;
+  panel.replaceChildren();
+  const info=document.createElement('p');
+  info.textContent=message;
+  panel.appendChild(info);
+  if(allowReset){
+    const button=document.createElement('button');
+    button.type='button';
+    button.className='login-repair-confirm';
+    button.textContent='Réinitialiser ma connexion';
+    button.onclick=agaiResetLoginAfterCheck;
+    panel.appendChild(button);
+  }
+  if(!allowReset){
+    const link=document.createElement('a');
+    link.href='securite-file-locale-lecture-seule.html?version=ce4be86';
+    link.textContent='Voir le détail des actions en lecture seule';
+    link.className='login-repair-start';
+    panel.appendChild(link);
+  }
+}
+
+async function agaiOpenLoginRepair(){
+  if(_agaiLoginRepairBusy)return;
+  _agaiLoginRepairBusy=true;
+  _agaiLoginRepairPanel('Vérification des actions de ce navigateur…',false);
+  try{
+    const state=await _agaiInspectLoginRepair();
+    const counts='Actions signalées : '+state.pending+' ; file durable : '+state.durable+'.';
+    const cause='Dernier essai : '+_agaiLoginRepairReasonLabel()+'.'+_agaiLoginRepairTimingLabel();
+    if(state.pending||state.durable){
+      _agaiLoginRepairPanel(cause+' '+counts+' Aucune donnée ne sera effacée. Contactez votre administrateur avec ces nombres.',false);
+    }else if(state.busy){
+      _agaiLoginRepairPanel(cause+' '+counts+' Une synchronisation est en cours : réessayez dans un instant.',false);
+    }else if(!state.online){
+      _agaiLoginRepairPanel(cause+' '+counts+' Reconnectez Internet avant toute réparation.',false);
+    }else{
+      _agaiLoginRepairPanel(cause+' '+counts+' Aucune action en attente détectée ici. La réparation effacera uniquement la session et l’état de connexion de ce navigateur, puis rechargera AGAI. Elle ne supprimera aucune intervention.',true);
+    }
+  }catch(_error){
+    _agaiLoginRepairPanel('Stockage local impossible à vérifier. Rien n’a été effacé. Contactez votre administrateur.',false);
+  }finally{_agaiLoginRepairBusy=false;}
+}
+
+async function agaiResetLoginAfterCheck(){
+  if(_agaiLoginRepairBusy)return;
+  _agaiLoginRepairBusy=true;
+  _agaiLoginRepairPanel('Nouvelle vérification avant la réparation…',false);
+  try{
+    const state=await _agaiInspectLoginRepair();
+    if(state.pending||state.durable||state.busy||!state.online){
+      _agaiLoginRepairPanel('La situation a changé ou Internet est indisponible. Rien n’a été effacé. Relancez le diagnostic.',false);
+      return;
+    }
+    // Ne toucher ni à la file durable, ni aux indicateurs d'actions, ni aux
+    // données métier en cache. Seul l'état de connexion est remis à zéro.
+    _agaiStoreAuthSession(null);
+    localStorage.removeItem(AUTH_LINK_SESSION_KEY);
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+    localStorage.removeItem(AGAI_SERVER_CIRCUIT_KEY);
+    _agaiServerFailureCount=0;
+    _agaiServerCircuitOpenUntil=0;
+    _agaiServerProbeInFlight=false;
+    _agaiLoginFailureReason='';
+    _agaiLoginRepairPanel('Connexion réinitialisée sans supprimer les données. AGAI va se recharger ; reconnectez-vous ensuite.',false);
+    window.setTimeout(function(){location.reload();},800);
+  }catch(_error){
+    _agaiLoginRepairPanel('La réparation n’a pas pu être terminée. La file d’actions n’a pas été effacée. Contactez votre administrateur.',false);
+  }finally{_agaiLoginRepairBusy=false;}
+}
+
+let _agaiLegacyCheck=null;
+let _agaiLegacyCheckPromise=null;
+function _agaiLegacyCheckKey(){
+  return CU?CU.caserneId+'__'+CU.l+'__'+(localStorage.getItem('agai_rc_pending_dirty')||'[]'):'';
+}
+function _agaiReadLegacyOutbox(){
+  return new Promise(function(resolve,reject){
+    if(!window.indexedDB){reject(new Error('Stockage indisponible'));return;}
+    let request,db=null,absent=false,done=false;
+    const timer=setTimeout(function(){finish(new Error('Lecture trop longue'));},8000);
+    function finish(error,rows){
+      if(done)return;done=true;clearTimeout(timer);if(db)db.close();
+      if(error)reject(error);else resolve(rows);
+    }
+    try{
+      request=indexedDB.open('agai-sync-outbox',1);
+      request.onupgradeneeded=function(event){absent=event.oldVersion===0;request.transaction.abort();};
+      request.onerror=function(){if(absent)finish(null,[]);else finish(new Error('Lecture impossible'));};
+      request.onblocked=function(){finish(new Error('Stockage occupé'));};
+      request.onsuccess=function(){
+        db=request.result;if(done){db.close();return;}
+        try{
+          const tx=db.transaction('records','readonly'),read=tx.objectStore('records').getAll();
+          tx.oncomplete=function(){finish(null,read.result||[]);};
+          tx.onerror=tx.onabort=function(){finish(new Error('Lecture interrompue'));};
+        }catch(error){finish(error);}
+      };
+    }catch(error){finish(error);}
+  });
+}
+function _agaiLegacyComparable(row){
+  const transport=_rcTransportRow(row),data=Object.assign({},transport.data||{});
+  // Une révision attribuée par le serveur n'est pas une saisie opérateur.
+  delete data._serverRevision;
+  if(row.type==='global'){
+    delete data.LOGIN_HISTORY;delete data.LOGIN_HISTORY_DELETED;
+  }
+  return _rcSyncSignature(Object.assign({},transport,{data:data}));
+}
+async function _agaiInspectLegacyPending(token){
+  const originalPending=localStorage.getItem('agai_rc_pending_dirty');
+  const originalCache=localStorage.getItem('agai_jb_cache');
+  const pending=JSON.parse(originalPending||'[]');
+  if(!Array.isArray(pending)||pending.some(function(id){return typeof id!=='string';}))
+    throw new Error('Marqueurs illisibles');
+  const entries=await _agaiReadLegacyOutbox();
+  const versions=new Map(),ids=new Set(pending);
+  function add(row){
+    if(!row||typeof row.id!=='string')throw new Error('Fiche locale illisible');
+    ids.add(row.id);
+    if(!versions.has(row.id))versions.set(row.id,[]);
+    versions.get(row.id).push(row);
+  }
+  entries.forEach(function(entry){add(entry.row);});
+  // Un marqueur peut subsister sans ligne durable. Comparer également sa
+  // copie dans l'ancien cache, sans appliquer ce cache à la session courante.
+  if(pending.length){
+    const cache=originalCache;
+    if(cache)_rcSplitAll(JSON.parse(cache)).filter(function(row){return ids.has(row.id);}).forEach(add);
+  }
+  const result={items:[],traces:0,markers:0,matched:0,different:0,unknown:0};
+  const candidates=[];
+  ids.forEach(function(id){
+    const rows=versions.get(id)||[],parts=id.split('__');
+    const item={id:id,caserne:parts[0]||'',type:parts[1]||'',status:'unknown'};
+    if(item.type==='login'){result.traces++;return;}
+    if(!rows.length){result.markers++;return;}
+    // Limiter la charge d'un ancien appareil ; les éléments non contrôlés
+    // restent explicitement indéterminés et ne sont jamais déclarés transmis.
+    if(candidates.length<50&&(item.caserne===CU.caserneId||item.caserne==='_GLOBAL'))candidates.push(item);
+    result.items.push(item);
+  });
+  for(let index=0;index<candidates.length;index+=5){
+    const chunk=candidates.slice(index,index+5);
+    const filter='('+chunk.map(function(item){return '"'+item.id.replace(/"/g,'')+'"';}).join(',')+')';
+    const response=await _agaiAuthFetchWithTimeout(SB_REST+'/records?id=in.'+encodeURIComponent(filter)
+      +'&select=id,caserne,type,data,deleted',{
+        method:'GET',headers:{apikey:SB_KEY,Authorization:'Bearer '+token},cache:'no-store'
+      },8000);
+    if(!response.ok)throw new Error('Lecture serveur indisponible');
+    const remote=await response.json();if(!Array.isArray(remote))throw new Error('Réponse incomplète');
+    chunk.forEach(function(item){
+      const row=remote.find(function(value){return value.id===item.id&&value.caserne===item.caserne&&value.type===item.type;});
+      // Une ligne masquée par RLS n'est pas la preuve d'une donnée absente.
+      if(!row)return;
+      const signature=_agaiLegacyComparable(row);
+      item.status=versions.get(item.id).every(function(local){return _agaiLegacyComparable(local)===signature;})?'matched':'different';
+    });
+  }
+  result.items.forEach(function(item){result[item.status]++;});
+  if(originalPending!==localStorage.getItem('agai_rc_pending_dirty')
+    ||originalCache!==localStorage.getItem('agai_jb_cache'))throw new Error('Copie locale modifiée pendant le contrôle');
+  return result;
+}
+function agaiScheduleLegacyCheck(){
+  if(!CU||typeof _agaiAuthAccessToken!=='function'||!_agaiAuthAccessToken()||_agaiLegacyCheckPromise)return;
+  let key;try{key=_agaiLegacyCheckKey();}catch(error){return;}
+  if(_agaiLegacyCheck&&_agaiLegacyCheck.key===key)return;
+  const token=_agaiAuthAccessToken(),login=CU.l,station=CU.caserneId;
+  _agaiLegacyCheck={key:key,status:'checking'};
+  _agaiLegacyCheckPromise=Promise.resolve().then(function(){return _agaiInspectLegacyPending(token);})
+    .then(function(result){
+      if(!CU||CU.l!==login||CU.caserneId!==station||_agaiAuthAccessToken()!==token)return;
+      _agaiLegacyCheck={key:key,status:'ready',result:result};
+    }).catch(function(){
+      if(CU&&CU.l===login&&CU.caserneId===station)_agaiLegacyCheck={key:key,status:'unavailable'};
+    }).finally(function(){
+      _agaiLegacyCheckPromise=null;
+      if(CU&&CU.l===login&&CU.caserneId===station){
+        if(_agaiLegacyCheck&&_agaiLegacyCheck.status==='checking')_agaiLegacyCheck=null;
+        _jbSetStatus(window._agaiSyncHealth&&window._agaiSyncHealth.state||'ok');
+      }
+    });
+}
+function agaiLegacyPendingLabel(){
+  if(!_agaiLegacyCheck||_agaiLegacyCheck.status==='checking')return '';
+  if(_agaiLegacyCheck.status==='unavailable')return 'Anciennes traces : contrôle indisponible';
+  const result=_agaiLegacyCheck.result,n=result.different+result.unknown;
+  return n?n+' ancienne'+(n>1?'s fiches à vérifier':' fiche à vérifier'):'';
+}
+if(typeof window!=='undefined'&&window.addEventListener)window.addEventListener('storage',function(event){
+  if(event.key==='agai_rc_pending_dirty'||event.key==='agai_jb_cache'){
+    _agaiLegacyCheck=null;agaiScheduleLegacyCheck();
+  }
+});
+function agaiShowLegacyPending(){
+  if(!CU)return;
+  document.getElementById('mt').textContent='Vérification des anciennes traces';
+  document.getElementById('mi').textContent='Vous pouvez continuer à utiliser AGAI.';
+  const body=document.getElementById('mb');body.replaceChildren();
+  const info=document.createElement('p');
+  const result=_agaiLegacyCheck&&_agaiLegacyCheck.result;
+  info.textContent=result
+    ?result.matched+' fiche(s) déjà présente(s) dans Supabase ; '+result.different+' copie(s) différente(s) ; '
+      +result.unknown+' fiche(s) non vérifiable(s). '+result.traces+' trace(s) technique(s) de connexion et '
+      +result.markers+' ancien(s) marqueur(s) sans fiche locale. Aucune donnée n’a été modifiée.'
+    :'La comparaison n’a pas pu aboutir. Cela ne prouve pas qu’une saisie manque dans Supabase. Les copies locales restent conservées.';
+  body.appendChild(info);
+  if(result){
+    const names={iv:'intervention',pilp:'intervention PILP',dispo:'disponibilité',config:'configuration',global:'configuration générale',user:'fiche personnel'};
+    result.items.filter(function(item){return item.status!=='matched';}).forEach(function(item){
+      const line=document.createElement('p');
+      line.textContent=item.caserne+' · '+(names[item.type]||'fiche')+' : '
+        +(item.status==='different'?'la copie locale diffère du serveur, sans preuve d’une saisie manquante':'comparaison non concluante');
+      body.appendChild(line);
+    });
+  }
+  const retry=document.createElement('button');retry.className='btn';retry.textContent='Relancer la vérification';
+  retry.onclick=function(){_agaiLegacyCheck=null;agaiScheduleLegacyCheck();cM();};body.appendChild(retry);
+  const link=document.createElement('a');
+  link.href='securite-file-locale-lecture-seule.html?version=ce4be86';
+  link.target='_blank';link.rel='noopener';link.textContent='Consulter les anciennes saisies en lecture seule';
+  body.appendChild(link);
+  if(typeof isSuperAdmin==='function'&&isSuperAdmin()){
+    const button=document.createElement('button');button.className='btn';
+    button.textContent='Sauvegarder les anciennes saisies pour récupération';
+    button.onclick=agaiExportLegacyPending;body.appendChild(button);
+  }
+  document.getElementById('mo').style.display='flex';
+}
+async function agaiExportLegacyPending(){
+  if(!CU||typeof isSuperAdmin!=='function'||!isSuperAdmin())return;
+  try{
+    const entries=await new Promise(function(resolve,reject){
+      const request=indexedDB.open('agai-sync-outbox',1);let absent=false,db=null;
+      const timer=setTimeout(function(){reject(new Error('Lecture trop longue'));},8000);
+      request.onupgradeneeded=function(event){absent=event.oldVersion===0;request.transaction.abort();};
+      request.onerror=function(){clearTimeout(timer);if(absent)resolve([]);else reject(new Error('Lecture impossible'));};
+      request.onblocked=function(){clearTimeout(timer);reject(new Error('Stockage occupé'));};
+      request.onsuccess=function(){
+        db=request.result;
+        try{
+          const tx=db.transaction('records','readonly'),read=tx.objectStore('records').getAll();
+          tx.oncomplete=function(){clearTimeout(timer);db.close();resolve(read.result||[]);};
+          tx.onerror=tx.onabort=function(){clearTimeout(timer);db.close();reject(new Error('Lecture interrompue'));};
+        }catch(error){clearTimeout(timer);db.close();reject(error);}
+      };
+    });
+    // Le fichier contient uniquement les anciennes données métier et leurs
+    // marqueurs, jamais les mots de passe saisis ni les jetons de session.
+    const backup={format:'agai-legacy-pending-v1',createdAt:new Date().toISOString(),
+      entries:entries,pending:localStorage.getItem('agai_rc_pending_dirty'),
+      cache:localStorage.getItem('agai_jb_cache')};
+    const url=URL.createObjectURL(new Blob([JSON.stringify(backup)],{type:'application/json'}));
+    const link=document.createElement('a');link.href=url;link.download='AGAI-saisies-precedentes.json';
+    link.click();setTimeout(function(){URL.revokeObjectURL(url);},1000);
+    showToast('Sauvegarde téléchargée. Les saisies restent conservées sur cet appareil.','success');
+  }catch(error){showToast('Sauvegarde indisponible. Les anciennes saisies restent conservées.','warn');}
+}
+const _agaiLoginRepairStart=document.getElementById('login-repair-start');
+if(_agaiLoginRepairStart){
+  if(typeof PERSONNEL_ONLINE_GATE!=='undefined'&&!PERSONNEL_ONLINE_GATE)_agaiLoginRepairStart.hidden=true;
+  else _agaiLoginRepairStart.disabled=false;
+}
+
+// Le circuit historique reste fermé sous Auth. Ce module ne prend le relais
+// qu'avec le pilote explicite ou après l'activation de la bascule générale.
+const _legacyTransfererIV=transfererIV;
+const _legacyConfirmerTransfert=confirmerTransfert;
+const _secureTransferInFlight=new Set();
+
+async function _secureTransferRpc(payload){
+  const token=_agaiAuthAccessToken();
+  if(!SECURE_TRANSFERS_ENABLED||!token||typeof navigator==='undefined'||navigator.onLine===false)
+    throw new Error('Connexion en ligne requise pour transférer une intervention.');
+  let response;
+  try{
+    response=await _agaiAuthFetchWithTimeout(SB_URL+'/rest/v1/rpc/agai_transfer_intervention',{
+      method:'POST',
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+      body:JSON.stringify(payload)
+    },15000);
+  }catch(_error){throw new Error('Transfert non confirmé : connexion interrompue. Réessayez sans créer de copie.');}
+  if(!response.ok){
+    let code='';
+    try{code=(await response.json()).message||'';}catch(_error){}
+    const known={
+      AGAI_TRANSFER_SOURCE_FORBIDDEN:'Cette fiche n’est plus transférable. Actualisez les interventions.',
+      AGAI_TRANSFER_ROLE_FORBIDDEN:'Ce compte n’a pas le droit de transférer cette fiche.',
+      AGAI_TRANSFER_DESTINATION_UNAVAILABLE:'La caserne destinataire n’est pas disponible.',
+      AGAI_TRANSFER_ACTIVE_REINFORCEMENT:'Un renfort est encore actif sur cette fiche. Terminez-le ou annulez-le avant le transfert.',
+      AGAI_TRANSFER_STALE_SOURCE:'La fiche a changé. Actualisez-la avant de transférer.',
+      AGAI_TRANSFER_ALREADY_PROCESSED:'Cette fiche a déjà été transférée.'
+    };
+    if(known[code])throw new Error(known[code]);
+    if(response.status===401||response.status===403)
+      throw new Error('Transfert refusé : reconnectez-vous.');
+    throw new Error('Transfert non enregistré (HTTP '+response.status+').');
+  }
+  const result=await response.json();
+  if(!result||result.ok!==true||!result.destinationRecordId||!result.apl)
+    throw new Error('Réponse de transfert incomplète. Actualisez avant de réessayer.');
+  return result;
+}
+
+globalThis.transfererIV=function(id){
+  if(!SECURE_TRANSFERS_ENABLED)return _legacyTransfererIV(id);
+  const iv=IVS.find(function(item){return item&&item.id===id;});
+  if(!iv||iv.s!=='en-attente'||iv._isRenfort){
+    showToast('Cette fiche ne peut plus être transférée.','warn');return;
+  }
+  if(!CU||!(isAgres()||isChef()||hasRight('Administration'))){
+    showToast('Le transfert est réservé aux chefs d’agrès et aux administrateurs.','warn');return;
+  }
+  const casOptions=sortedCasernesForDisplay(CASERNES.filter(function(c){return c.id!==CURRENT_CASERNE_ID;}))
+    .map(function(c){return '<option value="'+escHtml(c.id)+'">'+escHtml(c.nom)+'</option>';}).join('');
+  document.getElementById('mt').textContent='Transférer l’intervention';
+  document.getElementById('mi').textContent=interventionDisplayCallNumber(iv);
+  document.getElementById('mb').innerHTML='<div>'
+    +'<div style="font-size:12px;color:var(--t2);margin-bottom:10px;">'
+    +'Le serveur créera une nouvelle fiche avec un nouvel APL dans la caserne destinataire, puis annulera cette fiche. Les deux resteront liées dans l’historique.</div>'
+    +'<div class="fg"><div class="fgl">Caserne destinataire</div><select class="fi" id="tr-dest">'+casOptions+'</select></div>'
+    +'<div class="fg"><div class="fgl">Motif du transfert *</div><textarea class="fta" id="tr-motif" maxlength="1000" style="height:70px;"></textarea></div>'
+    +'<div class="brow"><button class="btn pr sm" id="secure-transfer-send" onclick="confirmerTransfert(\''+id+'\')">Transférer</button>'
+    +'<button class="btn sm" onclick="cM()">Annuler</button></div></div>';
+  document.getElementById('mo').style.display='flex';
+};
+
+globalThis.confirmerTransfert=async function(id){
+  if(!SECURE_TRANSFERS_ENABLED)return _legacyConfirmerTransfert(id);
+  if(_secureTransferInFlight.has(id))return;
+  const iv=IVS.find(function(item){return item&&item.id===id;});
+  const destination=document.getElementById('tr-dest')?.value||'';
+  const reason=document.getElementById('tr-motif')?.value.trim()||'';
+  if(!iv||iv.s!=='en-attente'||!CASERNES.some(function(c){return c.id===destination;})
+     ||destination===CURRENT_CASERNE_ID){
+    showToast('Fiche ou caserne destinataire invalide. Actualisez la liste.','warn');return;
+  }
+  if(reason.length<5){showToast('Précisez le motif du transfert (au moins 5 caractères).','warn');return;}
+  const button=document.getElementById('secure-transfer-send');
+  if(button)button.disabled=true;
+  _secureTransferInFlight.add(id);
+  const originCaserne=CURRENT_CASERNE_ID,originLogin=CU&&CU.l;
+  try{
+    const result=await _secureTransferRpc({
+      p_source_record_id:_rcId(originCaserne,'iv',id),
+      p_destination_caserne:destination,p_reason:reason,
+      p_action_key:aplCreationActionKey('transfert',id),
+      p_expected_record_revision:Number(iv._serverRevision)||0
+    });
+    if(CURRENT_CASERNE_ID!==originCaserne||!CU||CU.l!==originLogin){
+      showToast('Transfert enregistré, mais session changée : reconnectez-vous pour le consulter.','warn');return;
+    }
+    const refreshed=typeof _rcPull==='function'&&await _rcPull(true)===true;
+    const source=IVS.find(function(item){return item&&item.id===id;});
+    if(!refreshed||!source||source.s!=='annulee'
+       ||source._transfertDestRecordId!==result.destinationRecordId){
+      showToast('Transfert enregistré sur le serveur ; la fiche locale doit être actualisée. Ne recommencez pas avec une nouvelle demande.','warn');return;
+    }
+    clearAplCreationActionKey('transfert',id);
+    cM();rI();rAccueil();
+    showToast('Transfert enregistré vers '+destination+' — '+result.apl,'success');
+  }catch(error){showToast(error&&error.message||'Transfert non enregistré.','warn');}
+  finally{_secureTransferInFlight.delete(id);if(button)button.disabled=false;}
+};
+
+// Suivi des éditions officielles, désactivé côté serveur jusqu'au choix du SA.
+// Une émission désigne une édition officielle dans AGAI, pas la certitude
+// qu'une feuille physique soit sortie de l'imprimante.
+window._agaiReportEditionState=null;
+let _reportEditionHomeRequest=null;
+let _reportEditionHomeCheckedAt=0;
+const _reportEditionBusy=new Set();
+let _reportAdminSummaryState=null;
+let _reportAdminSummaryRequest=null;
+let _reportAdminSummaryCheckedAt=0;
+let _reportAdminStationFilter='';
+
+async function reportEditionRpc(name,payload){
+  const token=_agaiAuthAccessToken();
+  if(!token||!navigator.onLine)throw new Error('Connexion au serveur requise pour le suivi des éditions.');
+  let response;
+  try{
+    response=await _agaiAuthFetchWithTimeout(SB_URL+'/rest/v1/rpc/'+name,{
+      method:'POST',headers:{apikey:SB_KEY,Authorization:'Bearer '+token,'Content-Type':'application/json'},
+      body:JSON.stringify(payload)
+    },12000);
+  }catch(_error){throw new Error(name==='agai_issue_report_edition'
+    ?'Réponse du serveur indisponible : une édition a peut-être été enregistrée. Ne réessayez pas avant de vérifier le suivi des originaux.'
+    :name==='agai_admin_finalize_report'
+      ?'Réponse du serveur indisponible : le rapport a peut-être été validé. Actualisez le suivi avant toute nouvelle tentative.'
+    :'Contrôle serveur indisponible. Aucune donnée locale n’a été modifiée.');}
+  if(!response.ok){
+    let code='';
+    try{code=(await response.json()).message||'';}catch(_error){}
+    const messages={
+      AGAI_REPORT_NOT_ACTIVATED:'L’édition officielle n’est pas activée.',
+      AGAI_REPORT_NOT_FINAL:'Le rapport n’est pas encore validé.',
+      AGAI_REPORT_BEFORE_START:'Ce rapport précède la date de début du suivi.',
+      AGAI_REPORT_CHANGED:'Le rapport a changé. Actualisez les données avant de recommencer.',
+      AGAI_REPORT_EDITION_CONFLICT:'Un autre appareil a déjà émis cette édition. Actualisez le suivi.',
+      AGAI_REPORT_OWNER_REQUIRED:'Seul le responsable de ce rapport peut émettre l’original.',
+      AGAI_REPORT_ADMIN_REQUIRED:'Seul un administrateur peut émettre un duplicata.',
+      AGAI_REPORT_SUPERADMIN_REQUIRED:'Activation réservée au superadministrateur.',
+      AGAI_REPORT_ACCESS_DENIED:'Ce compte ne peut pas émettre de rapport.',
+      AGAI_REPORT_DEADLINE_PASSED:'Échéance dépassée : seule une dérogation du superadministrateur est possible.',
+      AGAI_REPORT_OVERRIDE_REASON_REQUIRED:'Un motif de dérogation de 10 caractères minimum est obligatoire.',
+      AGAI_REPORT_NOT_PENDING:'Ce rapport a déjà été validé ou n’est plus terminé.',
+      AGAI_REPORT_TEXT_REQUIRED:'Saisissez un compte rendu avant de valider.',
+      AGAI_REPORT_DATE_INVALID:'La date de cette intervention doit être vérifiée avant validation.'
+    };
+    if(name==='agai_admin_finalize_report'&&code==='AGAI_REPORT_ADMIN_REQUIRED')
+      throw new Error('La finalisation exige un compte administrateur ou superadministrateur.');
+    if(name==='agai_admin_finalize_report'&&code==='AGAI_REPORT_ACCESS_DENIED')
+      throw new Error('Ce compte ne peut pas finaliser ce rapport.');
+    throw new Error(messages[code]||('Contrôle serveur refusé (HTTP '+response.status+'). '
+      +(name==='agai_admin_finalize_report'?'Vérifiez le suivi avant de recommencer.':'Aucune édition locale ne sera créée.')));
+  }
+  return response.json();
+}
+
+async function reportEditionLoadState(ids){
+  const unique=[...new Set((ids||[]).filter(Boolean))],chunks=[];
+  for(let i=0;i<unique.length;i+=200)chunks.push(unique.slice(i,i+200));
+  if(!chunks.length)chunks.push([]);
+  const result={enabled:false,startDate:null,items:{}};
+  for(const batch of chunks){
+    const page=await reportEditionRpc('agai_report_edition_state',{p_ids:batch});
+    if(typeof page?.enabled!=='boolean'||!page.items||typeof page.items!=='object')
+      throw new Error('Réponse incomplète du registre des éditions.');
+    if(result.startDate!==null&&(result.enabled!==page.enabled||result.startDate!==page.startDate))
+      throw new Error('Le réglage a changé pendant le contrôle. Réessayez.');
+    result.enabled=page.enabled;result.startDate=page.startDate||null;
+    Object.assign(result.items,page.items);
+  }
+  window._agaiReportEditionState=result;
+  return result;
+}
+function reportEditionRecordId(caserne,type,id){return _rcId(caserne,type,id);}
+function reportEditionHomeIds(){
+  if(!CU||!CURRENT_CASERNE_ID)return [];
+  const ids=[];
+  [].concat(IVS||[],PILP_IVS||[]).forEach(function(iv){
+    if(iv&&iv.id&&iv.s==='terminee'&&iv._crValide&&accueilRapportOwner(iv,CU.l))
+      ids.push(reportEditionRecordId(CURRENT_CASERNE_ID,isPilpIntervention(iv)?'pilp':'iv',iv.id));
+  });
+  (actGetData()||[]).forEach(function(a){
+    if(a&&a.id&&a.auteur===CU.l&&a.cr)ids.push(reportEditionRecordId(CURRENT_CASERNE_ID,'activite',a.id));
+  });
+  (fmpaGetData()||[]).forEach(function(f){
+    if(f&&f.id&&f.auteur===CU.l)ids.push(reportEditionRecordId(CURRENT_CASERNE_ID,'fmpa',f.id));
+  });
+  return ids;
+}
+function reportEditionScheduleHomeStatus(){
+  if(!CU||_reportEditionHomeRequest||Date.now()-_reportEditionHomeCheckedAt<60000)return;
+  const login=CU.l,station=CURRENT_CASERNE_ID;
+  _reportEditionHomeRequest=Promise.resolve().then(async function(){
+    const settings=await reportEditionLoadState([]);
+    if(settings.enabled)await reportEditionLoadState(reportEditionHomeIds());
+  }).then(function(){
+    _reportEditionHomeCheckedAt=Date.now();
+    if(CU&&CU.l===login&&CURRENT_CASERNE_ID===station){
+      const el=document.getElementById('acc-rapports');
+      if(el&&document.getElementById('tab-home')?.classList.contains('active'))
+        rAccueilRapports();
+      renderHomeAdminReportBanner();
+    }
+  }).catch(function(error){
+    console.warn('[AGAI] Éditions officielles :',error.message);
+    _reportEditionHomeCheckedAt=Date.now();
+  }).finally(function(){_reportEditionHomeRequest=null;});
+}
+
+function renderReportEditionSettings(){
+  const state=window._agaiReportEditionState,el=document.getElementById('sa-report-edition-state');
+  if(el)el.textContent=state?(state.enabled?'Active depuis le '+state.startDate:'Désactivée'):'État à vérifier';
+  const input=document.getElementById('sa-report-edition-start');
+  if(input&&state&&document.activeElement!==input)input.value=state.startDate||'';
+}
+async function checkReportEditionSettings(){
+  if(!isSuperAdmin())return;
+  const el=document.getElementById('sa-report-edition-state');
+  if(el)el.textContent='Vérification…';
+  try{await reportEditionLoadState([]);renderReportEditionSettings();}
+  catch(error){if(el)el.textContent=error.message;}
+}
+function saveReportEditionSettings(enabled){
+  if(!isSuperAdmin()){showToast('Activez les pouvoirs superadministrateur.','warn');return;}
+  const start=document.getElementById('sa-report-edition-start')?.value||'';
+  if(enabled&&!/^\d{4}-\d{2}-\d{2}$/.test(start)){
+    showToast('Choisissez d’abord la date de début des originaux.','warn');return;
+  }
+  const message=enabled
+    ?'Activer l’édition officielle à partir du '+start+' ? Vérifiez d’abord que tous les appareils utilisent la version V202610_0053 ou suivante. Un seul original sera émis par rapport ; toute réédition exigera les pouvoirs administrateur.'
+    :'Conserver l’édition officielle désactivée ? Les rapports restent utilisables selon le fonctionnement actuel.';
+  confirmModal(message,async function(){
+    try{
+      if(!isSuperAdmin())throw new Error('Les pouvoirs superadministrateur ne sont plus actifs.');
+      await reportEditionRpc('agai_set_report_edition_settings',{
+        p_enabled:enabled,p_start_date:start||null
+      });
+      await reportEditionLoadState([]);
+      renderReportEditionSettings();
+      _reportEditionHomeCheckedAt=0;
+      showToast(enabled?'Édition officielle activée.':'Édition officielle désactivée.','success');
+    }catch(error){showToast(error.message,'warn');}
+  });
+}
+
+function reportMonitorRows(scope){
+  const stations=scope==='superadmin'
+    ?CASERNES.filter(function(c){return c&&c.id&&c.id!=='EMAJ';}).map(function(c){return c.id;})
+    :[CURRENT_CASERNE_ID];
+  const finaliser=[],editer=[],start=rapportsFinalisationDebut();
+  const ownerName=function(data,login){
+    const user=(data.users||[]).find(function(item){return item&&item.l===login;})
+      ||(USERS||[]).find(function(item){return item&&item.l===login;});
+    return user?((user.prenom||'')+' '+(user.nom||'')).trim()||login:login||'Non désigné';
+  };
+  stations.forEach(function(station){
+    const data=CASERNE_DATA[station]||{};
+    const stationName=CASERNES.find(function(c){return c.id===station;})?.nom||station;
+    [].concat(data.ivs||[],data.pilpIvs||[]).forEach(function(iv){
+      if(!iv||!iv.id||iv._lienPilpSourceId||iv._isPilip||iv.s!=='terminee')return;
+      const day=accueilRapportDate(iv);
+      const type=(data.pilpIvs||[]).includes(iv)?'pilp':'iv';
+      const numero=accueilRapportNumero(iv);
+      const row={station:station,stationName:stationName,type:type,id:iv.id,
+        recordId:reportEditionRecordId(station,type,iv.id),day:day,
+        deadline:compteRenduDeadline(iv),late:compteRenduLate(iv),
+        label:(iv._isRenfort?'Renfort':'Intervention')+' · '+(numero?numero+' · ':'')
+          +(iv.n||iv.id)+(iv.com?' — '+iv.com:''),
+        owner:[...new Set([iv.agr,iv._agr2].filter(Boolean))]
+          .map(function(login){return ownerName(data,login);}).join(' / ')||'Non désigné'};
+      if(day>=start&&!iv._crValide)finaliser.push(row);
+      if(iv._crValide)editer.push(row);
+    });
+    (data.activites||[]).forEach(function(a){
+      if(a&&a.id&&a.cr)editer.push({station:station,stationName:stationName,type:'activite',
+        id:a.id,recordId:reportEditionRecordId(station,'activite',a.id),
+        day:String(a.date||'').replace(/-/g,''),label:'Activité · '+(a.type||a.id),
+        owner:ownerName(data,a.auteur)});
+    });
+    (data.fmpas||[]).forEach(function(a){
+      if(a&&a.id)editer.push({station:station,stationName:stationName,type:'fmpa',
+        id:a.id,recordId:reportEditionRecordId(station,'fmpa',a.id),
+        day:String(a.date||'').replace(/-/g,''),label:'Formation · '+(a.theme||a.id),
+        owner:ownerName(data,a.auteur)});
+    });
+  });
+  return {finaliser:finaliser,editer:editer};
+}
+function reportAdminScope(){
+  if(isSuperAdmin())return 'superadmin';
+  return isAdminModeActive()?'admin':'';
+}
+function reportAdminSummaryFor(scope){
+  return _reportAdminSummaryState&&CU
+    &&_reportAdminSummaryState.login===CU.l
+    &&_reportAdminSummaryState.station===CURRENT_CASERNE_ID
+    &&_reportAdminSummaryState.scope===scope?_reportAdminSummaryState.state:null;
+}
+function reportAdminEligibleRows(scope,start){
+  return reportMonitorRows(scope).editer.filter(function(row){return row.day>=start;});
+}
+function renderHomeAdminReportBanner(){
+  const el=document.getElementById('acc-admin-report-summary');
+  if(!el)return;
+  const scope=reportAdminScope();
+  if(!CU||!scope){el.style.display='none';el.innerHTML='';return;}
+  const count=reportMonitorRows(scope).finaliser.length;
+  const overdue=reportMonitorRows(scope).finaliser.filter(function(row){return row.late;}).length;
+  const settings=window._agaiReportEditionState;
+  const state=reportAdminSummaryFor(scope);
+  let originalText='';
+  if(settings&&settings.enabled&&settings.startDate){
+    if(state&&state.enabled&&state.startDate===settings.startDate){
+      const start=settings.startDate.replace(/-/g,'');
+      const eligible=reportAdminEligibleRows(scope,start);
+      const missing=eligible.some(function(row){return !state.items[row.recordId];});
+      const originals=eligible.filter(function(row){
+        return state.items[row.recordId]&&Number(state.items[row.recordId].count)===0;
+      }).length;
+      originalText=missing?' · Originaux à vérifier':' · '+originals+' originaux à éditer';
+    }else originalText=' · Originaux à vérifier';
+    reportEditionScheduleAdminSummary();
+  }
+  el.style.display='';
+  el.innerHTML='<button type="button" onclick="openHomeReportMonitor()" '
+    +'style="display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;padding:11px 13px;border-radius:11px;border:1px solid #CBD5E1;background:#EFF6FF;color:#1E3A5F;text-align:left;font:inherit;cursor:pointer;">'
+    +'<span>📋 <strong>Rapports à suivre</strong> · '+count+' non validé'+(count===1?'':'s')
+    +(overdue?' · '+overdue+' hors délai':'')+originalText+'</span>'
+    +'<span aria-hidden="true" style="font-size:18px;">›</span></button>';
+}
+function reportEditionScheduleAdminSummary(){
+  const scope=reportAdminScope(),settings=window._agaiReportEditionState;
+  if(!CU||!scope||!settings||!settings.enabled||!settings.startDate
+     ||_reportAdminSummaryRequest||Date.now()-_reportAdminSummaryCheckedAt<60000)return;
+  const login=CU.l,station=CURRENT_CASERNE_ID;
+  _reportAdminSummaryRequest=Promise.resolve().then(function(){
+    return reportEditionLoadState(reportAdminEligibleRows(scope,settings.startDate.replace(/-/g,''))
+      .map(function(row){return row.recordId;}));
+  }).then(function(state){
+    if(CU&&CU.l===login&&CURRENT_CASERNE_ID===station&&reportAdminScope()===scope){
+      _reportAdminSummaryState={login:login,station:station,scope:scope,state:state};
+      _reportAdminSummaryCheckedAt=Date.now();
+      renderHomeAdminReportBanner();
+      if(document.getElementById('home-report-monitor'))renderReportAdminMonitor(scope);
+    }
+  }).catch(function(error){
+    console.warn('[AGAI] Suivi des originaux :',error.message);
+    _reportAdminSummaryCheckedAt=Date.now();
+  }).finally(function(){_reportAdminSummaryRequest=null;});
+}
+function openHomeReportMonitor(){
+  const scope=reportAdminScope();
+  if(!CU||!scope)return;
+  document.getElementById('mt').textContent='Suivi des rapports';
+  document.getElementById('mi').textContent=scope==='superadmin'?'Toutes les casernes':'Votre caserne';
+  document.getElementById('mb').innerHTML='<div id="home-report-monitor"></div>';
+  document.getElementById('mo').style.display='flex';
+  renderReportAdminMonitor(scope);
+  refreshReportAdminMonitor(scope);
+}
+function setReportAdminStationFilter(station){
+  if(reportAdminScope()!=='superadmin')return;
+  _reportAdminStationFilter=station&&CASERNES.some(function(c){return c.id===station;})?station:'';
+  renderReportAdminMonitor('superadmin');
+}
+function openReportAdminMonitorItem(button){
+  const scope=reportAdminScope();
+  if(!scope||!button||!document.getElementById('home-report-monitor'))return;
+  const station=button.dataset.station,type=button.dataset.type,id=button.dataset.id,stage=button.dataset.stage;
+  if(scope==='admin'&&station!==CURRENT_CASERNE_ID)return;
+  if(scope==='superadmin'&&_reportAdminStationFilter&&station!==_reportAdminStationFilter)return;
+  const rows=reportMonitorRows(scope);
+  const row=(stage==='finaliser'?rows.finaliser:stage==='editer'?rows.editer:[])
+    .find(function(item){return item.station===station&&item.type===type&&item.id===id;});
+  if(!row)return;
+  if(stage==='editer'){
+    const settings=window._agaiReportEditionState,state=reportAdminSummaryFor(scope);
+    if(!settings||!settings.enabled||!settings.startDate||row.day<settings.startDate.replace(/-/g,'')
+       ||!state||state.enabled!==true||state.startDate!==settings.startDate
+       ||!state.items[row.recordId]||Number(state.items[row.recordId].count)!==0)return;
+  }
+  const data=CASERNE_DATA[station]||{};
+  const collection=type==='iv'?data.ivs:type==='pilp'?data.pilpIvs
+    :type==='activite'?data.activites:type==='fmpa'?data.fmpas:null;
+  const record=Array.isArray(collection)?collection.find(function(item){return item&&item.id===id;}):null;
+  if(!record)return;
+  // Le suivi admin peut finaliser, y compris un rapport d'un autre CA. La
+  // fiche affichée vient du serveur et la validation est atomique et tracée.
+  if(stage==='finaliser'&&(type==='iv'||type==='pilp')){
+    return openReportAdminFinalize(row);
+  }
+  const date=/^\d{8}$/.test(row.day)?row.day.slice(6,8)+'/'+row.day.slice(4,6)+'/'+row.day.slice(0,4):row.day;
+  const report=type==='iv'||type==='pilp'?record._crTexte||record._compteRendu||''
+    :type==='activite'?record.cr||'':'';
+  const details=type==='fmpa'?'<div class="mr"><div class="ml">Formation</div><div class="mv2">'
+    +escHtml(record.theme||row.label)+'</div></div>'
+    :'<div class="mr"><div class="ml">Compte rendu</div><div class="mv2" style="white-space:pre-wrap;overflow-wrap:anywhere;">'
+      +escHtml(report||'Aucun texte enregistré pour le moment.')+'</div></div>';
+  document.getElementById('mt').textContent=stage==='finaliser'?'Compte rendu à finaliser':'Rapport à éditer';
+  document.getElementById('mi').textContent=row.label;
+  document.getElementById('mb').innerHTML='<div style="font-size:12px;color:var(--t2);margin-bottom:12px;">'
+    +'Consultation uniquement : aucune validation ni édition n’est effectuée.</div>'
+    +'<div class="mr"><div class="ml">Caserne</div><div class="mv2">'+escHtml(row.stationName)+'</div></div>'
+    +'<div class="mr"><div class="ml">Responsable</div><div class="mv2">'+escHtml(row.owner)+'</div></div>'
+    +'<div class="mr"><div class="ml">Date</div><div class="mv2">'+escHtml(date)+'</div></div>'
+    +(record._crValidePar?'<div class="mr"><div class="ml">Validé par</div><div class="mv2">'
+      +escHtml(record._crValidePar)+(record._crValideAt?' · '+escHtml(record._crValideAt):'')+'</div></div>':'')
+    +(record._crDerogationMotif?'<div class="mr"><div class="ml">Dérogation superadministrateur</div><div class="mv2">'
+      +escHtml(record._crDerogationMotif)+'</div></div>':'')
+    +details
+    +'<button type="button" class="btn sm" style="margin-top:14px;" onclick="openHomeReportMonitor()">← Retour au suivi</button>';
+  openModalAtTop();
+}
+async function openReportAdminFinalize(row){
+  if(!row||!reportAdminScope())return;
+  const token=_agaiAuthAccessToken();
+  if(!token||!navigator.onLine){showToast('Connexion au serveur requise pour finaliser un rapport.','warn');return;}
+  if(typeof _rcPendingDirty!=='undefined'&&_rcPendingDirty.has(row.recordId)){
+    showToast('Une modification locale de cette fiche attend la synchronisation. Conservez-la avant de finaliser.','warn');return;
+  }
+  document.getElementById('mt').textContent='Finaliser un compte rendu';
+  document.getElementById('mi').textContent=row.label;
+  document.getElementById('mb').textContent='Lecture de la fiche serveur…';
+  openModalAtTop();
+  try{
+    const response=await _agaiAuthFetchWithTimeout(SB_URL+'/rest/v1/records?id=eq.'
+      +encodeURIComponent(row.recordId)+'&select=id,caserne,type,data,deleted&limit=1',{
+      headers:{apikey:SB_KEY,Authorization:'Bearer '+token}
+    },12000);
+    if(!response.ok)throw new Error('Fiche serveur indisponible (HTTP '+response.status+').');
+    const rows=await response.json(),server=Array.isArray(rows)?rows[0]:null;
+    if(!server||server.deleted||server.caserne!==row.station||server.type!==row.type
+       ||server.data?.s!=='terminee'||server.data?._crValide===true)
+      throw new Error('Ce rapport a changé ou n’est plus à finaliser. Actualisez le suivi.');
+    if(!CU||!reportAdminScope())return;
+    const late=compteRenduLate(server.data),superadmin=isSuperAdmin();
+    const deadline=compteRenduDeadline(server.data);
+    const originalAuthor=server.data._crAuteur||'Non encore rédigé';
+    const disabled=late&&!superadmin;
+    document.getElementById('mb').innerHTML='<div style="font-size:12px;line-height:1.5;margin-bottom:12px;">'
+      +'Responsable au départ : <strong>'+escHtml(row.owner)+'</strong><br>'
+      +'Auteur du brouillon : <strong>'+escHtml(originalAuthor)+'</strong><br>'
+      +'Date limite : <strong>'+escHtml(deadline||'À vérifier')+'</strong></div>'
+      +(late?'<div style="padding:10px;margin-bottom:12px;border:1px solid #FDBA74;border-radius:8px;background:#FFF7ED;color:#9A3412;font-size:12px;">'
+        +(superadmin?'Échéance dépassée : votre dérogation exige un motif et sera enregistrée dans l’historique serveur.'
+          :'Échéance dépassée : seul le superadministrateur peut autoriser une validation exceptionnelle.')+'</div>':'')
+      +'<label class="fg"><span class="fgl">Compte rendu</span><textarea class="fi" id="admin-cr-text" rows="8" '
+      +(disabled?'readonly ':'')+'style="resize:vertical;">'
+      +escHtml(server.data._crTexte||server.data._compteRendu||'')+'</textarea></label>'
+      +(late&&superadmin?'<label class="fg"><span class="fgl">Motif de dérogation (10 caractères minimum)</span>'
+        +'<textarea class="fi" id="admin-cr-override" rows="3" maxlength="500" placeholder="Expliquez pourquoi la validation est effectuée après le 5."></textarea></label>':'')
+      +(disabled?'':'<button type="button" class="btn sm" id="admin-cr-finalize" style="background:#2563EB;color:#fff;">'
+        +'Valider le rapport avec traçabilité</button>')
+      +'<button type="button" class="btn sm" style="margin-left:8px;" onclick="openHomeReportMonitor()">← Retour au suivi</button>';
+    const submit=document.getElementById('admin-cr-finalize');
+    if(submit)submit.onclick=function(){
+      const text=document.getElementById('admin-cr-text')?.value||'';
+      const reason=document.getElementById('admin-cr-override')?.value||'';
+      if(!text.trim()){showToast('Saisissez le compte rendu avant de valider.','warn');return;}
+      if(late&&reason.trim().length<10){showToast('Indiquez un motif de dérogation d’au moins 10 caractères.','warn');return;}
+      const revision=Number(server.data._serverRevision)||0;
+      confirmModal('Valider ce rapport à la place de son responsable ? Votre identité et l’heure seront enregistrées'
+        +(late?', avec le motif de dérogation.':'.'),function(){
+        submitReportAdminFinalization(row,text,revision,late?reason.trim():null);
+      });
+    };
+  }catch(error){
+    document.getElementById('mb').innerHTML='<p style="color:#991B1B;">'+escHtml(error.message||'Contrôle indisponible.')+'</p>'
+      +'<button class="btn sm" onclick="openHomeReportMonitor()">← Retour au suivi</button>';
+  }
+}
+async function submitReportAdminFinalization(row,text,revision,reason){
+  if(!row||!reportAdminScope())return;
+  document.getElementById('mt').textContent='Validation du rapport';
+  document.getElementById('mi').textContent=row.label;
+  document.getElementById('mb').textContent='Contrôle et enregistrement sur le serveur…';
+  openModalAtTop();
+  try{
+    if(reason&&!isSuperAdmin())throw new Error('Les pouvoirs superadministrateur ne sont plus actifs.');
+    const result=await reportEditionRpc('agai_admin_finalize_report',{
+      p_id:row.recordId,p_text:text,p_expected_record_revision:revision,p_override_reason:reason
+    });
+    if(!result||!result.data||result.data._crValide!==true||!result.data._crValidePar)
+      throw new Error('Confirmation serveur incomplète. Vérifiez le suivi avant de recommencer.');
+    _rcReplaceLocalOperationalRecord(row.station,row.type,result.data);
+    _writeLocalCache(_buildDataObject());
+    renderHomeAdminReportBanner();
+    refreshOperationalInterventionViews();
+    document.getElementById('mb').innerHTML='<div style="padding:12px;border:1px solid #86EFAC;border-radius:8px;background:#ECFDF5;">'
+      +'Rapport validé sur le serveur par '+escHtml(result.data._crValidePar)+'. '
+      +(reason?'Dérogation motivée enregistrée. ':'')+'Le chef d’agrès responsable reste identifié.</div>'
+      +'<button class="btn sm" style="margin-top:12px;" onclick="openHomeReportMonitor()">← Retour au suivi</button>';
+  }catch(error){
+    const raw=String(error&&error.message||'Contrôle serveur indisponible.');
+    const code=(raw.match(/AGAI_REPORT_[A-Z_]+/)||[])[0];
+    const messages={AGAI_REPORT_DEADLINE_PASSED:'Échéance dépassée : seule une dérogation du superadministrateur est autorisée.',
+      AGAI_REPORT_OVERRIDE_REASON_REQUIRED:'Motif de dérogation insuffisant.',
+      AGAI_REPORT_CHANGED:'Le rapport a changé sur le serveur. Actualisez le suivi.',
+      AGAI_REPORT_NOT_PENDING:'Ce rapport a déjà été validé ou n’est plus terminé.'};
+    document.getElementById('mb').innerHTML='<div style="color:#991B1B;">'
+      +escHtml(messages[code]||raw)+'</div><div style="font-size:12px;margin-top:9px;">'
+      +'La réponse ne confirme pas la validation. Ne réessayez pas sans actualiser le suivi.</div>'
+      +'<button class="btn sm" style="margin-top:12px;" onclick="openHomeReportMonitor()">← Retour au suivi</button>';
+  }
+}
+function renderReportAdminMonitor(scope){
+  if(scope!==reportAdminScope())return;
+  const el=document.getElementById('home-report-monitor');
+  if(!el)return;
+  const rows=reportMonitorRows(scope);
+  const station=scope==='superadmin'?_reportAdminStationFilter:'';
+  const finaliser=station?rows.finaliser.filter(function(row){return row.station===station;}):rows.finaliser;
+  const settings=window._agaiReportEditionState;
+  const checkedState=reportAdminSummaryFor(scope);
+  const state=checkedState&&settings&&checkedState.enabled===true
+    &&checkedState.startDate===settings.startDate?checkedState:null;
+  const start=settings&&settings.enabled&&settings.startDate?settings.startDate.replace(/-/g,''):'';
+  const eligible=start?rows.editer.filter(function(row){return row.day>=start&&(!station||row.station===station);}):[];
+  const unverified=eligible.filter(function(row){return !state||!state.items[row.recordId];}).length;
+  const toPrint=eligible.filter(function(row){
+    return state&&state.items[row.recordId]&&Number(state.items[row.recordId].count)===0;
+  });
+  const fmt=function(row){
+    const date=/^\d{8}$/.test(row.day)?row.day.slice(6,8)+'/'+row.day.slice(4,6)+'/'+row.day.slice(0,4):row.day;
+    const deadline=row.deadline?row.deadline.slice(8,10)+'/'+row.deadline.slice(5,7)+'/'+row.deadline.slice(0,4):'';
+    const due=row.stage==='finaliser'&&deadline?' · <span style="color:'+(row.late?'#B91C1C':'#64748B')+';font-weight:'+(row.late?'700':'400')+';">'
+      +(row.late?'Hors délai depuis le ':'À valider avant le ')+escHtml(deadline)+'</span>':'';
+    return '<button type="button" data-station="'+escHtml(row.station)+'" data-type="'+escHtml(row.type)
+      +'" data-id="'+escHtml(row.id)+'" data-stage="'+escHtml(row.stage)+'"'
+      +' onclick="openReportAdminMonitorItem(this)" style="display:block;width:100%;padding:9px 3px;'
+      +'border:0;border-top:1px solid var(--brd);background:transparent;color:inherit;text-align:left;'
+      +'font:inherit;font-size:12px;cursor:pointer;white-space:normal;overflow-wrap:anywhere;">'
+      +'<strong>'+escHtml(row.label)+'</strong> · '+escHtml(date)+due+' <span aria-hidden="true">›</span></button>';
+  };
+  const grouped=function(list,empty,stage){
+    if(!list.length)return '<p style="font-size:12px;color:var(--t2);">'+empty+'</p>';
+    const groups=new Map();
+    list.forEach(function(row){
+      const key=row.station+'|'+row.owner;
+      if(!groups.has(key))groups.set(key,{owner:row.owner,stationName:row.stationName,rows:[]});
+      groups.get(key).rows.push(row);
+    });
+    return [...groups.values()].sort(function(a,b){return a.owner.localeCompare(b.owner,'fr');})
+      .map(function(group){return '<details style="margin-top:7px;padding:7px;border:1px solid var(--brd);border-radius:8px;">'
+        +'<summary style="cursor:pointer;font-weight:600;">'+escHtml(group.owner)+' · '+group.rows.length
+        +(scope==='superadmin'?' · '+escHtml(group.stationName):'')+'</summary>'
+      +group.rows.map(function(row){return fmt(Object.assign({stage:stage},row));}).join('')+'</details>';}).join('');
+  };
+  const stations=scope==='superadmin'?'<label style="display:block;margin:9px 0;font-size:12px;">Caserne '
+    +'<select class="fi" onchange="setReportAdminStationFilter(this.value)">'
+    +'<option value="">Toutes les casernes</option>'
+    +sortedCasernesForDisplay(CASERNES.filter(function(c){return c&&c.id&&c.id!=='EMAJ';})).map(function(c){return '<option value="'+escHtml(c.id)+'"'
+      +(station===c.id?' selected':'')+'>'+escHtml(c.nom||c.id)+'</option>';}).join('')
+    +'</select></label>':'';
+  el.innerHTML='<div style="font-size:12px;margin-bottom:8px;">'
+    +'<button class="btn sm" onclick="refreshReportAdminMonitor(\''+scope+'\')">↻ Actualiser le suivi</button>'
+    +'<span style="margin-left:8px;color:var(--t2);">'+(settings?settings.enabled?'Originaux suivis depuis le '+escHtml(settings.startDate):'Suivi des originaux non activé':'État des originaux non vérifié')+'</span></div>'
+    +stations
+    +'<details open><summary style="font-weight:700;cursor:pointer;">Comptes rendus non validés · '+finaliser.length+'</summary>'
+    +grouped(finaliser,'Aucun rapport en attente de validation sur la période.','finaliser')+'</details>'
+    +(start?'<details style="margin-top:10px;"><summary style="font-weight:700;cursor:pointer;">Originaux non édités · '+toPrint.length
+      +(unverified?' · '+unverified+' statut(s) à vérifier':'')+'</summary>'
+      +grouped(toPrint,'Aucun original en attente confirmé par le serveur.','editer')+'</details>':'');
+}
+async function refreshReportAdminMonitor(scope){
+  if(scope!==reportAdminScope())return;
+  const el=document.getElementById('home-report-monitor');
+  if(el)el.textContent='Vérification du registre serveur…';
+  try{
+    const rows=reportMonitorRows(scope),login=CU.l,station=CURRENT_CASERNE_ID;
+    const state=await reportEditionLoadState(rows.editer.map(function(row){return row.recordId;}));
+    if(!CU||CU.l!==login||CURRENT_CASERNE_ID!==station||scope!==reportAdminScope())return;
+    _reportAdminSummaryState={login:login,station:station,scope:scope,state:state};
+    _reportAdminSummaryCheckedAt=Date.now();
+    renderHomeAdminReportBanner();
+    renderReportAdminMonitor(scope);
+  }catch(error){
+    renderReportAdminMonitor(scope);
+    if(el)el.insertAdjacentHTML('afterbegin','<p style="color:var(--rd);font-size:12px;">'+escHtml(error.message)+' — état des originaux non confirmé.</p>');
+  }
+}
+
+const _reportEditionLegacyIntervention=voirRapportIntervention;
+const _reportEditionLegacyActivity=actImprimerRapport;
+const _reportEditionLegacyFmpa=fmpaImprimerRapport;
+const _reportEditionLegacyOpenIframe=openIframeModal;
+const _reportEditionLegacyPrint=_onIframePrint;
+globalThis.openIframeModal=function(html,id){
+  const button=document.getElementById('iframe-print-btn');
+  if(button){delete button.dataset.reportEditionType;delete button.dataset.reportEditionId;button.disabled=false;}
+  return _reportEditionLegacyOpenIframe(html,id);
+};
+function reportEditionOlderThanStart(kind,record,start){
+  const day=kind==='iv'?accueilRapportDate(record):String(record.date||'').replace(/-/g,'');
+  return day<start.replace(/-/g,'');
+}
+function reportEditionOwns(kind,record){
+  if(!CU||!record)return false;
+  return kind==='iv'?accueilRapportOwner(record,CU.l):record.auteur===CU.l;
+}
+function reportEditionCanonical(value){
+  if(Array.isArray(value))return value.map(reportEditionCanonical);
+  if(value&&typeof value==='object'){
+    const sorted={};
+    Object.keys(value).sort().forEach(function(key){
+      if(value[key]!==undefined)sorted[key]=reportEditionCanonical(value[key]);
+    });
+    return sorted;
+  }
+  return value;
+}
+async function reportEditionVerifyServerCopy(recordId,record,updatedAt){
+  const token=_agaiAuthAccessToken();
+  if(!token||!navigator.onLine)throw new Error('Connexion au serveur requise pour vérifier le rapport.');
+  const url=SB_URL+'/rest/v1/records?id=eq.'+encodeURIComponent(recordId)
+    +'&select=id,data,updated_at,deleted&limit=1';
+  let response;
+  try{
+    response=await _agaiAuthFetchWithTimeout(url,{
+      headers:{apikey:SB_KEY,Authorization:'Bearer '+token}
+    },12000);
+  }catch(_error){throw new Error('Copie serveur du rapport indisponible. Aucune édition émise.');}
+  if(!response.ok)throw new Error('Copie serveur du rapport non accessible (HTTP '+response.status+').');
+  const rows=await response.json(),server=Array.isArray(rows)?rows[0]:null;
+  if(!server||server.deleted||server.id!==recordId
+     ||Date.parse(server.updated_at)!==Date.parse(updatedAt)
+     ||JSON.stringify(reportEditionCanonical(server.data))!==JSON.stringify(reportEditionCanonical(record)))
+    throw new Error('La fiche locale ne correspond pas à la copie du serveur. Attendez la synchronisation, puis actualisez avant toute édition.');
+}
+function reportEditionStamp(html,result){
+  const label=result.kind==='original'?'ORIGINAL':'DUPLICATA';
+  const stamp='<div style="font:700 12pt Arial,sans-serif;text-align:right;color:#111;padding:4px 10mm;background:white;">'
+    +label+' N° '+Number(result.number)+' · '+escHtml(String(result.issuedAt||''))+'</div>';
+  return String(html).replace(/<button\b[^>]*onclick=["']window\.print\(\)["'][^>]*>[\s\S]*?<\/button>/gi,'')
+    .replace(/<body([^>]*)>/i,'<body$1>'+stamp);
+}
+async function reportEditionOpen(kind,id){
+  if(_reportEditionBusy.has(kind+id))return;
+  const record=kind==='iv'?interventionById(id)
+    :kind==='activite'?actGetData().find(function(a){return a.id===id;})
+    :fmpaGetData().find(function(a){return a.id===id;});
+  if(!record){showToast('Rapport introuvable.','warn');return;}
+  if(!canOpenInterventionPdfOnThisDevice()){
+    showToast('Édition disponible uniquement sur ordinateur.','warn');return;
+  }
+  const station=CURRENT_CASERNE_ID,login=CU&&CU.l,
+    type=kind==='iv'?(isPilpIntervention(record)?'pilp':'iv'):kind,
+    recordId=reportEditionRecordId(station,type,id);
+  _reportEditionBusy.add(kind+id);
+  try{
+    const state=await reportEditionLoadState([recordId]);
+    if(!CU||CU.l!==login||CURRENT_CASERNE_ID!==station)
+      throw new Error('La session a changé pendant le contrôle. Recommencez après reconnexion.');
+    const legacy=kind==='iv'?_reportEditionLegacyIntervention
+      :kind==='activite'?_reportEditionLegacyActivity:_reportEditionLegacyFmpa;
+    if(!state.enabled||reportEditionOlderThanStart(kind,record,state.startDate)){
+      legacy(id);return;
+    }
+    const status=state.items[recordId];
+    if(!status||!status.updatedAt)throw new Error('Rapport non confirmé sur le serveur. Vérifiez la synchronisation.');
+    const count=Number(status.count);
+    if(!Number.isInteger(count)||count<0)throw new Error('État des éditions invalide.');
+    if(count===0&&!reportEditionOwns(kind,record))
+      throw new Error('L’original est réservé au responsable qui a créé le rapport.');
+    if(count>0&&!isAdminModeActive())
+      throw new Error('Pour un duplicata, activez vos pouvoirs administrateur.');
+    await reportEditionVerifyServerCopy(recordId,record,status.updatedAt);
+    const html=kind==='iv'?genRapportInterventionHTML(id)
+      :kind==='activite'?genRapportActiviteHTML(record):genRapportFmpaHTML(record);
+    if(!html)throw new Error('Données du rapport insuffisantes.');
+    const expected=count,updatedAt=status.updatedAt;
+    const actionKey=crypto.randomUUID();
+    confirmModal((count?'Émettre un duplicata n° '+(count+1):'Émettre l’unique original')
+      +' de ce rapport ? L’édition sera comptabilisée dès cette confirmation, même si la fenêtre d’impression est ensuite annulée.',
+      async function(){
+        try{
+          if(count>0&&!isAdminModeActive())
+            throw new Error('Les pouvoirs administrateur ne sont plus actifs.');
+          const result=await reportEditionRpc('agai_issue_report_edition',{
+            p_id:recordId,p_expected_count:expected,
+            p_expected_updated_at:updatedAt,p_action_key:actionKey
+          });
+          if(!result||!Number.isInteger(Number(result.number))
+             ||!['original','duplicata'].includes(result.kind))
+            throw new Error('Édition peut-être enregistrée, mais réponse incomplète. Vérifiez le suivi avant de réessayer.');
+          if(!CU||CU.l!==login||CURRENT_CASERNE_ID!==station)
+            throw new Error('Édition enregistrée, mais session changée. Contactez un administrateur avant de réessayer.');
+          openIframeModal(reportEditionStamp(html,result),kind==='iv'?id:null);
+          const button=document.getElementById('iframe-print-btn');
+          if(button){
+            button.dataset.reportEditionType=kind;
+            button.dataset.reportEditionId=id;
+            button.style.display='inline-block';
+            button.textContent='🖨 Imprimer '+(result.kind==='original'?'l’original':'le duplicata');
+          }
+          _reportEditionHomeCheckedAt=0;
+          reportEditionScheduleHomeStatus();
+        }catch(error){showToast(error.message,'warn');}
+      });
+  }catch(error){showToast(error.message,'warn');}
+  finally{_reportEditionBusy.delete(kind+id);}
+}
+globalThis.voirRapportIntervention=function(id){return reportEditionOpen('iv',id);};
+globalThis.actImprimerRapport=function(id){return reportEditionOpen('activite',id);};
+globalThis.fmpaImprimerRapport=function(id){return reportEditionOpen('fmpa',id);};
+globalThis._onIframePrint=function(){
+  const button=document.getElementById('iframe-print-btn');
+  if(!button?.dataset.reportEditionType)return _reportEditionLegacyPrint();
+  if(button.disabled)return;
+  button.disabled=true;
+  document.getElementById('iframe-content')?.contentWindow?.print();
+};
+
 // Aide au piquet VTU : aperçu complet avant confirmation, sans écraser l'existant.
 let _pqWeeklyDraft=[];
 let _pqWeeklySnapshot=null;
@@ -29448,7 +31315,7 @@ function pqDraftClock(minutes){
 }
 function pqWeeklyRange(slot){
   const day=JOURS_FULL.indexOf(slot.jour);
-  const start=(ASTR_CONFIG.weekStartHour??0)*60;
+  const start=astrScheduleForWeek(slot.wk).weekStartHour*60;
   return piquetToAbsRangeIdx(day+(timeToMin(slot.debut)<start?1:0),slot.debut,slot.fin);
 }
 function pqWeeklyOverlaps(a,b){
@@ -29459,14 +31326,9 @@ function pqDraftPlan(wk,engin,options={}){
   const engins=Array.isArray(engin)?engin:[engin];
   const existingForPlan=options.ignoreExisting?[]:(PIQUETS[wk]||[]);
   const gran=ASTR_CONFIG.granularity||60;
-  const start=(ASTR_CONFIG.weekStartHour??0)*60;
+  const start=astrScheduleForWeek(wk).weekStartHour*60;
   const slots=getSlotsPerDay(gran);
-  const periods=[
-    {label:'Matin',from:480,to:720},
-    {label:'Après-midi',from:720,to:1080},
-    {label:'Soir',from:1080,to:1440},
-    {label:'Nuit',from:0,to:480}
-  ];
+  const periods=astrPeriodsForWeek(wk);
   const groups=planningEquipeGroups(wk);
   const tiers=new Map(groups.map(function(g,i){return [g.eq.id,i];}));
   const load=new Map();
@@ -29612,7 +31474,7 @@ function suggestCreneaux(wk,engin){
   _pqWeeklyRepriseDraft=(PIQUETS[wk]||[]).length
     ?pqDraftPlan(wk,engins,{ignoreExisting:true}):[];
   _pqWeeklySnapshot={wk,engins,caserneId:CURRENT_CASERNE_ID,
-    granularity:ASTR_CONFIG.granularity||60,weekStartHour:ASTR_CONFIG.weekStartHour??0,
+    granularity:ASTR_CONFIG.granularity||60,schedule:JSON.stringify(astrScheduleForWeek(wk)),
     piquets:JSON.stringify(PIQUETS[wk]||[]),rotation:JSON.stringify(PLANNING_ROTATIONS[wk]||null)};
   pqWeeklyRenderDraft();
 }
@@ -29738,7 +31600,7 @@ function pqWeeklyWrites(){
   if(CURRENT_CASERNE_ID!==snapshot.caserneId
     ||JSON.stringify(pqWeeklyVtuEngins())!==JSON.stringify(snapshot.engins)
     ||(ASTR_CONFIG.granularity||60)!==snapshot.granularity
-    ||(ASTR_CONFIG.weekStartHour??0)!==snapshot.weekStartHour
+    ||JSON.stringify(astrScheduleForWeek(snapshot.wk))!==snapshot.schedule
     ||JSON.stringify(PLANNING_ROTATIONS[snapshot.wk]||null)!==snapshot.rotation)
     return {error:'La caserne ou les équipes ont changé. Relancez la proposition.'};
   if(JSON.stringify(PIQUETS[snapshot.wk]||[])!==snapshot.piquets)
@@ -30064,30 +31926,3 @@ async function exportAstrPlanningPDF(){
     if(button){button.disabled=false;button.textContent=originalLabel;}
   }
 }
-function showAstrTelParams(){
-  // Lire quota actuel (depuis la 1ère caserne dispo ou valeur globale)
-  let currentQuota=QUOTA_ASTREINTE_TEL_H;
-  if(CASERNES&&CASERNES.length){
-    const cd=CASERNE_DATA[CASERNES[0].id];
-    if(cd&&cd.astrTelParams&&cd.astrTelParams.quota)currentQuota=cd.astrTelParams.quota;
-  }
-  document.getElementById('mt').textContent='📞 Paramètres astreinte téléphonique';
-  document.getElementById('mi').textContent='';
-  document.getElementById('mb').innerHTML=`<div>
-    <div class="fg">
-      <div class="fgl">Nombre d'heures maximum annuel par agent</div>
-      <input class="fi" type="number" id="astrtel-quota-input" style="max-width:140px;" min="0" step="24" value="${currentQuota}"/>
-      <div style="font-size:11px;color:var(--t2);margin-top:4px;">Par défaut : 3 024 heures (18 semaines × 7 jours × 24h)</div>
-    </div>
-    <div class="fg">
-      <div class="fgl">Ce quota s'applique à toutes les casernes.</div>
-    </div>
-    <div class="brow">
-      <button class="btn pr" onclick="astrTelSaveParams()">💾 Enregistrer</button>
-      <button class="btn" onclick="cM()">Annuler</button>
-    </div>
-  </div>`;
-  document.getElementById('mo').style.display='flex';
-}
-
-
