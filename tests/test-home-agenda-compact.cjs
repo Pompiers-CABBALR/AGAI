@@ -13,7 +13,7 @@ function agendaFunction(text){
   assert.ok(start>=0&&end>start);
   return text.slice(start,end);
 }
-function render(nowText,departure='VTU-01'){
+function render(nowText,departure='VTU-01',overrides={}){
   const el={innerHTML:''};
   const now=new Date(nowText);
   const duty={start:'2026-11-09T09:00:00',end:'2026-11-10T18:00:00',mode:'person',login:'valery'};
@@ -34,6 +34,7 @@ function render(nowText,departure='VTU-01'){
     astrTelDutyDateLabel:value=>value,astrTelDutyLabel:()=> 'Aucune astreinte',
     escHtml:value=>String(value)
   };
+  Object.assign(context,overrides);
   vm.createContext(context);
   vm.runInContext(agendaFunction(source),context);
   context.rAccueilAstreinte();
@@ -76,4 +77,44 @@ test('le volet développé garde les horaires utiles sans longue phrase ni rôle
 
 test('le module et le fichier assemblé présentent les mêmes cartes',()=>{
   assert.equal(agendaFunction(bundle),agendaFunction(source));
+});
+
+test('l’astreinte du jour montre seulement les piquets en cours et à venir, par rang',()=>{
+  const piquets=[
+    {engin:'VTU-01',jour:'Lundi',debut:'08:00',fin:'12:00',chefAgres:'agent',conducteur:'valery'},
+    {engin:'VTU-01',jour:'Lundi',debut:'12:00',fin:'18:00',chefAgres:'agent',conducteur:'valery'},
+    {engin:'VTU-01',jour:'Lundi',debut:'18:00',fin:'23:00',chefAgres:'agent',conducteur:'valery'},
+    {engin:'VTU-02',jour:'Lundi',debut:'14:00',fin:'20:00',chefAgres:'agent',conducteur:'valery'},
+    {engin:'VTU-02',jour:'Lundi',debut:'20:00',fin:'02:00',chefAgres:'agent',conducteur:'valery'}
+  ];
+  const html=render('2026-11-09T15:00:00','VTU-01',{
+    getMondayOfWeek:offset=>new Date(2026,10,9+7*offset),
+    weekKey:date=>String(date.getFullYear())+String(date.getMonth()+1).padStart(2,'0')+String(date.getDate()).padStart(2,'0'),
+    PIQUETS:{20261109:piquets},USERS:[{l:'agent',name:'Agent'},{l:'valery',name:'Valéry'}],
+    fullNameAff:user=>user.name,
+    astrTelActiveDuty:()=>({mode:'person',login:'agent',start:'2026-11-09T08:00:00',end:'2026-11-09T23:00:00'})
+  });
+  assert.match(html,/Piquets du jour/);
+  assert.match(html,/2 en cours · 2 à venir/);
+  assert.match(html,/1er départ/);
+  assert.match(html,/2e départ/);
+  assert.ok(html.indexOf('1er départ')<html.indexOf('2e départ'));
+  assert.match(html,/En cours · 12:00–18:00/);
+  assert.match(html,/À venir · 18:00–23:00/);
+  assert.match(html,/À venir · 20:00–24:00/);
+  assert.doesNotMatch(html,/08:00–12:00/);
+  assert.match(html,/--agenda-bg:#EEF2FF;--agenda-color:#4F46E5/);
+});
+
+test('après le dernier piquet du jour, aucun créneau passé ne reste affiché',()=>{
+  const html=render('2026-11-09T23:30:00','VTU-01',{
+    getMondayOfWeek:offset=>new Date(2026,10,9+7*offset),
+    weekKey:date=>String(date.getFullYear())+String(date.getMonth()+1).padStart(2,'0')+String(date.getDate()).padStart(2,'0'),
+    PIQUETS:{20261109:[{engin:'VTU-01',jour:'Lundi',debut:'08:00',fin:'23:00',chefAgres:'agent',conducteur:'valery'}]},
+    USERS:[],fullNameAff:()=>'',
+    astrTelActiveDuty:()=>({mode:'person',login:'agent',start:'2026-11-09T08:00:00',end:'2026-11-09T23:59:00'})
+  });
+  assert.match(html,/0 en cours · 0 à venir/);
+  assert.match(html,/Aucun piquet restant aujourd’hui/);
+  assert.doesNotMatch(html,/08:00–23:00/);
 });
