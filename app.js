@@ -20375,7 +20375,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202611_0031';
+const APP_VERSION='V202611_0032';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -31506,14 +31506,15 @@ function pqDraftPlan(wk,engin,options={}){
     const eq=getEquipeOfUser(u.l);
     return eq&&tiers.has(eq.id)?tiers.get(eq.id):groups.length;
   }
-  function pick(list,night,driver,strictTeamPriority,scarcity,previous){
+  function pick(list,night,driver,strictTeamPriority,remaining,previous,reserved){
     return list.slice().sort(function(a,b){
       const al=load.get(a.l),bl=load.get(b.l);
       const scoreA=al.minutes+tier(a)*720+(night?al.nights*240:0);
       const scoreB=bl.minutes+tier(b)*720+(night?bl.nights*240:0);
       return (strictTeamPriority?tier(a)-tier(b):0)
-        ||(scarcity?.get(a.l)??0)-(scarcity?.get(b.l)??0)
         ||(previous?Number(b.l===previous)-Number(a.l===previous):0)
+        ||Number(reserved?.has(a.l))-Number(reserved?.has(b.l))
+        ||(remaining?.get(b.l)??0)-(remaining?.get(a.l)??0)
         ||scoreA-scoreB
         ||(driver?Number(isChefAgresByGrade(a))-Number(isChefAgresByGrade(b)):0)
         ||tier(a)-tier(b)
@@ -31553,6 +31554,9 @@ function pqDraftPlan(wk,engin,options={}){
   }
   const draft=[];
   JOURS_FULL.forEach(function(jour,di){
+    // La continuité vaut pour toute la journée, y compris entre deux périodes.
+    // Le lendemain, le cumul hebdomadaire reprend la main pour répartir la charge.
+    const previousCrew=new Map();
     periods.forEach(function(period){
       const slices=[];
       for(let from=period.from;from<period.to;from+=gran){
@@ -31570,11 +31574,14 @@ function pqDraftPlan(wk,engin,options={}){
             &&(options.ignoreExisting||!hasConflitPiquet(wk,u.l,jour,slice.debut,slice.fin,-1));
         }));
       });
-      const scarcity=new Map(USERS.map(function(u){
-        return [u.l,availableByUser.get(u.l).filter(Boolean).length];
-      }));
-      const previousCrew=new Map(),lastSegment=new Map();
+      const lastSegment=new Map();
       slices.forEach(function(slice,sliceIndex){
+        const remaining=new Map(USERS.map(function(u){
+          const availability=availableByUser.get(u.l);
+          let length=0;
+          while(sliceIndex+length<availability.length&&availability[sliceIndex+length])length++;
+          return [u.l,length];
+        }));
         const slotDrafts=engins.map(function(targetEngin){
           const s={wk,engin:targetEngin,jour,label:period.label,
             debut:slice.debut,fin:slice.fin,chief:'',driver:'',
@@ -31589,8 +31596,11 @@ function pqDraftPlan(wk,engin,options={}){
         const night=period.label==='Nuit',allocated=new Set();
         function assign(s,role,agents){
           const previous=previousCrew.get(s.engin)?.[role]||'';
+          const reserved=new Set(Array.from(previousCrew.entries())
+            .filter(function(entry){return entry[0]!==s.engin;})
+            .flatMap(function(entry){return [entry[1].chief,entry[1].driver];}).filter(Boolean));
           const u=pick(agents.filter(function(agent){return !allocated.has(agent.l);}),
-            night,role==='driver',true,scarcity,previous);
+            night,role==='driver',true,remaining,previous,reserved);
           if(!u)return;
           s[role]=u.l;allocated.add(u.l);
           const burden=load.get(u.l);
@@ -31722,7 +31732,7 @@ function pqWeeklyRenderDraft(){
   let html='<div style="background:#F8FAFC;border:1px solid #CBD5E1;border-radius:8px;padding:10px;margin-bottom:8px;">'
     +'<div style="font-weight:700;font-size:13px;">Proposition sur toute la semaine — '+(_pqWeeklySnapshot?.engins.length||0)+' départ(s) VTU, 2 agents par créneau</div>'
     +'<div style="font-size:11px;color:#475569;margin:4px 0 8px;">Chef d’agrès et conducteur distincts. Astreinte forte prioritaire, puis faible, autres équipes et sans équipe. '
-    +'Les heures déjà attribuées départagent les agents de même priorité. '+existing+' créneaux déjà couverts ; '
+    +'Binômes conservés tant qu’ils sont disponibles ; à priorité égale, les longues plages et la charge hebdomadaire départagent. '+existing+' créneaux déjà couverts ; '
     +ready+' binômes proposés ; '+partialCount+' piquets incomplets ; '+blocked+' créneaux sans proposition enregistrable. Aucun enregistrement automatique.</div>'
     +'<div class="pq-weekly-list" style="max-height:50vh;overflow-y:auto;">';
   JOURS_FULL.forEach(function(jour){

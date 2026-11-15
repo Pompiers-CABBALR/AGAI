@@ -418,6 +418,28 @@ test('deux départs VTU : 56 créneaux, chefs réservés avant conducteurs et au
   for(let i=0;i<56;i+=2)
     assert.equal(new Set(context.PIQUETS.week.slice(i,i+2).flatMap(p=>[p.chefAgres,p.conducteur])).size,4);
 });
+test('les deux équipages restent stables du matin à la nuit, sans échange de rang, puis la charge se répartit le lendemain',()=>{
+  const users=[
+    {l:'ca-1',chief:true},{l:'ca-2',chief:true},{l:'ca-3',chief:true},
+    {l:'driver-1'},{l:'driver-2'},{l:'driver-3'},{l:'driver-court'}
+  ];
+  const {context,dispos}=contextFor(users);
+  context.ASTR_CONFIG.engins=['VTU-01','VTU-02'];
+  context.planningEquipeGroups=()=>[{eq:{id:'commune'}}];
+  context.getEquipeOfUser=()=>({id:'commune'});
+  for(let slot=0;slot<24;slot++)dispos['driver-court']['0_'+slot]=slot===11;
+  const draft=context.pqDraftPlan('week',context.pqWeeklyVtuEngins());
+  const monday=draft.filter(s=>s.jour==='Lundi');
+  assert.equal(monday.length,8,'un binôme par départ et par période, sans rotation horaire');
+  for(const engin of ['VTU-01','VTU-02']){
+    const assignments=monday.filter(s=>s.engin===engin).map(s=>s.chief+'/'+s.driver);
+    assert.equal(new Set(assignments).size,1,'même équipage sur les quatre périodes pour '+engin);
+  }
+  assert.equal(new Set(monday.slice(0,2).flatMap(s=>[s.chief,s.driver])).size,4);
+  assert.ok(monday.every(s=>s.driver!=='driver-court'));
+  const tuesday=draft.filter(s=>s.jour==='Mardi'&&s.label==='Matin');
+  assert.ok(tuesday.some(s=>s.chief==='ca-3'),'la rotation se fait au changement de jour, pas chaque heure');
+});
 test('deux chefs seulement : le premier départ est complété avant le deuxième et la fin de disponibilité reste visible',()=>{
   const {context,dispos}=contextFor([
     {l:'nicolas',chief:true},{l:'sebastien',chief:true}
@@ -530,6 +552,7 @@ test('une disponibilité partielle de l’astreinte faible crée des relais rée
   const originalGetEquipe=context.getEquipeOfUser;
   context.getEquipeOfUser=login=>login==='marien.matthis'?{id:'faible'}:originalGetEquipe(login);
   for(let slot=0;slot<24;slot++)dispos['marien.matthis']['0_'+slot]=slot>=11&&slot<18;
+  for(let slot=11;slot<18;slot++)delete dispos['conducteur-b']['0_'+slot];
   const draft=context.pqDraftPlan('week',context.pqWeeklyVtuEngins());
   const matthis=draft.filter(s=>s.jour==='Lundi'&&s.engin==='VTU-02'&&s.driver==='marien.matthis');
   assert.ok(matthis.some(s=>s.label==='Soir'&&s.debut==='19:00'&&s.fin==='00:00'));
@@ -594,6 +617,7 @@ test('la reprise affiche des relais sur les piquets existants sans modifier la s
   const originalGetEquipe=context.getEquipeOfUser;
   context.getEquipeOfUser=login=>login==='marien.matthis'?{id:'faible'}:originalGetEquipe(login);
   for(let slot=0;slot<24;slot++)dispos['marien.matthis']['0_'+slot]=slot>=11&&slot<18;
+  for(let slot=11;slot<18;slot++)delete dispos['conducteur-b']['0_'+slot];
   const before=JSON.stringify(context.PIQUETS);
   const html=preview(context).innerHTML;
   assert.match(html,/Aperçu de reprise des piquets déjà enregistrés/);
@@ -613,6 +637,7 @@ test('une disponibilité changée après aperçu annule les relais avant sauvega
   const originalGetEquipe=context.getEquipeOfUser;
   context.getEquipeOfUser=login=>login==='marien.matthis'?{id:'faible'}:originalGetEquipe(login);
   for(let slot=0;slot<24;slot++)dispos['marien.matthis']['0_'+slot]=slot>=11&&slot<18;
+  for(let slot=11;slot<18;slot++)delete dispos['conducteur-b']['0_'+slot];
   let callback,saveCount=0;
   context.confirmModal=(_message,cb)=>{callback=cb;};
   context.saveData=()=>{saveCount++;};
