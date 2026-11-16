@@ -19,7 +19,50 @@ try {
   }
 } catch(_error){}
 </script>
-<link rel="stylesheet" href="style.css?v=V202611_0035"/>
+<script>
+// Le HTML peut s'afficher même si un module différé manque : le signaler
+// avant de laisser croire que les onglets vides ou les boutons A/SA fonctionnent.
+(function(){
+  const failed=[];
+  const required=['showT','rAstreintes','rAstrPlanning','rAstrDispo','rAstrPiquets','rAstrEquipes','toggleAdminRole','toggleSuperAdminRole'];
+  function check(){
+    const missing=required.filter(function(name){return typeof window[name]!=='function';});
+    const diagnostic={version:'V202611_0036',failed:failed.slice(),missing:missing};
+    window.__agaiBootHealth.result=diagnostic;
+    if(!failed.length&&!missing.length)return diagnostic;
+    if(!document.body)return diagnostic;
+    let banner=document.getElementById('agai-boot-error');
+    if(!banner){
+      banner=document.createElement('div');
+      banner.id='agai-boot-error';
+      banner.setAttribute('role','alert');
+      banner.style.cssText='position:fixed;left:10px;right:10px;bottom:70px;z-index:999999;max-width:760px;margin:auto;padding:12px 14px;border-radius:10px;background:#7f1d1d;color:white;box-shadow:0 4px 20px #0005;font:14px/1.4 Arial,sans-serif;';
+      document.body.appendChild(banner);
+    }
+    banner.textContent='AGAI ne s’est pas chargé complètement. Ne saisissez rien et ne fermez pas cet onglet. Vérifiez « Sync OK » et l’absence de saisie avant une actualisation ; sinon contactez un administrateur. Diagnostic '+diagnostic.version+' : '+(failed.length?'module(s) non chargé(s) : '+failed.join(', '):'fonction(s) absente(s) : '+missing.join(', '))+'.';
+    return diagnostic;
+  }
+  window.__agaiBootHealth={failed:failed,result:null,check:check};
+  window.addEventListener('error',function(event){
+    const target=event.target;
+    if(target===window){
+      const source=String(event.filename||'');
+      if(!/\/modules\/(12-astreintes|16-email)-js\.js(?:\?|$)/.test(source))return;
+      const name=source.split('?')[0].split('/').pop()+' (erreur JavaScript)';
+      if(!failed.includes(name))failed.push(name);
+      check();
+      return;
+    }
+    if(!target||target.tagName!=='SCRIPT'||!target.src)return;
+    let name='script';
+    try{name=new URL(target.src,document.baseURI).pathname.split('/').pop()||name;}catch(_error){}
+    if(!failed.includes(name))failed.push(name);
+    if(document.readyState==='complete')check();
+  },true);
+  window.addEventListener('load',check);
+})();
+</script>
+<link rel="stylesheet" href="style.css?v=V202611_0036"/>
 </head>
 <body>
 
@@ -880,34 +923,34 @@ try {
   <div class="mod"><div class="mhan"></div><div class="mtit" id="mt">—</div><div class="mid2" id="mi">—</div><div id="mb"></div><button class="mclose" onclick="cM()">Fermer</button></div>
 </div>
 
-<script src="runtime-config.js?v=V202611_0035"></script>
-<script src="modules/00-preambule.js?v=V202611_0035" defer></script>
-<script src="modules/01-config-js.js?v=V202611_0035" defer></script>
-<script src="modules/02-auth-js-partie-1-2-structure-casernes-numerotation.js?v=V202611_0035" defer></script>
-<script src="modules/03-security-js.js?v=V202611_0035" defer></script>
-<script src="modules/04-auth-js-partie-2-2-login-session-droits.js?v=V202611_0035&amp;rev=auth-safe-1" defer></script>
-<script src="modules/05-admin-js-partie-1-2-vues-globales-superadmin.js?v=V202611_0035" defer></script>
-<script src="modules/06-ui-js-accueil-js.js?v=V202611_0035" defer></script>
-<script src="modules/07-appel-js.js?v=V202611_0035" defer></script>
-<script src="modules/08-interventions-js.js?v=V202611_0035&amp;rev=dated-chain-1" defer></script>
-<script src="modules/09-pilp-js.js?v=V202611_0035" defer></script>
-<script src="modules/10-historique-js.js?v=V202611_0035" defer></script>
-<script src="modules/11-admin-js-partie-2-2-gestion-utilisateurs.js?v=V202611_0035" defer></script>
-<script src="modules/12-astreintes-js.js?v=V202611_0035" defer></script>
-<script src="modules/13-autorisation-js.js?v=V202611_0035" defer></script>
-<script src="modules/14-stats-js.js?v=V202611_0035" defer></script>
-<script src="modules/15-storage-js.js?v=V202611_0035&amp;rev=auth-safe-1" defer></script>
-<script src="modules/16-email-js.js?v=V202611_0035" defer></script>
-<script src="modules/17-animal-js.js?v=V202611_0035&amp;rev=auth-safe-1" defer></script>
-<script src="modules/18-planning-annuel-js.js?v=V202611_0035" defer></script>
-<script src="modules/19-onedrive-sync-js.js?v=V202611_0035" defer></script>
-<script src="modules/20-formations-js.js?v=V202611_0035" defer></script>
-<script src="modules/21-astreinte-tel-js.js?v=V202611_0035" defer></script>
-<script src="modules/22-renforts-auth-js.js?v=V202611_0035" defer></script>
-<script src="modules/23-login-repair-js.js?v=V202611_0035" defer></script>
-<script src="modules/24-secure-transfers-js.js?v=V202611_0035" defer></script>
-<script src="modules/25-report-editions-js.js?v=V202611_0035" defer></script>
-<script src="modules/26-piquet-weekly-js.js?v=V202611_0035" defer></script>
-<script src="modules/27-planning-pdf-js.js?v=V202611_0035" defer></script>
+<script src="runtime-config.js?v=V202611_0036"></script>
+<script src="modules/00-preambule.js?v=V202611_0036" defer></script>
+<script src="modules/01-config-js.js?v=V202611_0036" defer></script>
+<script src="modules/02-auth-js-partie-1-2-structure-casernes-numerotation.js?v=V202611_0036" defer></script>
+<script src="modules/03-security-js.js?v=V202611_0036" defer></script>
+<script src="modules/04-auth-js-partie-2-2-login-session-droits.js?v=V202611_0036&amp;rev=auth-safe-1" defer></script>
+<script src="modules/05-admin-js-partie-1-2-vues-globales-superadmin.js?v=V202611_0036" defer></script>
+<script src="modules/06-ui-js-accueil-js.js?v=V202611_0036" defer></script>
+<script src="modules/07-appel-js.js?v=V202611_0036" defer></script>
+<script src="modules/08-interventions-js.js?v=V202611_0036&amp;rev=dated-chain-1" defer></script>
+<script src="modules/09-pilp-js.js?v=V202611_0036" defer></script>
+<script src="modules/10-historique-js.js?v=V202611_0036" defer></script>
+<script src="modules/11-admin-js-partie-2-2-gestion-utilisateurs.js?v=V202611_0036" defer></script>
+<script src="modules/12-astreintes-js.js?v=V202611_0036" defer></script>
+<script src="modules/13-autorisation-js.js?v=V202611_0036" defer></script>
+<script src="modules/14-stats-js.js?v=V202611_0036" defer></script>
+<script src="modules/15-storage-js.js?v=V202611_0036&amp;rev=auth-safe-1" defer></script>
+<script src="modules/16-email-js.js?v=V202611_0036" defer></script>
+<script src="modules/17-animal-js.js?v=V202611_0036&amp;rev=auth-safe-1" defer></script>
+<script src="modules/18-planning-annuel-js.js?v=V202611_0036" defer></script>
+<script src="modules/19-onedrive-sync-js.js?v=V202611_0036" defer></script>
+<script src="modules/20-formations-js.js?v=V202611_0036" defer></script>
+<script src="modules/21-astreinte-tel-js.js?v=V202611_0036" defer></script>
+<script src="modules/22-renforts-auth-js.js?v=V202611_0036" defer></script>
+<script src="modules/23-login-repair-js.js?v=V202611_0036" defer></script>
+<script src="modules/24-secure-transfers-js.js?v=V202611_0036" defer></script>
+<script src="modules/25-report-editions-js.js?v=V202611_0036" defer></script>
+<script src="modules/26-piquet-weekly-js.js?v=V202611_0036" defer></script>
+<script src="modules/27-planning-pdf-js.js?v=V202611_0036" defer></script>
 </body>
 </html>
