@@ -1,5 +1,18 @@
 # AGAI — déploiement sécurisé
 
+## V202611_0041 — piquets du jour et demandes de disponibilité
+
+Le volet « Piquets du jour » ne nomme plus VTU-01 / VTU-02 : il présente
+seulement les rangs 1er et 2e départ, indépendamment du camion engagé.
+Son état ouvert est conservé lors des rafraîchissements de l'accueil.
+Les avertissements de présence partielle sont recalculés depuis les heures
+individuelles : l'ajout d'un CA ne laisse plus afficher d'anciennes heures.
+Une nouvelle demande de disponibilité n'annule plus les demandes en attente ;
+les créneaux déjà demandés sont exclus d'une nouvelle demande. Le responsable
+de l'équipe du demandeur et celui de l'astreinte forte reçoivent le rappel.
+Cette version ne change ni les piquets ni la relève automatique, qui requiert
+un traitement serveur atomique distinct.
+
 ## V202611_0040 — équipages des piquets du jour sur l'accueil
 
 Le volet « Piquets du jour » sépare les 1er et 2e départs en deux colonnes,
