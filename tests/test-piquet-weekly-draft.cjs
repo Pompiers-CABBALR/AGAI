@@ -194,23 +194,23 @@ test('le raccourci de la page piquets ouvre la proposition VTU sans enregistrer'
   ]));
   assert.equal(context.PIQUETS.week.length,0);
 });
-test('une semaine avec piquet incomplet ne peut pas être marquée validée',()=>{
+test('une semaine avec piquet incomplet demande confirmation et signale le départ non garanti',()=>{
   const planning=fs.readFileSync(path.join(__dirname,'../modules/12-astreintes-js.js'),'utf8');
   const start=planning.indexOf('function validerPiquets(){');
   const end=planning.indexOf('function exportPiquets(){',start);
   assert.ok(start>=0&&end>start);
   let confirmed=false,warning='';
   const context={
-    astrPiquetWeek:0,getMondayOfWeek:()=>new Date(),weekKey:()=> 'week',
+    astrPiquetWeek:0,getMondayOfWeek:()=>new Date(),weekKey:()=> 'week',weekLabel:()=> '16/11',
     PIQUETS:{week:[{chefAgres:'ca-f',conducteur:''}]},
-    showToast:message=>{warning=message;},
-    confirmModal:()=>{confirmed=true;}
+    showToast:message=>{throw new Error('Validation bloquée : '+message);},
+    confirmModal:message=>{confirmed=true;warning=message;}
   };
   vm.createContext(context);
   vm.runInContext(planning.slice(start,end),context);
   context.validerPiquets();
-  assert.equal(confirmed,false);
-  assert.match(warning,/chef et conducteur requis/);
+  assert.equal(confirmed,true);
+  assert.match(warning,/départ non garanti/);
 });
 test('la proposition complète utilise uniquement chef et conducteur, avec priorité forte pour les deux rôles',()=>{
   const {context}=contextFor([

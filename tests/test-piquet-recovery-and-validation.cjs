@@ -85,7 +85,7 @@ test('la validation serveur est bornée à une semaine future complète, avec ve
   assert.match(read('app.js'),/const RC_TEAM_PIQUET_VALIDATE_RPC = SB_URL \+ '\/rest\/v1\/rpc\/agai_validate_piquet_week'/);
 });
 
-test('le responsable ne valide pas une semaine incomplète et reçoit le conflit serveur sans effacer sa copie',async()=>{
+test('le responsable peut demander la validation de piquets incomplets et garde sa copie en cas de conflit',async()=>{
   const moduleSource=read('modules/17-animal-js.js');
   const start=moduleSource.indexOf('const RC_TEAM_PIQUET_VALIDATE_RPC');
   const end=moduleSource.indexOf('let _rcAtomicServerState',start);
@@ -97,8 +97,36 @@ test('le responsable ne valide pas une semaine incomplète et reçoit le conflit
     _agaiFetchWithTimeout:async()=>{sends++;return {ok:false,status:400,text:async()=>'{"message":"AGAI_PIQUET_REVISION_CONFLICT"}'};}
   };
   vm.createContext(context);vm.runInContext(moduleSource.slice(start,end),context);
-  await assert.rejects(context._rcValidateTeamPiquetWeek('20261116',localPiquets),/Complétez/);
+  await assert.rejects(context._rcValidateTeamPiquetWeek('20261116',[]),/Aucun piquet valide/);
   assert.equal(sends,0);
-  await assert.rejects(context._rcValidateTeamPiquetWeek('20261116',[{chefAgres:'eric',conducteur:'valery'}]),/pas encore identiques sur le serveur/);
+  await assert.rejects(context._rcValidateTeamPiquetWeek('20261116',localPiquets),/pas encore identiques sur le serveur/);
   assert.equal(sends,1);
+});
+
+test('la validation avertit du départ non garanti mais transmet les piquets incomplets',async()=>{
+  const moduleSource=read('modules/12-astreintes-js.js');
+  const start=moduleSource.indexOf('let _agaiPiquetValidationRunning=false;');
+  const end=moduleSource.indexOf('function exportPiquets()',start);
+  assert.ok(start>=0&&end>start);
+  const piquets=[{chefAgres:'eric',conducteur:''},{chefAgres:'nicolas',conducteur:'valery'}];
+  const state={confirmation:'',callback:null,sent:null,toasts:[],rendered:0};
+  const context={
+    astrPiquetWeek:0,PIQUETS:{week:piquets},PERSONNEL_ONLINE_GATE:true,
+    getMondayOfWeek:()=>new Date('2026-11-16'),weekKey:()=> 'week',weekLabel:()=> '16/11',
+    confirmModal:(message,callback)=>{state.confirmation=message;state.callback=callback;},
+    hasRight:()=>false,_rcValidateTeamPiquetWeek:async(week,expected)=>{state.sent={week,expected};},
+    _rcPull:async()=>{},showToast:(message,type)=>state.toasts.push({message,type}),
+    rAstrPiquets:()=>{state.rendered++;}
+  };
+  vm.createContext(context);vm.runInContext(moduleSource.slice(start,end),context);
+  context.validerPiquets();
+  assert.match(state.confirmation,/1 piquet\(s\) resteront sans chef d’agrès ou conducteur : départ non garanti/);
+  assert.match(state.confirmation,/seuls les administrateurs pourront compléter/);
+  await state.callback();
+  assert.equal(state.sent.week,'week');
+  assert.equal(state.sent.expected,piquets);
+  assert.equal(state.rendered,1);
+  assert.match(state.toasts[0].message,/validée avec 1 piquet\(s\) à compléter/);
+  assert.equal(state.toasts[0].type,'warn');
+  assert.match(moduleSource,/Validé'\+\(incompletePiquets\?' avec réserves'/);
 });
