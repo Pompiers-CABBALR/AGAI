@@ -6371,14 +6371,33 @@ function syncAppelNatureViewport(){
   const root=document.documentElement,tab=document.getElementById('tab-appel'),step=document.getElementById('e1');
   if(!tab||!step)return;
   const active=tab.classList.contains('active')&&step.style.display!=='none';
-  root.classList.toggle('appel-nature-locked',active);
-  if(!active){step.style.removeProperty('height');step.style.removeProperty('max-height');return;}
+  if(!active){
+    root.classList.remove('appel-nature-locked','appel-nature-fallback');
+    step.style.removeProperty('height');step.style.removeProperty('max-height');
+    root.style.removeProperty('--appel-nature-height');
+    return;
+  }
   const viewport=window.visualViewport;
-  const viewportHeight=Math.round(viewport&&viewport.height?viewport.height:window.innerHeight);
+  const viewportBottom=Math.round(viewport&&viewport.height?(viewport.offsetTop||0)+viewport.height:window.innerHeight);
   const top=Math.max(0,Math.round(step.getBoundingClientRect().top));
-  const available=Math.max(150,viewportHeight-top-2);
+  const available=viewportBottom-top-2;
+  if(available<340){
+    root.classList.remove('appel-nature-locked');
+    root.classList.add('appel-nature-fallback');
+    step.style.removeProperty('height');step.style.removeProperty('max-height');
+    root.style.removeProperty('--appel-nature-height');
+    return;
+  }
+  root.classList.remove('appel-nature-fallback');
+  root.classList.add('appel-nature-locked');
   root.style.setProperty('--appel-nature-height',available+'px');
   step.style.height=available+'px';step.style.maxHeight=available+'px';
+  if(document.getElementById('nl').getBoundingClientRect().height<160){
+    root.classList.remove('appel-nature-locked');
+    root.classList.add('appel-nature-fallback');
+    step.style.removeProperty('height');step.style.removeProperty('max-height');
+    root.style.removeProperty('--appel-nature-height');
+  }
 }
 function showSM(nat){
   ['g','f','a','n','e'].forEach(k=>document.getElementById('sm-'+k).style.display='none');
@@ -20380,7 +20399,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202611_0038';
+const APP_VERSION='V202611_0039';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;

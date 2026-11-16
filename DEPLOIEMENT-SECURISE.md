@@ -1,5 +1,14 @@
 # AGAI — déploiement sécurisé
 
+## V202611_0039 — liste des natures d'appel sur iPhone
+
+Le catalogue serveur contient toujours les 26 natures d'appel. Sur certains
+écrans mobiles, le calcul de hauteur de l'étape Nature pouvait réduire la
+liste à une bande invisible. Le calcul tient maintenant compte du décalage
+du viewport ; si l'espace mesuré reste trop petit ou si la liste est écrasée,
+la page reprend un défilement normal et conserve une liste visible. Aucun
+appel, catalogue ni enregistrement serveur n'est modifié.
+
 ## V202611_0038 — pouvoir superadmin sur les piquets
 
 Le bouton SA actif donne déjà le droit administratif via

@@ -31,6 +31,22 @@ window.addEventListener('load',function(){
     showAstrTab('planning',document.getElementById('astr-btn-planning'));
     if(document.getElementById('astr-planning').style.display==='none')errors.push('planning-masque');
   }catch(error){errors.push('astreintes:'+String(error&&error.message||error));}
+  try{
+    document.getElementById('app').style.display='flex';
+    document.getElementById('lw').style.display='none';
+    showT('appel',document.getElementById('nav-appel'));
+    if(!document.querySelector('#nl .nature-option'))errors.push('natures-appel-vides');
+    syncAppelNatureViewport();
+    if(document.getElementById('nl').getBoundingClientRect().height<160)errors.push('appel-liste-standard-ecrasee');
+    const step=document.getElementById('e1');
+    const originalRect=step.getBoundingClientRect.bind(step);
+    step.getBoundingClientRect=function(){return {top:(window.visualViewport?.offsetTop||0)+(window.visualViewport?.height||window.innerHeight)-120};};
+    syncAppelNatureViewport();
+    if(!document.documentElement.classList.contains('appel-nature-fallback'))errors.push('appel-repli-absent');
+    if(document.getElementById('nl').getBoundingClientRect().height<180)errors.push('appel-liste-ecrasee:'+document.getElementById('nl').getBoundingClientRect().height+':'+getComputedStyle(document.getElementById('nl')).minHeight+':'+getComputedStyle(step).height+':'+getComputedStyle(document.getElementById('tab-appel')).display+':'+getComputedStyle(step).display);
+    step.getBoundingClientRect=originalRect;
+    syncAppelNatureViewport();
+  }catch(error){errors.push('appel:'+String(error&&error.message||error));}
   document.body.setAttribute('data-agai-smoke',errors.length?'FAIL':'PASS');
   document.body.setAttribute('data-agai-smoke-details',errors.join(' | '));
 });
@@ -53,7 +69,7 @@ function runChrome(url,profile){
   });
 }
 
-test('le navigateur charge Astreintes et active les pouvoirs A/SA', {timeout:35000}, async()=>{
+test('le navigateur charge Astreintes, les pouvoirs A/SA et les natures d’appel', {timeout:35000}, async()=>{
   assert.ok(browser,'Chrome/Chromium est requis pour ce test navigateur.');
   const server=http.createServer((req,res)=>{
     const pathname=decodeURIComponent(new URL(req.url,'http://127.0.0.1').pathname);

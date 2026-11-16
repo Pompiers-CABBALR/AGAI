@@ -1095,6 +1095,9 @@ button,.btn,.nb,.subtab-btn,.smopt,.fb,.ec,.ivr,[onclick]{
 html.appel-nature-locked,html.appel-nature-locked body{height:var(--app-height);overflow:hidden!important;overscroll-behavior:none;}
 html.appel-nature-locked .app{height:var(--app-height);min-height:0;overflow:hidden;}
 html.appel-nature-locked .cnt{overflow:hidden!important;}
+html.appel-nature-fallback #e1.appel-nature-step{height:auto!important;max-height:none!important;overflow:visible;}
+html.appel-nature-fallback #nl.appel-nature-list{flex:0 0 auto;min-height:220px;max-height:min(55vh,420px)!important;overflow-y:auto!important;}
+html.appel-nature-fallback .app,html.appel-nature-fallback .cnt{height:auto;overflow-y:visible!important;}
 @media(hover:none) and (pointer:coarse), (max-width:767px){
   #tab-appel.active{display:flex!important;flex-direction:column;min-height:0;}
   #e1.appel-nature-step{display:flex;flex:0 0 auto;min-height:0;flex-direction:column;}
