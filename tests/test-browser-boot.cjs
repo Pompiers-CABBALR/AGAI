@@ -64,6 +64,7 @@ function runChrome(url,profile){
     child.on('close',code=>{
       clearTimeout(timer);
       if(code!==0)return reject(new Error('Chrome a quitté avec le code '+code+': '+stderr.slice(-700)));
+      if(!stdout)return reject(new Error('Chrome n’a renvoyé aucun HTML : '+stderr.slice(-700)));
       resolve(stdout);
     });
   });
@@ -97,7 +98,7 @@ test('le navigateur charge Astreintes, les pouvoirs A/SA et les natures d’appe
     const html=await runChrome(url,profile);
     const result=html.match(/data-agai-smoke="([^"]+)"/);
     const details=html.match(/data-agai-smoke-details="([^"]*)"/);
-    assert.equal(result&&result[1],'PASS',details&&details[1]||'Aucun résultat du test navigateur.');
+    assert.equal(result&&result[1],'PASS',details&&details[1]||'Aucun résultat du test navigateur : '+html.slice(-700));
   }finally{
     await new Promise(resolve=>server.close(resolve));
     fs.rmSync(profile,{recursive:true,force:true});

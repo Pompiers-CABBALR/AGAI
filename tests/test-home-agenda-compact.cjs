@@ -76,7 +76,7 @@ test('le volet développé garde les horaires utiles sans longue phrase ni rôle
 });
 
 test('le module et le fichier assemblé présentent les mêmes cartes',()=>{
-  assert.equal(agendaFunction(bundle),agendaFunction(source));
+  assert.equal(agendaFunction(bundle).replace(/\r\n/g,'\n'),agendaFunction(source).replace(/\r\n/g,'\n'));
 });
 
 test('l’astreinte du jour montre seulement les piquets en cours et à venir, par rang',()=>{
@@ -106,6 +106,33 @@ test('l’astreinte du jour montre seulement les piquets en cours et à venir, p
   assert.match(html,/--agenda-bg:#FFF1E8;--agenda-color:#C2410C;--agenda-text:#7C2D12/);
   assert.match(html,/--agenda-bg:#F3E8FF;--agenda-color:#7E22CE;--agenda-text:#581C87/);
   assert.match(html,/--agenda-bg:#F0FDFA;--agenda-color:#0F766E;--agenda-text:#115E59/);
+});
+
+test('les deux départs ont leurs colonnes et signalent les horaires individuels partiels',()=>{
+  const html=render('2026-11-09T09:00:00','VTU-01',{
+    getMondayOfWeek:offset=>new Date(2026,10,9+7*offset),
+    weekKey:date=>String(date.getFullYear())+String(date.getMonth()+1).padStart(2,'0')+String(date.getDate()).padStart(2,'0'),
+    astrScheduleForWeek:()=>({weekStartHour:7,afternoonStart:12,eveningStart:18,nightStart:24}),
+    PIQUETS:{20261109:[
+      {engin:'VTU-01',jour:'Lundi',debut:'07:00',fin:'12:00',chefAgres:'nicolas',conducteur:'sebastien',
+        note:'Présence partielle : 11:00–12:00 sans conducteur.',membres:[
+          {role:"Chef d'agrès",login:'nicolas',hDebut:'07:00',hFin:'12:00'},
+          {role:'Conducteur',login:'sebastien',hDebut:'07:00',hFin:'11:00'}]},
+      {engin:'VTU-02',jour:'Lundi',debut:'07:00',fin:'12:00',chefAgres:'eric',conducteur:'mathis'}
+    ]},
+    USERS:[{l:'nicolas',name:'Lhernout Nicolas'},{l:'sebastien',name:'Dumoulin Sébastien'},
+      {l:'eric',name:'Canneson Eric'},{l:'mathis',name:'Marien Mathis'}],
+    fullNameAff:user=>user.name,
+    astrTelActiveDuty:()=>({mode:'person',login:'agent',start:'2026-11-09T07:00:00',end:'2026-11-09T23:00:00'})
+  });
+  assert.match(html,/class="acc-day-piquet-grid"/);
+  const columns=html.match(/<section class="acc-day-piquet-column">[\s\S]*?<\/section>/g)||[];
+  assert.equal(columns.length,2);
+  assert.match(columns[0],/1er départ[\s\S]*07:00–12:00[\s\S]*Lhernout Nicolas[\s\S]*Dumoulin Sébastien/);
+  assert.match(columns[0],/class="acc-day-piquet-hours">07:00–11:00/);
+  assert.match(columns[0],/11:00–12:00 sans conducteur/);
+  assert.match(columns[1],/2e départ[\s\S]*Canneson Eric[\s\S]*Marien Mathis/);
+  assert.doesNotMatch(columns[1],/acc-day-piquet-hours|Présence partielle/);
 });
 
 test('après le dernier piquet du jour, aucun créneau passé ne reste affiché',()=>{

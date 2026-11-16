@@ -6191,22 +6191,48 @@ function rAccueilAstreinte(){
         const depart=piquetDepartureLabel(p.engin);
         const rank=/1er départ/.test(depart)?'first':/2e départ/.test(depart)?'second':'other';
         const current=start<=now&&end>now;
+        const members=Array.isArray(p.membres)&&p.membres.length?p.membres:[
+          {role:"Chef d'agrès",login:p.chefAgres,hDebut:p.debut,hFin:p.fin},
+          {role:'Conducteur',login:p.conducteur,hDebut:p.debut,hFin:p.fin},
+          p.chefEquipe?{role:"Chef d'équipe",login:p.chefEquipe,hDebut:p.debut,hFin:p.fin}:null,
+          p.stagiaire?{role:'Équipier',login:p.stagiaire,hDebut:p.debut,hFin:p.fin}:null
+        ].filter(Boolean);
+        const crew=members.map(function(m){
+          const role=String(m.role||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+          const shortRole=role.includes('agres')?'CA':role.includes('conducteur')?'Cond.':role.includes('equipe')?'CE':'Éq.';
+          const from=String(m.hDebut||p.debut),to=String(m.hFin||p.fin);
+          return {role:shortRole,name:name(m.login),hours:from+'–'+to,partial:from!==p.debut||to!==p.fin};
+        });
+        const partialNote=String(p.note||'').startsWith('Présence partielle : ')?String(p.note):'';
         rows.push({time:start.getTime(),rank:rank,current:current,
-          label:(current?'En cours · ':'À venir · ')+clock(displayStart)+'–'+clock(displayEnd)
-            +' · '+String(p.engin||'—')+' · '+name(p.chefAgres)+' / '+name(p.conducteur)});
+          label:(current?'En cours · ':'À venir · ')+clock(displayStart)+'–'+clock(displayEnd),
+          vehicle:String(p.engin||'—'),crew:crew,
+          notice:partialNote||((!p.chefAgres||!p.conducteur)?'Départ non garanti':crew.some(function(m){return m.partial;})?'Horaires individuels différents':'')});
       });
     });
     rows.sort(function(a,b){return Number(b.current)-Number(a.current)||a.time-b.time||a.label.localeCompare(b.label,'fr');});
     const currentCount=rows.filter(function(row){return row.current;}).length;
     const upcomingCount=rows.length-currentCount;
     const groups=[{rank:'first',title:'1er départ'},{rank:'second',title:'2e départ'},{rank:'other',title:'Autres départs'}];
-    const groupedHtml=groups.map(function(group){
+    function renderDayPiquet(row){
+      return '<div class="acc-day-piquet-slot">'
+        +'<div class="acc-day-piquet-time">'+escHtml(row.label)+'</div>'
+        +'<div class="acc-day-piquet-vehicle">'+escHtml(row.vehicle)+'</div>'
+        +row.crew.map(function(member){return '<div class="acc-day-piquet-member">'
+          +'<span>'+escHtml(member.role)+' · '+escHtml(member.name)+'</span>'
+          +(member.partial?'<strong class="acc-day-piquet-hours">'+escHtml(member.hours)+'</strong>':'')
+          +'</div>';}).join('')
+        +(row.notice?'<div class="acc-day-piquet-notice">⚠ '+escHtml(row.notice)+'</div>':'')
+        +'</div>';
+    }
+    const groupedHtml=rows.length?'<div class="acc-day-piquet-grid">'+groups.map(function(group){
       const items=rows.filter(function(row){return row.rank===group.rank;});
-      if(!items.length)return '';
-      return '<div style="font-size:12px;font-weight:700;color:#7C2D12;margin:8px 0 4px;border-bottom:1px solid #F4B8A5;padding-bottom:3px;">'
-        +group.title+'</div>'
-        +items.map(function(row){return '<div class="acc-agenda-detail">'+escHtml(row.label)+'</div>';}).join('');
-    }).join('');
+      if(group.rank==='other'&&!items.length)return '';
+      return '<section class="acc-day-piquet-column'+(group.rank==='other'?' other':'')+'">'
+        +'<div class="acc-day-piquet-heading">'+group.title+'</div>'
+        +(items.length?items.map(renderDayPiquet).join(''):'<div class="acc-day-piquet-empty">Aucun piquet restant</div>')
+        +'</section>';
+    }).join('')+'</div>':'';
     el.innerHTML+='<details class="acc-agenda-card" style="margin-top:8px;--agenda-bg:#FFF1E8;--agenda-color:#C2410C;--agenda-text:#7C2D12;">'
       +'<summary><span class="acc-agenda-icon">🚒</span><span class="acc-agenda-main"><div class="acc-agenda-title">Piquets du jour</div>'
       +'<div class="acc-agenda-summary">'+currentCount+' en cours · '+upcomingCount+' à venir</div></span><span class="acc-agenda-more">▼</span></summary>'
@@ -20399,7 +20425,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202611_0039';
+const APP_VERSION='V202611_0040';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;

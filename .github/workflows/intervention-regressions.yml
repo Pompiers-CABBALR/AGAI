@@ -2,6 +2,7 @@ name: Intervention regression tests
 on:
   pull_request:
     paths:
+      - 'modules/06-ui-js-accueil-js.js'
       - 'modules/07-appel-js.js'
       - 'modules/08-interventions-js.js'
       - 'modules/09-pilp-js.js'
@@ -18,6 +19,7 @@ on:
       - 'tests/test-version-consistency.cjs'
       - 'tests/test-boot-health.cjs'
       - 'tests/test-browser-boot.cjs'
+      - 'tests/test-home-agenda-compact.cjs'
       - 'tests/test-piquet-recovery-and-validation.cjs'
       - 'tests/test-piquet-weekly-draft.cjs'
       - 'tests/test-superadmin-piquet-power.cjs'
@@ -25,6 +27,7 @@ on:
   push:
     branches: [main]
     paths:
+      - 'modules/06-ui-js-accueil-js.js'
       - 'modules/07-appel-js.js'
       - 'modules/08-interventions-js.js'
       - 'modules/09-pilp-js.js'
@@ -39,6 +42,7 @@ on:
       - 'tests/test-route-confirmation-persistence.cjs'
       - 'tests/test-boot-health.cjs'
       - 'tests/test-browser-boot.cjs'
+      - 'tests/test-home-agenda-compact.cjs'
       - 'tests/test-piquet-recovery-and-validation.cjs'
       - 'tests/test-piquet-weekly-draft.cjs'
       - 'tests/test-superadmin-piquet-power.cjs'
@@ -56,6 +60,7 @@ jobs:
           node-version: '22'
       - name: Check published JavaScript syntax
         run: |
+          node --check modules/06-ui-js-accueil-js.js
           node --check modules/07-appel-js.js
           node --check modules/08-interventions-js.js
           node --check modules/09-pilp-js.js
@@ -65,7 +70,7 @@ jobs:
           node --check modules/26-piquet-weekly-js.js
           node --check app.js
       - name: Test modules and release versions
-        run: node --test tests/test-route-confirmation-persistence.cjs tests/test-version-consistency.cjs tests/test-boot-health.cjs tests/test-piquet-recovery-and-validation.cjs tests/test-piquet-weekly-draft.cjs tests/test-superadmin-piquet-power.cjs
+        run: node --test tests/test-route-confirmation-persistence.cjs tests/test-version-consistency.cjs tests/test-boot-health.cjs tests/test-home-agenda-compact.cjs tests/test-piquet-recovery-and-validation.cjs tests/test-piquet-weekly-draft.cjs tests/test-superadmin-piquet-power.cjs
       - name: Smoke test Astreintes, A/SA and call intake in Chrome
         run: node --test tests/test-browser-boot.cjs
       - name: Test published bundle
