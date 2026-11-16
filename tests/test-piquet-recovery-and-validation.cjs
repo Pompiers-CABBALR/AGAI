@@ -126,4 +126,9 @@ test('la confirmation avertit du départ non garanti avant transmission',async()
   assert.equal(state.sent.expected,piquets);
   assert.match(state.toasts[0].message,/validée avec 1 piquet\(s\) à compléter/);
   assert.equal(state.toasts[0].type,'warn');
+  state.sent=null;
+  piquets[0].conducteur='autre-agent';
+  await state.callback();
+  assert.equal(state.sent,null,'une modification après confirmation ne doit pas être transmise');
+  assert.match(state.toasts.at(-1).message,/ont changé pendant la confirmation/);
 });

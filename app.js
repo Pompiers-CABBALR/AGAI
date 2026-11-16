@@ -14855,6 +14855,7 @@ function validerPiquets(){
   const mon=getMondayOfWeek(astrPiquetWeek);
   const wk=weekKey(mon);
   if(!(PIQUETS[wk]||[]).length){showToast('Aucun piquet à valider pour cette semaine.','warn');return;}
+  const validationSnapshot=JSON.stringify(PIQUETS[wk]);
   const incomplete=(PIQUETS[wk]||[]).filter(function(p){return !p.chefAgres||!p.conducteur;}).length;
   const partialHours=(PIQUETS[wk]||[]).filter(function(p){return String(p.note||'').startsWith('Présence partielle : ');}).length;
   confirmModal(
@@ -14863,6 +14864,9 @@ function validerPiquets(){
       +(partialHours?partialHours+' piquet(s) gardent des heures sans binôme : vérifiez les horaires individuels. ':'')
       +'Après validation, seuls les administrateurs pourront compléter ou corriger ces piquets.',
     async function(){
+      if(JSON.stringify(PIQUETS[wk]||[])!==validationSnapshot){
+        showToast('Les piquets ont changé pendant la confirmation. Vérifiez la semaine avant de valider.','warn');return;
+      }
       if(PERSONNEL_ONLINE_GATE&&!hasRight('Administration')){
         if(typeof _rcValidateTeamPiquetWeek!=='function'){
           showToast('Validation sécurisée indisponible sur cette version.','warn');return;
