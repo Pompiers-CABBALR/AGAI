@@ -75,7 +75,8 @@ function pendingAstreinteRequests(){
   return Object.keys(DISPO_REQUESTS||{}).filter(function(wk){return wk>=current;})
     .flatMap(function(wk){return (DISPO_REQUESTS[wk]||[]).filter(function(req){
       return req&&req.statut==='en-attente'&&(!req.caserneId||req.caserneId===CURRENT_CASERNE_ID)
-        &&USERS.some(function(user){return user.l===req.login;});
+        &&USERS.some(function(user){return user.l===req.login;})
+        &&dispoRequestVisibleTo(req,wk,CU.l);
     }).map(function(req){return {wk,req};});});
 }
 function openAccueilAstreinteRequest(wk){
@@ -252,6 +253,9 @@ function rAccueilRapports(){
 function rAccueilAstreinte(){
   const el=document.getElementById('acc-astreinte-msg');
   if(!el||!CU)return;
+  // Les synchronisations redessinent l'accueil : conserver les volets ouverts.
+  const expandedCards=new Set(Array.from(el.querySelectorAll('details.acc-agenda-card[open]'))
+    .map(function(card){return card.querySelector('.acc-agenda-title')?.textContent||'';}));
   // Pas de messages pour le chef de corps (pas d'astreintes)
   if(GLOBAL_ROLE==='chef_corps'){el.innerHTML='';return;}
 
@@ -586,10 +590,10 @@ function rAccueilAstreinte(){
           const from=String(m.hDebut||p.debut),to=String(m.hFin||p.fin);
           return {role:shortRole,name:name(m.login),hours:from+'–'+to,partial:from!==p.debut||to!==p.fin};
         });
-        const partialNote=String(p.note||'').startsWith('Présence partielle : ')?String(p.note):'';
+        const partialNote=piquetPresenceWarning(p);
         rows.push({time:start.getTime(),rank:rank,current:current,
           label:(current?'En cours · ':'À venir · ')+clock(displayStart)+'–'+clock(displayEnd),
-          vehicle:String(p.engin||'—'),crew:crew,
+          crew:crew,
           notice:partialNote||((!p.chefAgres||!p.conducteur)?'Départ non garanti':crew.some(function(m){return m.partial;})?'Horaires individuels différents':'')});
       });
     });
@@ -600,7 +604,6 @@ function rAccueilAstreinte(){
     function renderDayPiquet(row){
       return '<div class="acc-day-piquet-slot">'
         +'<div class="acc-day-piquet-time">'+escHtml(row.label)+'</div>'
-        +'<div class="acc-day-piquet-vehicle">'+escHtml(row.vehicle)+'</div>'
         +row.crew.map(function(member){return '<div class="acc-day-piquet-member">'
           +'<span>'+escHtml(member.role)+' · '+escHtml(member.name)+'</span>'
           +(member.partial?'<strong class="acc-day-piquet-hours">'+escHtml(member.hours)+'</strong>':'')
@@ -621,6 +624,9 @@ function rAccueilAstreinte(){
       +'<div class="acc-agenda-summary">'+currentCount+' en cours · '+upcomingCount+' à venir</div></span><span class="acc-agenda-more">▼</span></summary>'
       +'<div class="acc-agenda-details">'+(groupedHtml||'Aucun piquet restant aujourd’hui.')+'</div></details>';
   }
+  el.querySelectorAll('details.acc-agenda-card').forEach(function(card){
+    if(expandedCards.has(card.querySelector('.acc-agenda-title')?.textContent||''))card.open=true;
+  });
 }
 
 // ── Toast notification (remplace alert() natif) ──

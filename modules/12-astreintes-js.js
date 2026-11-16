@@ -724,6 +724,9 @@ function showDispoRequestModal(wk,login){
   const mon=new Date(wk.slice(0,4)+'-'+wk.slice(4,6)+'-'+wk.slice(6,8));
   const MOIS_FR=['janv.','f\u00e9vr.','mars','avr.','mai','juin','juil.','ao\u00fbt','sept.','oct.','nov.','d\u00e9c.'];
   const startHour=astrScheduleForWeek(wk).weekStartHour;
+  const alreadyRequested=new Set((DISPO_REQUESTS[wk]||[]).filter(function(request){
+    return request&&request.login===login&&request.statut==='en-attente';
+  }).flatMap(function(request){return (request.slots||[]).map(function(slot){return slot.key;});}));
 
   function slotLabel(s){
     const totalMin=(startHour*60+s*gran)%1440;
@@ -750,12 +753,14 @@ function showDispoRequestModal(wk,login){
     let slotsHtml='<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">';
     for(let s=0;s<nbSlots;s++){
       const key=di+'_'+s;
+      const pending=alreadyRequested.has(key);
       const curVal=DISPOS[wk]?.[login]?.[key];
       const curBg=curVal===true?'#22C55E':curVal===false?'#EF4444':'#E5E7EB';
       const curColor=curVal===true||curVal===false?'#fff':'#555';
       slotsHtml+='<div style="display:flex;align-items:center;background:#f9f9f9;border:1px solid #e5e7eb;border-radius:6px;padding:2px 5px;gap:3px;" id="slot-block-'+key+'">'
-        +'<input type="checkbox" id="slot_'+di+'_'+s+'" name="req-slots" value="'+key+'" style="accent-color:#7C3AED;width:13px;height:13px;" onchange="reqToggleVal(this,\''+key+'\')">'
+        +'<input type="checkbox" id="slot_'+di+'_'+s+'" name="req-slots" value="'+key+'"'+(pending?' disabled title="Demande déjà en attente"':'')+' style="accent-color:#7C3AED;width:13px;height:13px;" onchange="reqToggleVal(this,\''+key+'\')">'
         +'<span style="font-size:10px;font-weight:500;padding:1px 4px;border-radius:3px;background:'+curBg+';color:'+curColor+';">'+slotLabel(s)+'</span>'
+        +(pending?'<span title="Demande déjà en attente" style="font-size:10px;">⏳</span>':'')
         +'<span id="valsel_'+key+'" style="display:none;">'+valSelect(key,String(curVal))+'</span>'
         +'</div>';
     }
@@ -813,12 +818,12 @@ function reqApplyAllVal(val){
 function reqSelectDay(di,nbSlots,checked){
   for(let s=0;s<nbSlots;s++){
     const cb=document.getElementById('slot_'+di+'_'+s);
-    if(cb){cb.checked=checked;reqToggleVal(cb,di+'_'+s);}
+    if(cb&&!cb.disabled){cb.checked=checked;reqToggleVal(cb,di+'_'+s);}
   }
 }
 function reqSelectAll(checked){
   document.querySelectorAll('input[name="req-slots"]').forEach(function(cb){
-    cb.checked=checked;reqToggleVal(cb,cb.value);
+    if(!cb.disabled){cb.checked=checked;reqToggleVal(cb,cb.value);}
   });
 }
 
@@ -898,15 +903,21 @@ function envoyerDispoRequest(wk,login){
   });
 
   if(!DISPO_REQUESTS[wk])DISPO_REQUESTS[wk]=[];
-  // Garder la trace des demandes remplacées : chaque demande possède désormais
-  // sa propre ligne synchronisée, et une simple suppression locale la laisserait
-  // ouverte sur les autres appareils.
-  DISPO_REQUESTS[wk].forEach(function(r){
-    if(r.login===login&&r.statut==='en-attente')r.statut='annulee';
-  });
+  // Chaque demande a sa propre ligne serveur : une demande oubliée ne doit
+  // jamais annuler les précédentes encore en attente.
+  const pendingKeys=new Set(DISPO_REQUESTS[wk].filter(function(r){
+    return r&&r.login===login&&r.statut==='en-attente';
+  }).flatMap(function(r){return (r.slots||[]).map(function(slot){return slot.key;});}));
+  if(slots.some(function(slot){return pendingKeys.has(slot.key);})){showToast('Un de ces créneaux fait déjà l’objet d’une demande en attente. Choisissez seulement les créneaux à ajouter.','warn');return;}
+  const requesterTeam=getEquipeOfUser(login);
+  const rotation=PLANNING_ROTATIONS[wk];
+  const strongTeamId=Array.isArray(rotation)?rotation[0]:typeof rotation==='string'?rotation:'';
+  const strongTeam=strongTeamId?getEquipeById(strongTeamId):null;
+  const notifiedLogins=[...new Set([requesterTeam?.resp,strongTeam?.resp].filter(Boolean))];
   DISPO_REQUESTS[wk].push({
     id:'dr_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),
     caserneId:CURRENT_CASERNE_ID,login:login,wk:wk,motif:motif,replacementLogin:replacementLogin,
+    notifiedLogins:notifiedLogins,
     slots:slots,slotsDetail:slotsDetail,
     hDemande:getHHMM(N()),dateDemande:getDS(N()),
     statut:'en-attente',reponduPar:null,hReponse:null
@@ -915,13 +926,25 @@ function envoyerDispoRequest(wk,login){
   showToast('Demande conservée sur cet appareil ; envoi au serveur en cours.','info');
 }
 
+function dispoRequestVisibleTo(request,wk,viewerLogin){
+  if(!request||!viewerLogin)return false;
+  if(isAdminModeActive())return true;
+  if(!isRespEquipe())return false;
+  const requesterTeam=getEquipeOfUser(request.login);
+  const rotation=PLANNING_ROTATIONS[wk];
+  const strongTeamId=Array.isArray(rotation)?rotation[0]:typeof rotation==='string'?rotation:'';
+  const strongTeam=strongTeamId?getEquipeById(strongTeamId):null;
+  return (Array.isArray(request.notifiedLogins)&&request.notifiedLogins.includes(viewerLogin))
+    ||requesterTeam?.resp===viewerLogin||strongTeam?.resp===viewerLogin;
+}
 function getDispoRequestsBadge(wk){
   if(!DISPO_REQUESTS[wk])return 0;
   if(!isRespEquipe()&&!hasRight('Administration')&&!isSuperAdmin())return 0;
   return DISPO_REQUESTS[wk].filter(function(r){
     if(r.statut!=='en-attente')return false;
     return (!r.caserneId||r.caserneId===CURRENT_CASERNE_ID)
-      &&USERS.some(function(user){return user&&user.l===r.login;});
+      &&USERS.some(function(user){return user&&user.l===r.login;})
+      &&dispoRequestVisibleTo(r,wk,CU.l);
   }).length;
 }
 
@@ -1102,7 +1125,7 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
   h+='<div style="margin-bottom:16px;padding:10px;background:#fff;border-radius:10px;border:1px solid var(--brd);box-sizing:border-box;max-width:100%;">';
   h+=personnelPlanningLegendHTML();
   // En-tête bloc agent
-  const pendingReq=isMe&&(DISPO_REQUESTS[wk]||[]).find(function(r){return r.login===login&&r.statut==='en-attente';});
+  const pendingCount=isMe?(DISPO_REQUESTS[wk]||[]).filter(function(r){return r.login===login&&r.statut==='en-attente';}).length:0;
   h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">'
     +'<div style="font-size:12px;font-weight:600;">'+(isMe?'Mes disponibilit\u00e9s':fullName(u))+'</div>'
     +(eq?'<span class="eq-badge" style="background:'+eq.color+';font-size:10px;padding:2px 7px;">'+eq.nom+'</span>':'')
@@ -1110,9 +1133,9 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
     +(!canEdit&&(isCurrent||isPast)&&isMe&&!isValidated?'<span style="background:#FAEEDA;color:#854F0B;border-radius:6px;padding:2px 8px;font-size:10px;">&#x1F512; Semaine verrouill\u00e9e</span>':'')
     // Bouton demande de modif pour l'agent (semaine validée ou courante verrouillée)
     +(!canEdit&&isMe&&(isValidated||isCurrent||isPast)&&!isSA
-      ?(pendingReq
-        ?'<span style="background:#EFF6FF;color:#1D4ED8;border-radius:6px;padding:2px 8px;font-size:10px;margin-left:auto;">&#x23F3; Demande en attente</span>'
-        :'<button class="btn sm" style="font-size:10px;background:#7C3AED;color:#fff;border-color:#7C3AED;margin-left:auto;" onclick="showDispoRequestModal(\''+wk+'\',\''+login+'\')">&#x270F; Demande de modification</button>')
+      ?'<span style="margin-left:auto;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">'
+        +(pendingCount?'<span style="background:#EFF6FF;color:#1D4ED8;border-radius:6px;padding:2px 8px;font-size:10px;">&#x23F3; '+pendingCount+' demande(s) en attente</span>':'')
+        +'<button class="btn sm" style="font-size:10px;background:#7C3AED;color:#fff;border-color:#7C3AED;" onclick="showDispoRequestModal(\''+wk+'\',\''+login+'\')">&#x270F; Nouvelle demande</button></span>'
       :'')
     +((canEdit&&!isMe)?'<div style="margin-left:auto;display:flex;gap:4px;">'
       +'<button class="btn sm" style="font-size:10px;padding:2px 7px;" onclick="setAllDispoFor(\''+wk+'\',\''+login+'\',true,\''+(eq?eq.color:'#22C55E')+'\')">&#x2705; Tout</button>'
@@ -1253,7 +1276,8 @@ function rAstrDispo(){
     const pendingReqs=(DISPO_REQUESTS[wk]||[]).filter(function(r){
       if(r.statut!=='en-attente')return false;
       return (!r.caserneId||r.caserneId===CURRENT_CASERNE_ID)
-        &&USERS.some(function(user){return user&&user.l===r.login;});
+        &&USERS.some(function(user){return user&&user.l===r.login;})
+        &&dispoRequestVisibleTo(r,wk,CU.l);
     });
     if(pendingReqs.length&&(isResp||isAdmin||isSuperAdmin())){
       reqPanel.innerHTML='<div style="background:#F5F3FF;border-radius:10px;padding:10px;margin-bottom:10px;border:2px solid #DDD6FE;">'
@@ -1282,7 +1306,7 @@ function rAstrDispo(){
     const history=(DISPO_REQUESTS[wk]||[]).filter(function(r){
       return r&&r.statut&&r.statut!=='en-attente'
         &&(!r.caserneId||r.caserneId===CURRENT_CASERNE_ID)
-        &&(isResp||isAdmin||isSuperAdmin()||r.login===CU.l);
+        &&(r.login===CU.l||dispoRequestVisibleTo(r,wk,CU.l));
     }).slice(-50).reverse();
     if(history.length){
       reqPanel.innerHTML+='<details style="margin:8px 0;border:1px solid var(--brd);border-radius:8px;padding:8px 10px;">'
@@ -1658,6 +1682,40 @@ function piquetDepartureLabel(engin){
   return type.toUpperCase()+' — '+(index+1)+(index===0?'er':'e')+' départ';
 }
 
+// Les avertissements produits à la création du piquet deviennent obsolètes
+// après l'ajout d'un membre. Les recalculer depuis les horaires individuels.
+function piquetPresenceWarning(p){
+  if(!p||!p.debut||!p.fin)return '';
+  const start=timeToMin(p.debut),rawEnd=timeToMin(p.fin);
+  const duration=rawEnd<=start?rawEnd+1440-start:rawEnd-start;
+  const members=Array.isArray(p.membres)&&p.membres.length?p.membres:[
+    p.chefAgres?{role:"Chef d'agrès",login:p.chefAgres}:null,
+    p.conducteur?{role:'Conducteur',login:p.conducteur}:null
+  ].filter(Boolean);
+  const display=function(offset){const minute=(start+offset)%1440;return pad(Math.floor(minute/60))+':'+pad(minute%60);};
+  const gaps=[];
+  [['agres','sans chef'],['conducteur','sans conducteur']].forEach(function(role){
+    const ranges=members.filter(function(member){
+      const label=String(member.role||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+      return member.login&&label.includes(role[0]);
+    }).map(function(member){
+      const fromClock=timeToMin(member.hDebut||p.debut),toClock=timeToMin(member.hFin||p.fin);
+      const from=(fromClock-start+1440)%1440;
+      let to=(toClock-start+1440)%1440;
+      if(to<=from)to+=1440;
+      return [Math.max(0,from),Math.min(duration,to)];
+    }).filter(function(range){return range[1]>range[0];}).sort(function(a,b){return a[0]-b[0];});
+    if(!ranges.length)return;
+    let coveredUntil=0;
+    ranges.forEach(function(range){
+      if(range[0]>coveredUntil)gaps.push(display(coveredUntil)+'–'+display(range[0])+' '+role[1]);
+      coveredUntil=Math.max(coveredUntil,range[1]);
+    });
+    if(coveredUntil<duration)gaps.push(display(coveredUntil)+'–'+display(duration)+' '+role[1]);
+  });
+  return gaps.length?'Présence partielle : '+gaps.join(' ; '):'';
+}
+
 function rAstrPiquets(){
   if(astrPiquetNowTimer){clearTimeout(astrPiquetNowTimer);astrPiquetNowTimer=null;}
   const mon=getMondayOfWeek(astrPiquetWeek);
@@ -1813,9 +1871,10 @@ function rAstrPiquets(){
           });
           const del=canAdd?'<button class="btn sm" style="font-size:10px;padding:1px 5px;color:#E24B4A;margin-top:2px;" onclick="delPiquet(\''+wk+'\','+globalIdx+')">&times;</button>':'';
           const incomplete=!p.chefAgres||!p.conducteur;
+          const presenceWarning=piquetPresenceWarning(p);
           const warning=incomplete?'<div style="font-size:10px;font-weight:700;color:#9A3412;background:#FFEDD5;border-radius:4px;padding:3px;margin:3px 0;">À compléter — départ non garanti</div>'
-            :String(p.note||'').startsWith('Présence partielle : ')
-              ?'<div style="font-size:10px;font-weight:700;color:#9A3412;background:#FFEDD5;border-radius:4px;padding:3px;margin:3px 0;">'+escHtml(p.note)+'</div>':'';
+            :presenceWarning
+              ?'<div style="font-size:10px;font-weight:700;color:#9A3412;background:#FFEDD5;border-radius:4px;padding:3px;margin:3px 0;">'+escHtml(presenceWarning)+'</div>':'';
           const edit=canAdd?'<button class="btn sm" style="font-size:10px;padding:1px 5px;margin-top:2px;margin-right:2px;" onclick="editPiquet(\''+wk+'\','+globalIdx+')">&#x270F;</button>':'';
           const dragAttrs=canAdd?' draggable="true" ondragstart="piquetDragStart(event,\''+wk+'\','+globalIdx+')" style="background:'+bg+';color:'+fg+';border-radius:5px;padding:4px 7px;margin-bottom:3px;cursor:grab;"':' style="background:'+bg+';color:'+fg+';border-radius:5px;padding:4px 7px;margin-bottom:3px;"';
           return '<div'+dragAttrs+'>'
@@ -2051,6 +2110,7 @@ function confirmEditPiquet(wk,globalIdx){
   const eq=membres.find(function(m){return _nr(m.role)===_nr('Équipier');});
   p.chefAgres=ca?ca.login:'';p.conducteur=co?co.login:'';
   p.chefEquipe=ceq?ceq.login:'';p.stagiaire=eq?eq.login:'';
+  if(note.startsWith('Présence partielle : '))p.note=piquetPresenceWarning(p);
   delete p._tranche;
   if(JSON.stringify(p)!==original)logPiquetChange(wk,'modification',p);
   saveData();cM();rAstrPiquets();

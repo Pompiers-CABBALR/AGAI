@@ -14,7 +14,7 @@ function agendaFunction(text){
   return text.slice(start,end);
 }
 function render(nowText,departure='VTU-01',overrides={}){
-  const el={innerHTML:''};
+  const el={innerHTML:'',querySelectorAll:()=>[]};
   const now=new Date(nowText);
   const duty={start:'2026-11-09T09:00:00',end:'2026-11-10T18:00:00',mode:'person',login:'valery'};
   const context={
@@ -30,6 +30,7 @@ function render(nowText,departure='VTU-01',overrides={}){
     pad:value=>String(value).padStart(2,'0'),
     timeToMin:value=>{const [h,m]=value.split(':').map(Number);return h*60+m;},
     piquetDepartureLabel:value=>value==='VTU-02'?'VTU — 2e départ':'VTU — 1er départ',
+    piquetPresenceWarning:piquet=>String(piquet.note||'').startsWith('Présence partielle : ')?piquet.note:'',
     astrTelActiveDuty:()=>duty,astrTelDutyOwnerName:()=> 'Leriche Valéry',
     astrTelDutyDateLabel:value=>value,astrTelDutyLabel:()=> 'Aucune astreinte',
     escHtml:value=>String(value)
@@ -133,6 +134,20 @@ test('les deux départs ont leurs colonnes et signalent les horaires individuels
   assert.match(columns[0],/11:00–12:00 sans conducteur/);
   assert.match(columns[1],/2e départ[\s\S]*Canneson Eric[\s\S]*Marien Mathis/);
   assert.doesNotMatch(columns[1],/acc-day-piquet-hours|Présence partielle/);
+  assert.doesNotMatch(columns.join(''),/VTU-01|VTU-02/);
+});
+
+test('le volet Piquets du jour reste ouvert lors du prochain rendu',()=>{
+  const el={innerHTML:'',restored:false,querySelectorAll(selector){
+    if(selector==='details.acc-agenda-card[open]')return [{querySelector:()=>({textContent:'Piquets du jour'})}];
+    if(selector==='details.acc-agenda-card')return [{querySelector:()=>({textContent:'Piquets du jour'}),set open(value){el.restored=value;}}];
+    return [];
+  }};
+  render('2026-11-09T09:00:00','VTU-01',{
+    document:{getElementById:id=>id==='acc-astreinte-msg'?el:null},
+    USERS:[],fullNameAff:()=>'',isSuperAdmin:()=>true
+  });
+  assert.equal(el.restored,true);
 });
 
 test('après le dernier piquet du jour, aucun créneau passé ne reste affiché',()=>{
