@@ -76,7 +76,7 @@ test('le volet développé garde les horaires utiles sans longue phrase ni rôle
 });
 
 test('le module et le fichier assemblé présentent les mêmes cartes',()=>{
-  assert.equal(agendaFunction(bundle),agendaFunction(source));
+  assert.equal(agendaFunction(bundle).replace(/\r\n/g,'\n'),agendaFunction(source).replace(/\r\n/g,'\n'));
 });
 
 test('l’astreinte du jour montre seulement les piquets en cours et à venir, par rang',()=>{
