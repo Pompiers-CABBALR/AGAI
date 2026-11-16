@@ -13518,7 +13518,7 @@ function showDispoRequestModal(wk,login){
   const MOIS_FR=['janv.','f\u00e9vr.','mars','avr.','mai','juin','juil.','ao\u00fbt','sept.','oct.','nov.','d\u00e9c.'];
   const startHour=astrScheduleForWeek(wk).weekStartHour;
   const alreadyRequested=new Set((DISPO_REQUESTS[wk]||[]).filter(function(request){
-    return request&&request.login===login&&request.statut==='en-attente';
+    return request&&request.login===login&&dispoRequestIsPending(request);
   }).flatMap(function(request){return (request.slots||[]).map(function(slot){return slot.key;});}));
 
   function slotLabel(s){
@@ -13551,7 +13551,7 @@ function showDispoRequestModal(wk,login){
       const curBg=curVal===true?'#22C55E':curVal===false?'#EF4444':'#E5E7EB';
       const curColor=curVal===true||curVal===false?'#fff':'#555';
       slotsHtml+='<div style="display:flex;align-items:center;background:#f9f9f9;border:1px solid #e5e7eb;border-radius:6px;padding:2px 5px;gap:3px;" id="slot-block-'+key+'">'
-        +'<input type="checkbox" id="slot_'+di+'_'+s+'" name="req-slots" value="'+key+'"'+(pending?' disabled title="Demande déjà en attente"':'')+' style="accent-color:#7C3AED;width:13px;height:13px;" onchange="reqToggleVal(this,\''+key+'\')">'
+        +'<input type="checkbox" id="slot_'+di+'_'+s+'" name="req-slots" value="'+key+'" data-current="'+String(curVal)+'" data-pending="'+(pending?'true':'false')+'"'+(pending||ASTR_REPLACEMENT_ENABLED&&curVal===true?' disabled title="Créneau indisponible pour ce type de demande"':'')+' style="accent-color:#7C3AED;width:13px;height:13px;" onchange="reqToggleVal(this,\''+key+'\')">'
         +'<span style="font-size:10px;font-weight:500;padding:1px 4px;border-radius:3px;background:'+curBg+';color:'+curColor+';">'+slotLabel(s)+'</span>'
         +(pending?'<span title="Demande déjà en attente" style="font-size:10px;">⏳</span>':'')
         +'<span id="valsel_'+key+'" style="display:none;">'+valSelect(key,String(curVal))+'</span>'
@@ -13575,17 +13575,23 @@ function showDispoRequestModal(wk,login){
   document.getElementById('mb').innerHTML=
     '<div>'
     +'<div style="background:#EDE9FE;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12px;color:#5B21B6;">'
-    +'Cochez les cr\u00e9neaux \u00e0 modifier puis indiquez la nouvelle valeur souhait\u00e9e.</div>'
+    +(ASTR_REPLACEMENT_ENABLED?'Choisissez le type de demande, puis seulement les heures concernées.'
+      :'Cochez les cr\u00e9neaux \u00e0 modifier puis indiquez la nouvelle valeur souhait\u00e9e.')+'</div>'
+    +(ASTR_REPLACEMENT_ENABLED?'<div class="fg"><div class="fgl">Type de demande</div>'
+      +'<select class="fi" id="dispo-req-kind" onchange="reqKindChanged(\''+wk+'\',\''+login+'\')">'
+      +'<option value="renfort">Ajouter des disponibilités pour renforcer</option>'
+      +'<option value="remplacement">Je ne peux pas assurer mes heures : demander un remplaçant</option>'
+      +'</select></div>':'')
     // Valeur globale
-    +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:6px 10px;background:#F5F3FF;border-radius:8px;border:1px solid #DDD6FE;">'
+    +(!ASTR_REPLACEMENT_ENABLED?'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:6px 10px;background:#F5F3FF;border-radius:8px;border:1px solid #DDD6FE;">'
     +'<span style="font-size:11px;font-weight:600;color:#5B21B6;">Appliquer \u00e0 tous les cr\u00e9neaux coch\u00e9s :</span>'
     +'<button type="button" class="btn sm" style="font-size:10px;background:#22C55E;color:#fff;border-color:#22C55E;" onclick="reqApplyAllVal(\'true\')">Dispo</button>'
     +'<button type="button" class="btn sm" style="font-size:10px;background:#EF4444;color:#fff;border-color:#EF4444;" onclick="reqApplyAllVal(\'false\')">Indispo</button>'
     +'<button type="button" class="btn sm" style="font-size:10px;margin-left:auto;" onclick="reqSelectAll(true)">Tout s\u00e9lectionner</button>'
-    +'</div>'
+    +'</div>':'')
     +creneauxHtml
-    +(ASTR_REPLACEMENT_ENABLED?'<div class="fg"><div class="fgl">Remplaçant proposé <span style="font-size:10px;color:var(--t2);font-weight:400;">(obligatoire si un piquet est concerné)</span></div>'
-    +'<select class="fi" id="dispo-req-replacement"><option value="">— Aucun piquet à remplacer —</option>'
+    +(ASTR_REPLACEMENT_ENABLED?'<div class="fg" id="dispo-req-replacement-field" style="display:none;"><div class="fgl">Personne qui accepte de me remplacer</div>'
+    +'<select class="fi" id="dispo-req-replacement"><option value="">— Choisir un remplaçant —</option>'
     +sortByName(USERS.filter(function(candidate){return candidate&&candidate.l!==login;}))
       .map(function(candidate){return '<option value="'+escHtml(candidate.l)+'">'+escHtml(fullNameAff(candidate))+'</option>';}).join('')
     +'</select></div>':'')
@@ -13595,11 +13601,44 @@ function showDispoRequestModal(wk,login){
     +'<button class="btn sm" style="background:#7C3AED;color:#fff;" onclick="envoyerDispoRequest(\''+wk+'\',\''+login+'\')">&#x1F4E8; Envoyer la demande</button>'
     +'<button class="btn sm" onclick="cM()">Annuler</button></div></div>';
   document.getElementById('mo').style.display='flex';
+  if(ASTR_REPLACEMENT_ENABLED)reqKindChanged(wk,login);
 }
 
 function reqToggleVal(cb,key){
   const sel=document.getElementById('valsel_'+key);
   if(sel)sel.style.display=cb.checked?'inline':'none';
+  if(ASTR_REPLACEMENT_ENABLED)reqRefreshReplacementCandidates();
+}
+function reqKindChanged(wk,login){
+  if(!ASTR_REPLACEMENT_ENABLED)return;
+  const kind=document.getElementById('dispo-req-kind')?.value||'renfort';
+  const field=document.getElementById('dispo-req-replacement-field');
+  if(field)field.style.display=kind==='remplacement'?'':'none';
+  document.querySelectorAll('input[name="req-slots"]').forEach(function(cb){
+    const current=cb.dataset.current;
+    cb.disabled=cb.dataset.pending==='true'||(kind==='remplacement'?current!=='true':current==='true');
+    if(cb.disabled){cb.checked=false;reqToggleVal(cb,cb.value);}
+  });
+  reqRefreshReplacementCandidates(wk,login);
+}
+function reqRefreshReplacementCandidates(wk,login){
+  if(!ASTR_REPLACEMENT_ENABLED)return;
+  const select=document.getElementById('dispo-req-replacement');
+  if(!select||document.getElementById('dispo-req-kind')?.value!=='remplacement')return;
+  const slots=Array.from(document.querySelectorAll('input[name="req-slots"]:checked'))
+    .map(function(cb){return {key:cb.value,newVal:'false'};});
+  const week=wk||select.dataset.week,requester=login||select.dataset.requester;
+  if(!week||!requester)return;
+  select.dataset.week=week;select.dataset.requester=requester;
+  Array.from(select.options).forEach(function(option){
+    if(!option.value)return;
+    const draft={login:requester,replacementLogin:option.value,slots:slots};
+    option.disabled=slots.length>0
+      ?!!astrReplacementDraftError(week,draft)
+      :!astrReplacementCandidateAllowed(USERS.find(function(user){return user.l===option.value;}),
+        week,requester,slots,dispoGranularityFor(requester));
+  });
+  if(select.selectedOptions[0]?.disabled)select.value='';
 }
 function reqApplyAllVal(val){
   document.querySelectorAll('input[name="req-slots"]:checked').forEach(function(cb){
@@ -13648,9 +13687,197 @@ function astrRequestAffectedPiquets(wk,login,slots,granularity){
   });
 }
 
+// La qualification exigée dépend de la place réellement occupée dans le
+// piquet. Tous les agents peuvent conduire le VTU ; un CA doit rester un CA.
+function astrReplacementLevel(user){
+  if(!user)return 0;
+  const functionName=(user.fonction2&&(user.fonction==='Chef de centre'||user.fonction==='Adjoint au chef de centre')
+    ?user.fonction2:user.fonction||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  let level=functionName.includes('tout engin')?4:functionName.includes('agres')?3
+    :functionName.includes('chef d')&&functionName.includes('equipe')?2
+    :functionName.includes('stagiaire')?0:1;
+  if(user.fonction==='Chef de centre'||user.fonction==='Adjoint au chef de centre')level=Math.max(level,3);
+  if(typeof isChefAgresByGrade==='function'&&isChefAgresByGrade(user))level=Math.max(level,3);
+  return level;
+}
+function astrReplacementRequiredLevel(wk,login,slots,granularity){
+  const piquets=astrRequestAffectedPiquets(wk,login,slots,granularity);
+  if(!piquets.length)return astrReplacementLevel(USERS.find(function(user){return user.l===login;}));
+  let level=1;
+  piquets.forEach(function(p){
+    const members=p.membres&&p.membres.length?p.membres:[
+      p.chefAgres?{role:"Chef d'agrès",login:p.chefAgres}:null,
+      p.conducteur?{role:'Conducteur',login:p.conducteur}:null,
+      p.chefEquipe?{role:"Chef d'équipe",login:p.chefEquipe}:null,
+      p.stagiaire?{role:'Équipier',login:p.stagiaire}:null
+    ].filter(Boolean);
+    members.filter(function(member){return member.login===login;}).forEach(function(member){
+      const role=String(member.role||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+      if(role.includes('agres'))level=Math.max(level,3);
+      else if(role.includes('chef')&&role.includes('equipe'))level=Math.max(level,2);
+    });
+  });
+  return level;
+}
+function astrReplacementCandidateAllowed(candidate,wk,login,slots,granularity){
+  return !!candidate&&candidate.l!==login
+    &&astrReplacementLevel(candidate)>=astrReplacementRequiredLevel(wk,login,slots,granularity);
+}
+
+
+function astrProjectReplacementPiquets(wk,request){
+  if(!request||!request.login||!request.replacementLogin)throw new Error('Remplaçant manquant.');
+  const gran=dispoGranularityFor(request.login);
+  const weekStart=astrScheduleForWeek(wk).weekStartHour*60;
+  const ranges=(request.slots||[]).filter(function(slot){return slot&&slot.newVal==='false';})
+    .map(function(slot){
+      const parts=String(slot.key||'').split('_').map(Number);
+      if(parts.length!==2||!Number.isInteger(parts[0])||parts[0]<0||parts[0]>6
+        ||!Number.isInteger(parts[1])||parts[1]<0||parts[1]>=1440/gran)return null;
+      const from=parts[0]*1440+weekStart+parts[1]*gran;
+      return [from,from+gran];
+    }).filter(Boolean);
+  const clock=function(minute){const local=((minute%1440)+1440)%1440;return pad(Math.floor(local/60))+':'+pad(local%60);};
+  let changed=0;
+  const next=(PIQUETS[wk]||[]).map(function(original){
+    const p=JSON.parse(JSON.stringify(original));
+    const day=JOURS_FULL.indexOf(p.jour);
+    if(day<0||!p.debut||!p.fin)return p;
+    const members=Array.isArray(p.membres)&&p.membres.length?p.membres:[
+      p.chefAgres?{role:"Chef d'agrès",login:p.chefAgres,hDebut:p.debut,hFin:p.fin}:null,
+      p.conducteur?{role:'Conducteur',login:p.conducteur,hDebut:p.debut,hFin:p.fin}:null,
+      p.chefEquipe?{role:"Chef d'équipe",login:p.chefEquipe,hDebut:p.debut,hFin:p.fin}:null,
+      p.stagiaire?{role:'Équipier',login:p.stagiaire,hDebut:p.debut,hFin:p.fin}:null
+    ].filter(Boolean);
+    const projected=[];
+    let touched=false;
+    members.forEach(function(member){
+      if(member.login!==request.login){projected.push(member);return;}
+      const fromClock=member.hDebut||p.debut,toClock=member.hFin||p.fin;
+      const effectiveDay=day+(timeToMin(fromClock)<weekStart?1:0);
+      const [from,to]=piquetToAbsRangeIdx(effectiveDay,fromClock,toClock);
+      const overlaps=ranges.map(function(range){return [Math.max(from,range[0]),Math.min(to,range[1])];})
+        .filter(function(range){return range[1]>range[0];});
+      if(!overlaps.length){projected.push(member);return;}
+      touched=true;
+      const cuts=[...new Set([from,to].concat(overlaps.flat()))].sort(function(a,b){return a-b;});
+      const segments=[];
+      for(let i=0;i<cuts.length-1;i++){
+        const assigned=overlaps.some(function(range){return range[0]<=cuts[i]&&cuts[i+1]<=range[1];})
+          ?request.replacementLogin:request.login;
+        const prior=segments[segments.length-1];
+        if(prior&&prior.login===assigned&&prior.to===cuts[i])prior.to=cuts[i+1];
+        else segments.push({login:assigned,from:cuts[i],to:cuts[i+1]});
+      }
+      segments.forEach(function(segment){
+        projected.push(Object.assign({},member,{login:segment.login,
+          hDebut:segment.from===from?fromClock:clock(segment.from),
+          hFin:segment.to===to?toClock:clock(segment.to)}));
+      });
+    });
+    if(!touched)return p;
+    changed++;
+    p.membres=projected;
+    [['chefAgres','agres'],['conducteur','conducteur'],['chefEquipe','chef'],['stagiaire','equipier']]
+      .forEach(function(entry){
+        if(p[entry[0]]!==request.login)return;
+        const stillPresent=projected.some(function(member){
+          const role=String(member.role||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+          return member.login===request.login&&(entry[0]==='chefEquipe'
+            ?role.includes('chef')&&role.includes('equipe'):role.includes(entry[1]));
+        });
+        if(!stillPresent)p[entry[0]]=request.replacementLogin;
+      });
+    // La V41 calcule l'avertissement depuis les membres ; effacer l'ancienne
+    // phrase générée, dont les heures peuvent être devenues inexactes.
+    if(String(p.note||'').startsWith('Présence partielle : '))p.note='';
+    return p;
+  });
+  return {piquets:next,changed:changed};
+}
+
+// Convertir les heures demandées vers la granularité de l'équipe du
+// remplaçant. Refuser une plage qui exigerait de lui ajouter des heures non
+// demandées (ex. 30 minutes remplacées dans une grille d'une heure).
+function astrReplacementCandidateKeys(request){
+  const sourceGran=dispoGranularityFor(request.login);
+  const targetGran=dispoGranularityFor(request.replacementLogin);
+  if(!sourceGran||!targetGran||!Array.isArray(request.slots))return null;
+  const intervals=request.slots.map(function(slot){
+    const match=/^(\d+)_(\d+)$/.exec(String(slot.key||''));
+    if(!match||Number(match[1])>6||Number(match[2])>=1440/sourceGran)return null;
+    const begin=Number(match[1])*1440+Number(match[2])*sourceGran;
+    return [begin,begin+sourceGran];
+  });
+  if(intervals.some(function(interval){return !interval;}))return null;
+  intervals.sort(function(a,b){return a[0]-b[0];});
+  const merged=[];
+  intervals.forEach(function(interval){
+    const prior=merged[merged.length-1];
+    if(prior&&interval[0]<=prior[1])prior[1]=Math.max(prior[1],interval[1]);
+    else merged.push(interval.slice());
+  });
+  const targetPerDay=1440/targetGran,keys=[];
+  for(const range of merged){
+    if(range[0]%targetGran||range[1]%targetGran)return null;
+    for(let minute=range[0];minute<range[1];minute+=targetGran){
+      const index=minute/targetGran;
+      keys.push(Math.floor(index/targetPerDay)+'_'+(index%targetPerDay));
+    }
+  }
+  return keys;
+}
+
+// Contrôles d'aperçu uniquement. Ils sont refaits sur les lignes verrouillées
+// par le serveur au moment de la validation définitive de la relève.
+function astrReplacementDraftError(wk,request){
+  if(!request||!request.login||!request.replacementLogin||request.login===request.replacementLogin)
+    return 'Choisissez un remplaçant distinct.';
+  const gran=dispoGranularityFor(request.login);
+  const slots=request.slots||[];
+  if(!slots.length||slots.length>7*1440/gran
+    ||new Set(slots.map(function(slot){return slot.key;})).size!==slots.length
+    ||slots.some(function(slot){
+      const match=/^(\d+)_(\d+)$/.exec(String(slot.key||''));
+      return !match||Number(match[1])>6||Number(match[2])>=1440/gran||slot.newVal!=='false';
+    }))return 'Sélectionnez des heures de relève valides et distinctes.';
+  const candidate=USERS.find(function(user){return user&&user.l===request.replacementLogin;});
+  if(!astrReplacementCandidateAllowed(candidate,wk,request.login,slots,gran))
+    return 'Le remplaçant ne possède pas la qualification nécessaire.';
+  if(slots.some(function(slot){return DISPOS[wk]?.[request.login]?.[slot.key]!==true;}))
+    return 'Certaines heures ne sont plus disponibles pour le demandeur.';
+  const candidateKeys=astrReplacementCandidateKeys(request);
+  if(!candidateKeys)return 'Les heures demandées ne correspondent pas à la grille du remplaçant.';
+  const candidateGran=dispoGranularityFor(request.replacementLogin);
+  if(candidateKeys.some(function(key){return !personnelDispoKeyAllowed(wk,request.replacementLogin,key,candidateGran);}))
+    return 'Le remplaçant est absent ou en formation sur ces heures.';
+  const projected=astrProjectReplacementPiquets(wk,request);
+  const weekStart=astrScheduleForWeek(wk).weekStartHour*60;
+  const occupied=[];
+  projected.piquets.forEach(function(p){
+    const day=JOURS_FULL.indexOf(p.jour);
+    if(day<0)return;
+    const members=Array.isArray(p.membres)&&p.membres.length?p.membres:[
+      p.chefAgres?{login:p.chefAgres}:null,p.conducteur?{login:p.conducteur}:null,
+      p.chefEquipe?{login:p.chefEquipe}:null,p.stagiaire?{login:p.stagiaire}:null
+    ].filter(Boolean);
+    members.filter(function(member){return member.login===request.replacementLogin;}).forEach(function(member){
+      const begin=member.hDebut||p.debut,end=member.hFin||p.fin;
+      if(!begin||!end)return;
+      const effectiveDay=day+(timeToMin(begin)<weekStart?1:0);
+      occupied.push(piquetToAbsRangeIdx(effectiveDay,begin,end));
+    });
+  });
+  occupied.sort(function(a,b){return a[0]-b[0]||a[1]-b[1];});
+  if(occupied.some(function(range,index){return index>0&&range[0]<occupied[index-1][1];}))
+    return 'Le remplaçant figure déjà sur un autre départ aux mêmes heures.';
+  return '';
+}
+
 function envoyerDispoRequest(wk,login){
+  const kind=ASTR_REPLACEMENT_ENABLED?(document.getElementById('dispo-req-kind')?.value||'renfort'):'modification';
   const motif=document.getElementById('dispo-req-motif')?.value.trim()||'';
-  const replacementLogin=document.getElementById('dispo-req-replacement')?.value||'';
+  const replacementLogin=kind==='remplacement'?document.getElementById('dispo-req-replacement')?.value||'':'';
   const checkedSlots=Array.from(document.querySelectorAll('input[name="req-slots"]:checked'));
   if(!checkedSlots.length){showToast('S\u00e9lectionnez au moins un cr\u00e9neau.','warn');return;}
 
@@ -13663,16 +13890,16 @@ function envoyerDispoRequest(wk,login){
   const slots=checkedSlots.map(function(cb){
     const key=cb.value;
     const sel=document.getElementById('val_'+key);
-    const newVal=sel?sel.value:'true';
+    const newVal=ASTR_REPLACEMENT_ENABLED?(kind==='remplacement'?'false':'true'):(sel?sel.value:'true');
     return {key:key,newVal:newVal};
   });
   if(slots.some(function(slot){return slot.newVal==='true'&&!personnelDispoKeyAllowed(wk,login,slot.key,gran);})){showToast('Disponibilité impossible pendant une absence ou une sortie du personnel.','warn');return;}
   if(replacementLogin&&(!USERS.some(function(user){return user&&user.l===replacementLogin;})||replacementLogin===login)){
     showToast('Choisissez un autre agent de cette caserne comme remplaçant.','warn');return;
   }
-  const affectedPiquets=ASTR_REPLACEMENT_ENABLED?astrRequestAffectedPiquets(wk,login,slots,gran):[];
-  if(ASTR_REPLACEMENT_ENABLED&&affectedPiquets.length&&!replacementLogin){
-    showToast('Un piquet est concerné : choisissez le remplaçant avant d’envoyer la demande.','warn');return;
+  if(kind==='remplacement'){
+    const error=astrReplacementDraftError(wk,{login:login,replacementLogin:replacementLogin,slots:slots});
+    if(error){showToast(error,'warn');return;}
   }
 
   // Grouper par jour pour affichage
@@ -13699,17 +13926,18 @@ function envoyerDispoRequest(wk,login){
   // Chaque demande a sa propre ligne serveur : une demande oubliée ne doit
   // jamais annuler les précédentes encore en attente.
   const pendingKeys=new Set(DISPO_REQUESTS[wk].filter(function(r){
-    return r&&r.login===login&&r.statut==='en-attente';
+    return r&&r.login===login&&dispoRequestIsPending(r);
   }).flatMap(function(r){return (r.slots||[]).map(function(slot){return slot.key;});}));
   if(slots.some(function(slot){return pendingKeys.has(slot.key);})){showToast('Un de ces créneaux fait déjà l’objet d’une demande en attente. Choisissez seulement les créneaux à ajouter.','warn');return;}
   const requesterTeam=getEquipeOfUser(login);
   const rotation=PLANNING_ROTATIONS[wk];
   const strongTeamId=Array.isArray(rotation)?rotation[0]:typeof rotation==='string'?rotation:'';
   const strongTeam=strongTeamId?getEquipeById(strongTeamId):null;
-  const notifiedLogins=[...new Set([requesterTeam?.resp,strongTeam?.resp].filter(Boolean))];
+  const replacementTeam=replacementLogin?getEquipeOfUser(replacementLogin):null;
+  const notifiedLogins=[...new Set([requesterTeam?.resp,strongTeam?.resp,replacementTeam?.resp].filter(Boolean))];
   DISPO_REQUESTS[wk].push({
     id:'dr_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),
-    caserneId:CURRENT_CASERNE_ID,login:login,wk:wk,motif:motif,replacementLogin:replacementLogin,
+    caserneId:CURRENT_CASERNE_ID,login:login,wk:wk,motif:motif,kind:kind,replacementLogin:replacementLogin,
     notifiedLogins:notifiedLogins,
     slots:slots,slotsDetail:slotsDetail,
     hDemande:getHHMM(N()),dateDemande:getDS(N()),
@@ -13719,22 +13947,30 @@ function envoyerDispoRequest(wk,login){
   showToast('Demande conservée sur cet appareil ; envoi au serveur en cours.','info');
 }
 
+function dispoRequestIsPending(request){
+  return !!request&&['en-attente','en-attente-responsable'].includes(request.statut);
+}
 function dispoRequestVisibleTo(request,wk,viewerLogin){
   if(!request||!viewerLogin)return false;
+  if(request.kind==='remplacement'&&request.replacementLogin===viewerLogin)return true;
   if(isAdminModeActive())return true;
   if(!isRespEquipe())return false;
   const requesterTeam=getEquipeOfUser(request.login);
   const rotation=PLANNING_ROTATIONS[wk];
   const strongTeamId=Array.isArray(rotation)?rotation[0]:typeof rotation==='string'?rotation:'';
   const strongTeam=strongTeamId?getEquipeById(strongTeamId):null;
+  const replacementTeam=request.replacementLogin?getEquipeOfUser(request.replacementLogin):null;
   return (Array.isArray(request.notifiedLogins)&&request.notifiedLogins.includes(viewerLogin))
-    ||requesterTeam?.resp===viewerLogin||strongTeam?.resp===viewerLogin;
+    ||requesterTeam?.resp===viewerLogin||strongTeam?.resp===viewerLogin||replacementTeam?.resp===viewerLogin;
 }
 function getDispoRequestsBadge(wk){
   if(!DISPO_REQUESTS[wk])return 0;
-  if(!isRespEquipe()&&!hasRight('Administration')&&!isSuperAdmin())return 0;
+  if(!isRespEquipe()&&!hasRight('Administration')&&!isSuperAdmin()
+    &&!(ASTR_REPLACEMENT_ENABLED&&(DISPO_REQUESTS[wk]||[]).some(function(request){
+      return request&&request.kind==='remplacement'&&request.replacementLogin===CU?.l;
+    })))return 0;
   return DISPO_REQUESTS[wk].filter(function(r){
-    if(r.statut!=='en-attente')return false;
+    if(!dispoRequestIsPending(r))return false;
     return (!r.caserneId||r.caserneId===CURRENT_CASERNE_ID)
       &&USERS.some(function(user){return user&&user.l===r.login;})
       &&dispoRequestVisibleTo(r,wk,CU.l);
@@ -13918,7 +14154,7 @@ function renderDispoAgentBlock(login,wk,isResp,isAdmin,pastDeadline,astrDispoWee
   h+='<div style="margin-bottom:16px;padding:10px;background:#fff;border-radius:10px;border:1px solid var(--brd);box-sizing:border-box;max-width:100%;">';
   h+=personnelPlanningLegendHTML();
   // En-tête bloc agent
-  const pendingCount=isMe?(DISPO_REQUESTS[wk]||[]).filter(function(r){return r.login===login&&r.statut==='en-attente';}).length:0;
+  const pendingCount=isMe?(DISPO_REQUESTS[wk]||[]).filter(function(r){return r.login===login&&dispoRequestIsPending(r);}).length:0;
   h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">'
     +'<div style="font-size:12px;font-weight:600;">'+(isMe?'Mes disponibilit\u00e9s':fullName(u))+'</div>'
     +(eq?'<span class="eq-badge" style="background:'+eq.color+';font-size:10px;padding:2px 7px;">'+eq.nom+'</span>':'')
@@ -14067,12 +14303,13 @@ function rAstrDispo(){
   const reqPanel=document.getElementById('dispo-req-panel');
   if(reqPanel){
     const pendingReqs=(DISPO_REQUESTS[wk]||[]).filter(function(r){
-      if(r.statut!=='en-attente')return false;
+      if(!dispoRequestIsPending(r))return false;
       return (!r.caserneId||r.caserneId===CURRENT_CASERNE_ID)
         &&USERS.some(function(user){return user&&user.l===r.login;})
         &&dispoRequestVisibleTo(r,wk,CU.l);
     });
-    if(pendingReqs.length&&(isResp||isAdmin||isSuperAdmin())){
+    if(pendingReqs.length&&(isResp||isAdmin||isSuperAdmin()
+      ||ASTR_REPLACEMENT_ENABLED&&pendingReqs.some(function(r){return r.replacementLogin===CU?.l;}))){
       reqPanel.innerHTML='<div style="background:#F5F3FF;border-radius:10px;padding:10px;margin-bottom:10px;border:2px solid #DDD6FE;">'
         +'<div style="font-size:13px;font-weight:700;color:#7C3AED;margin-bottom:8px;">&#x270F; Demandes de modification ('+pendingReqs.length+')</div>'
         +pendingReqs.map(function(r){
@@ -14097,7 +14334,7 @@ function rAstrDispo(){
       reqPanel.innerHTML='';
     }
     const history=(DISPO_REQUESTS[wk]||[]).filter(function(r){
-      return r&&r.statut&&r.statut!=='en-attente'
+      return r&&r.statut&&!dispoRequestIsPending(r)
         &&(!r.caserneId||r.caserneId===CURRENT_CASERNE_ID)
         &&(r.login===CU.l||dispoRequestVisibleTo(r,wk,CU.l));
     }).slice(-50).reverse();
@@ -15892,39 +16129,50 @@ function getPiquetActif(wk,login){
   const nowAbs=dayIndex*1440+now.getHours()*60+now.getMinutes();
   const weekStart=astrScheduleForWeek(wk).weekStartHour*60;
   return (PIQUETS[wk]||[]).find(function(p){
-    // chef d'agrès : raccourci p.chefAgres, ou repli sur les membres (insensible apostrophe)
-    let caLogin=p.chefAgres;
-    if(!caLogin&&p.membres&&p.membres.length){
-      const _nr=function(s){return (s||'').toLowerCase().replace(/[\u00e8\u00e9\u00ea]/g,'e').replace(/[^a-z]/g,'');};
-      const caM=p.membres.find(function(m){return _nr(m.role)===_nr("Chef d'agr\u00e8s");});
-      if(caM)caLogin=caM.login;
-    }
-    if(caLogin!==login)return false;
     const piquetDay=JOURS_FULL.indexOf(p.jour);
     if(piquetDay<0||!p.debut||!p.fin)return false;
-    const effectiveDay=piquetDay+(timeToMin(p.debut)<weekStart?1:0);
-    const [from,to]=piquetToAbsRangeIdx(effectiveDay,p.debut,p.fin);
-    return from<=nowAbs&&nowAbs<to;
+    const chiefs=Array.isArray(p.membres)&&p.membres.length?p.membres.filter(function(member){
+      return String(member.role||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().includes('agres');
+    }):p.chefAgres?[{login:p.chefAgres,hDebut:p.debut,hFin:p.fin}]:[];
+    return chiefs.some(function(member){
+      if(member.login!==login)return false;
+      const begin=member.hDebut||p.debut,end=member.hFin||p.fin;
+      const effectiveDay=piquetDay+(timeToMin(begin)<weekStart?1:0);
+      const [from,to]=piquetToAbsRangeIdx(effectiveDay,begin,end);
+      return from<=nowAbs&&nowAbs<to;
+    });
   })||null;
 }
 
 // ── Extrait l'équipage d'un piquet (robuste : lit les membres, repli sur les raccourcis) ──
-function getPiquetEquipage(piq){
+function getPiquetEquipage(piq,wk){
   const res={conducteur:'',chefEquipe:'',equipier:''};
   if(!piq)return res;
   const _nr=function(s){return (s||'').toLowerCase().replace(/[\u00e8\u00e9\u00ea]/g,'e').replace(/[^a-z]/g,'');};
+  const seen={conducteur:false,chefEquipe:false,equipier:false};
+  const now=N(),weekStart=wk?astrScheduleForWeek(wk).weekStartHour*60:0;
+  const weekDate=wk?new Date(Number(wk.slice(0,4)),Number(wk.slice(4,6))-1,Number(wk.slice(6,8))):null;
+  const dayIndex=weekDate?Math.round((Date.UTC(now.getFullYear(),now.getMonth(),now.getDate())
+    -Date.UTC(weekDate.getFullYear(),weekDate.getMonth(),weekDate.getDate()))/86400000):0;
+  const nowAbs=dayIndex*1440+now.getHours()*60+now.getMinutes();
   if(piq.membres&&piq.membres.length){
     piq.membres.forEach(function(m){
       const k=_nr(m.role);
-      if(k===_nr('Conducteur')&&!res.conducteur)res.conducteur=m.login;
-      else if(k===_nr("Chef d'\u00e9quipe")&&!res.chefEquipe)res.chefEquipe=m.login;
-      else if(k===_nr('\u00c9quipier')&&!res.equipier)res.equipier=m.login;
+      const field=k===_nr('Conducteur')?'conducteur':k===_nr("Chef d'\u00e9quipe")?'chefEquipe'
+        :k===_nr('\u00c9quipier')?'equipier':'';
+      if(!field)return;
+      seen[field]=true;
+      const begin=m.hDebut||piq.debut,end=m.hFin||piq.fin;
+      const piquetDay=JOURS_FULL.indexOf(piq.jour);
+      const effectiveDay=piquetDay+(timeToMin(begin)<weekStart?1:0);
+      const [from,to]=piquetToAbsRangeIdx(effectiveDay,begin,end);
+      if(!res[field]&&(!wk||(from<=nowAbs&&nowAbs<to)))res[field]=m.login;
     });
   }
   // Repli sur les raccourcis si membres absents/incomplets
-  if(!res.conducteur&&piq.conducteur)res.conducteur=piq.conducteur;
-  if(!res.chefEquipe&&piq.chefEquipe)res.chefEquipe=piq.chefEquipe;
-  if(!res.equipier&&piq.stagiaire)res.equipier=piq.stagiaire;
+  if(!seen.conducteur&&piq.conducteur)res.conducteur=piq.conducteur;
+  if(!seen.chefEquipe&&piq.chefEquipe)res.chefEquipe=piq.chefEquipe;
+  if(!seen.equipier&&piq.stagiaire)res.equipier=piq.stagiaire;
   return res;
 }
 
@@ -16269,7 +16517,7 @@ function showPersonnelModal(id){
 
   // Piquet du CA principal
   const piq1=getPiquetActif(wk,CU.l);
-  const _eq1=getPiquetEquipage(piq1);
+  const _eq1=getPiquetEquipage(piq1,wk);
   const engin1Sugg=inherited?inherited.engin1:'';
   const cond1Sugg=inherited?inherited.equipage1.conducteur:_eq1.conducteur;
   const chefEq1Sugg=inherited?inherited.equipage1.chefdequipe:_eq1.chefEquipe;
@@ -16278,7 +16526,7 @@ function showPersonnelModal(id){
   // Piquet du 2ème chef d'agrès (si présent)
   const agr2=iv._agr2||inherited&&inherited.agr2||'';
   const piq2=agr2?getPiquetActif(wk,agr2):null;
-  const _eq2=getPiquetEquipage(piq2);
+  const _eq2=getPiquetEquipage(piq2,wk);
   const engin2Sugg=inherited?inherited.engin2:'';
   const cond2Sugg=inherited?inherited.equipage2.conducteur:_eq2.conducteur;
   const chefEq2Sugg=inherited?inherited.equipage2.chefdequipe:_eq2.chefEquipe;

@@ -1,0 +1,9 @@
+{
+  "name": "agai-local-db-tests",
+  "private": true,
+  "version": "1.0.0",
+  "description": "PostgreSQL embarqué pour les tests locaux des relèves de piquets",
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.16"
+  }
+}

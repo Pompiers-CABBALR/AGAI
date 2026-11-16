@@ -28,7 +28,8 @@ for(const filename of ['modules/12-astreintes-js.js','app.js']){
       pad:value=>String(value).padStart(2,'0'),N:()=>new Date('2026-11-16T08:00:00'),
       getHHMM:()=> '08:00',getDS:()=> '16/11/2026',saveData:()=>{},cM:()=>{},rAstrDispo:()=>{},
       showToast:message=>{context.lastToast=message;},
-      isAdminModeActive:()=>false,isRespEquipe:()=>true,CU:{l:'chef-forte'}
+      isAdminModeActive:()=>false,isRespEquipe:()=>true,isSuperAdmin:()=>false,
+      hasRight:()=>false,CU:{l:'chef-forte'}
     };
     vm.createContext(context);
     vm.runInContext(source.slice(start,end),context);
@@ -52,5 +53,17 @@ for(const filename of ['modules/12-astreintes-js.js','app.js']){
     context.envoyerDispoRequest('20261116','agent');
     assert.equal(requests['20261116'].length,1);
     assert.match(context.lastToast,/déjà l’objet d’une demande/);
+  });
+  test(filename+' : le remplaçant voit le compteur avant et après son accord',()=>{
+    const {context,requests}=setup();
+    context.ASTR_REPLACEMENT_ENABLED=true;
+    context.isRespEquipe=()=>false;
+    context.CU.l='remplacant';
+    requests['20261116']=[{id:'dr_replace',kind:'remplacement',caserneId:'CIS05',
+      login:'agent',replacementLogin:'remplacant',statut:'en-attente',
+      slots:[{key:'0_0',newVal:'false'}]}];
+    assert.equal(context.getDispoRequestsBadge('20261116'),1);
+    requests['20261116'][0].statut='en-attente-responsable';
+    assert.equal(context.getDispoRequestsBadge('20261116'),1);
   });
 }
