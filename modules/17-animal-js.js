@@ -2002,8 +2002,8 @@ const RC_TEAM_PIQUET_VALIDATE_RPC = SB_URL + '/rest/v1/rpc/agai_validate_piquet_
 async function _rcValidateTeamPiquetWeek(week,piquets){
   if(!CU||!_rcCanWriteTeamPiquetConfig())throw new Error('Droit de validation indisponible.');
   const expected=JSON.parse(JSON.stringify(piquets||[]));
-  if(!expected.length||expected.some(function(p){return !p||!p.chefAgres||!p.conducteur;}))
-    throw new Error('Complétez les chefs et conducteurs avant validation.');
+  if(!expected.length||expected.some(function(p){return !p||typeof p!=='object'||Array.isArray(p);}))
+    throw new Error('Aucun piquet valide à transmettre pour cette semaine.');
   const response=await _agaiFetchWithTimeout(RC_TEAM_PIQUET_VALIDATE_RPC,{
     method:'POST',headers:_sbHeaders,body:JSON.stringify({p_week:week,p_expected:expected})
   },45000);
@@ -2012,7 +2012,7 @@ async function _rcValidateTeamPiquetWeek(week,piquets){
     if(/AGAI_PIQUET_REVISION_CONFLICT/.test(detail))
       throw new Error('Les piquets ne sont pas encore identiques sur le serveur. La saisie locale est conservée ; attendez la synchronisation.');
     if(/AGAI_PIQUET_INCOMPLETE/.test(detail))
-      throw new Error('Des piquets sont incomplets sur le serveur : chef et conducteur requis.');
+      throw new Error('La semaine ne contient aucun piquet valide sur le serveur.');
     throw new Error('Validation refusée (HTTP '+response.status+'). Aucun piquet local supprimé.');
   }
   return true;

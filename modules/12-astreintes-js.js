@@ -2112,14 +2112,19 @@ function validerPiquets(){
   if(astrPiquetWeek<0){showToast('Impossible de modifier une semaine passée','warn');return;}
   const mon=getMondayOfWeek(astrPiquetWeek);
   const wk=weekKey(mon);
+  if(!(PIQUETS[wk]||[]).length){showToast('Aucun piquet à valider pour cette semaine.','warn');return;}
+  const validationSnapshot=JSON.stringify(PIQUETS[wk]);
   const incomplete=(PIQUETS[wk]||[]).filter(function(p){return !p.chefAgres||!p.conducteur;}).length;
-  if(incomplete){showToast(incomplete+' piquet(s) à compléter : chef et conducteur requis avant validation.','warn');return;}
   const partialHours=(PIQUETS[wk]||[]).filter(function(p){return String(p.note||'').startsWith('Présence partielle : ');}).length;
   confirmModal(
     'Valider les piquets ET les disponibilités de la semaine '+weekLabel(mon)+'. '
+      +(incomplete?incomplete+' piquet(s) restent à compléter : départ non garanti sur ces créneaux. ':'')
       +(partialHours?partialHours+' piquet(s) gardent des heures sans binôme : vérifiez les horaires individuels. ':'')
-      +'Après validation, les chefs d\'équipe ne pourront plus modifier.',
+      +'Après validation, seuls les administrateurs pourront compléter ou corriger ces piquets.',
     async function(){
+      if(JSON.stringify(PIQUETS[wk]||[])!==validationSnapshot){
+        showToast('Les piquets ont changé pendant la confirmation. Vérifiez la semaine avant de valider.','warn');return;
+      }
       if(PERSONNEL_ONLINE_GATE&&!hasRight('Administration')){
         if(typeof _rcValidateTeamPiquetWeek!=='function'){
           showToast('Validation sécurisée indisponible sur cette version.','warn');return;
@@ -2128,7 +2133,7 @@ function validerPiquets(){
         try{
           await _rcValidateTeamPiquetWeek(wk,PIQUETS[wk]||[]);
           await _rcPull(true);
-          showToast('Piquets et disponibilités validés sur le serveur ✔','success');
+          showToast(incomplete?'Semaine validée avec '+incomplete+' piquet(s) à compléter — départ non garanti.':'Piquets et disponibilités validés sur le serveur ✔',incomplete?'warn':'success');
           rAstrPiquets();
         }catch(error){
           showToast(String(error&&error.message||'Validation non enregistrée.'),'warn',7000);
@@ -2142,7 +2147,7 @@ function validerPiquets(){
       DISPOS_VALIDATED[wk]=true;
       if(CD())CD().disposValidated=DISPOS_VALIDATED;
       saveData();
-      showToast('Piquets et disponibilités validés ✔','success');
+      showToast(incomplete?'Semaine validée avec '+incomplete+' piquet(s) à compléter — départ non garanti.':'Piquets et disponibilités validés ✔',incomplete?'warn':'success');
       rAstrPiquets();
     }
   );

@@ -1,5 +1,21 @@
 # AGAI — déploiement sécurisé
 
+## V202611_0037 — validation hebdomadaire avec réserves
+
+La règle serveur `agai_validate_piquet_week` autorise déjà les piquets
+incomplets : elle garde le contrôle de caserne, de semaine, de droits et de
+révision, puis refuse une liste vide ou un élément qui n'est pas un objet.
+Cette version n'applique aucune nouvelle migration. Elle permet au responsable
+de confirmer une semaine contenant des piquets incomplets, avec le nombre et
+« départ non garanti » affichés avant l'envoi et après l'accusé serveur.
+Les fiches de piquet et les disponibilités ne sont pas modifiées par le seul
+affichage de la confirmation ; la validation passe toujours par le RPC.
+
+V202611_0036 doit être publiée et vérifiée en premier : son contrôle de
+chargement et son test navigateur couvrent Astreintes et les pouvoirs A/SA.
+Ne republier V202611_0037 qu'après confirmation qu'aucune intervention ni
+saisie n'est en cours et que les appareils affichent « Sync OK ».
+
 ## Correctif serveur du rapport de renfort SDIS lié — 7 novembre 2026
 
 Un rapport déjà créé passe par `INSERT ... ON CONFLICT UPDATE` lors de sa
