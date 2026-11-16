@@ -114,7 +114,7 @@ test('la confirmation avertit du départ non garanti avant transmission',async()
     astrPiquetWeek:0,PIQUETS:{week:piquets},PERSONNEL_ONLINE_GATE:true,
     getMondayOfWeek:()=>new Date('2026-11-16'),weekKey:()=> 'week',weekLabel:()=> '16/11',
     confirmModal:(message,callback)=>{state.confirmation=message;state.callback=callback;},
-    hasRight:()=>false,_rcValidateTeamPiquetWeek:async(week,expected)=>{state.sent={week,expected};},
+    hasRight:()=>false,isAdminModeActive:()=>false,_rcValidateTeamPiquetWeek:async(week,expected)=>{state.sent={week,expected};},
     _rcPull:async()=>{},showToast:(message,type)=>state.toasts.push({message,type}),
     rAstrPiquets:()=>{}
   };

@@ -8,7 +8,7 @@ function pqWeeklyVtuEngins(){
 function pqWeeklyCanEdit(wk){
   return astrPiquetWeek>=0
     &&wk===weekKey(getMondayOfWeek(astrPiquetWeek))
-    &&(hasRight('Administration')||(isRespEquipe()&&PIQUETS_VALIDATED[wk]!==true));
+    &&(isAdminModeActive()||(isRespEquipe()&&PIQUETS_VALIDATED[wk]!==true));
 }
 function openPiquetWeekly(wk){
   if(!pqWeeklyCanEdit(wk)){showToast('Cette semaine ne peut pas être modifiée.','warn');return;}
