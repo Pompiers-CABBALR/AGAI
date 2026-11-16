@@ -44,7 +44,7 @@ function contextFor(users,options={}){
     ],
     sortVehicleNames:list=>list.slice().sort(),piquetDepartureLabel:engin=>engin,
     getMondayOfWeek:()=>new Date(2026,9,26),weekKey:()=> 'week',
-    hasRight:()=>true,isRespEquipe:()=>false,
+    hasRight:()=>true,isAdminModeActive:()=>context.hasRight('Administration'),isRespEquipe:()=>false,
     getSlotsPerDay:()=>24,planningEquipeGroups:()=>teams.map((eq,i)=>({eq,tone:i?'faible':'forte'})),
     getEquipeOfUser:login=>teams.find(eq=>eq.membres.includes(login)),
     isChefAgresByGrade:user=>user.chief===true,

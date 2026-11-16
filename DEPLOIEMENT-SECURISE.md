@@ -1,5 +1,16 @@
 # AGAI — déploiement sécurisé
 
+## V202611_0038 — pouvoir superadmin sur les piquets
+
+Le bouton SA actif donne déjà le droit administratif via
+`isAdminModeActive()`, même lorsque le bouton A est désactivé. L'onglet
+Piquets et la proposition hebdomadaire utilisaient à tort seulement
+`hasRight('Administration')` : les actions restaient masquées au
+superadministrateur. Ces trois contrôles utilisent maintenant le pouvoir
+administratif actif. Le responsable d'équipe sans pouvoir admin garde son
+parcours de validation serveur ; les semaines passées restent en lecture seule.
+La modification ne change ni piquet enregistré ni règle serveur.
+
 ## V202611_0037 — validation hebdomadaire avec réserves
 
 La règle serveur `agai_validate_piquet_week` autorise déjà les piquets

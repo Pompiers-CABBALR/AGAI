@@ -8,6 +8,7 @@ on:
       - 'modules/15-storage-js.js'
       - 'modules/16-email-js.js'
       - 'modules/17-animal-js.js'
+      - 'modules/26-piquet-weekly-js.js'
       - 'app.js'
       - 'index.html'
       - 'version.json'
@@ -17,6 +18,7 @@ on:
       - 'tests/test-browser-boot.cjs'
       - 'tests/test-piquet-recovery-and-validation.cjs'
       - 'tests/test-piquet-weekly-draft.cjs'
+      - 'tests/test-superadmin-piquet-power.cjs'
       - '.github/workflows/intervention-regressions.yml'
   push:
     branches: [main]
@@ -26,6 +28,7 @@ on:
       - 'modules/12-astreintes-js.js'
       - 'modules/16-email-js.js'
       - 'modules/17-animal-js.js'
+      - 'modules/26-piquet-weekly-js.js'
       - 'app.js'
       - 'index.html'
       - 'version.json'
@@ -34,6 +37,7 @@ on:
       - 'tests/test-browser-boot.cjs'
       - 'tests/test-piquet-recovery-and-validation.cjs'
       - 'tests/test-piquet-weekly-draft.cjs'
+      - 'tests/test-superadmin-piquet-power.cjs'
       - '.github/workflows/intervention-regressions.yml'
 permissions:
   contents: read
@@ -53,9 +57,10 @@ jobs:
           node --check modules/12-astreintes-js.js
           node --check modules/16-email-js.js
           node --check modules/17-animal-js.js
+          node --check modules/26-piquet-weekly-js.js
           node --check app.js
       - name: Test modules and release versions
-        run: node --test tests/test-route-confirmation-persistence.cjs tests/test-version-consistency.cjs tests/test-boot-health.cjs tests/test-piquet-recovery-and-validation.cjs tests/test-piquet-weekly-draft.cjs
+        run: node --test tests/test-route-confirmation-persistence.cjs tests/test-version-consistency.cjs tests/test-boot-health.cjs tests/test-piquet-recovery-and-validation.cjs tests/test-piquet-weekly-draft.cjs tests/test-superadmin-piquet-power.cjs
       - name: Smoke test Astreintes and A/SA in Chrome
         run: node --test tests/test-browser-boot.cjs
       - name: Test published bundle

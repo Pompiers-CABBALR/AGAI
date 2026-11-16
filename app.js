@@ -14421,7 +14421,7 @@ function rAstrPiquets(){
   const badge1=eq1?'<span class="eq-badge" style="background:'+eq1.color+';font-size:11px;">'+eq1.nom+'</span>':'<span style="color:var(--t2);font-size:11px;">&mdash;</span>';
   const badge2=eq2?'<span class="eq-badge" style="background:'+eq2.color+';font-size:11px;">'+eq2.nom+'</span>':'<span style="color:var(--t2);font-size:11px;">&mdash;</span>';
 
-  const isAdmin=hasRight('Administration');
+  const isAdmin=isAdminModeActive();
   const isPastPiquet=astrPiquetWeek<0;
   const dlp=ASTR_CONFIG.deadlinePiquet||{dayOfWeek:0,hour:18,minute:0};
   // Deadline = dimanche (ou jour configuré) de la SEMAINE PRÉCÉDENTE
@@ -14867,7 +14867,7 @@ function validerPiquets(){
       if(JSON.stringify(PIQUETS[wk]||[])!==validationSnapshot){
         showToast('Les piquets ont changé pendant la confirmation. Vérifiez la semaine avant de valider.','warn');return;
       }
-      if(PERSONNEL_ONLINE_GATE&&!hasRight('Administration')){
+      if(PERSONNEL_ONLINE_GATE&&!isAdminModeActive()){
         if(typeof _rcValidateTeamPiquetWeek!=='function'){
           showToast('Validation sécurisée indisponible sur cette version.','warn');return;
         }
@@ -20380,7 +20380,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202611_0037';
+const APP_VERSION='V202611_0038';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -31458,7 +31458,7 @@ function pqWeeklyVtuEngins(){
 function pqWeeklyCanEdit(wk){
   return astrPiquetWeek>=0
     &&wk===weekKey(getMondayOfWeek(astrPiquetWeek))
-    &&(hasRight('Administration')||(isRespEquipe()&&PIQUETS_VALIDATED[wk]!==true));
+    &&(isAdminModeActive()||(isRespEquipe()&&PIQUETS_VALIDATED[wk]!==true));
 }
 function openPiquetWeekly(wk){
   if(!pqWeeklyCanEdit(wk)){showToast('Cette semaine ne peut pas être modifiée.','warn');return;}
