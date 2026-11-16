@@ -1,5 +1,13 @@
 # AGAI — déploiement sécurisé
 
+## V202611_0040 — équipages des piquets du jour sur l'accueil
+
+Le volet « Piquets du jour » sépare les 1er et 2e départs en deux colonnes,
+y compris sur smartphone. Il affiche l'horaire propre à chaque agent lorsque
+celui-ci diffère du créneau de l'engin et reprend l'avertissement de présence
+partielle déjà enregistré sur le piquet. Les horaires, les équipages et les
+validations des piquets restent inchangés sur le serveur.
+
 ## V202611_0039 — liste des natures d'appel sur iPhone
 
 Le catalogue serveur contient toujours les 26 natures d'appel. Sur certains
