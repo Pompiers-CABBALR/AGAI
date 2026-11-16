@@ -14440,6 +14440,7 @@ function rAstrPiquets(){
   const isResp=isRespEquipe();
   // Peut modifier : admin ou resp/membre équipe, semaine courante ou future seulement
   const piquetsValidated = PIQUETS_VALIDATED[wk]===true;
+  const incompletePiquets = (PIQUETS[wk]||[]).filter(function(p){return !p.chefAgres||!p.conducteur;}).length;
   // Après validation : lecture seule pour chefs d'équipe (admin peut toujours modifier)
   const canAdd = !isPastPiquet && (isAdmin || (isResp && !piquetsValidated));
   const canAction = !isPastPiquet && (isAdmin || (isResp && !piquetsValidated));
@@ -14451,10 +14452,16 @@ function rAstrPiquets(){
   let html='<div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;padding:8px 12px;background:var(--bg);border-radius:10px;border:1px solid var(--brd);">'
     +'<span style="font-size:12px;color:#9D174D;font-weight:700;">◆ Astreinte forte :</span> '+badge1
     +'<span style="font-size:12px;color:#854D0E;font-weight:700;margin-left:6px;">● Astreinte faible :</span> '+badge2
-    +(piquetsValidated?'<span style="background:#22C55E;color:#fff;border-radius:10px;padding:2px 10px;font-size:11px;font-weight:600;">&#x2705; Validé</span>':'')
+    +(piquetsValidated?'<span style="background:#22C55E;color:#fff;border-radius:10px;padding:2px 10px;font-size:11px;font-weight:600;">&#x2705; Validé'+(incompletePiquets?' avec réserves':'')+'</span>':'')
     +'</div>';
+  if(incompletePiquets){
+    html+='<div style="background:#FFF7ED;border:1px solid #FDBA74;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#9A3412;font-weight:600;">'
+      +incompletePiquets+' piquet(s) sans chef d’agrès ou conducteur : départ non garanti.'
+      +(piquetsValidated?' Semaine validée avec réserves ; un administrateur peut compléter ces créneaux.':' Ils peuvent être conservés lors de la validation de la semaine.')
+      +'</div>';
+  }
   if(piquetsValidated&&!isAdmin){
-    html+='<div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#166534;">&#x2705; Piquets et disponibilités validés pour cette semaine. Contactez un administrateur pour toute modification.</div>';
+    html+='<div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#166534;">&#x2705; Piquets et disponibilités validés pour cette semaine'+(incompletePiquets?' avec '+incompletePiquets+' piquet(s) à compléter':'')+'. Contactez un administrateur pour toute modification.</div>';
   }
   html+='<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:11px;color:#1D4ED8;">Les rangs « 1er départ », « 2e départ » désignent les équipages du piquet. Le camion réellement utilisé est choisi au premier départ de la tournée.</div>';
   if(canAdd&&(ASTR_CONFIG.engins||[]).some(function(e){return /^VTU\b/i.test(String(e));})){
@@ -14855,12 +14862,12 @@ function validerPiquets(){
   const mon=getMondayOfWeek(astrPiquetWeek);
   const wk=weekKey(mon);
   const incomplete=(PIQUETS[wk]||[]).filter(function(p){return !p.chefAgres||!p.conducteur;}).length;
-  if(incomplete){showToast(incomplete+' piquet(s) à compléter : chef et conducteur requis avant validation.','warn');return;}
   const partialHours=(PIQUETS[wk]||[]).filter(function(p){return String(p.note||'').startsWith('Présence partielle : ');}).length;
   confirmModal(
     'Valider les piquets ET les disponibilités de la semaine '+weekLabel(mon)+'. '
+      +(incomplete?incomplete+' piquet(s) resteront sans chef d’agrès ou conducteur : départ non garanti. ':'')
       +(partialHours?partialHours+' piquet(s) gardent des heures sans binôme : vérifiez les horaires individuels. ':'')
-      +'Après validation, les chefs d\'équipe ne pourront plus modifier.',
+      +'Après validation, les chefs d\'équipe ne pourront plus modifier ; seuls les administrateurs pourront compléter les piquets.',
     async function(){
       if(PERSONNEL_ONLINE_GATE&&!hasRight('Administration')){
         if(typeof _rcValidateTeamPiquetWeek!=='function'){
@@ -14870,7 +14877,7 @@ function validerPiquets(){
         try{
           await _rcValidateTeamPiquetWeek(wk,PIQUETS[wk]||[]);
           await _rcPull(true);
-          showToast('Piquets et disponibilités validés sur le serveur ✔','success');
+          showToast(incomplete?'Semaine validée avec '+incomplete+' piquet(s) à compléter — départ non garanti.':'Piquets et disponibilités validés sur le serveur ✔',incomplete?'warn':'success');
           rAstrPiquets();
         }catch(error){
           showToast(String(error&&error.message||'Validation non enregistrée.'),'warn',7000);
@@ -14884,7 +14891,7 @@ function validerPiquets(){
       DISPOS_VALIDATED[wk]=true;
       if(CD())CD().disposValidated=DISPOS_VALIDATED;
       saveData();
-      showToast('Piquets et disponibilités validés ✔','success');
+      showToast(incomplete?'Semaine validée avec '+incomplete+' piquet(s) à compléter — départ non garanti.':'Piquets et disponibilités validés ✔',incomplete?'warn':'success');
       rAstrPiquets();
     }
   );
@@ -20375,7 +20382,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202611_0033';
+const APP_VERSION='V202611_0034';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -24385,8 +24392,8 @@ const RC_TEAM_PIQUET_VALIDATE_RPC = SB_URL + '/rest/v1/rpc/agai_validate_piquet_
 async function _rcValidateTeamPiquetWeek(week,piquets){
   if(!CU||!_rcCanWriteTeamPiquetConfig())throw new Error('Droit de validation indisponible.');
   const expected=JSON.parse(JSON.stringify(piquets||[]));
-  if(!expected.length||expected.some(function(p){return !p||!p.chefAgres||!p.conducteur;}))
-    throw new Error('Complétez les chefs et conducteurs avant validation.');
+  if(!expected.length||expected.some(function(p){return !p||typeof p!=='object'||Array.isArray(p);}))
+    throw new Error('Aucun piquet valide à transmettre pour cette semaine.');
   const response=await _agaiFetchWithTimeout(RC_TEAM_PIQUET_VALIDATE_RPC,{
     method:'POST',headers:_sbHeaders,body:JSON.stringify({p_week:week,p_expected:expected})
   },45000);
@@ -24395,7 +24402,7 @@ async function _rcValidateTeamPiquetWeek(week,piquets){
     if(/AGAI_PIQUET_REVISION_CONFLICT/.test(detail))
       throw new Error('Les piquets ne sont pas encore identiques sur le serveur. La saisie locale est conservée ; attendez la synchronisation.');
     if(/AGAI_PIQUET_INCOMPLETE/.test(detail))
-      throw new Error('Des piquets sont incomplets sur le serveur : chef et conducteur requis.');
+      throw new Error('Aucun piquet valide à transmettre pour cette semaine.');
     throw new Error('Validation refusée (HTTP '+response.status+'). Aucun piquet local supprimé.');
   }
   return true;
