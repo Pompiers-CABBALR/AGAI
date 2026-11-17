@@ -44,7 +44,13 @@ begin
     'reponduPar',case when next_status in ('accepte','refuse') then p_actor
       else p_current->>'reponduPar' end,
     'reponduAt',case when next_status in ('accepte','refuse') then now_at::text
-      else p_current->>'reponduAt' end
+      else p_current->>'reponduAt' end,
+    'dateReponse',case when next_status in ('accepte','refuse')
+      then pg_catalog.to_char(now_at at time zone 'Europe/Paris','DD/MM/YYYY')
+      else p_current->>'dateReponse' end,
+    'hReponse',case when next_status in ('accepte','refuse')
+      then pg_catalog.to_char(now_at at time zone 'Europe/Paris','HH24:MI')
+      else p_current->>'hReponse' end
   );
 end;
 $$;

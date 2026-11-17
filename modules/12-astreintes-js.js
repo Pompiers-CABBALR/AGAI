@@ -1185,10 +1185,99 @@ function getDispoRequestsBadge(wk){
   }).length;
 }
 
+function astrReplacementStrongLead(wk){
+  const rotation=PLANNING_ROTATIONS[wk];
+  const teamId=Array.isArray(rotation)?rotation[0]:typeof rotation==='string'?rotation:'';
+  return teamId?getEquipeById(teamId)?.resp||'':'';
+}
+async function astrRespondReplacementRequest(wk,req,reponse){
+  if(!ASTR_REPLACEMENT_ENABLED||!USE_RECORDS||!CU||!CURRENT_CASERNE_ID
+    ||typeof _agaiAuthAccessToken!=='function'||!_agaiAuthAccessToken()){
+    showToast('Relève indisponible : connexion au serveur requise. Aucune donnée modifiée.','warn');return;
+  }
+  const candidateStep=req.statut==='en-attente'&&CU.l===req.replacementLogin;
+  const leaderStep=req.statut==='en-attente-responsable'
+    &&CU.l===astrReplacementStrongLead(wk);
+  if(!candidateStep&&!leaderStep){
+    showToast('Cette demande attend la réponse de la personne concernée.','warn');return;
+  }
+  const cid=CURRENT_CASERNE_ID;
+  const affectedIds=[_rcId(cid,'dispoRequest',req.id)];
+  if(leaderStep)affectedIds.push(_rcId(cid,'config','main'),
+    _rcId(cid,'dispo',wk+RC_SEP+req.login),
+    _rcId(cid,'dispo',wk+RC_SEP+req.replacementLogin));
+  const affected=new Set(affectedIds);
+  let queuedRows;
+  try{queuedRows=await _rcOutboxGetRows();}
+  catch(error){showToast('File locale indisponible : aucune relève envoyée.','warn');return;}
+  if(_rcSaving||_rcPulling||affectedIds.some(function(id){return _rcPendingDirty.has(id);})
+    ||queuedRows.some(function(row){return row&&affected.has(row.id);})){
+    showToast('Synchronisation en cours sur cette demande ou ces piquets. Attendez Sync OK.','warn');return;
+  }
+  const endpoint=SB_URL+'/rest/v1/rpc/'
+    +(candidateStep?'agai_confirm_dispo_replacement':'agai_resolve_dispo_replacement');
+  const payload={p_request_id:affectedIds[0],p_decision:reponse};
+  if(leaderStep)payload.p_expected_piquets=PIQUETS[wk]||[];
+  let response;
+  try{
+    response=await _agaiFetchWithTimeout(endpoint,{
+      method:'POST',headers:_sbHeaders,body:JSON.stringify(payload)
+    },45000);
+  }catch(error){
+    await _rcPull(true,false,true);
+    showToast('Réponse réseau incertaine : vérifiez l’état de la demande avant de réessayer.','warn');return;
+  }
+  if(!response.ok){
+    const detail=String(await response.text()||'');
+    if(/AGAI_REPLACEMENT_(?:PIQUET_REVISION_CONFLICT|REVISION_CONFLICT|SOURCE_CHANGED)/.test(detail)){
+      await _rcPull(true,false,true);
+      showToast('Les disponibilités ou piquets ont changé. Vérifiez la demande actualisée.','warn');
+    }else showToast('Relève refusée par le serveur (HTTP '+response.status+'). Aucune donnée locale modifiée.','warn');
+    return;
+  }
+  let result;
+  try{result=await response.json();}
+  catch(error){
+    await _rcPull(true,false,true);
+    showToast('Réponse serveur illisible. Vérifiez la demande actualisée.','warn');return;
+  }
+  const confirmed=leaderStep?result&&result.request:result;
+  if(!confirmed||confirmed.id!==req.id||confirmed.wk!==wk){
+    await _rcPull(true,false,true);
+    showToast('Réponse serveur incomplète. Vérifiez la demande actualisée.','warn');return;
+  }
+  const index=DISPO_REQUESTS[wk].findIndex(function(item){return item&&item.id===req.id;});
+  if(index>=0)DISPO_REQUESTS[wk][index]=confirmed;
+  if(leaderStep&&reponse==='accepte'){
+    if(!result.sourceDispo||!result.candidateDispo||!Array.isArray(result.piquets)){
+      await _rcPull(true,false,true);
+      showToast('Relève enregistrée ; vérification des piquets en cours.','info');return;
+    }
+    if(!DISPOS[wk])DISPOS[wk]={};
+    DISPOS[wk][req.login]=result.sourceDispo.slots;
+    DISPOS[wk][req.replacementLogin]=result.candidateDispo.slots;
+    PIQUETS[wk]=result.piquets;
+    if(Array.isArray(result.piquetLog)){
+      if(!PIQUETS._log)PIQUETS._log={};
+      PIQUETS._log[wk]=result.piquetLog;
+    }
+    if(CD()){CD().dispos=DISPOS;CD().piquets=PIQUETS;}
+  }
+  try{_writeLocalCache(_buildDataObject());}catch(error){}
+  rAstrDispo();
+  if(leaderStep)rAstrPiquets();
+  await _rcPull(true,false,true);
+  showToast(candidateStep&&reponse==='accepte'?'Accord transmis au responsable de l’astreinte forte.'
+    :reponse==='refuse'?'Demande refusée et tracée.':'Relève validée et piquets mis à jour.','success');
+}
+
 function repondreDispoRequest(wk,reqId,reponse){
   if(!DISPO_REQUESTS[wk])return;
   const req=DISPO_REQUESTS[wk].find(function(r){return r.id===reqId;});
   if(!req)return;
+  if(req.kind==='remplacement'&&ASTR_REPLACEMENT_ENABLED){
+    astrRespondReplacementRequest(wk,req,reponse);return;
+  }
   if(reponse==='accepte'&&req.replacementLogin){
     showToast('Relève non appliquée : la validation atomique avec les piquets doit être disponible sur le serveur. Aucune donnée modifiée.','warn');
     return;
@@ -1523,6 +1612,13 @@ function rAstrDispo(){
         +pendingReqs.map(function(r){
           const u=USERS.find(function(x){return x.l===r.login;});
           const replacement=USERS.find(function(user){return user&&user.l===r.replacementLogin;});
+          const replacementFlow=ASTR_REPLACEMENT_ENABLED&&r.kind==='remplacement';
+          const mayDecide=!replacementFlow
+            ||r.statut==='en-attente'&&r.replacementLogin===CU.l
+            ||r.statut==='en-attente-responsable'&&astrReplacementStrongLead(wk)===CU.l;
+          const waitingFor=replacementFlow
+            ?r.statut==='en-attente'?'En attente de l’accord du remplaçant.'
+              :'En attente du responsable de l’astreinte forte.':'';
           return '<div style="background:#fff;border-radius:8px;padding:8px 10px;margin-bottom:6px;border:1px solid #DDD6FE;">'
             +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">'
             +'<span style="font-size:12px;font-weight:600;">'+escHtml(u?fullName(u):r.login)+'</span>'
@@ -1533,10 +1629,10 @@ function rAstrDispo(){
               +r.slotsDetail.map(function(d){
                 return '<div style="font-size:11px;margin-bottom:2px;"><span style="font-weight:600;color:var(--t);">'+escHtml(d.jour)+'</span> : <span style="color:#7C3AED;">'+escHtml(d.heures)+'</span></div>';
               }).join('')+'</div>':'')
-            +'<div style="display:flex;gap:6px;">'
-            +'<button class="btn sm" style="background:#3B6D11;color:#fff;" onclick="repondreDispoRequest(\''+wk+'\',\''+r.id+'\',\'accepte\')">&#x2705; Accepter</button>'
-            +'<button class="btn sm" style="color:#E24B4A;" onclick="repondreDispoRequest(\''+wk+'\',\''+r.id+'\',\'refuse\')">&#x274C; Refuser</button>'
-            +'</div></div>';
+            +(mayDecide?'<div style="display:flex;gap:6px;">'
+              +'<button class="btn sm" style="background:#3B6D11;color:#fff;" onclick="repondreDispoRequest(\''+wk+'\',\''+r.id+'\',\'accepte\')">&#x2705; '+(replacementFlow&&r.statut==='en-attente'?'Confirmer mon accord':'Accepter')+'</button>'
+              +'<button class="btn sm" style="color:#E24B4A;" onclick="repondreDispoRequest(\''+wk+'\',\''+r.id+'\',\'refuse\')">&#x274C; Refuser</button>'
+              +'</div>':'<div style="font-size:11px;color:var(--t2);">'+waitingFor+'</div>')+'</div>';
         }).join('')+'</div>';
     } else {
       reqPanel.innerHTML='';

@@ -25,11 +25,17 @@ Les tests utilisent PGlite (PostgreSQL embarqué) pour vérifier :
   peuvent être écrites, mais une mise à jour directe sans autorisation reste
   refusée ; l'autorisation temporaire est effacée après réussite.
 
+Le navigateur possède aussi un parcours RPC préparé et testé, mais inactif.
+Il attend que la demande et les lignes concernées soient synchronisées, puis
+n'applique que la réponse serveur. Un test de fusion vérifie qu'une ancienne
+disponibilité locale ne rétablit pas une heure de relève déjà reçue.
+
 `replacement_transaction.sql` utilise une table `records` simplifiée et des
 identités simulées : son succès ne prouve **pas** que les règles RLS et le
 déclencheur de la base réelle accepteront ces écritures. Avant toute activation,
 il faut intégrer une autorisation serveur strictement limitée aux quatre lignes
-de la relève, les traces du journal des piquets validés, puis le retour RPC dans
-la file de synchronisation du navigateur. Tester ensuite un téléphone possédant
-une ancienne copie locale pour vérifier qu'il ne rétablit pas les anciennes
-heures. Le drapeau `ASTR_REPLACEMENT_ENABLED` reste donc à `false`.
+de la relève. Il faut aussi empêcher qu'une ancienne configuration complète,
+encore en attente sur un appareil administrateur, réécrive les piquets après
+la relève. Ce cas n'est pas résolu par les seules révisions des disponibilités.
+Tester ensuite sur appareils réels avant activation. Le drapeau
+`ASTR_REPLACEMENT_ENABLED` reste donc à `false`.

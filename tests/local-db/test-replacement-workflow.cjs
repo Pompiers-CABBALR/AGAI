@@ -24,6 +24,8 @@ test('PostgreSQL local : remplaçant puis responsable fort, avec historique et r
     const approved=(await transition(agreed,'chef-fort','accepte')).rows[0].request;
     assert.equal(approved.statut,'accepte');
     assert.equal(approved.reponduPar,'chef-fort');
+    assert.match(approved.dateReponse,/^\d{2}\/\d{2}\/\d{4}$/);
+    assert.match(approved.hReponse,/^\d{2}:\d{2}$/);
     assert.equal(approved.historique.length,2);
     assert.equal(approved.confirmeAt,agreed.confirmeAt);
     await assert.rejects(transition(approved,'chef-fort','accepte'),/AGAI_REPLACEMENT_ALREADY_RESOLVED/);

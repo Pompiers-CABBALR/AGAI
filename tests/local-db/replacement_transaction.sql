@@ -490,6 +490,7 @@ begin
     where transaction_id=pg_catalog.txid_current();
   return pg_catalog.jsonb_build_object(
     'request',next_request,'sourceDispo',next_source,
-    'candidateDispo',next_candidate,'piquets',planned->'piquets');
+    'candidateDispo',next_candidate,'piquets',planned->'piquets',
+    'piquetLog',next_config->'piquets'->'_log'->week);
 end;
 $$;
