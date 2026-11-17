@@ -556,8 +556,18 @@ function rAccueilAstreinte(){
     +'</div>';
   if((typeof isSuperAdmin==='function'&&isSuperAdmin())
     ||(telephoneDuty&&telephoneDuty.mode==='person'&&telephoneDuty.login===CU.l)){
-    const todayStart=new Date(now);todayStart.setHours(0,0,0,0);
+    const todayStart=new Date(now);
+    todayStart.setHours(astrScheduleForWeek(wk).weekStartHour,0,0,0);
+    if(now<todayStart){
+      todayStart.setDate(todayStart.getDate()-1);
+      const startWeek=todayStart.getDay()===0&&now.getDay()===1
+        ?weekKey(getMondayOfWeek(-1)):wk;
+      todayStart.setHours(astrScheduleForWeek(startWeek).weekStartHour,0,0,0);
+    }
     const todayEnd=new Date(todayStart);todayEnd.setDate(todayEnd.getDate()+1);
+    const endWeek=todayEnd.getDay()===1
+      ?weekKey(getMondayOfWeek(now.getDay()===1?0:1)):wk;
+    todayEnd.setHours(astrScheduleForWeek(endWeek).weekStartHour,0,0,0);
     const weeks=[weekKey(getMondayOfWeek(-1)),wk];
     const rows=[];
     weeks.forEach(function(week){
@@ -573,7 +583,7 @@ function rAccueilAstreinte(){
         if(start>=todayEnd||end<=todayStart||end<=now)return;
         const displayStart=new Date(Math.max(start.getTime(),todayStart.getTime()));
         const displayEnd=new Date(Math.min(end.getTime(),todayEnd.getTime()));
-        const clock=function(date){return date.getTime()===todayEnd.getTime()?'24:00':pad(date.getHours())+':'+pad(date.getMinutes());};
+        const clock=function(date){return pad(date.getHours())+':'+pad(date.getMinutes());};
         const name=function(login){const user=USERS.find(function(u){return u.l===login;});return user?fullNameAff(user):login||'—';};
         const depart=piquetDepartureLabel(p.engin);
         const rank=/1er départ/.test(depart)?'first':/2e départ/.test(depart)?'second':'other';
@@ -591,16 +601,41 @@ function rAccueilAstreinte(){
           return {role:shortRole,name:name(m.login),hours:from+'–'+to,partial:from!==p.debut||to!==p.fin};
         });
         const partialNote=piquetPresenceWarning(p);
-        rows.push({time:start.getTime(),rank:rank,current:current,
+        rows.push({time:start.getTime(),end:displayEnd.getTime(),rank:rank,current:current,
           label:(current?'En cours · ':'À venir · ')+clock(displayStart)+'–'+clock(displayEnd),
           crew:crew,
           notice:partialNote||((!p.chefAgres||!p.conducteur)?'Départ non garanti':crew.some(function(m){return m.partial;})?'Horaires individuels différents':'')});
       });
     });
     rows.sort(function(a,b){return Number(b.current)-Number(a.current)||a.time-b.time||a.label.localeCompare(b.label,'fr');});
-    const currentCount=rows.filter(function(row){return row.current;}).length;
-    const upcomingCount=rows.length-currentCount;
     const groups=[{rank:'first',title:'1er départ'},{rank:'second',title:'2e départ'},{rank:'other',title:'Autres départs'}];
+    const activeRows=rows.filter(function(row){return row.current;});
+    const nextTime=rows.filter(function(row){return !row.current;})
+      .reduce(function(earliest,row){return Math.min(earliest,row.time);},Infinity);
+    const focus=activeRows.length?activeRows:rows.filter(function(row){return row.time===nextTime;});
+    const shortTime=function(value){
+      const date=new Date(value);
+      return pad(date.getHours())+'h'+(date.getMinutes()?pad(date.getMinutes()):'');
+    };
+    const sameDate=function(a,b){return a.toDateString()===b.toDateString();};
+    const focused=groups.map(function(group){return focus.find(function(row){return row.rank===group.rank;});})
+      .filter(Boolean);
+    const daySummary=focused.length
+      ?(activeRows.length?'En cours · ':'À venir · ')
+        +focused.slice(0,2).map(function(row){
+          const title=groups.find(function(group){return group.rank===row.rank;}).title;
+          if(activeRows.length){
+            const end=new Date(row.end);
+            return title+' jusqu’à '+(sameDate(end,now)?'':'demain ')+shortTime(row.end);
+          }
+          const start=new Date(row.time);
+          const end=new Date(row.end);
+          return title+' '+(sameDate(start,now)?'':'demain ')
+            +shortTime(row.time)
+            +(sameDate(start,end)?'–':' → '+(sameDate(end,now)?'':'demain '))
+            +shortTime(row.end);
+        }).join(' · ')+(focused.length>2?' · +'+(focused.length-2):'')
+      :'Aucun piquet en cours ou à venir';
     function renderDayPiquet(row){
       return '<div class="acc-day-piquet-slot">'
         +'<div class="acc-day-piquet-time">'+escHtml(row.label)+'</div>'
@@ -621,8 +656,8 @@ function rAccueilAstreinte(){
     }).join('')+'</div>':'';
     el.innerHTML+='<details class="acc-agenda-card" style="margin-top:8px;--agenda-bg:#FFF1E8;--agenda-color:#C2410C;--agenda-text:#7C2D12;">'
       +'<summary><span class="acc-agenda-icon">🚒</span><span class="acc-agenda-main"><div class="acc-agenda-title">Piquets du jour</div>'
-      +'<div class="acc-agenda-summary">'+currentCount+' en cours · '+upcomingCount+' à venir</div></span><span class="acc-agenda-more">▼</span></summary>'
-      +'<div class="acc-agenda-details">'+(groupedHtml||'Aucun piquet restant aujourd’hui.')+'</div></details>';
+      +'<div class="acc-agenda-summary">'+escHtml(daySummary)+'</div></span><span class="acc-agenda-more">▼</span></summary>'
+      +'<div class="acc-agenda-details">'+(groupedHtml||'Aucun piquet restant pour cette journée d’astreinte.')+'</div></details>';
   }
   el.querySelectorAll('details.acc-agenda-card').forEach(function(card){
     if(expandedCards.has(card.querySelector('.acc-agenda-title')?.textContent||''))card.open=true;
