@@ -152,10 +152,26 @@ test('PostgreSQL local : accord, validation et écriture atomique de la relève'
     assert.equal((await db.query('select count(*)::integer as n'
       +' from agai_private.replacement_write_permits')).rows[0].n,0);
     await assert.rejects(db.query("update public.records set data='{}'::jsonb"
-      +" where id='CIS05__config__main'"),/AGAI_WRITE_FORBIDDEN/);
+      +" where id='CIS05__config__main'"),/AGAI_PIQUET_STALE_REPLACEMENT/);
     const config=await read('CIS05__config__main');
     assert.equal(config.piquets['20261116'][0].membres[1].login,'autre-chef');
+    assert.equal(config.piquets._replacementRevision,1);
+    assert.equal(approved.piquetRevision,1);
     assert.equal(config.piquets._log?.['20261116']?.length||0,0);
+    await setActor('admin');
+    await db.exec("select set_config('agai.test_admin','true',false)");
+    const staleConfig={...config,piquets:{...config.piquets}};
+    delete staleConfig.piquets._replacementRevision;
+    staleConfig.piquets['20261116']=[piquet];
+    await assert.rejects(db.query(
+      "update public.records set data=$1::jsonb where id='CIS05__config__main'",
+      [JSON.stringify(staleConfig)]),/AGAI_PIQUET_STALE_REPLACEMENT/);
+    assert.equal((await read('CIS05__config__main')).piquets['20261116'][0].membres[1].login,
+      'autre-chef');
+    await db.query("update public.records set data=jsonb_set(data,'{unrelated}',"
+      +"'true'::jsonb) where id='CIS05__config__main'");
+    assert.equal((await read('CIS05__config__main')).unrelated,true);
+    await db.exec("select set_config('agai.test_admin','false',false)");
     const secondRequest={...request,id:'dr_2'};
     await mutateFixture('insert into public.records(id,caserne,type,data)'
       +' values($1,$2,$3,$4::jsonb)',
@@ -176,6 +192,7 @@ test('PostgreSQL local : accord, validation et écriture atomique de la relève'
       ['CIS05__dispoRequest__dr_2',JSON.stringify([piquet])]
     )).rows[0].result;
     assert.equal(secondApproved.request.statut,'accepte');
+    assert.equal(secondApproved.piquetRevision,2);
     assert.equal((await read('CIS05__config__main')).piquets._log['20261116'].length,1);
     const invalidRequest={...request,id:'dr_bad',replacementLogin:'chef'};
     await mutateFixture('insert into public.records(id,caserne,type,data)'

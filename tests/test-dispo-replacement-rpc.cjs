@@ -57,7 +57,8 @@ for(const filename of ['modules/12-astreintes-js.js','app.js']){
     ctx.rpcResult={request:{...request,statut:'accepte'},
       sourceDispo:{wk:week,login:'agent',slots:{'0_14':false,_updatedAt:42}},
       candidateDispo:{wk:week,login:'sub',slots:{'0_14':true,_updatedAt:42}},
-      piquets:[nextPiquet],piquetLog:[{apresValidation:true,action:'relève'}]};
+      piquets:[nextPiquet],piquetLog:[{apresValidation:true,action:'relève'}],
+      piquetRevision:1};
     await ctx.astrRespondReplacementRequest(week,request,'accepte');
     assert.match(ctx.calls[0].url,/agai_resolve_dispo_replacement$/);
     assert.equal(ctx.calls[0].body.p_expected_piquets[0].chefAgres,'agent');
@@ -65,6 +66,7 @@ for(const filename of ['modules/12-astreintes-js.js','app.js']){
     assert.equal(ctx.DISPOS[week].sub['0_14'],true);
     assert.equal(ctx.PIQUETS[week][0].chefAgres,'sub');
     assert.equal(ctx.PIQUETS._log[week][0].action,'relève');
+    assert.equal(ctx.PIQUETS._replacementRevision,1);
     assert.equal(ctx.DISPO_REQUESTS[week][0].statut,'accepte');
     assert.equal(ctx.pulls,1);
   });

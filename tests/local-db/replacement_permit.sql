@@ -38,10 +38,11 @@ language plpgsql security definer set search_path = ''
 as $$
 declare
   v_actor_login text;
+  has_permit boolean;
 begin
   if tg_op='DELETE' then raise exception 'AGAI_HARD_DELETE_FORBIDDEN'; end if;
   select login into v_actor_login from agai_private.current_access();
-  if not exists(
+  select exists(
     select 1 from agai_private.replacement_write_permits permit
     where permit.transaction_id=pg_catalog.txid_current()
       and permit.record_id=new.id
@@ -49,7 +50,14 @@ begin
       and permit.old_data is not distinct from
         case when tg_op='UPDATE' then old.data else null end
       and permit.next_data is not distinct from new.data
-  ) then raise exception 'AGAI_WRITE_FORBIDDEN'; end if;
+  ) into has_permit;
+  if tg_op='UPDATE' and new.type='config' and not has_permit
+    and coalesce(old.data->'piquets'->>'_replacementRevision','0')
+      is distinct from coalesce(new.data->'piquets'->>'_replacementRevision','0')
+  then raise exception 'AGAI_PIQUET_STALE_REPLACEMENT'; end if;
+  if not has_permit and not (tg_op='UPDATE' and new.type='config'
+      and pg_catalog.current_setting('agai.test_admin',true)='true')
+  then raise exception 'AGAI_WRITE_FORBIDDEN'; end if;
   if tg_op='UPDATE' and (new.id is distinct from old.id
     or new.caserne is distinct from old.caserne
     or new.type is distinct from old.type)

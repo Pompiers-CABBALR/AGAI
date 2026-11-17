@@ -12801,9 +12801,9 @@ let astrPlanningWeek = 0; // offset semaines depuis aujourd'hui
 let astrDispoWeek = 1;    // par défaut = semaine prochaine
 let astrPiquetWeek = 0;
 let astrPiquetNowTimer=null;
-// La relève automatique reste inactive tant que son écriture atomique côté
-// serveur n'est pas disponible. Le formulaire actuel reste inchangé en V25.
-const ASTR_REPLACEMENT_ENABLED=false;
+// La relève n'est appliquée qu'après confirmation du remplaçant puis
+// validation atomique par le responsable de l'astreinte forte côté serveur.
+const ASTR_REPLACEMENT_ENABLED=true;
 
 // Chaque changement d'horaires entre en vigueur au début d'une semaine.
 // Les semaines antérieures continuent d'utiliser leur propre règle.
@@ -14049,6 +14049,9 @@ async function astrRespondReplacementRequest(wk,req,reponse){
     DISPOS[wk][req.login]=result.sourceDispo.slots;
     DISPOS[wk][req.replacementLogin]=result.candidateDispo.slots;
     PIQUETS[wk]=result.piquets;
+    if(Number.isSafeInteger(result.piquetRevision)&&result.piquetRevision>=0){
+      PIQUETS._replacementRevision=result.piquetRevision;
+    }
     if(Array.isArray(result.piquetLog)){
       if(!PIQUETS._log)PIQUETS._log={};
       PIQUETS._log[wk]=result.piquetLog;
@@ -20835,7 +20838,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202611_0041';
+const APP_VERSION='V202611_0042';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -25203,7 +25206,7 @@ function _rcDeferFailedRow(failure){
   const row=failure&&failure.row;if(!row||!row.id)return false;
   const serverRefused=Number(failure.status||0)===400
     &&row.type!=='iv'&&row.type!=='pilp'
-    &&/AGAI_WRITE_FORBIDDEN/.test(String(failure.detail||''));
+    &&/AGAI_WRITE_FORBIDDEN|AGAI_PIQUET_STALE_REPLACEMENT/.test(String(failure.detail||''));
   _rcDeferredDirty[row.id]={
     until:Date.now()+(serverRefused?24*60*60*1000:5*60*1000),
     kind:serverRefused?'server-refused':'temporary',
@@ -26562,7 +26565,7 @@ async function _rcPush(fullPush){
         const status=Number(failure.status||0);
         const transient=status===0||status===502||status===503||status===504;
         const forbidden=status===400&&failure.row&&failure.row.type!=='iv'&&failure.row.type!=='pilp'
-          &&/AGAI_WRITE_FORBIDDEN/.test(String(failure.detail||''));
+          &&/AGAI_WRITE_FORBIDDEN|AGAI_PIQUET_STALE_REPLACEMENT/.test(String(failure.detail||''));
         if((transient||forbidden)&&_rcDeferFailedRow(failure)){
           console.warn('[AGAI][RC] Action conservée après refus ou panne :',failure.row&&failure.row.type);
         }else stillBlocking.push(failure);

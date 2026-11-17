@@ -297,21 +297,10 @@ begin
     or preview.data->>'confirmePar' is distinct from candidate_login
     or actor.login is distinct from agai_private.strong_team_lead(station,week)
   then raise exception 'AGAI_REPLACEMENT_STRONG_LEAD_REQUIRED'; end if;
-  -- Une personne qui accepte une relève peut n'avoir encore aucune ligne
-  -- de disponibilités pour la semaine. Elle est créée dans cette transaction.
-  candidate_initial:=pg_catalog.jsonb_build_object(
-    'wk',week,'login',candidate_login,'slots','{}'::jsonb);
-  if not exists(select 1 from public.records
-    where id=station||'__dispo__'||week||'__'||candidate_login)
-  then
-    perform agai_private.permit_replacement_write(
-      station||'__dispo__'||week||'__'||candidate_login,null,candidate_initial,actor.login);
-    insert into public.records(id,caserne,type,data)
-      values(station||'__dispo__'||week||'__'||candidate_login,station,'dispo',candidate_initial)
-      on conflict(id) do nothing;
-  end if;
-  -- Tous les verrous sont pris dans le même ordre, même si la demande a
-  -- été lue une première fois sans verrou pour trouver les identifiants.
+  -- Sérialiser les relèves de cette semaine et verrouiller les lignes déjà
+  -- présentes avant de créer une éventuelle disponibilité manquante.
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtext('agai-replacement:'||station||':'||week));
   for row_to_lock in select * from public.records
     where id in (p_request_id,station||'__config__main',
       station||'__dispo__'||week||'__'||source_login,
@@ -327,12 +316,10 @@ begin
   if request_row.data->>'wk' is distinct from week
     or request_row.data->>'login' is distinct from source_login
     or request_row.data->>'replacementLogin' is distinct from candidate_login
-    or config_row.id is null or source_row.id is null or candidate_row.id is null
-    or config_row.deleted or source_row.deleted or candidate_row.deleted
+    or config_row.id is null or source_row.id is null
+    or config_row.deleted or source_row.deleted
     or source_row.data->>'wk' is distinct from week
     or source_row.data->>'login' is distinct from source_login
-    or candidate_row.data->>'wk' is distinct from week
-    or candidate_row.data->>'login' is distinct from candidate_login
   then raise exception 'AGAI_REPLACEMENT_REVISION_CONFLICT'; end if;
   if request_row.data->>'statut'='accepte'
     and request_row.data->>'reponduPar'=actor.login and p_decision='accepte'
@@ -360,6 +347,23 @@ begin
       where transaction_id=pg_catalog.txid_current();
     return next_request;
   end if;
+  -- Une personne qui accepte une relève peut n'avoir encore aucune ligne
+  -- de disponibilités pour la semaine. Elle est créée après les verrous.
+  if candidate_row.id is null then
+    candidate_initial:=pg_catalog.jsonb_build_object(
+      'wk',week,'login',candidate_login,'slots','{}'::jsonb);
+    perform agai_private.permit_replacement_write(
+      station||'__dispo__'||week||'__'||candidate_login,null,candidate_initial,actor.login);
+    insert into public.records(id,caserne,type,data)
+      values(station||'__dispo__'||week||'__'||candidate_login,station,'dispo',candidate_initial)
+      on conflict(id) do nothing;
+    select * into candidate_row from public.records
+      where id=station||'__dispo__'||week||'__'||candidate_login for update;
+  end if;
+  if candidate_row.id is null or candidate_row.deleted
+    or candidate_row.data->>'wk' is distinct from week
+    or candidate_row.data->>'login' is distinct from candidate_login
+  then raise exception 'AGAI_REPLACEMENT_REVISION_CONFLICT'; end if;
   source_gran:=coalesce((config_row.data->'astrConfig'->>'granularity')::integer,60);
   source_gran:=agai_private.replacement_team_granularity(station,source_login,source_gran);
   candidate_gran:=agai_private.replacement_team_granularity(station,candidate_login,
@@ -448,6 +452,11 @@ begin
   then raise exception 'AGAI_REPLACEMENT_QUALIFICATION_INSUFFICIENT'; end if;
   next_config:=pg_catalog.jsonb_set(config_row.data,array['piquets',week],
     planned->'piquets',true);
+  if planned->'piquets' is distinct from p_expected_piquets then
+    next_config:=pg_catalog.jsonb_set(next_config,'{piquets,_replacementRevision}',
+      pg_catalog.to_jsonb(
+        coalesce((config_row.data->'piquets'->>'_replacementRevision')::bigint,0)+1),true);
+  end if;
   if config_row.data->'piquetsValidated'->>week='true'
     and planned->'piquets' is distinct from p_expected_piquets
   then
@@ -491,6 +500,7 @@ begin
   return pg_catalog.jsonb_build_object(
     'request',next_request,'sourceDispo',next_source,
     'candidateDispo',next_candidate,'piquets',planned->'piquets',
-    'piquetLog',next_config->'piquets'->'_log'->week);
+    'piquetLog',next_config->'piquets'->'_log'->week,
+    'piquetRevision',next_config->'piquets'->'_replacementRevision');
 end;
 $$;

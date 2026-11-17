@@ -8,9 +8,9 @@ let astrPlanningWeek = 0; // offset semaines depuis aujourd'hui
 let astrDispoWeek = 1;    // par défaut = semaine prochaine
 let astrPiquetWeek = 0;
 let astrPiquetNowTimer=null;
-// La relève automatique reste inactive tant que son écriture atomique côté
-// serveur n'est pas disponible. Le formulaire actuel reste inchangé en V25.
-const ASTR_REPLACEMENT_ENABLED=false;
+// La relève n'est appliquée qu'après confirmation du remplaçant puis
+// validation atomique par le responsable de l'astreinte forte côté serveur.
+const ASTR_REPLACEMENT_ENABLED=true;
 
 // Chaque changement d'horaires entre en vigueur au début d'une semaine.
 // Les semaines antérieures continuent d'utiliser leur propre règle.
@@ -1257,6 +1257,9 @@ async function astrRespondReplacementRequest(wk,req,reponse){
     DISPOS[wk][req.login]=result.sourceDispo.slots;
     DISPOS[wk][req.replacementLogin]=result.candidateDispo.slots;
     PIQUETS[wk]=result.piquets;
+    if(Number.isSafeInteger(result.piquetRevision)&&result.piquetRevision>=0){
+      PIQUETS._replacementRevision=result.piquetRevision;
+    }
     if(Array.isArray(result.piquetLog)){
       if(!PIQUETS._log)PIQUETS._log={};
       PIQUETS._log[wk]=result.piquetLog;
