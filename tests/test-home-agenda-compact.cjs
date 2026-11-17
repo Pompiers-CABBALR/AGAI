@@ -97,6 +97,9 @@ test('l’astreinte du jour montre seulement les piquets en cours et à venir, p
   });
   assert.match(html,/Piquets du jour/);
   assert.match(html,/En cours · 1er départ jusqu’à 18h · 2e départ jusqu’à 20h/);
+  const live=html.match(/<div class="acc-day-piquet-live-grid">[\s\S]*?<\/div><\/div><\/div>/)?.[0]||'';
+  assert.match(live,/1er départ[\s\S]*CA · Agent[\s\S]*Cond\. · Valéry/);
+  assert.match(live,/2e départ[\s\S]*CA · Agent[\s\S]*Cond\. · Valéry/);
   assert.match(html,/1er départ/);
   assert.match(html,/2e départ/);
   assert.ok(html.indexOf('1er départ')<html.indexOf('2e départ'));
@@ -110,7 +113,7 @@ test('l’astreinte du jour montre seulement les piquets en cours et à venir, p
 });
 
 test('les deux départs ont leurs colonnes et signalent les horaires individuels partiels',()=>{
-  const html=render('2026-11-09T09:00:00','VTU-01',{
+  const overrides={
     getMondayOfWeek:offset=>new Date(2026,10,9+7*offset),
     weekKey:date=>String(date.getFullYear())+String(date.getMonth()+1).padStart(2,'0')+String(date.getDate()).padStart(2,'0'),
     astrScheduleForWeek:()=>({weekStartHour:7,afternoonStart:12,eveningStart:18,nightStart:24}),
@@ -125,7 +128,8 @@ test('les deux départs ont leurs colonnes et signalent les horaires individuels
       {l:'eric',name:'Canneson Eric'},{l:'mathis',name:'Marien Mathis'}],
     fullNameAff:user=>user.name,
     astrTelActiveDuty:()=>({mode:'person',login:'agent',start:'2026-11-09T07:00:00',end:'2026-11-09T23:00:00'})
-  });
+  };
+  const html=render('2026-11-09T09:00:00','VTU-01',overrides);
   assert.match(html,/class="acc-day-piquet-grid"/);
   const columns=html.match(/<section class="acc-day-piquet-column">[\s\S]*?<\/section>/g)||[];
   assert.equal(columns.length,2);
@@ -135,6 +139,15 @@ test('les deux départs ont leurs colonnes et signalent les horaires individuels
   assert.match(columns[1],/2e départ[\s\S]*Canneson Eric[\s\S]*Marien Mathis/);
   assert.doesNotMatch(columns[1],/acc-day-piquet-hours|Présence partielle/);
   assert.doesNotMatch(columns.join(''),/VTU-01|VTU-02/);
+  const live=html.split('<div class="acc-day-piquet-live-grid">')[1].split('</span><span class="acc-agenda-more">')[0];
+  assert.match(live,/1er départ[\s\S]*CA · Lhernout Nicolas[\s\S]*Cond\. · Dumoulin Sébastien/);
+  assert.match(live,/2e départ[\s\S]*CA · Canneson Eric[\s\S]*Cond\. · Marien Mathis/);
+  const afterDriverLeaves=render('2026-11-09T11:30:00','VTU-01',overrides)
+    .split('<div class="acc-day-piquet-live-grid">')[1].split('</span><span class="acc-agenda-more">')[0];
+  assert.match(afterDriverLeaves,/1er départ[\s\S]*CA · Lhernout Nicolas/);
+  assert.doesNotMatch(afterDriverLeaves,/Dumoulin Sébastien/);
+  assert.match(afterDriverLeaves,/Cond\. · non couvert/);
+  assert.match(afterDriverLeaves,/2e départ[\s\S]*CA · Canneson Eric[\s\S]*Cond\. · Marien Mathis/);
 });
 
 test('le volet Piquets du jour reste ouvert lors du prochain rendu',()=>{

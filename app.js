@@ -6210,12 +6210,20 @@ function rAccueilAstreinte(){
           {role:'Conducteur',login:p.conducteur,hDebut:p.debut,hFin:p.fin},
           p.chefEquipe?{role:"Chef d'équipe",login:p.chefEquipe,hDebut:p.debut,hFin:p.fin}:null,
           p.stagiaire?{role:'Équipier',login:p.stagiaire,hDebut:p.debut,hFin:p.fin}:null
-        ].filter(Boolean);
+        ].filter(function(member){return member&&member.login;});
         const crew=members.map(function(m){
           const role=String(m.role||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
           const shortRole=role.includes('agres')?'CA':role.includes('conducteur')?'Cond.':role.includes('equipe')?'CE':'Éq.';
           const from=String(m.hDebut||p.debut),to=String(m.hFin||p.fin);
-          return {role:shortRole,name:name(m.login),hours:from+'–'+to,partial:from!==p.debut||to!==p.fin};
+          const memberStart=new Date(start);
+          const fromMinute=timeToMin(from),toMinute=timeToMin(to);
+          memberStart.setHours(Math.floor(fromMinute/60),fromMinute%60,0,0);
+          if(memberStart<start)memberStart.setDate(memberStart.getDate()+1);
+          const memberEnd=new Date(memberStart);
+          memberEnd.setHours(Math.floor(toMinute/60),toMinute%60,0,0);
+          if(memberEnd<=memberStart)memberEnd.setDate(memberEnd.getDate()+1);
+          return {role:shortRole,name:name(m.login),hours:from+'–'+to,partial:from!==p.debut||to!==p.fin,
+            present:memberStart<=now&&memberEnd>now};
         });
         const partialNote=piquetPresenceWarning(p);
         rows.push({time:start.getTime(),end:displayEnd.getTime(),rank:rank,current:current,
@@ -6253,6 +6261,20 @@ function rAccueilAstreinte(){
             +shortTime(row.end);
         }).join(' · ')+(focused.length>2?' · +'+(focused.length-2):'')
       :'Aucun piquet en cours ou à venir';
+    const liveCrews=activeRows.length?'<div class="acc-day-piquet-live-grid">'+groups.slice(0,2).map(function(group){
+      const row=activeRows.find(function(item){return item.rank===group.rank;});
+      const present=row?row.crew.filter(function(member){return member.present&&member.name!=='—';}):[];
+      const missing=row?['CA','Cond.'].filter(function(role){return !present.some(function(member){return member.role===role;});}):[];
+      return '<div class="acc-day-piquet-live">'
+        +'<div class="acc-day-piquet-live-title">'+group.title+'</div>'
+        +(row?'<div class="acc-day-piquet-live-hours">Jusqu’à '+(sameDate(new Date(row.end),now)?'':'demain ')+shortTime(row.end)+'</div>':'')
+        +(row?present.map(function(member){return '<div class="acc-day-piquet-live-member">'
+          +escHtml(member.role)+' · '+escHtml(member.name)+'</div>';}).join('')
+          +missing.map(function(role){return '<div class="acc-day-piquet-live-missing">'
+            +role+' · non couvert</div>';}).join('')
+          :'<div class="acc-day-piquet-live-empty">Aucun équipage en cours</div>')
+        +'</div>';
+    }).join('')+'</div>':'';
     function renderDayPiquet(row){
       return '<div class="acc-day-piquet-slot">'
         +'<div class="acc-day-piquet-time">'+escHtml(row.label)+'</div>'
@@ -6273,7 +6295,7 @@ function rAccueilAstreinte(){
     }).join('')+'</div>':'';
     el.innerHTML+='<details class="acc-agenda-card" style="margin-top:8px;--agenda-bg:#FFF1E8;--agenda-color:#C2410C;--agenda-text:#7C2D12;">'
       +'<summary><span class="acc-agenda-icon">🚒</span><span class="acc-agenda-main"><div class="acc-agenda-title">Piquets du jour</div>'
-      +'<div class="acc-agenda-summary">'+escHtml(daySummary)+'</div></span><span class="acc-agenda-more">▼</span></summary>'
+      +'<div class="acc-agenda-summary">'+escHtml(daySummary)+'</div>'+liveCrews+'</span><span class="acc-agenda-more">▼</span></summary>'
       +'<div class="acc-agenda-details">'+(groupedHtml||'Aucun piquet restant pour cette journée d’astreinte.')+'</div></details>';
   }
   el.querySelectorAll('details.acc-agenda-card').forEach(function(card){
@@ -20873,7 +20895,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202611_0043';
+const APP_VERSION='V202611_0044';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
