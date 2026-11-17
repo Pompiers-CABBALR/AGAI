@@ -62,6 +62,7 @@ function rAccueil(){
   // ── Messages astreinte ──
   try{rAccueilAstreinte();}catch(e){}
   try{rAccueilAstreinteActions();}catch(e){console.warn('[AGAI] Demandes d’astreinte indisponibles',e);}
+  try{rAccueilDispoNotices();}catch(e){console.warn('[AGAI] Avis de disponibilité indisponibles',e);}
   try{rAccueilRapports();}catch(e){console.warn('[AGAI] Rappels de rapports indisponibles',e);}
   try{if(typeof renderHomeAdminReportBanner==='function')renderHomeAdminReportBanner();}
   catch(e){console.warn('[AGAI] Suivi des rapports indisponible',e);}
@@ -97,6 +98,71 @@ function rAccueilAstreinteActions(){
     +'<strong>📨 '+pending.length+' demande'+(pending.length>1?'s':'')+' d’astreinte à traiter</strong>'
     +weeks.map(function(wk){return '<button type="button" class="btn sm" style="margin:5px 5px 0 0;" onclick="openAccueilAstreinteRequest(\''+wk+'\')">Semaine du '+wk.slice(6,8)+'/'+wk.slice(4,6)+' · '+pending.filter(function(item){return item.wk===wk;}).length+'</button>';}).join('')
     +'</div>';
+}
+
+const _accDispoNoticeState={key:'',fetchedAt:0,loading:false,items:[]};
+function renderAccueilDispoNotices(){
+  const panel=document.getElementById('acc-dispo-notices');if(!panel)return;
+  const unread=_accDispoNoticeState.items.filter(function(item){return !item.readAt;});
+  if(!unread.length){panel.innerHTML='';return;}
+  panel.innerHTML='<div style="border:1px solid #93C5FD;background:#EFF6FF;border-radius:10px;padding:10px;color:#1E40AF;">'
+    +'<strong>📨 '+unread.length+' information'+(unread.length>1?'s':'')+' de disponibilité à lire</strong>'
+    +unread.slice(0,8).map(function(item){
+      const idx=_accDispoNoticeState.items.indexOf(item);
+      const user=USERS.find(function(u){return u.l===item.login;});
+      const label=item.kind==='remplacement'?'Remplacement':'Disponibilité';
+      const wk=String(item.week||'');
+      return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:7px;padding:6px;background:#fff;border-radius:7px;">'
+        +'<span>'+escHtml(label)+' · '+escHtml(user?fullName(user):item.login||'Agent')
+        +' · '+escHtml(wk.length===8?wk.slice(6,8)+'/'+wk.slice(4,6):wk)
+        +' · '+escHtml(item.statut||'')+'</span>'
+        +'<label style="white-space:nowrap;"><input type="checkbox" aria-label="J’ai lu cette information" onchange="markAccueilDispoNoticeRead('+idx+')"/> Lu</label></div>';
+    }).join('')
+    +(unread.length>8?'<div style="font-size:11px;margin-top:5px;">'+(unread.length-8)+' autre(s) information(s).</div>':'')
+    +'</div>';
+}
+async function rAccueilDispoNotices(force){
+  const panel=document.getElementById('acc-dispo-notices');if(!panel)return;
+  if(!CU||!isRespEquipe()||!CURRENT_CASERNE_ID||!_agaiAuthAccessToken()){
+    panel.innerHTML='';_accDispoNoticeState.key='';_accDispoNoticeState.items=[];return;
+  }
+  const key=CURRENT_CASERNE_ID+'__'+CU.l;
+  if(_accDispoNoticeState.key!==key){
+    _accDispoNoticeState.key=key;_accDispoNoticeState.fetchedAt=0;
+    _accDispoNoticeState.items=[];
+  }
+  renderAccueilDispoNotices();
+  if(_accDispoNoticeState.loading||!force&&Date.now()-_accDispoNoticeState.fetchedAt<30000)return;
+  _accDispoNoticeState.loading=true;
+  try{
+    const response=await _agaiFetchWithTimeout(SB_URL+'/rest/v1/rpc/agai_dispo_request_notices',{
+      method:'POST',headers:_sbHeaders,body:'{}'
+    },15000);
+    if(!response.ok)return;
+    const items=await response.json();
+    if(_accDispoNoticeState.key===key&&Array.isArray(items)){
+      _accDispoNoticeState.items=items;_accDispoNoticeState.fetchedAt=Date.now();
+      renderAccueilDispoNotices();
+    }
+  }catch(error){console.warn('[AGAI] Avis non chargés',error);}
+  finally{_accDispoNoticeState.loading=false;}
+}
+async function markAccueilDispoNoticeRead(index){
+  const item=_accDispoNoticeState.items[index];
+  if(!item||item.readAt||!CU||!isRespEquipe())return;
+  try{
+    const response=await _agaiFetchWithTimeout(SB_URL+'/rest/v1/rpc/agai_mark_dispo_request_read',{
+      method:'POST',headers:_sbHeaders,body:JSON.stringify({
+        p_request_id:item.recordId,p_signature:item.signature
+      })
+    },15000);
+    if(!response.ok){showToast('Information modifiée ou accusé de lecture refusé.','warn');rAccueilDispoNotices(true);return;}
+    const result=await response.json();
+    if(result.signature===item.signature){item.readAt=result.readAt;renderAccueilDispoNotices();}
+  }catch(error){
+    showToast('Connexion indisponible : information non marquée comme lue.','warn');
+    renderAccueilDispoNotices();
+  }
 }
 
 function rAccueilDepartsHorsCaserne(){

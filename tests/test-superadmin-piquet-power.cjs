@@ -24,8 +24,9 @@ for(const file of ['modules/12-astreintes-js.js','app.js']){
     const end=source.indexOf('// ── Drag & drop des piquets',start);
     const render=source.slice(start,end);
     assert.match(render,/const isAdmin=isAdminModeActive\(\);/);
-    assert.match(render,/const canAdd = !isPastPiquet && \(isAdmin \|\| \(isResp && !piquetsValidated\)\);/);
+    assert.match(render,/const canAdd = !isPastPiquet && \(isAdmin \|\| isResp\);/);
     assert.match(render,/const canAction = !isPastPiquet && \(isAdmin \|\| \(isResp && !piquetsValidated\)\);/);
+    assert.match(render,/const validatedTeamCorrection=!isPastPiquet&&piquetsValidated&&isResp&&!isAdmin;/);
   });
 }
 

@@ -682,7 +682,7 @@ function pqBuildForm(wk,engin,jourDefaut,existingP){
   roles.forEach(function(role){
     const bg=PQ_ROLE_COLORS[role]||'#f9f9f9';
     const fg=PQ_ROLE_TEXT_COLORS[role]||'var(--t)';
-    const existingForRole=existingP?(existingP.membres||[]).filter(function(m){return m.role===role;}):[];
+    const existingForRole=existingP?(existingP.membres||[]).filter(function(m){return _normRole(m.role)===_normRole(role);}):[];
     const initAgents=existingForRole.length?existingForRole:[{login:'',hDebut:debutDef,hFin:finDef}];
 
     html+='<div style="background:'+bg+';border-radius:8px;padding:8px 10px;margin-bottom:8px;" id="pq-role-block-'+_encodeRole(role)+'">'
@@ -698,8 +698,9 @@ function pqBuildForm(wk,engin,jourDefaut,existingP){
     html+='</div></div>';
   });
 
-  html+='<div class="fg"><div class="fgl">Note</div><input class="fi" type="text" id="pq-note" value="'+(existingP&&existingP.note?existingP.note:'')+'"/></div>'
-    +'<div id="pq-err" style="font-size:12px;color:#E24B4A;display:none;margin-bottom:8px;"></div>';
+  html+='<div class="fg"><div class="fgl">Note</div><input class="fi" type="text" id="pq-note" value="'+(existingP&&existingP.note?existingP.note:'')+'"/></div>';
+  if(piquetTeamCorrectionRequired(wk))html+='<div class="fg"><div class="fgl">Motif de correction obligatoire</div><textarea class="fi" id="pq-correction-reason" maxlength="500" rows="2" placeholder="Disponibilité modifiée ou incohérence constatée"></textarea></div>';
+  html+='<div id="pq-err" style="font-size:12px;color:#E24B4A;display:none;margin-bottom:8px;"></div>';
   html+='</div>';
   return html;
 }
@@ -779,7 +780,7 @@ function addPiquet(wk,engin,jourDefaut){
     +'<div id="pq-suggestions" style="margin-bottom:8px;"></div>'
     +'<div class="brow" style="flex-wrap:wrap;gap:6px;">'
     +'<button class="btn pr sm" onclick="confirmAddPiquet(\''+wk+'\',\''+engin+'\')">Valider</button>'
-    +'<button class="btn sm" style="background:#059669;color:#fff;border-color:#059669;" onclick="suggestCreneaux(\''+wk+'\',\''+engin+'\')">💡 Préparer la semaine</button>'
+    +(piquetTeamCorrectionRequired(wk)?'':'<button class="btn sm" style="background:#059669;color:#fff;border-color:#059669;" onclick="suggestCreneaux(\''+wk+'\',\''+engin+'\')">💡 Préparer la semaine</button>')
     +'<button class="btn sm" onclick="cM()">Annuler</button>'
     +'</div>';
   document.getElementById('mo').style.display='flex';
@@ -1044,6 +1045,9 @@ function confirmAddPiquet(wk,engin){
   const newP={engin,jour,debut,fin,note,membres,
     chefAgres:ca?ca.login:'',conducteur:co?co.login:'',
     chefEquipe:ceq?ceq.login:'',stagiaire:eq?eq.login:''};
+  if(piquetTeamCorrectionRequired(wk)){
+    correctValidatedPiquet(wk,'ajout',PIQUETS[wk].length,newP);return;
+  }
   PIQUETS[wk].push(newP);
   logPiquetChange(wk,'ajout',newP);
   saveData();cM();rAstrPiquets();
