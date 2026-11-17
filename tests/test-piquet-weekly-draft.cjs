@@ -530,7 +530,8 @@ test('le nouveau piquet reprend le début de la semaine choisie sans changer un 
     JOURS_FULL:days,getEnginRoles:()=>[{role:'Chef d’agrès'},{role:'Conducteur'}],
     astrScheduleForWeek:wk=>({weekStartHour:wk==='20261116'?7:8}),
     isVPI:()=>false,PQ_ROLES_VPI:[],PQ_ROLES_VTU:[],PQ_ROLE_COLORS:{},PQ_ROLE_TEXT_COLORS:{},
-    _encodeRole:role=>role.replace(/[^a-zA-Z0-9]/g,'_'),pqBuildLine:()=>''
+    _encodeRole:role=>role.replace(/[^a-zA-Z0-9]/g,'_'),pqBuildLine:()=>'',
+    piquetTeamCorrectionRequired:()=>false
   };
   vm.createContext(context);
   vm.runInContext(functionSource(formSource,'pqBuildForm'),context);

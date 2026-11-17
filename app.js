@@ -5679,6 +5679,7 @@ function rAccueil(){
   // ── Messages astreinte ──
   try{rAccueilAstreinte();}catch(e){}
   try{rAccueilAstreinteActions();}catch(e){console.warn('[AGAI] Demandes d’astreinte indisponibles',e);}
+  try{rAccueilDispoNotices();}catch(e){console.warn('[AGAI] Avis de disponibilité indisponibles',e);}
   try{rAccueilRapports();}catch(e){console.warn('[AGAI] Rappels de rapports indisponibles',e);}
   try{if(typeof renderHomeAdminReportBanner==='function')renderHomeAdminReportBanner();}
   catch(e){console.warn('[AGAI] Suivi des rapports indisponible',e);}
@@ -5714,6 +5715,71 @@ function rAccueilAstreinteActions(){
     +'<strong>📨 '+pending.length+' demande'+(pending.length>1?'s':'')+' d’astreinte à traiter</strong>'
     +weeks.map(function(wk){return '<button type="button" class="btn sm" style="margin:5px 5px 0 0;" onclick="openAccueilAstreinteRequest(\''+wk+'\')">Semaine du '+wk.slice(6,8)+'/'+wk.slice(4,6)+' · '+pending.filter(function(item){return item.wk===wk;}).length+'</button>';}).join('')
     +'</div>';
+}
+
+const _accDispoNoticeState={key:'',fetchedAt:0,loading:false,items:[]};
+function renderAccueilDispoNotices(){
+  const panel=document.getElementById('acc-dispo-notices');if(!panel)return;
+  const unread=_accDispoNoticeState.items.filter(function(item){return !item.readAt;});
+  if(!unread.length){panel.innerHTML='';return;}
+  panel.innerHTML='<div style="border:1px solid #93C5FD;background:#EFF6FF;border-radius:10px;padding:10px;color:#1E40AF;">'
+    +'<strong>📨 '+unread.length+' information'+(unread.length>1?'s':'')+' de disponibilité à lire</strong>'
+    +unread.slice(0,8).map(function(item){
+      const idx=_accDispoNoticeState.items.indexOf(item);
+      const user=USERS.find(function(u){return u.l===item.login;});
+      const label=item.kind==='remplacement'?'Remplacement':'Disponibilité';
+      const wk=String(item.week||'');
+      return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:7px;padding:6px;background:#fff;border-radius:7px;">'
+        +'<span>'+escHtml(label)+' · '+escHtml(user?fullName(user):item.login||'Agent')
+        +' · '+escHtml(wk.length===8?wk.slice(6,8)+'/'+wk.slice(4,6):wk)
+        +' · '+escHtml(item.statut||'')+'</span>'
+        +'<label style="white-space:nowrap;"><input type="checkbox" aria-label="J’ai lu cette information" onchange="markAccueilDispoNoticeRead('+idx+')"/> Lu</label></div>';
+    }).join('')
+    +(unread.length>8?'<div style="font-size:11px;margin-top:5px;">'+(unread.length-8)+' autre(s) information(s).</div>':'')
+    +'</div>';
+}
+async function rAccueilDispoNotices(force){
+  const panel=document.getElementById('acc-dispo-notices');if(!panel)return;
+  if(!CU||!isRespEquipe()||!CURRENT_CASERNE_ID||!_agaiAuthAccessToken()){
+    panel.innerHTML='';_accDispoNoticeState.key='';_accDispoNoticeState.items=[];return;
+  }
+  const key=CURRENT_CASERNE_ID+'__'+CU.l;
+  if(_accDispoNoticeState.key!==key){
+    _accDispoNoticeState.key=key;_accDispoNoticeState.fetchedAt=0;
+    _accDispoNoticeState.items=[];
+  }
+  renderAccueilDispoNotices();
+  if(_accDispoNoticeState.loading||!force&&Date.now()-_accDispoNoticeState.fetchedAt<30000)return;
+  _accDispoNoticeState.loading=true;
+  try{
+    const response=await _agaiFetchWithTimeout(SB_URL+'/rest/v1/rpc/agai_dispo_request_notices',{
+      method:'POST',headers:_sbHeaders,body:'{}'
+    },15000);
+    if(!response.ok)return;
+    const items=await response.json();
+    if(_accDispoNoticeState.key===key&&Array.isArray(items)){
+      _accDispoNoticeState.items=items;_accDispoNoticeState.fetchedAt=Date.now();
+      renderAccueilDispoNotices();
+    }
+  }catch(error){console.warn('[AGAI] Avis non chargés',error);}
+  finally{_accDispoNoticeState.loading=false;}
+}
+async function markAccueilDispoNoticeRead(index){
+  const item=_accDispoNoticeState.items[index];
+  if(!item||item.readAt||!CU||!isRespEquipe())return;
+  try{
+    const response=await _agaiFetchWithTimeout(SB_URL+'/rest/v1/rpc/agai_mark_dispo_request_read',{
+      method:'POST',headers:_sbHeaders,body:JSON.stringify({
+        p_request_id:item.recordId,p_signature:item.signature
+      })
+    },15000);
+    if(!response.ok){showToast('Information modifiée ou accusé de lecture refusé.','warn');rAccueilDispoNotices(true);return;}
+    const result=await response.json();
+    if(result.signature===item.signature){item.readAt=result.readAt;renderAccueilDispoNotices();}
+  }catch(error){
+    showToast('Connexion indisponible : information non marquée comme lue.','warn');
+    renderAccueilDispoNotices();
+  }
 }
 
 function rAccueilDepartsHorsCaserne(){
@@ -13781,7 +13847,8 @@ function astrReplacementCandidateAllowed(candidate,wk,login,slots,granularity){
     &&astrReplacementLevel(candidate)>=astrReplacementRequiredLevel(wk,login,slots,granularity);
 }
 
-
+// Aperçu pur de la relève : on ne change que les heures demandées, sans
+// réécrire le piquet initial tant que le serveur n'a pas validé la transaction.
 function astrProjectReplacementPiquets(wk,request){
   if(!request||!request.login||!request.replacementLogin)throw new Error('Remplaçant manquant.');
   const gran=dispoGranularityFor(request.login);
@@ -14902,6 +14969,15 @@ function piquetPresenceWarning(p){
   return gaps.length?'Présence partielle : '+gaps.join(' ; '):'';
 }
 
+function piquetDisplayMembers(p){
+  if(Array.isArray(p.membres))return p.membres;
+  const members=[];
+  if(p.chefAgres)members.push({role:"Chef d'agrès",login:p.chefAgres,hDebut:p.debut,hFin:p.fin});
+  if(p.conducteur)members.push({role:'Conducteur',login:p.conducteur,hDebut:p.debut,hFin:p.fin});
+  if(p.chefEquipe)members.push({role:"Chef d'équipe",login:p.chefEquipe,hDebut:p.debut,hFin:p.fin});
+  if(p.stagiaire)members.push({role:'Équipier',login:p.stagiaire,hDebut:p.debut,hFin:p.fin});
+  return members;
+}
 function rAstrPiquets(){
   if(astrPiquetNowTimer){clearTimeout(astrPiquetNowTimer);astrPiquetNowTimer=null;}
   const mon=getMondayOfWeek(astrPiquetWeek);
@@ -14942,9 +15018,11 @@ function rAstrPiquets(){
   const isResp=isRespEquipe();
   // Peut modifier : admin ou resp/membre équipe, semaine courante ou future seulement
   const piquetsValidated = PIQUETS_VALIDATED[wk]===true;
-  // Après validation : lecture seule pour chefs d'équipe (admin peut toujours modifier)
-  const canAdd = !isPastPiquet && (isAdmin || (isResp && !piquetsValidated));
+  // Après validation, les responsables corrigent un seul créneau à la fois
+  // via le serveur. Les actions groupées restent réservées aux autres cas.
+  const canAdd = !isPastPiquet && (isAdmin || isResp);
   const canAction = !isPastPiquet && (isAdmin || (isResp && !piquetsValidated));
+  const validatedTeamCorrection=!isPastPiquet&&piquetsValidated&&isResp&&!isAdmin;
   ['validerPiquets','exportPiquets','clearPiquetsSemaine'].forEach(function(fn){
     const btns=document.querySelectorAll('[onclick="'+fn+'()"]');
     btns.forEach(function(b){b.style.display=canAction?'':'none';});
@@ -14956,10 +15034,10 @@ function rAstrPiquets(){
     +(piquetsValidated?'<span style="background:#22C55E;color:#fff;border-radius:10px;padding:2px 10px;font-size:11px;font-weight:600;">&#x2705; Validé</span>':'')
     +'</div>';
   if(piquetsValidated&&!isAdmin){
-    html+='<div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#166534;">&#x2705; Piquets et disponibilités validés pour cette semaine. Contactez un administrateur pour toute modification.</div>';
+    html+='<div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#166534;">&#x2705; Piquets validés. '+(validatedTeamCorrection?'Vous pouvez corriger un créneau avec un motif ; chaque correction est tracée.':'Semaine passée : lecture seule.')+'</div>';
   }
   html+='<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:11px;color:#1D4ED8;">Les rangs « 1er départ », « 2e départ » désignent les équipages du piquet. Le camion réellement utilisé est choisi au premier départ de la tournée.</div>';
-  if(canAdd&&(ASTR_CONFIG.engins||[]).some(function(e){return /^VTU\b/i.test(String(e));})){
+  if(canAction&&(ASTR_CONFIG.engins||[]).some(function(e){return /^VTU\b/i.test(String(e));})){
     html+='<button type="button" class="btn sm" style="margin-bottom:10px;background:#059669;color:#fff;border-color:#059669;" onclick="openPiquetWeekly(\''+wk+'\')">💡 Préparer la semaine VTU</button>';
   }
 
@@ -14967,7 +15045,7 @@ function rAstrPiquets(){
   if(pastDeadlinePiquet&&!isAdmin){
     html+='<div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#854F0B;">';
     const dlpLabel=JOURS_DL[dlp.dayOfWeek]+' '+pad(dlp.hour)+':'+pad(dlp.minute);
-    html+='\u26A0\uFE0F D\u00e9lai de validation d\u00e9pass\u00e9 ('+dlpLabel+'). Contactez un administrateur pour toute modification.</div>';
+    html+='\u26A0\uFE0F D\u00e9lai de validation d\u00e9pass\u00e9 ('+dlpLabel+'). '+(validatedTeamCorrection?'Corrections ciblées possibles avec motif.':'Contactez un administrateur pour toute modification.')+'</div>';
   } else if(astrPiquetWeek===0&&!pastDeadlinePiquet&&isRespEquipe()&&!isAdmin){
     const dlpDateStr=dlpDate.getDate()+'/'+(dlpDate.getMonth()+1)+'/'+dlpDate.getFullYear();
     const dlpLabel=JOURS_DL[dlp.dayOfWeek]+' '+dlpDateStr+' \u00e0 '+pad(dlp.hour)+'h'+pad(dlp.minute);
@@ -15030,20 +15108,17 @@ function rAstrPiquets(){
         if(!list.length)return '<span style="font-size:11px;color:var(--t2);">&mdash;</span>';
         return list.map(function(p){
           const globalIdx=PIQUETS[wk].indexOf(p);
-          // Migrer ancien format
-          if(!p.membres){
-            p.membres=[];
-            if(p.chefAgres)p.membres.push({role:"Chef d'agr\u00e8s",login:p.chefAgres,hDebut:p.debut,hFin:p.fin});
-            if(p.conducteur)p.membres.push({role:'Conducteur',login:p.conducteur,hDebut:p.debut,hFin:p.fin});
-            if(p.chefEquipe)p.membres.push({role:"Chef d'\u00e9quipe",login:p.chefEquipe,hDebut:p.debut,hFin:p.fin});
-            if(p.stagiaire)p.membres.push({role:'\u00c9quipier',login:p.stagiaire,hDebut:p.debut,hFin:p.fin});
-          }
+          // Lire l'ancien format sans modifier la copie locale : le serveur
+          // compare l'état exact avant d'accepter une correction ciblée.
+          const displayMembres=piquetDisplayMembers(p);
           // Grouper par rôle
           const roles=['Chef d\u2019agr\u00e8s','Conducteur','Chef d\u2019\u00e9quipe','\u00c9quipier'];
           const roleAbbr={'Chef d\u2019agr\u00e8s':'CA','Conducteur':'Cond.','Chef d\u2019\u00e9quipe':'CE','\u00c9quipier':'\u00c9q.'};
           let crew='';
           roles.forEach(function(role){
-            const ms=(p.membres||[]).filter(function(m){return m.role===role;});
+            const ms=displayMembres.filter(function(m){
+              return String(m.role||'').replace(/[’']/g,'')===role.replace(/[’']/g,'');
+            });
             if(!ms.length)return;
             crew+='<div style="font-size:9px;opacity:.7;margin-top:2px;">'+roleAbbr[role]+'</div>';
             ms.forEach(function(m){
@@ -15055,14 +15130,14 @@ function rAstrPiquets(){
               crew+='<div style="font-weight:500;font-size:11px;">'+(u?fullName(u):m.login)+heures+solBadge+'</div>';
             });
           });
-          const del=canAdd?'<button class="btn sm" style="font-size:10px;padding:1px 5px;color:#E24B4A;margin-top:2px;" onclick="delPiquet(\''+wk+'\','+globalIdx+')">&times;</button>':'';
+          const del=canAdd&&!validatedTeamCorrection?'<button class="btn sm" style="font-size:10px;padding:1px 5px;color:#E24B4A;margin-top:2px;" onclick="delPiquet(\''+wk+'\','+globalIdx+')">&times;</button>':'';
           const incomplete=!p.chefAgres||!p.conducteur;
           const presenceWarning=piquetPresenceWarning(p);
           const warning=incomplete?'<div style="font-size:10px;font-weight:700;color:#9A3412;background:#FFEDD5;border-radius:4px;padding:3px;margin:3px 0;">À compléter — départ non garanti</div>'
             :presenceWarning
               ?'<div style="font-size:10px;font-weight:700;color:#9A3412;background:#FFEDD5;border-radius:4px;padding:3px;margin:3px 0;">'+escHtml(presenceWarning)+'</div>':'';
           const edit=canAdd?'<button class="btn sm" style="font-size:10px;padding:1px 5px;margin-top:2px;margin-right:2px;" onclick="editPiquet(\''+wk+'\','+globalIdx+')">&#x270F;</button>':'';
-          const dragAttrs=canAdd?' draggable="true" ondragstart="piquetDragStart(event,\''+wk+'\','+globalIdx+')" style="background:'+bg+';color:'+fg+';border-radius:5px;padding:4px 7px;margin-bottom:3px;cursor:grab;"':' style="background:'+bg+';color:'+fg+';border-radius:5px;padding:4px 7px;margin-bottom:3px;"';
+          const dragAttrs=canAction?' draggable="true" ondragstart="piquetDragStart(event,\''+wk+'\','+globalIdx+')" style="background:'+bg+';color:'+fg+';border-radius:5px;padding:4px 7px;margin-bottom:3px;cursor:grab;"':' style="background:'+bg+';color:'+fg+';border-radius:5px;padding:4px 7px;margin-bottom:3px;"';
           return '<div'+dragAttrs+'>'
             +'<div style="font-size:10px;font-weight:500;opacity:.8;margin-bottom:2px;">'+p.debut+'&ndash;'+p.fin+'</div>'
             +crew+warning+'<div>'+edit+del+'</div></div>';
@@ -15250,7 +15325,7 @@ function editPiquet(wk,globalIdx){
   const p=PIQUETS[wk]?.[globalIdx];if(!p)return;
   document.getElementById('mt').textContent='Modifier le cr\u00e9neau';
   document.getElementById('mi').textContent=piquetDepartureLabel(p.engin)+' \u2014 '+p.jour;
-  document.getElementById('mb').innerHTML=pqBuildForm(wk,p.engin,p.jour,p)
+  document.getElementById('mb').innerHTML=pqBuildForm(wk,p.engin,p.jour,{...p,membres:piquetDisplayMembers(p)})
     +'<div id="pq-err" style="font-size:12px;color:#E24B4A;display:none;margin-bottom:8px;"></div>'
     +'<div class="brow">'
     +'<button class="btn pr sm" onclick="confirmEditPiquet(\'' + wk + '\',' + globalIdx + ')">&#x2714; Enregistrer</button>'
@@ -15264,6 +15339,74 @@ function editPiquet(wk,globalIdx){
     if(d)d.dataset.prev=d.value;if(f)f.dataset.prev=f.value;
     pqRefreshDispos();
   },50);
+}
+
+function piquetTeamCorrectionRequired(wk){
+  return PIQUETS_VALIDATED[wk]===true&&isRespEquipe()&&!isAdminModeActive();
+}
+let _agaiPiquetCorrectionRunning=false;
+async function correctValidatedPiquet(wk,action,index,nextPiquet){
+  if(_agaiPiquetCorrectionRunning){
+    showToast('Correction déjà en cours. Attendez la réponse du serveur.','warn');return false;
+  }
+  const reasonEl=document.getElementById('pq-correction-reason');
+  const reason=String(reasonEl?.value||'').trim();
+  if(reason.length<10||reason.length>500){
+    showToast('Indiquez un motif de correction de 10 à 500 caractères.','warn');return false;
+  }
+  if(getWeekOffset(wk)<0||!piquetTeamCorrectionRequired(wk)){
+    showToast('Correction non autorisée pour cette semaine.','warn');return false;
+  }
+  if(!USE_RECORDS||!PERSONNEL_ONLINE_GATE||!_agaiAuthAccessToken()){
+    showToast('Connexion au serveur requise. Aucun piquet modifié.','warn');return false;
+  }
+  const configId=_rcId(CURRENT_CASERNE_ID,'config','main');
+  let queuedRows;
+  try{queuedRows=await _rcOutboxGetRows();}
+  catch(error){showToast('État de synchronisation indisponible. Aucun piquet modifié.','warn');return false;}
+  if(_rcSaving||_rcPulling||_rcPendingDirty.has(configId)
+    ||queuedRows.some(function(row){return row.id===configId;})){
+    showToast('Une synchronisation du planning est en cours. Réessayez après « Sync OK ».','warn');return false;
+  }
+  _agaiPiquetCorrectionRunning=true;
+  try{
+  const expected=JSON.parse(JSON.stringify(PIQUETS[wk]||[]));
+  let response;
+  try{
+    response=await _agaiFetchWithTimeout(SB_URL+'/rest/v1/rpc/agai_correct_validated_piquet',{
+      method:'POST',headers:_sbHeaders,body:JSON.stringify({
+        p_week:wk,p_expected:expected,p_action:action,p_index:index,
+        p_next_piquet:nextPiquet||null,p_reason:reason
+      })
+    },45000);
+  }catch(error){
+    showToast('Serveur inaccessible. Aucun piquet modifié.','warn');return false;
+  }
+  if(!response.ok){
+    let detail='';try{detail=await response.text();}catch(error){}
+    showToast(/AGAI_PIQUET_REVISION_CONFLICT/.test(detail)
+      ?'Le piquet a changé sur un autre appareil. Rechargez les données avant de réessayer.'
+      :'Correction refusée par le serveur. Aucun piquet modifié.','warn');
+    _rcRequestRealtimePull(150);return false;
+  }
+  let result;try{result=await response.json();}
+  catch(error){
+    showToast('Réponse serveur illisible. Actualisez les données.','warn');
+    _rcRequestRealtimePull(150);return false;
+  }
+  if(!result||!Array.isArray(result.piquets)){
+    showToast('Réponse serveur incomplète. Actualisez les données.','warn');
+    _rcRequestRealtimePull(150);return false;
+  }
+  PIQUETS[wk]=result.piquets;
+  if(!PIQUETS._log)PIQUETS._log={};
+  PIQUETS._log[wk]=Array.isArray(result.log)?result.log:[];
+  PIQUETS._replacementRevision=result.revision;
+  if(CD())CD().piquets=PIQUETS;
+  cM();rAstrPiquets();
+  _rcRequestRealtimePull(150);
+  showToast('Correction enregistrée et tracée.','success');return true;
+  }finally{_agaiPiquetCorrectionRunning=false;}
 }
 
 function confirmEditPiquet(wk,globalIdx){
@@ -15286,17 +15429,23 @@ function confirmEditPiquet(wk,globalIdx){
     }
   });
   if(conflits.length){err.style.display='block';err.textContent='&#x26A0; Conflit : '+conflits.join(', ');return;}
-  if(enginEl)p.engin=enginEl.value;
-  p.jour=jour;p.debut=debut;p.fin=fin;p.note=note;p.membres=membres;
+  const nextP={...p};
+  if(enginEl)nextP.engin=enginEl.value;
+  nextP.jour=jour;nextP.debut=debut;nextP.fin=fin;nextP.note=note;nextP.membres=membres;
   // Rétrocompatibilité
   const _nr=function(s){return (s||'').toLowerCase().replace(/[èéê]/g,'e').replace(/[^a-z]/g,'');};
   const ca=membres.find(function(m){return _nr(m.role)===_nr("Chef d'agrès");});
   const co=membres.find(function(m){return _nr(m.role)===_nr('Conducteur');});
   const ceq=membres.find(function(m){return _nr(m.role)===_nr("Chef d'équipe");});
   const eq=membres.find(function(m){return _nr(m.role)===_nr('Équipier');});
-  p.chefAgres=ca?ca.login:'';p.conducteur=co?co.login:'';
-  p.chefEquipe=ceq?ceq.login:'';p.stagiaire=eq?eq.login:'';
-  if(note.startsWith('Présence partielle : '))p.note=piquetPresenceWarning(p);
+  nextP.chefAgres=ca?ca.login:'';nextP.conducteur=co?co.login:'';
+  nextP.chefEquipe=ceq?ceq.login:'';nextP.stagiaire=eq?eq.login:'';
+  if(note.startsWith('Présence partielle : '))nextP.note=piquetPresenceWarning(nextP);
+  delete nextP._tranche;
+  if(piquetTeamCorrectionRequired(wk)){
+    correctValidatedPiquet(wk,'modification',globalIdx,nextP);return;
+  }
+  Object.assign(p,nextP);
   delete p._tranche;
   if(JSON.stringify(p)!==original)logPiquetChange(wk,'modification',p);
   saveData();cM();rAstrPiquets();
@@ -15333,6 +15482,13 @@ function logPiquetChange(wk, action, piquet, details) {
 function delPiquet(wk,globalIdx){
   if(astrPiquetWeek<0){showToast('Semaine passée — lecture seule','warn');return;}
   const p=PIQUETS[wk][globalIdx];
+  if(piquetTeamCorrectionRequired(wk)){
+    if(!document.getElementById('pq-correction-reason')){
+      editPiquet(wk,globalIdx);
+      showToast('Indiquez le motif dans le formulaire avant de supprimer.','info');return;
+    }
+    correctValidatedPiquet(wk,'suppression',globalIdx,null);return;
+  }
   confirmModal('Supprimer ce créneau ?',function(){
     logPiquetChange(wk,'suppression',p);
     PIQUETS[wk].splice(globalIdx,1);
@@ -20895,7 +21051,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202611_0044';
+const APP_VERSION='V202611_0045';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -28052,7 +28208,7 @@ function pqBuildForm(wk,engin,jourDefaut,existingP){
   roles.forEach(function(role){
     const bg=PQ_ROLE_COLORS[role]||'#f9f9f9';
     const fg=PQ_ROLE_TEXT_COLORS[role]||'var(--t)';
-    const existingForRole=existingP?(existingP.membres||[]).filter(function(m){return m.role===role;}):[];
+    const existingForRole=existingP?(existingP.membres||[]).filter(function(m){return _normRole(m.role)===_normRole(role);}):[];
     const initAgents=existingForRole.length?existingForRole:[{login:'',hDebut:debutDef,hFin:finDef}];
 
     html+='<div style="background:'+bg+';border-radius:8px;padding:8px 10px;margin-bottom:8px;" id="pq-role-block-'+_encodeRole(role)+'">'
@@ -28068,8 +28224,9 @@ function pqBuildForm(wk,engin,jourDefaut,existingP){
     html+='</div></div>';
   });
 
-  html+='<div class="fg"><div class="fgl">Note</div><input class="fi" type="text" id="pq-note" value="'+(existingP&&existingP.note?existingP.note:'')+'"/></div>'
-    +'<div id="pq-err" style="font-size:12px;color:#E24B4A;display:none;margin-bottom:8px;"></div>';
+  html+='<div class="fg"><div class="fgl">Note</div><input class="fi" type="text" id="pq-note" value="'+(existingP&&existingP.note?existingP.note:'')+'"/></div>';
+  if(piquetTeamCorrectionRequired(wk))html+='<div class="fg"><div class="fgl">Motif de correction obligatoire</div><textarea class="fi" id="pq-correction-reason" maxlength="500" rows="2" placeholder="Disponibilité modifiée ou incohérence constatée"></textarea></div>';
+  html+='<div id="pq-err" style="font-size:12px;color:#E24B4A;display:none;margin-bottom:8px;"></div>';
   html+='</div>';
   return html;
 }
@@ -28149,7 +28306,7 @@ function addPiquet(wk,engin,jourDefaut){
     +'<div id="pq-suggestions" style="margin-bottom:8px;"></div>'
     +'<div class="brow" style="flex-wrap:wrap;gap:6px;">'
     +'<button class="btn pr sm" onclick="confirmAddPiquet(\''+wk+'\',\''+engin+'\')">Valider</button>'
-    +'<button class="btn sm" style="background:#059669;color:#fff;border-color:#059669;" onclick="suggestCreneaux(\''+wk+'\',\''+engin+'\')">💡 Préparer la semaine</button>'
+    +(piquetTeamCorrectionRequired(wk)?'':'<button class="btn sm" style="background:#059669;color:#fff;border-color:#059669;" onclick="suggestCreneaux(\''+wk+'\',\''+engin+'\')">💡 Préparer la semaine</button>')
     +'<button class="btn sm" onclick="cM()">Annuler</button>'
     +'</div>';
   document.getElementById('mo').style.display='flex';
@@ -28414,6 +28571,9 @@ function confirmAddPiquet(wk,engin){
   const newP={engin,jour,debut,fin,note,membres,
     chefAgres:ca?ca.login:'',conducteur:co?co.login:'',
     chefEquipe:ceq?ceq.login:'',stagiaire:eq?eq.login:''};
+  if(piquetTeamCorrectionRequired(wk)){
+    correctValidatedPiquet(wk,'ajout',PIQUETS[wk].length,newP);return;
+  }
   PIQUETS[wk].push(newP);
   logPiquetChange(wk,'ajout',newP);
   saveData();cM();rAstrPiquets();
