@@ -96,13 +96,13 @@ test('l’astreinte du jour montre seulement les piquets en cours et à venir, p
     astrTelActiveDuty:()=>({mode:'person',login:'agent',start:'2026-11-09T08:00:00',end:'2026-11-09T23:00:00'})
   });
   assert.match(html,/Piquets du jour/);
-  assert.match(html,/2 en cours · 2 à venir/);
+  assert.match(html,/En cours · 1er départ jusqu’à 18h · 2e départ jusqu’à 20h/);
   assert.match(html,/1er départ/);
   assert.match(html,/2e départ/);
   assert.ok(html.indexOf('1er départ')<html.indexOf('2e départ'));
   assert.match(html,/En cours · 12:00–18:00/);
   assert.match(html,/À venir · 18:00–23:00/);
-  assert.match(html,/À venir · 20:00–24:00/);
+  assert.match(html,/À venir · 20:00–02:00/);
   assert.doesNotMatch(html,/08:00–12:00/);
   assert.match(html,/--agenda-bg:#FFF1E8;--agenda-color:#C2410C;--agenda-text:#7C2D12/);
   assert.match(html,/--agenda-bg:#F3E8FF;--agenda-color:#7E22CE;--agenda-text:#581C87/);
@@ -158,7 +158,70 @@ test('après le dernier piquet du jour, aucun créneau passé ne reste affiché'
     USERS:[],fullNameAff:()=>'',
     astrTelActiveDuty:()=>({mode:'person',login:'agent',start:'2026-11-09T08:00:00',end:'2026-11-09T23:59:00'})
   });
-  assert.match(html,/0 en cours · 0 à venir/);
-  assert.match(html,/Aucun piquet restant aujourd’hui/);
+  assert.match(html,/Aucun piquet en cours ou à venir/);
+  assert.match(html,/Aucun piquet restant pour cette journée d’astreinte/);
   assert.doesNotMatch(html,/08:00–23:00/);
+});
+
+test('le soir affiche aussi la nuit suivante, jusqu’au début d’astreinte à 07 h',()=>{
+  const piquets=[
+    {engin:'VTU-01',jour:'Lundi',debut:'18:00',fin:'23:00',
+      chefAgres:'agent',conducteur:'valery'},
+    {engin:'VTU-01',jour:'Lundi',debut:'00:00',fin:'07:00',
+      chefAgres:'agent',conducteur:'valery'},
+    {engin:'VTU-02',jour:'Lundi',debut:'00:00',fin:'07:00',
+      chefAgres:'agent',conducteur:'valery'}
+  ];
+  const overrides={
+    getMondayOfWeek:offset=>new Date(2026,10,9+7*offset),
+    weekKey:date=>String(date.getFullYear())+String(date.getMonth()+1).padStart(2,'0')
+      +String(date.getDate()).padStart(2,'0'),
+    astrScheduleForWeek:()=>({weekStartHour:7}),
+    PIQUETS:{20261109:piquets},
+    USERS:[{l:'agent',name:'Agent'},{l:'valery',name:'Valéry'}],
+    fullNameAff:user=>user.name,
+    astrTelActiveDuty:()=>({mode:'person',login:'agent',
+      start:'2026-11-09T07:00:00',end:'2026-11-10T07:00:00'})
+  };
+  const evening=render('2026-11-09T21:00:00','VTU-01',overrides);
+  assert.match(evening,/En cours · 1er départ jusqu’à 23h/);
+  assert.match(evening,/À venir · 00:00–07:00/);
+  assert.match(evening,/2e départ[\s\S]*À venir · 00:00–07:00/);
+  const waiting=render('2026-11-09T23:30:00','VTU-01',overrides);
+  assert.match(waiting,/À venir · 1er départ demain 00h–07h · 2e départ demain 00h–07h/);
+  const overnight=render('2026-11-10T02:00:00','VTU-01',overrides);
+  assert.match(overnight,/En cours · 1er départ jusqu’à 07h · 2e départ jusqu’à 07h/);
+});
+
+test('le lundi avant 07 h conserve la nuit du dimanche de la semaine précédente',()=>{
+  const html=render('2026-11-16T02:00:00','VTU-01',{
+    getMondayOfWeek:offset=>new Date(2026,10,16+7*offset),
+    weekKey:date=>String(date.getFullYear())+String(date.getMonth()+1).padStart(2,'0')
+      +String(date.getDate()).padStart(2,'0'),
+    astrScheduleForWeek:()=>({weekStartHour:7}),
+    PIQUETS:{20261109:[{engin:'VTU-01',jour:'Dimanche',debut:'00:00',fin:'07:00',
+      chefAgres:'agent',conducteur:'valery'}]},
+    USERS:[{l:'agent',name:'Agent'},{l:'valery',name:'Valéry'}],
+    fullNameAff:user=>user.name,
+    astrTelActiveDuty:()=>({mode:'person',login:'agent',
+      start:'2026-11-15T07:00:00',end:'2026-11-16T07:00:00'})
+  });
+  assert.match(html,/En cours · 1er départ jusqu’à 07h/);
+  assert.match(html,/En cours · 00:00–07:00/);
+});
+
+test('le résumé d’un prochain départ traversant minuit nomme le lendemain',()=>{
+  const html=render('2026-11-09T19:00:00','VTU-01',{
+    getMondayOfWeek:offset=>new Date(2026,10,9+7*offset),
+    weekKey:date=>String(date.getFullYear())+String(date.getMonth()+1).padStart(2,'0')
+      +String(date.getDate()).padStart(2,'0'),
+    astrScheduleForWeek:()=>({weekStartHour:7}),
+    PIQUETS:{20261109:[{engin:'VTU-01',jour:'Lundi',debut:'20:00',fin:'02:00',
+      chefAgres:'agent',conducteur:'valery'}]},
+    USERS:[{l:'agent',name:'Agent'},{l:'valery',name:'Valéry'}],
+    fullNameAff:user=>user.name,
+    astrTelActiveDuty:()=>({mode:'person',login:'agent',
+      start:'2026-11-09T07:00:00',end:'2026-11-10T07:00:00'})
+  });
+  assert.match(html,/À venir · 1er départ 20h → demain 02h/);
 });
