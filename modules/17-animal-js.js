@@ -2360,7 +2360,7 @@ function _rcDeferFailedRow(failure){
   const row=failure&&failure.row;if(!row||!row.id)return false;
   const serverRefused=Number(failure.status||0)===400
     &&row.type!=='iv'&&row.type!=='pilp'
-    &&/AGAI_WRITE_FORBIDDEN/.test(String(failure.detail||''));
+    &&/AGAI_WRITE_FORBIDDEN|AGAI_PIQUET_STALE_REPLACEMENT/.test(String(failure.detail||''));
   _rcDeferredDirty[row.id]={
     until:Date.now()+(serverRefused?24*60*60*1000:5*60*1000),
     kind:serverRefused?'server-refused':'temporary',
@@ -3719,7 +3719,7 @@ async function _rcPush(fullPush){
         const status=Number(failure.status||0);
         const transient=status===0||status===502||status===503||status===504;
         const forbidden=status===400&&failure.row&&failure.row.type!=='iv'&&failure.row.type!=='pilp'
-          &&/AGAI_WRITE_FORBIDDEN/.test(String(failure.detail||''));
+          &&/AGAI_WRITE_FORBIDDEN|AGAI_PIQUET_STALE_REPLACEMENT/.test(String(failure.detail||''));
         if((transient||forbidden)&&_rcDeferFailedRow(failure)){
           console.warn('[AGAI][RC] Action conservée après refus ou panne :',failure.row&&failure.row.type);
         }else stillBlocking.push(failure);
