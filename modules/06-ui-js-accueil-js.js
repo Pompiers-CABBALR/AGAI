@@ -171,18 +171,19 @@ function rAccueilDepartsHorsCaserne(){
   if(typeof hasAdministrativeAccount!=='function'||!hasAdministrativeAccount()){
     el.style.display='none';el.innerHTML='';return;
   }
-  const cutoff=getH(new Date(Date.now()-7*24*60*60*1000));
   const seen=new Set();
   const departures=[].concat(IVS||[],PILP_IVS||[]).filter(function(iv){
     if(!iv||!iv.id||seen.has(iv.id))return false;
     seen.add(iv.id);
     const control=iv._departGeoControle||{};
-    return operationalStartOffsiteConfirmed(control)&&String(control.date||'')>=cutoff;
+    const review=iv._departGeoReview||{};
+    return operationalStartOffsiteConfirmed(control)
+      &&!(review.sourceDate===control.date&&['justifie','refuse'].includes(review.status));
   }).sort(function(a,b){return String(b._departGeoControle.date).localeCompare(String(a._departGeoControle.date));});
   if(!departures.length){el.style.display='none';el.innerHTML='';return;}
   el.style.display='block';
   el.innerHTML='<div style="border:1px solid #FDBA74;background:#FFF7ED;border-radius:10px;padding:12px;color:#92400E;">'
-    +'<strong>⚠️ Départs pris hors caserne — '+departures.length+' sur les 7 derniers jours</strong>'
+    +'<strong>⚠️ Départs hors caserne à contrôler — '+departures.length+'</strong>'
     +departures.slice(0,5).map(function(iv){
       const control=iv._departGeoControle||{};
       const stamp=String(control.date||'');
