@@ -31,6 +31,16 @@ test('la décision ne vaut que pour la mesure GPS correspondante',()=>{
   assert.equal(context.offsiteReviewPending(iv),true);
 });
 
+test('le RPC reçoit la clé complète de la fiche, et non le seul numéro APL',()=>{
+  const context={String,isPilpIntervention:iv=>iv.pilp===true};vm.createContext(context);
+  vm.runInContext(sourceOf('offsiteReviewRecordId'),context);
+  const apl='APL_2026_000671-Rmwnqzkd5-272190f902';
+  assert.equal(context.offsiteReviewRecordId({id:apl},'CIS05'),'CIS05__iv__'+apl);
+  assert.equal(context.offsiteReviewRecordId({id:'CIS05__iv__'+apl},'CIS05'),'CIS05__iv__'+apl);
+  assert.equal(context.offsiteReviewRecordId({id:apl,pilp:true},'CIS05'),'CIS05__pilp__'+apl);
+  assert.match(source,/p_record_id:recordId/);
+});
+
 test('une ancienne copie ne retire pas la décision administrative lors de la fusion',()=>{
   const context={Number,JSON,Object,Array};vm.createContext(context);
   vm.runInContext(sourceOf('_rcMergeOffsiteReviewFields',syncSource),context);

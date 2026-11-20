@@ -21,12 +21,19 @@ function offsiteReviewFor(iv){
 function offsiteReviewPending(iv){
   return !!(iv&&operationalStartOffsiteConfirmed(iv._departGeoControle)&&!offsiteReviewFor(iv));
 }
+function offsiteReviewRecordId(iv,station){
+  if(!iv||!iv.id||!station)return '';
+  const prefix=station+'__'+(isPilpIntervention(iv)?'pilp':'iv')+'__';
+  return String(iv.id).startsWith(prefix)?String(iv.id):prefix+iv.id;
+}
 function offsiteReviewFailureMessage(detail,status){
   const source=String(detail||'');
+  if(/AGAI_OFFSITE_REVIEW_NOT_FOUND/.test(source))return 'La fiche n’a pas été retrouvée sur le serveur. Aucune heure modifiée ; contactez un administrateur.';
   if(/AGAI_OFFSITE_REVIEW_STALE_SOURCE/.test(source))return 'La fiche a changé depuis son ouverture. Attendez Sync OK, puis rouvrez-la avant de décider.';
   if(/AGAI_OFFSITE_REVIEW_AFTER_END/.test(source))return 'Le trajet proposé dépasse la fin de l’intervention : aucune heure modifiée.';
   if(/AGAI_OFFSITE_REVIEW_CROSSES_MIDNIGHT/.test(source))return 'Le trajet passe minuit : ce cas nécessite un contrôle horaire spécifique.';
   if(/AGAI_OFFSITE_REVIEW_GPS_UNCONFIRMED/.test(source))return 'Le point GPS est trop imprécis pour ce contrôle automatique.';
+  if(/AGAI_OFFSITE_REVIEW_ROUTE_INVALID/.test(source))return 'Le trajet proposé a été refusé par le contrôle serveur. Aucune heure modifiée.';
   if(/AGAI_OFFSITE_REVIEW_ROLE_FORBIDDEN|AGAI_OFFSITE_REVIEW_STATION_FORBIDDEN/.test(source))return 'Droits insuffisants pour contrôler cette caserne.';
   return 'Contrôle non enregistré (HTTP '+status+'). Aucune heure n’a été modifiée ; réessayez ou contactez un administrateur.';
 }
@@ -108,6 +115,8 @@ async function offsiteReviewSubmit(ivId){
   if(!iv||!host||host.dataset.id!==ivId||!isAdminModeActive()||_offsiteReviewSaving.has(ivId))return;
   const status=host.dataset.mode,reason=String((document.getElementById('offsite-review-reason')||{}).value||'').trim();
   const route=status==='refuse'&&!iv._sdis?_offsiteReviewRoutes.get(ivId):null;
+  const recordId=offsiteReviewRecordId(iv,CURRENT_CASERNE_ID);
+  if(!recordId){showToast('Identifiant de fiche indisponible ; contrôle non envoyé.','warn');return;}
   if(reason.length<10){showToast('Précisez le motif du contrôle (10 caractères minimum).','warn');return;}
   if(status==='refuse'&&!iv._sdis&&(!route||route.sourceDate!==iv._departGeoControle.date)){
     showToast('Calculez d’abord le trajet depuis la position GPS enregistrée.','warn');return;
@@ -120,7 +129,7 @@ async function offsiteReviewSubmit(ivId){
   try{
     if(typeof agaiApplyAdminStationHeader==='function')agaiApplyAdminStationHeader();
     const response=await _agaiFetchWithTimeout(SB_URL+'/rest/v1/rpc/agai_review_offsite_departure',{
-      method:'POST',headers:_sbHeaders,body:JSON.stringify({p_record_id:ivId,p_status:status,p_reason:reason,
+      method:'POST',headers:_sbHeaders,body:JSON.stringify({p_record_id:recordId,p_status:status,p_reason:reason,
         p_source_date:iv._departGeoControle.date,p_expected_record_revision:Number(iv._serverRevision)||0,
         p_route_seconds:route&&route.seconds||null,
         p_route_distance_meters:route&&route.distance||null,p_route_resource_version:route&&route.resourceVersion||'',
