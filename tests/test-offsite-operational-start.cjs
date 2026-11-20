@@ -57,7 +57,7 @@ test('une précision kilométrique ne prouve plus une présence à la caserne',(
   assert.equal(context.operationalStartPositionAccepted(4500,4000),false,'une très forte incertitude ne vaut plus preuve de présence');
 });
 
-test('seuls les comptes administratifs voient les départs hors caserne récents',()=>{
+test('seuls les comptes administratifs voient les départs hors caserne en attente de contrôle',()=>{
   const element={style:{display:'none'},innerHTML:''};
   let admin=false;
   const context={
@@ -78,8 +78,12 @@ test('seuls les comptes administratifs voient les départs hors caserne récents
   admin=true;
   context.rAccueilDepartsHorsCaserne();
   assert.equal(element.style.display,'block');
-  assert.match(element.innerHTML,/Départs pris hors caserne/);
+  assert.match(element.innerHTML,/Départs hors caserne à contrôler/);
   assert.match(element.innerHTML,/Départ garage/);
+  context.IVS[0]._departGeoReview={sourceDate:'999999999999',status:'justifie'};
+  context.rAccueilDepartsHorsCaserne();
+  assert.equal(element.style.display,'none','une décision ferme l’alerte sans effacer la fiche');
+  delete context.IVS[0]._departGeoReview;
   context.IVS[0]._departGeoControle.distanceMetres=1100;
   context.rAccueilDepartsHorsCaserne();
   assert.equal(element.style.display,'none','un ancien faux positif ne figure pas dans les alertes administratives');

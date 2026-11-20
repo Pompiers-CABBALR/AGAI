@@ -5788,18 +5788,19 @@ function rAccueilDepartsHorsCaserne(){
   if(typeof hasAdministrativeAccount!=='function'||!hasAdministrativeAccount()){
     el.style.display='none';el.innerHTML='';return;
   }
-  const cutoff=getH(new Date(Date.now()-7*24*60*60*1000));
   const seen=new Set();
   const departures=[].concat(IVS||[],PILP_IVS||[]).filter(function(iv){
     if(!iv||!iv.id||seen.has(iv.id))return false;
     seen.add(iv.id);
     const control=iv._departGeoControle||{};
-    return operationalStartOffsiteConfirmed(control)&&String(control.date||'')>=cutoff;
+    const review=iv._departGeoReview||{};
+    return operationalStartOffsiteConfirmed(control)
+      &&!(review.sourceDate===control.date&&['justifie','refuse'].includes(review.status));
   }).sort(function(a,b){return String(b._departGeoControle.date).localeCompare(String(a._departGeoControle.date));});
   if(!departures.length){el.style.display='none';el.innerHTML='';return;}
   el.style.display='block';
   el.innerHTML='<div style="border:1px solid #FDBA74;background:#FFF7ED;border-radius:10px;padding:12px;color:#92400E;">'
-    +'<strong>⚠️ Départs pris hors caserne — '+departures.length+' sur les 7 derniers jours</strong>'
+    +'<strong>⚠️ Départs hors caserne à contrôler — '+departures.length+'</strong>'
     +departures.slice(0,5).map(function(iv){
       const control=iv._departGeoControle||{};
       const stamp=String(control.date||'');
@@ -8982,7 +8983,7 @@ function renderInterventionRow(iv, ag, tireur) {
       ${interventionRouteBadgeHTML(iv)}
       <span class="bdg ${bc}">${bt}</span>
       ${iv._departGeoControle&&iv._departGeoControle.degrade===true?'<span class="bdg" style="background:#FFF7ED;color:#92400E;font-size:10px;">⚠️ Position à contrôler</span>':''}
-      ${hasAdministrativeAccount()&&operationalStartOffsiteConfirmed(iv._departGeoControle)?'<span class="bdg" style="background:#FFF7ED;color:#92400E;font-size:10px;">⚠️ Départ hors caserne</span>':''}
+      ${hasAdministrativeAccount()&&operationalStartOffsiteConfirmed(iv._departGeoControle)?'<span class="bdg" style="background:#FFF7ED;color:#92400E;font-size:10px;">'+(typeof offsiteReviewFor==='function'&&offsiteReviewFor(iv)?'✓ Départ contrôlé':'⚠️ Départ hors caserne')+'</span>':''}
       ${isPilp ? '<span class="bdg bpilp" style="font-size:10px;">PILP</span>' : ''}
       ${isRenfortUT ? '<span class="bdg" style="background:#7C3AED;color:#fff;font-size:10px;">Renfort UT</span>' : isRenfortInternal ? '<span class="bdg" style="background:#047857;color:#fff;font-size:10px;">Renfort interne</span>' : ''}
       ${iv._urgence ? '<span class="bdg" style="background:#B91C1C;color:#fff;font-size:10px;font-weight:700;">PRIORITAIRE — ERP</span>' : ''}
@@ -9646,6 +9647,7 @@ function oM(id){
       +(offsiteCoords?' · <a target="_blank" rel="noopener noreferrer" href="https://www.google.com/maps/search/?api=1&amp;query='+offsiteLat+','+offsiteLon+'">Voir la position</a>':'')
       +'</div>'
     :'';
+  const offsiteReviewInfo=typeof offsiteReviewPanelHTML==='function'?offsiteReviewPanelHTML(iv):'';
   const legacyOffsiteInfo=legacyOffsiteSignal
     ?'<div style="background:#EFF6FF;border:1px solid #93C5FD;border-radius:8px;padding:9px 12px;margin-bottom:10px;font-size:12px;color:#1D4ED8;">'
       +'<strong>Ancien signalement hors caserne non confirmé avec le rayon de 2 km.</strong> Distance enregistrée : '
@@ -9660,8 +9662,9 @@ function oM(id){
       +'</div>'
     :'';
   document.getElementById('mb').innerHTML=`
-    <div style="margin-bottom:8px;"><span class="bdg ${bc}">${bt}</span>${iv._departGeoControle&&iv._departGeoControle.degrade===true?' <span class="bdg" style="background:#FFF7ED;color:#92400E;">⚠️ Départ dégradé — position à contrôler</span>':''}${offsiteAdmin?' <span class="bdg" style="background:#FFF7ED;color:#92400E;">⚠️ Départ hors caserne</span>':''}${pilpScope?' <span class="bdg bpilp">PILP</span>':''}${iv.rappels?` <span class="bdg bp" style="${isAdminModeActive()?'cursor:pointer;':''}"${isAdminModeActive()?` title="Déjà intervenu ici ?" onclick="showInterventionsLiees('${iv.id}')"`:''}>${iv.rappels} rappel(s)</span>`:''}</div>
+    <div style="margin-bottom:8px;"><span class="bdg ${bc}">${bt}</span>${iv._departGeoControle&&iv._departGeoControle.degrade===true?' <span class="bdg" style="background:#FFF7ED;color:#92400E;">⚠️ Départ dégradé — position à contrôler</span>':''}${offsiteAdmin?' <span class="bdg" style="background:#FFF7ED;color:#92400E;">'+(typeof offsiteReviewFor==='function'&&offsiteReviewFor(iv)?'✓ Départ contrôlé':'⚠️ Départ hors caserne')+'</span>':''}${pilpScope?' <span class="bdg bpilp">PILP</span>':''}${iv.rappels?` <span class="bdg bp" style="${isAdminModeActive()?'cursor:pointer;':''}"${isAdminModeActive()?` title="Déjà intervenu ici ?" onclick="showInterventionsLiees('${iv.id}')"`:''}>${iv.rappels} rappel(s)</span>`:''}</div>
     ${offsiteInfo}
+    ${offsiteReviewInfo}
     ${legacyOffsiteInfo}
     ${reportCreditInfo}
     ${pilpReadOnly?'<div style="background:#EFF6FF;border:1px solid #93C5FD;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;color:#1D4ED8;margin-bottom:10px;">👁️ Consultation PILP en lecture seule</div>':''}
@@ -21051,7 +21054,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202611_0045';
+const APP_VERSION='V202611_0046';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
@@ -25760,6 +25763,26 @@ function _rcOperationalStatusSource(current,incoming){
   const rank={'terminee':5,'en-cours':4,'selectionne':2,'en-attente':1,'avis-passage':1,'annulee':1};
   return (rank[current.s]||0)>(rank[incoming.s]||0)?'current':'incoming';
 }
+function _rcMergeOffsiteReviewFields(current,incoming,target){
+  const a=current&&current._departGeoReview,b=incoming&&incoming._departGeoReview;
+  if(!a&&!b)return false;
+  const aCount=Array.isArray(current._departGeoReviewHistory)?current._departGeoReviewHistory.length:0;
+  const bCount=Array.isArray(incoming._departGeoReviewHistory)?incoming._departGeoReviewHistory.length:0;
+  const useCurrent=!!a&&(!b||aCount>bCount||aCount===bCount
+    &&Number(current._serverRevision||0)>Number(incoming._serverRevision||0));
+  const source=useCurrent?current:incoming;
+  for(const key of ['_departGeoReview','_departGeoReviewHistory']){
+    if(Object.prototype.hasOwnProperty.call(source,key))target[key]=JSON.parse(JSON.stringify(source[key]));
+    else delete target[key];
+  }
+  if((useCurrent&&!b)||(!useCurrent&&!a)||a&&b&&a.actionId!==b.actionId){
+    for(const key of ['_hDebut','_hDebutReelle','_hDebutInitiale','_heureDebutModifiee','_heureDebutModifs']){
+      if(Object.prototype.hasOwnProperty.call(source,key))target[key]=JSON.parse(JSON.stringify(source[key]));
+      else delete target[key];
+    }
+  }
+  return useCurrent;
+}
 function _rcMergeOperationalInterventionVersions(current,incoming){
   if(current)ensureOperationalStatusMetadata(current);
   if(incoming)ensureOperationalStatusMetadata(incoming);
@@ -25776,7 +25799,8 @@ function _rcMergeOperationalInterventionVersions(current,incoming){
   if(_rcOperationalStatusSource(current,incoming)!=='current'){
     const merged=Object.assign({},incoming);
     const keptCurrentPlanning=_rcMergePilpPlanningFields(current,incoming,merged);
-    if(keptCurrentPlanning){
+    const keptCurrentReview=_rcMergeOffsiteReviewFields(current,incoming,merged);
+    if(keptCurrentPlanning||keptCurrentReview){
       const timeline=[],seen=new Set();
       [].concat(incoming.tl||[],current.tl||[]).forEach(function(entry){
         const signature=JSON.stringify(entry||{});if(seen.has(signature))return;seen.add(signature);timeline.push(entry);
@@ -25784,7 +25808,7 @@ function _rcMergeOperationalInterventionVersions(current,incoming){
       timeline.sort(function(a,b){return String(a&&a.h||'').localeCompare(String(b&&b.h||''));});
       merged.tl=timeline;
     }
-    return {value:merged,keptCurrentStatus:keptCurrentPlanning};
+    return {value:merged,keptCurrentStatus:keptCurrentPlanning||keptCurrentReview};
   }
   // Conserver les éventuels compléments reçus, mais reprendre intégralement
   // l'état opérationnel le plus récent afin d'éviter tout retour visuel.
@@ -25802,6 +25826,7 @@ function _rcMergeOperationalInterventionVersions(current,incoming){
   timeline.sort(function(a,b){return String(a&&a.h||'').localeCompare(String(b&&b.h||''));});
   merged.tl=timeline;
   _rcMergePilpPlanningFields(current,incoming,merged);
+  _rcMergeOffsiteReviewFields(current,incoming,merged);
   return {value:merged,keptCurrentStatus:true};
 }
 function _rcReplaceLocalOperationalRecord(caserne,type,value){

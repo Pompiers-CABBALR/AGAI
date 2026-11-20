@@ -1232,7 +1232,7 @@ function renderInterventionRow(iv, ag, tireur) {
       ${interventionRouteBadgeHTML(iv)}
       <span class="bdg ${bc}">${bt}</span>
       ${iv._departGeoControle&&iv._departGeoControle.degrade===true?'<span class="bdg" style="background:#FFF7ED;color:#92400E;font-size:10px;">⚠️ Position à contrôler</span>':''}
-      ${hasAdministrativeAccount()&&operationalStartOffsiteConfirmed(iv._departGeoControle)?'<span class="bdg" style="background:#FFF7ED;color:#92400E;font-size:10px;">⚠️ Départ hors caserne</span>':''}
+      ${hasAdministrativeAccount()&&operationalStartOffsiteConfirmed(iv._departGeoControle)?'<span class="bdg" style="background:#FFF7ED;color:#92400E;font-size:10px;">'+(typeof offsiteReviewFor==='function'&&offsiteReviewFor(iv)?'✓ Départ contrôlé':'⚠️ Départ hors caserne')+'</span>':''}
       ${isPilp ? '<span class="bdg bpilp" style="font-size:10px;">PILP</span>' : ''}
       ${isRenfortUT ? '<span class="bdg" style="background:#7C3AED;color:#fff;font-size:10px;">Renfort UT</span>' : isRenfortInternal ? '<span class="bdg" style="background:#047857;color:#fff;font-size:10px;">Renfort interne</span>' : ''}
       ${iv._urgence ? '<span class="bdg" style="background:#B91C1C;color:#fff;font-size:10px;font-weight:700;">PRIORITAIRE — ERP</span>' : ''}
@@ -1896,6 +1896,7 @@ function oM(id){
       +(offsiteCoords?' · <a target="_blank" rel="noopener noreferrer" href="https://www.google.com/maps/search/?api=1&amp;query='+offsiteLat+','+offsiteLon+'">Voir la position</a>':'')
       +'</div>'
     :'';
+  const offsiteReviewInfo=typeof offsiteReviewPanelHTML==='function'?offsiteReviewPanelHTML(iv):'';
   const legacyOffsiteInfo=legacyOffsiteSignal
     ?'<div style="background:#EFF6FF;border:1px solid #93C5FD;border-radius:8px;padding:9px 12px;margin-bottom:10px;font-size:12px;color:#1D4ED8;">'
       +'<strong>Ancien signalement hors caserne non confirmé avec le rayon de 2 km.</strong> Distance enregistrée : '
@@ -1910,8 +1911,9 @@ function oM(id){
       +'</div>'
     :'';
   document.getElementById('mb').innerHTML=`
-    <div style="margin-bottom:8px;"><span class="bdg ${bc}">${bt}</span>${iv._departGeoControle&&iv._departGeoControle.degrade===true?' <span class="bdg" style="background:#FFF7ED;color:#92400E;">⚠️ Départ dégradé — position à contrôler</span>':''}${offsiteAdmin?' <span class="bdg" style="background:#FFF7ED;color:#92400E;">⚠️ Départ hors caserne</span>':''}${pilpScope?' <span class="bdg bpilp">PILP</span>':''}${iv.rappels?` <span class="bdg bp" style="${isAdminModeActive()?'cursor:pointer;':''}"${isAdminModeActive()?` title="Déjà intervenu ici ?" onclick="showInterventionsLiees('${iv.id}')"`:''}>${iv.rappels} rappel(s)</span>`:''}</div>
+    <div style="margin-bottom:8px;"><span class="bdg ${bc}">${bt}</span>${iv._departGeoControle&&iv._departGeoControle.degrade===true?' <span class="bdg" style="background:#FFF7ED;color:#92400E;">⚠️ Départ dégradé — position à contrôler</span>':''}${offsiteAdmin?' <span class="bdg" style="background:#FFF7ED;color:#92400E;">'+(typeof offsiteReviewFor==='function'&&offsiteReviewFor(iv)?'✓ Départ contrôlé':'⚠️ Départ hors caserne')+'</span>':''}${pilpScope?' <span class="bdg bpilp">PILP</span>':''}${iv.rappels?` <span class="bdg bp" style="${isAdminModeActive()?'cursor:pointer;':''}"${isAdminModeActive()?` title="Déjà intervenu ici ?" onclick="showInterventionsLiees('${iv.id}')"`:''}>${iv.rappels} rappel(s)</span>`:''}</div>
     ${offsiteInfo}
+    ${offsiteReviewInfo}
     ${legacyOffsiteInfo}
     ${reportCreditInfo}
     ${pilpReadOnly?'<div style="background:#EFF6FF;border:1px solid #93C5FD;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;color:#1D4ED8;margin-bottom:10px;">👁️ Consultation PILP en lecture seule</div>':''}
