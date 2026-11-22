@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - 'modules/06-ui-js-accueil-js.js'
+      - 'modules/02-auth-js-partie-1-2-structure-casernes-numerotation.js'
+      - 'modules/11-admin-js-partie-2-2-gestion-utilisateurs.js'
       - 'modules/07-appel-js.js'
       - 'modules/08-interventions-js.js'
       - 'modules/09-pilp-js.js'
@@ -16,6 +18,7 @@ on:
       - 'style.css'
       - 'version.json'
       - 'tests/test-route-confirmation-persistence.cjs'
+      - 'tests/test-personnel-arret-extension.cjs'
       - 'tests/test-version-consistency.cjs'
       - 'tests/test-boot-health.cjs'
       - 'tests/test-browser-boot.cjs'
@@ -28,6 +31,8 @@ on:
     branches: [main]
     paths:
       - 'modules/06-ui-js-accueil-js.js'
+      - 'modules/02-auth-js-partie-1-2-structure-casernes-numerotation.js'
+      - 'modules/11-admin-js-partie-2-2-gestion-utilisateurs.js'
       - 'modules/07-appel-js.js'
       - 'modules/08-interventions-js.js'
       - 'modules/09-pilp-js.js'
@@ -40,6 +45,7 @@ on:
       - 'style.css'
       - 'version.json'
       - 'tests/test-route-confirmation-persistence.cjs'
+      - 'tests/test-personnel-arret-extension.cjs'
       - 'tests/test-boot-health.cjs'
       - 'tests/test-browser-boot.cjs'
       - 'tests/test-home-agenda-compact.cjs'
@@ -70,7 +76,7 @@ jobs:
           node --check modules/26-piquet-weekly-js.js
           node --check app.js
       - name: Test modules and release versions
-        run: node --test tests/test-route-confirmation-persistence.cjs tests/test-version-consistency.cjs tests/test-boot-health.cjs tests/test-home-agenda-compact.cjs tests/test-piquet-recovery-and-validation.cjs tests/test-piquet-weekly-draft.cjs tests/test-superadmin-piquet-power.cjs
+        run: node --test tests/test-route-confirmation-persistence.cjs tests/test-personnel-arret-extension.cjs tests/test-version-consistency.cjs tests/test-boot-health.cjs tests/test-home-agenda-compact.cjs tests/test-piquet-recovery-and-validation.cjs tests/test-piquet-weekly-draft.cjs tests/test-superadmin-piquet-power.cjs
       - name: Smoke test Astreintes, A/SA and call intake in Chrome
         run: node --test tests/test-browser-boot.cjs
       - name: Test published bundle

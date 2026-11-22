@@ -43,6 +43,16 @@ function personnelStatusAt(user,date){
   if(active.length)return'arret';
   return'actif';
 }
+function personnelCanExtendPeriod(user,status,startDate,today){
+  const start=personnelIsoDate(startDate),day=personnelIsoDate(today);
+  if(!user||!start||!day||start<=day||status!=='arret'
+    ||personnelStatusAt(user,day)!==status)return false;
+  const previousDay=new Date(Date.parse(start+'T00:00:00Z')-86400000).toISOString().slice(0,10);
+  return (Array.isArray(user._personnelPeriods)?user._personnelPeriods:[]).some(function(period){
+    return period&&period.kind===status&&!period.cancelledAt&&!period.cancelledFrom
+      &&personnelIsoDate(period.start)<=day&&personnelIsoDate(period.end)===previousDay;
+  });
+}
 function personnelCanLogin(user,date){
   const status=personnelStatusAt(user,date);
   return status==='actif'||status==='arret';

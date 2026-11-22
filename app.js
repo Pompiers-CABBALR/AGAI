@@ -202,6 +202,16 @@ function personnelStatusAt(user,date){
   if(active.length)return'arret';
   return'actif';
 }
+function personnelCanExtendPeriod(user,status,startDate,today){
+  const start=personnelIsoDate(startDate),day=personnelIsoDate(today);
+  if(!user||!start||!day||start<=day||status!=='arret'
+    ||personnelStatusAt(user,day)!==status)return false;
+  const previousDay=new Date(Date.parse(start+'T00:00:00Z')-86400000).toISOString().slice(0,10);
+  return (Array.isArray(user._personnelPeriods)?user._personnelPeriods:[]).some(function(period){
+    return period&&period.kind===status&&!period.cancelledAt&&!period.cancelledFrom
+      &&personnelIsoDate(period.start)<=day&&personnelIsoDate(period.end)===previousDay;
+  });
+}
 function personnelCanLogin(user,date){
   const status=personnelStatusAt(user,date);
   return status==='actif'||status==='arret';
@@ -12662,7 +12672,7 @@ function savePersonnelLifecycle(encodedLogin){
     showToast('Dates ou situation invalides.','warn');return;
   }
   if(status==='actif'&&start!==today){showToast('La réactivation doit prendre effet aujourd’hui.','warn');return;}
-  if(start>today&&personnelStatusAt(user,today)!=='actif'){
+  if(start>today&&personnelStatusAt(user,today)!=='actif'&&!personnelCanExtendPeriod(user,status,start,today)){
     showToast('Terminez d’abord la situation en cours avant d’en programmer une autre.','warn');return;
   }
   const futureDecision=[...(Array.isArray(user._personnelPeriods)?user._personnelPeriods:[]),
@@ -21054,7 +21064,7 @@ function exportAdminMonthlyExcel(){
 //   2. Si oui → un bandeau invite l'utilisateur à recharger (il garde la main).
 //   3. Le rechargement reste toujours manuel afin de ne jamais interrompre
 //      un départ, une intervention ou une consultation opérationnelle.
-const APP_VERSION='V202611_0047';
+const APP_VERSION='V202611_0048';
 const _VER_CHECK_MS=2*60*1000;      // contrôle toutes les 2 minutes
 let _verNouvelle=null;              // version détectée en ligne
 let _verReloading=false;
