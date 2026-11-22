@@ -269,7 +269,7 @@ function savePersonnelLifecycle(encodedLogin){
     showToast('Dates ou situation invalides.','warn');return;
   }
   if(status==='actif'&&start!==today){showToast('La réactivation doit prendre effet aujourd’hui.','warn');return;}
-  if(start>today&&personnelStatusAt(user,today)!=='actif'){
+  if(start>today&&personnelStatusAt(user,today)!=='actif'&&!personnelCanExtendPeriod(user,status,start,today)){
     showToast('Terminez d’abord la situation en cours avant d’en programmer une autre.','warn');return;
   }
   const futureDecision=[...(Array.isArray(user._personnelPeriods)?user._personnelPeriods:[]),
