@@ -73,6 +73,7 @@ test('le serveur conserve le début initial pour une prolongation et audite la n
     const source=name==='personnelCanExtendPeriod'?auth:admin;
     const match=source.match(new RegExp('function '+name+'\\([\\s\\S]*?\\n}'));
     assert.ok(match,name+' absent du module');
-    assert.ok(bundle.includes(match[0]),name+' différent dans le bundle');
+    assert.ok(bundle.replace(/\r\n/g,'\n').includes(match[0].replace(/\r\n/g,'\n')),
+      name+' différent dans le bundle');
   }
 });
